@@ -1,45 +1,48 @@
 /*
- * Panecrew Theme-Tokens — Dark (Ausgangsszene).
+ * Panecrew Theme-Tokens — Dark (Ausgangsszene) + Light, beide 1:1 gemappt auf
+ * VS Codes "Dark 2026 Default" / "Light 2026 Default" Workbench-Paletten.
  *
  * Namenskonvention nach VS-Code-Vorbild „bereich.element.zustand":
  * JSON-Pendant pane.activeBorder → CSS-Custom-Property --pc-pane-activeBorder.
  *
  * Struktur-Invarianten (Surface Brief, docs/agents/vscode-theming-research.md):
- * - Ein späteres Light-Theme ist ein zweiter, VOLLSTÄNDIGER Block unter
- *   :root[data-theme="light"] — keine Ableitung aus Dark.
+ * - Light ist ein zweiter, VOLLSTÄNDIGER Block unter :root[data-theme="light"]
+ *   — keine Ableitung aus Dark.
  * - pane.activeBorder ist ein eigenes, nicht-generisches Token (Fokus ist die
  *   Kernmechanik) und hängt nicht am globalen focusBorder-Fallback.
  * - Das terminal-Set (background/foreground/cursor + 16 ANSI-Farben) ist
  *   strukturell 1:1 auf das ITheme-Objekt von xterm.js abbildbar und wird bei
- *   der PTY-Integration unverändert dorthin gemappt.
+ *   der PTY-Integration unverändert dorthin gemappt. Die ANSI-Werte sind VS
+ *   Codes Engine-Defaults (terminalColorRegistry) — die sind theme-KIND-
+ *   abhängig (eigene Light-Spalte), daher unterscheiden sich Dark und Light.
  */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
 
   /* Global (Fallback-Basis nach VS-Code-Muster) */
-  --pc-foreground: #d6d3cd;
-  --pc-descriptionForeground: #8f8b84;
-  --pc-focusBorder: #4da6ff;
+  --pc-foreground: #bfbfbf;
+  --pc-descriptionForeground: #8c8c8c;
+  --pc-focusBorder: #3994bcb3;
 
-  /* App-Chrome */
-  --pc-app-background: #201f1e;
+  /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
+  --pc-app-background: #121314;
 
   /* Titelzeile */
-  --pc-titleBar-background: #262524;
-  --pc-titleBar-foreground: #b5b1aa;
-  --pc-titleBar-border: #343230;
+  --pc-titleBar-background: #191a1b;
+  --pc-titleBar-foreground: #8c8c8c;
+  --pc-titleBar-border: #2a2b2c;
 
   /* Explorer (VS-Code-nahe Baum-Optik) */
-  --pc-explorer-background: #232221;
-  --pc-explorer-border: #343230;
-  --pc-explorer-foreground: #a8a49d;
-  --pc-explorerHeader-foreground: #e9e6e0;
-  --pc-list-hoverBackground: #2c2b29;
-  --pc-list-activeSelectionBackground: #35332f;
-  --pc-list-activeSelectionForeground: #efece6;
+  --pc-explorer-background: #191a1b;
+  --pc-explorer-border: #2a2b2c;
+  --pc-explorer-foreground: #bfbfbf;
+  --pc-explorerHeader-foreground: #bfbfbf;
+  --pc-list-hoverBackground: #ffffff14;
+  --pc-list-activeSelectionBackground: #ffffff22;
+  --pc-list-activeSelectionForeground: #ededed;
 
-  /* Datei-/Ordner-Icons (reduziertes, Seti-angelehntes Farbschema) */
+  /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Dark-Spalte) */
   --pc-icon-folder: #519aba;
   --pc-icon-blue: #519aba;
   --pc-icon-yellow: #cbcb41;
@@ -47,22 +50,22 @@
   --pc-icon-green: #8dc149;
   --pc-icon-red: #cc3e44;
   --pc-icon-purple: #a074c4;
-  --pc-icon-gray: #8a8f98;
+  --pc-icon-gray: #6d8086;
 
   /* Terminal-Panes */
-  --pc-pane-background: #191817;
-  --pc-pane-border: #343230;
-  --pc-pane-activeBorder: #4da6ff;
-  --pc-pane-activeGlow: rgba(77, 166, 255, 0.3);
-  --pc-paneHeader-foreground: #8f8b84;
-  --pc-paneHeader-activeForeground: #4da6ff;
-  --pc-paneHeader-border: rgba(255, 255, 255, 0.05);
+  --pc-pane-background: #121314;
+  --pc-pane-border: #2a2b2c;
+  --pc-pane-activeBorder: #6caddf;
+  --pc-pane-activeGlow: rgba(108, 173, 223, 0.3);
+  --pc-paneHeader-foreground: #8c8c8c;
+  --pc-paneHeader-activeForeground: #6caddf;
+  --pc-paneHeader-border: #2a2b2c;
 
   /* Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar */
-  --pc-terminal-background: #191817;
-  --pc-terminal-foreground: #d2cfc8;
-  --pc-terminal-cursor: #d2cfc8;
-  --pc-terminal-ansiBlack: #21201f;
+  --pc-terminal-background: #121314;
+  --pc-terminal-foreground: #cccccc;
+  --pc-terminal-cursor: #bfbfbf;
+  --pc-terminal-ansiBlack: #000000;
   --pc-terminal-ansiRed: #cd3131;
   --pc-terminal-ansiGreen: #0dbc79;
   --pc-terminal-ansiYellow: #e5e510;
@@ -78,4 +81,70 @@
   --pc-terminal-ansiBrightMagenta: #d670d6;
   --pc-terminal-ansiBrightCyan: #29b8db;
   --pc-terminal-ansiBrightWhite: #e5e5e5;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Global (Fallback-Basis nach VS-Code-Muster) */
+  --pc-foreground: #202020;
+  --pc-descriptionForeground: #606060;
+  --pc-focusBorder: #0069cc;
+
+  /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
+  --pc-app-background: #ffffff;
+
+  /* Titelzeile */
+  --pc-titleBar-background: #fafafd;
+  --pc-titleBar-foreground: #606060;
+  --pc-titleBar-border: #f0f1f2;
+
+  /* Explorer (VS-Code-nahe Baum-Optik) */
+  --pc-explorer-background: #fafafd;
+  --pc-explorer-border: #f0f1f2;
+  --pc-explorer-foreground: #202020;
+  --pc-explorerHeader-foreground: #202020;
+  --pc-list-hoverBackground: #00000014;
+  --pc-list-activeSelectionBackground: #00000025;
+  --pc-list-activeSelectionForeground: #202020;
+
+  /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Light-Spalte) */
+  --pc-icon-folder: #498ba7;
+  --pc-icon-blue: #498ba7;
+  --pc-icon-yellow: #b7b73b;
+  --pc-icon-orange: #cc6d2e;
+  --pc-icon-green: #7fae42;
+  --pc-icon-red: #b8383d;
+  --pc-icon-purple: #9068b0;
+  --pc-icon-gray: #627379;
+
+  /* Terminal-Panes */
+  --pc-pane-background: #ffffff;
+  --pc-pane-border: #f0f1f2;
+  --pc-pane-activeBorder: #68a3da;
+  --pc-pane-activeGlow: rgba(104, 163, 218, 0.3);
+  --pc-paneHeader-foreground: #606060;
+  --pc-paneHeader-activeForeground: #0069cc;
+  --pc-paneHeader-border: #f0f1f2;
+
+  /* Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar */
+  --pc-terminal-background: #ffffff;
+  --pc-terminal-foreground: #3b3b3b;
+  --pc-terminal-cursor: #202020;
+  --pc-terminal-ansiBlack: #000000;
+  --pc-terminal-ansiRed: #cd3131;
+  --pc-terminal-ansiGreen: #107c10;
+  --pc-terminal-ansiYellow: #949800;
+  --pc-terminal-ansiBlue: #0451a5;
+  --pc-terminal-ansiMagenta: #bc05bc;
+  --pc-terminal-ansiCyan: #0598bc;
+  --pc-terminal-ansiWhite: #555555;
+  --pc-terminal-ansiBrightBlack: #666666;
+  --pc-terminal-ansiBrightRed: #cd3131;
+  --pc-terminal-ansiBrightGreen: #14ce14;
+  --pc-terminal-ansiBrightYellow: #b5ba00;
+  --pc-terminal-ansiBrightBlue: #0451a5;
+  --pc-terminal-ansiBrightMagenta: #bc05bc;
+  --pc-terminal-ansiBrightCyan: #0598bc;
+  --pc-terminal-ansiBrightWhite: #a5a5a5;
 }
