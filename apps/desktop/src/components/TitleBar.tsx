@@ -16,7 +16,7 @@ export function TitleBar() {
       <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
         <AppMark />
         <span className="pointer-events-none text-[13px] font-medium text-(--pc-titleBar-foreground)">
-          Panecrew
+          PaneCrew
         </span>
       </div>
       <div
@@ -56,7 +56,14 @@ export function TitleBar() {
   );
 }
 
-// App-Marke: 2×2-Pane-Raster, eine Zelle trägt den Fokus-Akzent.
+// App-Marke: 14px-Neuzeichnung des App-Icon-Emblems ("Verzahnung") — Chevron
+// (>), dessen unterer Arm über eine diagonale Gehrungsfuge in den Cursor-Block
+// (_) übergeht: Butt-Caps stehen senkrecht zur Arm-Achse, die linke Blockkante
+// ist parallel dazu angeschrägt, dazwischen ~1px Fuge. Bewusst monochrom in
+// Titelzeilen-Textfarbe (kein Amber wie im App-Icon: kollidiert mit
+// ANSI-Yellow-Semantik der Terminal-Panes) — die Wiedererkennung trägt allein
+// die verzahnte Geometrie. Block-Kanten pixel-gesnappt (y 11–13, x bis 13),
+// damit der Cursor bei echten 14px scharf bleibt.
 function AppMark() {
   return (
     <svg
@@ -66,10 +73,15 @@ function AppMark() {
       aria-hidden="true"
       className="pointer-events-none"
     >
-      <rect x="0" y="0" width="6" height="6" rx="1.5" fill="var(--pc-descriptionForeground)" />
-      <rect x="8" y="0" width="6" height="6" rx="1.5" fill="var(--pc-focusBorder)" />
-      <rect x="0" y="8" width="6" height="6" rx="1.5" fill="var(--pc-descriptionForeground)" />
-      <rect x="8" y="8" width="6" height="6" rx="1.5" fill="var(--pc-descriptionForeground)" />
+      <path
+        d="M2.1 1.4 L9.5 5.2 L2.1 9"
+        fill="none"
+        stroke="var(--pc-titleBar-foreground)"
+        strokeWidth="2.4"
+        strokeLinejoin="miter"
+        strokeLinecap="butt"
+      />
+      <path d="M4.3 11 H13 V13 H5.34 Z" fill="var(--pc-titleBar-foreground)" />
     </svg>
   );
 }
