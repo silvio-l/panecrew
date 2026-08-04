@@ -56,6 +56,14 @@ where
     // shell's, so this can't rely on the parent process already having it.
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // Bare `ls` (and the other BSD file utilities) stay monochrome until this
+    // is set, which is the single biggest reason a fresh pane looks lifeless.
+    // Verified on this macOS against a real TTY — `-G` and `CLICOLOR_FORCE`
+    // are no-ops there, `CLICOLOR` is not. It is only a default: the user's
+    // own rc files run after this and can still unset it. Deliberately the
+    // only thing we do about default colors — PaneCrew never writes to
+    // anyone's shell config.
+    cmd.env("CLICOLOR", "1");
     let child = pair.slave.spawn_command(cmd)?;
 
     let mut reader = pair.master.try_clone_reader()?;
@@ -199,18 +207,24 @@ mod tests {
     // pass by inheritance even with no fix. Clearing them from *this*
     // process first means a pass can only come from `spawn`'s own `cmd.env`,
     // reproducing the launchd case this test exists for. No other test here
-    // reads these two vars, so mutating process env is safe despite parallel
+    // reads these vars, so mutating process env is safe despite parallel
     // test threads.
     #[test]
     fn spawn_sets_a_color_capable_term_for_the_child() {
         unsafe {
             std::env::remove_var("TERM");
             std::env::remove_var("COLORTERM");
+            std::env::remove_var("CLICOLOR");
         }
 
-        let (handle, output) = spawn_sh(Some("echo \"term=$TERM colorterm=$COLORTERM\""));
+        let (handle, output) = spawn_sh(Some(
+            "echo \"term=$TERM colorterm=$COLORTERM clicolor=$CLICOLOR\"",
+        ));
 
-        let saw_term = saw(&output, "term=xterm-256color colorterm=truecolor");
+        let saw_term = saw(
+            &output,
+            "term=xterm-256color colorterm=truecolor clicolor=1",
+        );
 
         handle.kill().expect("kill should succeed");
         assert!(
