@@ -5,6 +5,8 @@ CONTEXT.md
 docs/decisions.md
 docs/agents/
 .scratch/
+PRODUCT.md
+DESIGN.md
 
 # Secrets
 .env
