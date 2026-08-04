@@ -1,0 +1,81 @@
+/*
+ * Panecrew Theme-Tokens — Dark (Ausgangsszene).
+ *
+ * Namenskonvention nach VS-Code-Vorbild „bereich.element.zustand":
+ * JSON-Pendant pane.activeBorder → CSS-Custom-Property --pc-pane-activeBorder.
+ *
+ * Struktur-Invarianten (Surface Brief, docs/agents/vscode-theming-research.md):
+ * - Ein späteres Light-Theme ist ein zweiter, VOLLSTÄNDIGER Block unter
+ *   :root[data-theme="light"] — keine Ableitung aus Dark.
+ * - pane.activeBorder ist ein eigenes, nicht-generisches Token (Fokus ist die
+ *   Kernmechanik) und hängt nicht am globalen focusBorder-Fallback.
+ * - Das terminal-Set (background/foreground/cursor + 16 ANSI-Farben) ist
+ *   strukturell 1:1 auf das ITheme-Objekt von xterm.js abbildbar und wird bei
+ *   der PTY-Integration unverändert dorthin gemappt.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Global (Fallback-Basis nach VS-Code-Muster) */
+  --pc-foreground: #d6d3cd;
+  --pc-descriptionForeground: #8f8b84;
+  --pc-focusBorder: #4da6ff;
+
+  /* App-Chrome */
+  --pc-app-background: #201f1e;
+
+  /* Titelzeile */
+  --pc-titleBar-background: #262524;
+  --pc-titleBar-foreground: #b5b1aa;
+  --pc-titleBar-border: #343230;
+
+  /* Explorer (VS-Code-nahe Baum-Optik) */
+  --pc-explorer-background: #232221;
+  --pc-explorer-border: #343230;
+  --pc-explorer-foreground: #a8a49d;
+  --pc-explorerHeader-foreground: #e9e6e0;
+  --pc-list-hoverBackground: #2c2b29;
+  --pc-list-activeSelectionBackground: #35332f;
+  --pc-list-activeSelectionForeground: #efece6;
+
+  /* Datei-/Ordner-Icons (reduziertes, Seti-angelehntes Farbschema) */
+  --pc-icon-folder: #519aba;
+  --pc-icon-blue: #519aba;
+  --pc-icon-yellow: #cbcb41;
+  --pc-icon-orange: #e37933;
+  --pc-icon-green: #8dc149;
+  --pc-icon-red: #cc3e44;
+  --pc-icon-purple: #a074c4;
+  --pc-icon-gray: #8a8f98;
+
+  /* Terminal-Panes */
+  --pc-pane-background: #191817;
+  --pc-pane-border: #343230;
+  --pc-pane-activeBorder: #4da6ff;
+  --pc-pane-activeGlow: rgba(77, 166, 255, 0.3);
+  --pc-paneHeader-foreground: #8f8b84;
+  --pc-paneHeader-activeForeground: #4da6ff;
+  --pc-paneHeader-border: rgba(255, 255, 255, 0.05);
+
+  /* Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar */
+  --pc-terminal-background: #191817;
+  --pc-terminal-foreground: #d2cfc8;
+  --pc-terminal-cursor: #d2cfc8;
+  --pc-terminal-ansiBlack: #21201f;
+  --pc-terminal-ansiRed: #cd3131;
+  --pc-terminal-ansiGreen: #0dbc79;
+  --pc-terminal-ansiYellow: #e5e510;
+  --pc-terminal-ansiBlue: #2472c8;
+  --pc-terminal-ansiMagenta: #bc3fbc;
+  --pc-terminal-ansiCyan: #11a8cd;
+  --pc-terminal-ansiWhite: #e5e5e5;
+  --pc-terminal-ansiBrightBlack: #666666;
+  --pc-terminal-ansiBrightRed: #f14c4c;
+  --pc-terminal-ansiBrightGreen: #23d18b;
+  --pc-terminal-ansiBrightYellow: #f5f543;
+  --pc-terminal-ansiBrightBlue: #3b8eea;
+  --pc-terminal-ansiBrightMagenta: #d670d6;
+  --pc-terminal-ansiBrightCyan: #29b8db;
+  --pc-terminal-ansiBrightWhite: #e5e5e5;
+}

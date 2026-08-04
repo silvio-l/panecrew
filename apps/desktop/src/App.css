@@ -1,1 +1,41 @@
 @import "tailwindcss";
+@import "./theme.css";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  background: var(--pc-app-background);
+  color: var(--pc-foreground);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* ui-monospace-Register für Terminalinhalt (SF Mono / Cascadia Mono) */
+.pc-term {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+@keyframes pc-cursor-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
