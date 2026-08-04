@@ -171,6 +171,36 @@ describe("App", () => {
     ).toHaveLength(0);
   });
 
+  // Der Griff ist sonst nur ziehbar, also für Tastaturbedienung unerreichbar.
+  // jsdom liefert keine Pointer-Geometrie, die Tastenlogik ist aber genau der
+  // Teil, der hier ohne Maus prüfbar ist.
+  it("verstellt die Explorer-Breite per Pfeiltasten und hält die Grenzen ein", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    const { container } = render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    const separator = screen.getByRole("separator", {
+      name: "Explorer-Breite anpassen",
+    });
+    const explorer = container.querySelector("aside");
+    expect(explorer).toHaveStyle({ width: "224px" });
+
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+    expect(explorer).toHaveStyle({ width: "232px" });
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft", shiftKey: true });
+    expect(explorer).toHaveStyle({ width: "200px" });
+    expect(separator).toHaveAttribute("aria-valuenow", "200");
+
+    // Untergrenze: weiter als EXPLORER_MIN_WIDTH darf es nicht gehen.
+    for (let i = 0; i < 5; i++) {
+      fireEvent.keyDown(separator, { key: "ArrowLeft", shiftKey: true });
+    }
+    expect(explorer).toHaveStyle({ width: "180px" });
+  });
+
   it("bricht ohne Ordnerauswahl ab, ohne ein PTY zu starten", async () => {
     openMock.mockResolvedValue(null);
     render(<App />);
