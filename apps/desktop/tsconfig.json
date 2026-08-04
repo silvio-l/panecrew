@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    /*
+     * ES2022: Ziel ist ausschließlich das aktuelle System-Webview von Tauri 2
+     * (WKWebView / WebView2), keine Altbrowser — String.replaceAll (ES2021)
+     * und Array.prototype.at (ES2022) sind dort seit Jahren verfügbar.
+     */
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
 @import "./theme.css";
 
 html,
@@ -21,21 +22,17 @@ body {
   cursor: default;
 }
 
-/* ui-monospace-Register für Terminalinhalt (SF Mono / Cascadia Mono) */
-.pc-term {
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
-    monospace;
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-@keyframes pc-cursor-blink {
-  0%,
-  54% {
-    opacity: 1;
-  }
-  55%,
-  100% {
-    opacity: 0;
-  }
+/*
+ * Terminal-Typo und Cursor-Blinken kommen jetzt aus xterm.js selbst (Optionen
+ * aus den --pc-terminal-*-Tokens, siehe terminal/usePtyTerminal.ts) — die
+ * frühere .pc-term-Klasse und die eigene Cursor-Keyframe-Animation waren
+ * ausschließlich Zubehör des Mock-Renderers und sind mit ihm entfallen.
+ *
+ * xterm rendert seine Textur-Schicht absolut positioniert und füllt seinen
+ * Container sonst nicht aus. Die aufgelöste Höhe dieses Containers kommt aus
+ * der Flex-Kette darüber (Pane und Terminalfläche sind beide flex-1 mit
+ * min-h-0) — der FitAddon misst genau diese Box.
+ */
+.xterm {
+  height: 100%;
 }

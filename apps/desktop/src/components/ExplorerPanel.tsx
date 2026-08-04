@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Tooltip } from "radix-ui";
-import type { FileKind, Project, TreeNode } from "../mock/projects";
+import type { FileKind, Project, TreeNode } from "../types/project";
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
 // nur der Dateibaum, kein Icon-Rail, kein Overlay. Optik an VS Codes Explorer
@@ -67,18 +67,24 @@ export function ExplorerPanel({
         </Tooltip.Root>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-        {project.tree.map((node) => (
-          <TreeRow
-            key={node.name}
-            node={node}
-            path={node.name}
-            depth={0}
-            collapsed={collapsed}
-            selected={selected}
-            onToggleFolder={toggleFolder}
-            onSelectFile={setSelected}
-          />
-        ))}
+        {project.tree.length === 0 ? (
+          <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+            Kein Dateibaum geladen.
+          </p>
+        ) : (
+          project.tree.map((node) => (
+            <TreeRow
+              key={node.name}
+              node={node}
+              path={node.name}
+              depth={0}
+              collapsed={collapsed}
+              selected={selected}
+              onToggleFolder={toggleFolder}
+              onSelectFile={setSelected}
+            />
+          ))
+        )}
       </div>
     </aside>
   );

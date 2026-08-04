@@ -1,7 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  // Tauri-Laufzeit-Brücke + Opener-Plugin: noch ungenutzt, weil die
-  // PTY-/Backend-Anbindung laut CLAUDE.md ("core features not implemented
-  // yet") noch aussteht — kein totes Gepäck, sondern vorbereitet.
-  "ignoreDependencies": ["@tauri-apps/api", "@tauri-apps/plugin-opener"]
+  // @tauri-apps/api ist mit Ticket 02 (invoke/Channel/Webview-Drag-Drop) in
+  // echten Gebrauch gekommen und steht deshalb nicht mehr hier.
+  //
+  // Opener-Plugin: weiterhin ungenutzt, aber im Rust-Backend registriert und
+  // für das Öffnen externer Links vorgesehen — kein totes Gepäck.
+  "ignoreDependencies": ["@tauri-apps/plugin-opener"]
 }

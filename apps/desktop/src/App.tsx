@@ -35,44 +35,56 @@
  * rolled. Comp-Konsolidierung (Nutzer-Freigabe 2026-08-04): Optik/Material
  * aus mocks/comp-2-overlay-explorer.png, Explorer-Struktur und dünne
  * Pane-Header aus mocks/comp-3-zero-chrome.png.
+ *
+ * STAND TICKET 02: Das 2x2-Raster im FIRST VIEWPORT ist noch nicht erreicht —
+ * dieser Schritt zeigt bewusst GENAU EINE echte, PTY-gestützte Pane statt
+ * vier gefälschter. Das Raster kommt in Ticket 03 mit echten Panes zurück,
+ * die Fokus-/Explorer-Kopplung ist dafür strukturell schon angelegt.
  */
-import { useEffect, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import { useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Tooltip } from "radix-ui";
+import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TitleBar } from "./components/TitleBar";
 import {
   CollapsedExplorerStrip,
   ExplorerPanel,
 } from "./components/ExplorerPanel";
-import { TerminalPane, type PaneZoom } from "./components/TerminalPane";
-import { projects, type Project } from "./mock/projects";
+import { ProjectPicker } from "./components/ProjectPicker";
+import { TerminalPane } from "./components/TerminalPane";
+import { projectNameFromPath, type Project } from "./types/project";
 import "./App.css";
 
 const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
-// projects ist ein nicht-leeres Mock-Array (s. mock/projects.ts) — die
-// Non-Null-Assertion kodiert diese Invariante, die noUncheckedIndexedAccess
-// sonst nicht kennt.
-const firstProject = projects[0] as Project;
-
 function App() {
-  const [focusedId, setFocusedId] = useState(firstProject.id);
+  const [project, setProject] = useState<Project | null>(null);
+  const [picking, setPicking] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
-  const [zoom, setZoom] = useState<{ id: string; mode: PaneZoom } | null>(null);
-  const focusedProject =
-    projects.find((p) => p.id === focusedId) ?? firstProject;
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setZoom(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  const chooseProject = () => {
+    setPicking(true);
+    void openFolderDialog({ directory: true, multiple: false })
+      .then((selected) => {
+        if (typeof selected !== "string") return;
+        // Der echte Verzeichnis-Scan ist Ticket 04: der Baum bleibt hier
+        // bewusst leer, statt erfundene Einträge zu zeigen.
+        setProject({
+          path: selected,
+          name: projectNameFromPath(selected),
+          selectedFile: "",
+          tree: [],
+        });
+      })
+      .catch((error: unknown) => {
+        console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
+      })
+      .finally(() => setPicking(false));
+  };
 
   const startExplorerResize = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -100,33 +112,15 @@ function App() {
     handle.addEventListener("pointercancel", onUp);
   };
 
-  const toggleZoom = (id: string, mode: PaneZoom) =>
-    setZoom((prev) =>
-      prev?.id === id && prev.mode === mode ? null : { id, mode },
-    );
-
-  // Zoom via explizite Grid-Platzierung: die gezoomte Pane spannt Zeile
-  // und/oder Spalte auf und überdeckt die Nachbarn (z-10) — alle Panes
-  // bleiben gemountet, ihr State überlebt.
-  const paneStyle = (id: string, index: number): CSSProperties => {
-    const mode = zoom?.id === id ? zoom.mode : null;
-    return {
-      gridColumn:
-        mode === "width" || mode === "max" ? "1 / -1" : `${(index % 2) + 1}`,
-      gridRow:
-        mode === "height" || mode === "max"
-          ? "1 / -1"
-          : `${Math.floor(index / 2) + 1}`,
-      zIndex: mode ? 10 : undefined,
-    };
-  };
-
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="flex h-full flex-col">
         <TitleBar />
         <div className="flex min-h-0 flex-1">
-          {explorerCollapsed ? (
+          {/* Ohne offenes Projekt gibt es nichts, dem der Explorer folgen
+              könnte — er erscheint erst mit der Pane. "Dauerhaft sichtbar"
+              aus dem Direction Contract beschreibt den Arbeitszustand. */}
+          {project === null ? null : explorerCollapsed ? (
             <CollapsedExplorerStrip
               onExpand={() => setExplorerCollapsed(false)}
             />
@@ -135,8 +129,8 @@ function App() {
               {/* Explorer folgt der fokussierten Pane; key erzwingt frischen
                   Baum-State (Auswahl/Einklapp-Zustand) pro Projektwechsel. */}
               <ExplorerPanel
-                key={focusedProject.id}
-                project={focusedProject}
+                key={project.path}
+                project={project}
                 width={explorerWidth}
                 onCollapse={() => setExplorerCollapsed(true)}
               />
@@ -154,18 +148,19 @@ function App() {
               />
             </>
           )}
-          <main className="grid min-w-0 flex-1 grid-cols-2 grid-rows-2 gap-2 p-2">
-            {projects.map((project, index) => (
+          <main className="flex min-w-0 flex-1 flex-col p-2">
+            {project === null ? (
+              <ProjectPicker onChoose={chooseProject} busy={picking} />
+            ) : (
+              // key = Projektpfad: ein Projektwechsel remountet die Pane und
+              // fährt damit die alte PTY-Session sauber herunter (pty_kill im
+              // Effekt-Cleanup), statt sie umzuhängen.
               <TerminalPane
-                key={project.id}
+                key={project.path}
                 project={project}
-                focused={project.id === focusedId}
-                onFocus={() => setFocusedId(project.id)}
-                zoom={zoom?.id === project.id ? zoom.mode : null}
-                onToggleZoom={(mode) => toggleZoom(project.id, mode)}
-                style={paneStyle(project.id, index)}
+                onClose={() => setProject(null)}
               />
-            ))}
+            )}
           </main>
         </div>
       </div>
