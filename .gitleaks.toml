@@ -1,0 +1,12 @@
+# Gitleaks configuration for Panecrew
+# https://github.com/gitleaks/gitleaks
+#
+# Starts on the default ruleset only — no project-specific secret shapes are
+# known yet (pre-scaffold, no signing credentials/API keys in the repo).
+# Revisit and add custom rules the moment macOS/Windows code-signing
+# credentials, update-server keys, or similar account identifiers enter the
+# project (lesson from the WhisPaste 2026-07-21 incident: gitleaks' default
+# ruleset only catches secret-SHAPED strings, not identifiers like emails,
+# team IDs, or key IDs that don't look random).
+
+title = "Panecrew gitleaks config"
