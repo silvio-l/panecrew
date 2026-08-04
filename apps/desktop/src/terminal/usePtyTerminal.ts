@@ -53,6 +53,10 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
     const terminalOptions = readTerminalOptions();
     const terminal = new Terminal({
       allowTransparency: false,
+      // Marker und Decorations, mit denen die Inline-Vervollständigung ihren
+      // Geistertext ins Zellraster hängt, stehen in xterm 6 noch unter
+      // "proposed API" und werfen ohne dieses Flag beim Registrieren.
+      allowProposedApi: true,
       cursorBlink: true,
       ...terminalOptions,
       theme: readTerminalTheme(),
