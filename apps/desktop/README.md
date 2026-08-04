@@ -1,4 +1,4 @@
-# Panecrew Desktop
+# PaneCrew Desktop
 
 Tauri 2 + React/TypeScript + Tailwind + Radix UI, `portable-pty` on the Rust side. See the repo root
 `README.md`, `docs/decisions.md`, and `.scratch/panecrew-v0.1/spec.md` for product context.

@@ -1,4 +1,4 @@
-# Panecrew
+# PaneCrew
 
 A cross-platform desktop app (macOS + Windows) for running multiple real, simultaneously visible
 terminal sessions across different projects at once — a grid of live panes, not a tab-switcher —
@@ -9,8 +9,9 @@ equally well.
 
 ## Status
 
-Pre-implementation. This repository is currently in the planning stage — no scaffolded app exists
-yet. Watch this space.
+Early scaffold. The Tauri 2 + React/TypeScript app builds and runs (`apps/desktop`), with a
+placeholder UI shell and the app icon in place. Core features (real PTY-backed terminal panes,
+focus-following explorer, session persistence) are not implemented yet.
 
 ## License
 
@@ -18,5 +19,5 @@ Licensed under the [MIT license](LICENSE).
 
 ## Trademark
 
-The Panecrew name and logo are not covered by the license above. Forks and derivatives are welcome
-but may not call themselves "Panecrew" — "based on Panecrew" is fine.
+The PaneCrew name and logo are not covered by the license above. Forks and derivatives are welcome
+but may not call themselves "PaneCrew" — "based on PaneCrew" is fine.

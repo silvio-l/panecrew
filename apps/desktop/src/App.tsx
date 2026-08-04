@@ -1,5 +1,5 @@
 /*
- * DIRECTION CONTRACT — Panecrew Desktop-Hauptoberfläche
+ * DIRECTION CONTRACT — PaneCrew Desktop-Hauptoberfläche
  * (Quelle: .impeccable/direction-contract-desktop.md, Stand 2026-08-04 nach
  * Comp-Konsolidierung. Mode: Operate. Canon-Pfad, vom Nutzer gepinnt.)
  *

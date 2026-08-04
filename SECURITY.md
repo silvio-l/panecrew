@@ -1,6 +1,6 @@
 # Security Policy
 
-Panecrew is maintained by a single person, best-effort, alongside other work. There is no SLA and
+PaneCrew is maintained by a single person, best-effort, alongside other work. There is no SLA and
 no guaranteed response time — but security reports are taken seriously and prioritized over other
 work.
 
