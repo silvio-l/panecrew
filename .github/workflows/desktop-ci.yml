@@ -1,0 +1,44 @@
+name: Desktop CI
+
+on:
+  push:
+    branches: [dev, main]
+    paths: ["apps/desktop/**"]
+  pull_request:
+    branches: [main]
+    paths: ["apps/desktop/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-typecheck-test:
+    name: Lint, typecheck, knip, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @panecrew/desktop typecheck
+
+      - name: Lint
+        run: pnpm --filter @panecrew/desktop lint
+
+      - name: Knip (unused files/deps/exports)
+        run: pnpm --filter @panecrew/desktop knip
+
+      - name: Test
+        run: pnpm --filter @panecrew/desktop test
+
+      - name: Build
+        run: pnpm --filter @panecrew/desktop build

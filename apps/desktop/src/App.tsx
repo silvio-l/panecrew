@@ -45,21 +45,26 @@ import {
   ExplorerPanel,
 } from "./components/ExplorerPanel";
 import { TerminalPane, type PaneZoom } from "./components/TerminalPane";
-import { projects } from "./mock/projects";
+import { projects, type Project } from "./mock/projects";
 import "./App.css";
 
 const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
+// projects ist ein nicht-leeres Mock-Array (s. mock/projects.ts) — die
+// Non-Null-Assertion kodiert diese Invariante, die noUncheckedIndexedAccess
+// sonst nicht kennt.
+const firstProject = projects[0] as Project;
+
 function App() {
-  const [focusedId, setFocusedId] = useState(projects[0].id);
+  const [focusedId, setFocusedId] = useState(firstProject.id);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
   const [zoom, setZoom] = useState<{ id: string; mode: PaneZoom } | null>(null);
   const focusedProject =
-    projects.find((p) => p.id === focusedId) ?? projects[0];
+    projects.find((p) => p.id === focusedId) ?? firstProject;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

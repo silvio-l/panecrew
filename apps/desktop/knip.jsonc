@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Tauri-Laufzeit-Brücke + Opener-Plugin: noch ungenutzt, weil die
+  // PTY-/Backend-Anbindung laut CLAUDE.md ("core features not implemented
+  // yet") noch aussteht — kein totes Gepäck, sondern vorbereitet.
+  "ignoreDependencies": ["@tauri-apps/api", "@tauri-apps/plugin-opener"]
+}

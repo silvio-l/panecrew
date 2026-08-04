@@ -15,7 +15,7 @@ export type AnsiColor =
   | "brightBlue"
   | "brightCyan";
 
-export interface TermSegment {
+interface TermSegment {
   text: string;
   color?: AnsiColor;
 }
