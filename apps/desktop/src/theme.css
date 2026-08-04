@@ -57,13 +57,20 @@
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #121314;
 
-  /* Titelzeile (gemaltes Div; die Ampel-Insetzone zeigt --pc-app-background) */
-  --pc-titleBar-background: #191a1b;
+  /*
+   * Titelzeile: editor.background, NICHT titleBar.activeBackground. VS Codes
+   * Workbench-Stylesheet erzwingt `.part.titlebar{background-color:
+   * transparent!important}`; das !important schlägt den Inline-Style, den
+   * titlebarPart.updateStyles() aus titleBar.activeBackground setzt, sodass
+   * dort in Wahrheit editor.background durchscheint. Am Bildschirm gemessen,
+   * Belegkette in docs/agents/vscode-theming-research.md §10.
+   */
+  --pc-titleBar-background: #121314;
   --pc-titleBar-foreground: #8c8c8c;
   --pc-titleBar-border: #2a2b2c;
 
-  /* Command Center (Such-/Kommandopaletten-Feld in der Titelzeile) */
-  --pc-titleBar-searchBackground: #191a1b;
+  /* Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt */
+  --pc-titleBar-searchBackground: transparent;
   --pc-titleBar-searchBorder: #2e3031;
   --pc-titleBar-searchForeground: #bfbfbf;
 
@@ -128,13 +135,13 @@
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #ffffff;
 
-  /* Titelzeile (gemaltes Div; die Ampel-Insetzone zeigt --pc-app-background) */
-  --pc-titleBar-background: #fafafd;
+  /* Titelzeile: editor.background, gleiche Regel wie im Dark-Block oben */
+  --pc-titleBar-background: #ffffff;
   --pc-titleBar-foreground: #606060;
   --pc-titleBar-border: #f0f1f2;
 
-  /* Command Center (Such-/Kommandopaletten-Feld in der Titelzeile) */
-  --pc-titleBar-searchBackground: #ffffff;
+  /* Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt */
+  --pc-titleBar-searchBackground: transparent;
   --pc-titleBar-searchBorder: #d8d8d8aa;
   --pc-titleBar-searchForeground: #202020;
 

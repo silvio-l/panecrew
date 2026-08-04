@@ -8,16 +8,16 @@ export function TitleBar() {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-9 shrink-0 border-b border-(--pc-titleBar-border) bg-(--pc-app-background) pl-[84px]"
+      className="flex h-9 shrink-0 border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px]"
     >
-      {/* Zwei Farbebenen wie in echtem VS Code (Beleg: docs/agents/
-          vscode-theming-research.md §8): der native, nicht-CSS-abgedeckte
-          Fensterhintergrund rund um die Ampeln kommt aus editor.background
-          (= --pc-app-background, hier die pl-[84px]-Zone des <header>), das
-          gemalte Titelzeilen-Div aus titleBar.activeBackground (der Wrapper). */}
+      {/* Eine durchgehende Farbfläche über die volle Breite, Ampelzone
+          eingeschlossen — echtes VS Code malt die Bar auf macOS nirgends mit
+          titleBar.activeBackground, sondern lässt überall editor.background
+          durchscheinen. Am Bildschirm gemessen, Belegkette in
+          docs/agents/vscode-theming-research.md §10. */}
       <div
         data-tauri-drag-region
-        className="flex flex-1 items-center bg-(--pc-titleBar-background) pr-2"
+        className="flex flex-1 items-center pr-2"
       >
         {/* data-tauri-drag-region wirkt nur auf dem Element selbst (keine
             Vererbung an Kinder): Dekoratives wird pointer-events-none, damit
