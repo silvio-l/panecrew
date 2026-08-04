@@ -80,6 +80,12 @@ vi.mock("@xterm/xterm", () => ({
     onResize(): { dispose: () => void } {
       return { dispose: () => undefined };
     }
+    onWriteParsed(): { dispose: () => void } {
+      return { dispose: () => undefined };
+    }
+    onCursorMove(): { dispose: () => void } {
+      return { dispose: () => undefined };
+    }
   },
 }));
 

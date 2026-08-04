@@ -1,5 +1,6 @@
 pub mod pty_commands;
 pub mod pty_manager;
+pub mod shell_history;
 
 use pty_commands::PtyState;
 
@@ -14,6 +15,7 @@ pub fn run() {
             pty_commands::pty_write,
             pty_commands::pty_resize,
             pty_commands::pty_kill,
+            shell_history::shell_history_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

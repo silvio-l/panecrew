@@ -5,7 +5,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
+import { loadShellHistory } from "./shellHistory";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 
 // Bindet ein echtes xterm.js-Terminal an eine PTY-Session im Rust-Backend.
@@ -48,10 +50,11 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
     // gekillt, der zweite lebt.
     const paneId = crypto.randomUUID();
 
+    const terminalOptions = readTerminalOptions();
     const terminal = new Terminal({
       allowTransparency: false,
       cursorBlink: true,
-      ...readTerminalOptions(),
+      ...terminalOptions,
       theme: readTerminalTheme(),
     });
     const fitAddon = new FitAddon();
@@ -123,6 +126,19 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
         );
       });
 
+    // Inline-Vervollständigung: rein additiv auf dem bestehenden I/O-Pfad —
+    // sie liest den Terminal-Puffer und schreibt eine angenommene Ergänzung
+    // über genau dasselbe pty_write wie eine getippte Taste.
+    let shellHistory: readonly string[] = [];
+    void loadShellHistory().then((entries) => {
+      if (!disposed) shellHistory = entries;
+    });
+    const suggestion = attachInlineSuggestion(terminal, {
+      write: writeText,
+      baseHistory: () => shellHistory,
+      font: terminalOptions,
+    });
+
     const disposables = [
       terminal.onData(writeText),
       // xterm feuert onResize nur bei tatsächlicher Dimensionsänderung — das
@@ -134,6 +150,33 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       // attachCustomKeyEventHandler wird für keydown UND keypress aufgerufen;
       // ohne diese Prüfung würde jeder Tastendruck doppelt behandelt.
       if (event.type !== "keydown") return true;
+
+      // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen die sichtbare
+      // Inline-Vervollständigung — die fish-Bindungen. Tab bleibt bewusst
+      // unbelegt und damit bei der Shell: PaneCrew hat, anders als Warp,
+      // keinen eigenen Zeileneditor und könnte die echte Tab-Completion
+      // nicht ersetzen, sondern nur verdrängen. Ohne sichtbare Ergänzung
+      // fallen beide Tasten auf ihr normales Verhalten zurück.
+      if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key === "ArrowRight" &&
+        suggestion.accept()
+      ) {
+        return false;
+      }
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "f" &&
+        suggestion.accept()
+      ) {
+        return false;
+      }
 
       // Shift+Enter: weicher Zeilenumbruch statt Absenden. Ink-basierte CLI-
       // Tools (claude) lesen den blanken Linefeed als Zeilenumbruch im Prompt,
@@ -193,7 +236,11 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
         const text = formatDroppedPaths(event.payload.paths);
         // Trailing Space, damit direkt weitergetippt werden kann ("<pfad> was
         // ist hier kaputt?") — der Kernfall für CLI-Agenten.
-        if (text) writeText(`${text} `);
+        if (!text) return;
+        // Dieser Weg läuft an onData vorbei, der Ankerpunkt der Vorschläge
+        // bekäme den Einwurf also nicht mit.
+        suggestion.reset();
+        writeText(`${text} `);
       })
       .then((unlisten) => {
         if (dropListenerDisposed) unlisten();
@@ -207,6 +254,7 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       dropListenerDisposed = true;
       unlistenDrop?.();
       resizeObserver.disconnect();
+      suggestion.dispose();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;
       terminal.dispose();

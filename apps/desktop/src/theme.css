@@ -129,6 +129,15 @@
   --pc-terminal-background: #121314;
   --pc-terminal-foreground: #cccccc;
   --pc-terminal-cursor: #bfbfbf;
+  /*
+   * Inline-Vervollständigung (Geistertext hinter dem Cursor). Weder
+   * focusBorder noch eine ANSI-Farbe: der Akzent gehört laut Direction
+   * Contract allein dem Fokus, und Rot/Gelb/Grün haben im Terminalinhalt
+   * feste Bedeutung. Deshalb der neutrale Chrome-Ton descriptionForeground —
+   * 5,5:1 auf #121314, klar unter dem Inhaltston #cccccc (11,5:1) und damit
+   * lesbar als Vorschlag statt als bereits Getipptes.
+   */
+  --pc-terminal-ghostForeground: #8c8c8c;
   --pc-terminal-ansiBlack: #000000;
   --pc-terminal-ansiRed: #cd3131;
   --pc-terminal-ansiGreen: #0dbc79;
@@ -200,6 +209,10 @@
   --pc-terminal-background: #ffffff;
   --pc-terminal-foreground: #3b3b3b;
   --pc-terminal-cursor: #202020;
+  /* Geistertext, gleiche Regel wie im Dark-Block: 4,5:1 auf #ffffff, klar
+     unter dem Inhaltston #3b3b3b (10,9:1). Nicht descriptionForeground
+     (#606060, 7:1) — auf Weiß las sich das schon wie echter Inhalt. */
+  --pc-terminal-ghostForeground: #767676;
   --pc-terminal-ansiBlack: #000000;
   --pc-terminal-ansiRed: #cd3131;
   --pc-terminal-ansiGreen: #107c10;
