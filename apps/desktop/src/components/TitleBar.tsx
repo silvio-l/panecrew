@@ -8,49 +8,59 @@ export function TitleBar() {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px] pr-2"
+      className="flex h-9 shrink-0 border-b border-(--pc-titleBar-border) bg-(--pc-app-background) pl-[84px]"
     >
-      {/* data-tauri-drag-region wirkt nur auf dem Element selbst (keine
-          Vererbung an Kinder): Dekoratives wird pointer-events-none, damit
-          jeder Mousedown auf einem attributierten Hintergrund-Segment landet. */}
-      <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
-        <AppMark />
-        <span className="pointer-events-none text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
-          PaneCrew
-        </span>
-      </div>
-      <div
-        aria-hidden="true"
-        className="flex h-6 w-72 max-w-[40vw] items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-border) bg-(--pc-pane-background) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)"
-      >
-        <SearchIcon />
-        <span className="truncate">Suchen oder Befehl ausführen</span>
-      </div>
+      {/* Zwei Farbebenen wie in echtem VS Code (Beleg: docs/agents/
+          vscode-theming-research.md §8): der native, nicht-CSS-abgedeckte
+          Fensterhintergrund rund um die Ampeln kommt aus editor.background
+          (= --pc-app-background, hier die pl-[84px]-Zone des <header>), das
+          gemalte Titelzeilen-Div aus titleBar.activeBackground (der Wrapper). */}
       <div
         data-tauri-drag-region
-        className="flex flex-1 items-center justify-end"
+        className="flex flex-1 items-center bg-(--pc-titleBar-background) pr-2"
       >
-        <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Settings"
-            className="flex size-7 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder)"
-          >
-            <GearIcon />
-          </button>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            side="bottom"
-            align="end"
-            sideOffset={4}
-            className="rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
-          >
-            Settings
-          </Tooltip.Content>
-        </Tooltip.Portal>
-        </Tooltip.Root>
+        {/* data-tauri-drag-region wirkt nur auf dem Element selbst (keine
+            Vererbung an Kinder): Dekoratives wird pointer-events-none, damit
+            jeder Mousedown auf einem attributierten Hintergrund-Segment landet. */}
+        <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
+          <AppMark />
+          <span className="pointer-events-none text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
+            PaneCrew
+          </span>
+        </div>
+        <div
+          aria-hidden="true"
+          className="flex h-6 w-72 max-w-[40vw] items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-titleBar-searchForeground)"
+        >
+          <SearchIcon />
+          <span className="truncate">Suchen oder Befehl ausführen</span>
+        </div>
+        <div
+          data-tauri-drag-region
+          className="flex flex-1 items-center justify-end"
+        >
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Settings"
+                className="flex size-7 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder)"
+              >
+                <GearIcon />
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                side="bottom"
+                align="end"
+                sideOffset={4}
+                className="rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
+              >
+                Settings
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </div>
       </div>
     </header>
   );

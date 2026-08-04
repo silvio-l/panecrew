@@ -27,8 +27,22 @@
   --pc-chrome-fontSize: 0.8125rem; /* 13px — primäre Chrome-Textgröße */
   --pc-chrome-fontSizeSmall: 0.6875rem; /* 11px — Pane-Header, Tooltips, Platzhalter */
   --pc-list-rowHeight: 1.375rem; /* 22px — Explorer-Baumzeile */
-  --pc-paneControl-size: 1.125rem; /* 18px — Zoom-Button-Klickfläche */
+  --pc-paneControl-size: 1.125rem; /* 18px — Pane-Header-Button-Klickfläche */
   --pc-paneControl-radius: 0.25rem; /* 4px */
+
+  /*
+   * Terminal-Schriftregister (ui-monospace, relaxed line-height — Warp-Wärme
+   * über VS Codes Grammatik). Bewusst in px statt rem, anders als die
+   * Chrome-Skala darüber: xterm.js nimmt fontSize als einheitenlose
+   * Pixelzahl in ITerminalOptions entgegen und misst sein Zellraster selbst
+   * daraus — ein rem-Wert müsste hier von Hand gegen die Root-Font-Size
+   * zurückgerechnet werden. Diese drei Tokens sind die einzige Quelle, aus
+   * der das Terminal seine Typo liest (siehe terminal/usePtyTerminal.ts).
+   */
+  --pc-terminal-fontFamily: ui-monospace, "SF Mono", "Cascadia Mono", Menlo,
+    Consolas, monospace;
+  --pc-terminal-fontSize: 12px;
+  --pc-terminal-lineHeight: 1.65;
 }
 
 :root,
@@ -43,10 +57,15 @@
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #121314;
 
-  /* Titelzeile */
-  --pc-titleBar-background: #121314;
+  /* Titelzeile (gemaltes Div; die Ampel-Insetzone zeigt --pc-app-background) */
+  --pc-titleBar-background: #191a1b;
   --pc-titleBar-foreground: #8c8c8c;
   --pc-titleBar-border: #2a2b2c;
+
+  /* Command Center (Such-/Kommandopaletten-Feld in der Titelzeile) */
+  --pc-titleBar-searchBackground: #191a1b;
+  --pc-titleBar-searchBorder: #2e3031;
+  --pc-titleBar-searchForeground: #bfbfbf;
 
   /* Explorer (VS-Code-nahe Baum-Optik) */
   --pc-explorer-background: #191a1b;
@@ -109,10 +128,15 @@
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #ffffff;
 
-  /* Titelzeile */
+  /* Titelzeile (gemaltes Div; die Ampel-Insetzone zeigt --pc-app-background) */
   --pc-titleBar-background: #fafafd;
   --pc-titleBar-foreground: #606060;
   --pc-titleBar-border: #f0f1f2;
+
+  /* Command Center (Such-/Kommandopaletten-Feld in der Titelzeile) */
+  --pc-titleBar-searchBackground: #ffffff;
+  --pc-titleBar-searchBorder: #d8d8d8aa;
+  --pc-titleBar-searchForeground: #202020;
 
   /* Explorer (VS-Code-nahe Baum-Optik) */
   --pc-explorer-background: #fafafd;
