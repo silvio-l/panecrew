@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Tooltip } from "radix-ui";
 import type { FileKind, Project, TreeNode } from "../mock/projects";
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
@@ -6,7 +7,17 @@ import type { FileKind, Project, TreeNode } from "../mock/projects";
 // angelehnt: Ordner-Chevrons, dateityp-abhängige Icon-Farben, gedämpfter
 // Baum-Vordergrund mit hellerer Hervorhebung des aktiven Eintrags. Der
 // Akzent-Punkt im Kopf ist das Explorer-Echo der fokussierten Pane.
-export function ExplorerPanel({ project }: { project: Project }) {
+// Breite/Einklapp-Zustand besitzt App (überlebt so den key-Remount pro
+// Projektwechsel); der Resize-Handle sitzt ebenfalls dort.
+export function ExplorerPanel({
+  project,
+  width,
+  onCollapse,
+}: {
+  project: Project;
+  width: number;
+  onCollapse: () => void;
+}) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState(project.selectedFile);
 
@@ -20,15 +31,40 @@ export function ExplorerPanel({ project }: { project: Project }) {
   };
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)">
-      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+    <aside
+      style={{ width }}
+      className="group/explorer flex shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-2 pl-3 pr-1.5">
         <span
           aria-hidden="true"
           className="size-1.5 shrink-0 rounded-full bg-(--pc-focusBorder) shadow-[0_0_6px_var(--pc-pane-activeGlow)]"
         />
-        <span className="truncate text-[13px] font-semibold text-(--pc-explorerHeader-foreground)">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-(--pc-explorerHeader-foreground)">
           {project.name}
         </span>
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Explorer ausblenden"
+              onClick={onCollapse}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder) group-hover/explorer:opacity-100"
+            >
+              <SidebarIcon />
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="bottom"
+              align="end"
+              sideOffset={4}
+              className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+            >
+              Explorer ausblenden
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {project.tree.map((node) => (
@@ -45,6 +81,54 @@ export function ExplorerPanel({ project }: { project: Project }) {
         ))}
       </div>
     </aside>
+  );
+}
+
+// Eingeklappter Zustand: schmale Leiste an derselben Stelle, deren Button den
+// Explorer wieder einblendet — der Weg zurück bleibt damit immer sichtbar.
+export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
+  return (
+    <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-1.5">
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Explorer einblenden"
+            onClick={onExpand}
+            className="flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder)"
+          >
+            <SidebarIcon />
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="right"
+            sideOffset={4}
+            className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+          >
+            Explorer einblenden
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </div>
+  );
+}
+
+// VS-Code-artiges "Sidebar umschalten"-Glyph: Fensterrahmen mit Seitenleiste.
+function SidebarIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      aria-hidden="true"
+    >
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+      <path d="M6 2.75v10.5" />
+    </svg>
   );
 }
 

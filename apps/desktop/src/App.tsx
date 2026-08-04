@@ -36,34 +36,129 @@
  * aus mocks/comp-2-overlay-explorer.png, Explorer-Struktur und dünne
  * Pane-Header aus mocks/comp-3-zero-chrome.png.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Tooltip } from "radix-ui";
 import { TitleBar } from "./components/TitleBar";
-import { ExplorerPanel } from "./components/ExplorerPanel";
-import { TerminalPane } from "./components/TerminalPane";
+import {
+  CollapsedExplorerStrip,
+  ExplorerPanel,
+} from "./components/ExplorerPanel";
+import { TerminalPane, type PaneZoom } from "./components/TerminalPane";
 import { projects } from "./mock/projects";
 import "./App.css";
 
+const EXPLORER_MIN_WIDTH = 180;
+const EXPLORER_MAX_WIDTH = 480;
+const EXPLORER_DEFAULT_WIDTH = 224;
+
 function App() {
   const [focusedId, setFocusedId] = useState(projects[0].id);
+  const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const [resizingExplorer, setResizingExplorer] = useState(false);
+  const [zoom, setZoom] = useState<{ id: string; mode: PaneZoom } | null>(null);
   const focusedProject =
     projects.find((p) => p.id === focusedId) ?? projects[0];
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const startExplorerResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const startWidth = explorerWidth;
+    setResizingExplorer(true);
+    handle.setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      setExplorerWidth(
+        Math.min(
+          EXPLORER_MAX_WIDTH,
+          Math.max(EXPLORER_MIN_WIDTH, startWidth + ev.clientX - startX),
+        ),
+      );
+    };
+    const onUp = () => {
+      setResizingExplorer(false);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  };
+
+  const toggleZoom = (id: string, mode: PaneZoom) =>
+    setZoom((prev) =>
+      prev?.id === id && prev.mode === mode ? null : { id, mode },
+    );
+
+  // Zoom via explizite Grid-Platzierung: die gezoomte Pane spannt Zeile
+  // und/oder Spalte auf und überdeckt die Nachbarn (z-10) — alle Panes
+  // bleiben gemountet, ihr State überlebt.
+  const paneStyle = (id: string, index: number): CSSProperties => {
+    const mode = zoom?.id === id ? zoom.mode : null;
+    return {
+      gridColumn:
+        mode === "width" || mode === "max" ? "1 / -1" : `${(index % 2) + 1}`,
+      gridRow:
+        mode === "height" || mode === "max"
+          ? "1 / -1"
+          : `${Math.floor(index / 2) + 1}`,
+      zIndex: mode ? 10 : undefined,
+    };
+  };
 
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="flex h-full flex-col">
         <TitleBar />
         <div className="flex min-h-0 flex-1">
-          {/* Explorer folgt der fokussierten Pane; key erzwingt frischen
-              Baum-State (Auswahl/Einklapp-Zustand) pro Projektwechsel. */}
-          <ExplorerPanel key={focusedProject.id} project={focusedProject} />
+          {explorerCollapsed ? (
+            <CollapsedExplorerStrip
+              onExpand={() => setExplorerCollapsed(false)}
+            />
+          ) : (
+            <>
+              {/* Explorer folgt der fokussierten Pane; key erzwingt frischen
+                  Baum-State (Auswahl/Einklapp-Zustand) pro Projektwechsel. */}
+              <ExplorerPanel
+                key={focusedProject.id}
+                project={focusedProject}
+                width={explorerWidth}
+                onCollapse={() => setExplorerCollapsed(true)}
+              />
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Explorer-Breite anpassen"
+                onPointerDown={startExplorerResize}
+                onDoubleClick={() => setExplorerCollapsed(true)}
+                className={`relative z-10 -ml-[3px] w-[5px] shrink-0 cursor-col-resize transition-colors duration-150 ${
+                  resizingExplorer
+                    ? "bg-(--pc-focusBorder)"
+                    : "bg-transparent hover:bg-(--pc-focusBorder)/45"
+                }`}
+              />
+            </>
+          )}
           <main className="grid min-w-0 flex-1 grid-cols-2 grid-rows-2 gap-2 p-2">
-            {projects.map((project) => (
+            {projects.map((project, index) => (
               <TerminalPane
                 key={project.id}
                 project={project}
                 focused={project.id === focusedId}
                 onFocus={() => setFocusedId(project.id)}
+                zoom={zoom?.id === project.id ? zoom.mode : null}
+                onToggleZoom={(mode) => toggleZoom(project.id, mode)}
+                style={paneStyle(project.id, index)}
               />
             ))}
           </main>

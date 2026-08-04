@@ -10,9 +10,12 @@ export function TitleBar() {
       data-tauri-drag-region
       className="flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px] pr-2"
     >
+      {/* data-tauri-drag-region wirkt nur auf dem Element selbst (keine
+          Vererbung an Kinder): Dekoratives wird pointer-events-none, damit
+          jeder Mousedown auf einem attributierten Hintergrund-Segment landet. */}
       <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
         <AppMark />
-        <span className="text-[13px] font-medium text-(--pc-titleBar-foreground)">
+        <span className="pointer-events-none text-[13px] font-medium text-(--pc-titleBar-foreground)">
           Panecrew
         </span>
       </div>
@@ -56,7 +59,13 @@ export function TitleBar() {
 // App-Marke: 2×2-Pane-Raster, eine Zelle trägt den Fokus-Akzent.
 function AppMark() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      className="pointer-events-none"
+    >
       <rect x="0" y="0" width="6" height="6" rx="1.5" fill="var(--pc-descriptionForeground)" />
       <rect x="8" y="0" width="6" height="6" rx="1.5" fill="var(--pc-focusBorder)" />
       <rect x="0" y="8" width="6" height="6" rx="1.5" fill="var(--pc-descriptionForeground)" />
@@ -65,19 +74,23 @@ function AppMark() {
   );
 }
 
+// Eindeutiges Zahnrad (gezahnter Ring + Nabe, Feather-"settings"-Form) — die
+// frühere Kreis-plus-Strahlen-Variante wurde als Sonne/Theme-Toggle gelesen.
 function GearIcon() {
   return (
     <svg
       width="15"
       height="15"
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.3"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
-      <circle cx="8" cy="8" r="2.2" />
-      <path d="M8 1.6v1.9M8 12.5v1.9M1.6 8h1.9M12.5 8h1.9M3.5 3.5l1.35 1.35M11.15 11.15l1.35 1.35M12.5 3.5l-1.35 1.35M4.85 11.15L3.5 12.5" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" />
     </svg>
   );
 }
