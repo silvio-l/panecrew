@@ -12,6 +12,11 @@ DESIGN.md
 .env
 .env.local
 
+# Node / pnpm workspace
+node_modules/
+dist/
+dist-ssr/
+
 # OS
 .DS_Store
 Thumbs.db
