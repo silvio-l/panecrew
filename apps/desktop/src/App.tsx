@@ -42,7 +42,10 @@
  * die Fokus-/Explorer-Kopplung ist dafür strukturell schon angelegt.
  */
 import { useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { Tooltip } from "radix-ui";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TitleBar } from "./components/TitleBar";
@@ -84,6 +87,20 @@ function App() {
         console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
       })
       .finally(() => setPicking(false));
+  };
+
+  const nudgeExplorerWidth = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 32 : 8;
+    const delta =
+      e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    if (delta === 0) return;
+    e.preventDefault();
+    setExplorerWidth((current) =>
+      Math.min(
+        EXPLORER_MAX_WIDTH,
+        Math.max(EXPLORER_MIN_WIDTH, current + delta),
+      ),
+    );
   };
 
   const startExplorerResize = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -134,13 +151,22 @@ function App() {
                 width={explorerWidth}
                 onCollapse={() => setExplorerCollapsed(true)}
               />
+              {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
+                  Explorer-Breite für Tastaturnutzer unerreichbar macht — das
+                  ist die ARIA-Rolle "separator" in ihrer bedienbaren Form
+                  (aria-valuenow/min/max gehören dann dazu). */}
               <div
                 role="separator"
+                tabIndex={0}
                 aria-orientation="vertical"
                 aria-label="Explorer-Breite anpassen"
+                aria-valuenow={explorerWidth}
+                aria-valuemin={EXPLORER_MIN_WIDTH}
+                aria-valuemax={EXPLORER_MAX_WIDTH}
                 onPointerDown={startExplorerResize}
                 onDoubleClick={() => setExplorerCollapsed(true)}
-                className={`relative z-10 -ml-[3px] w-[5px] shrink-0 cursor-col-resize transition-colors duration-150 ${
+                onKeyDown={nudgeExplorerWidth}
+                className={`relative z-10 -ml-[3px] w-[5px] shrink-0 cursor-col-resize transition-colors duration-150 focus-visible:bg-(--pc-focusBorder) focus-visible:outline-none ${
                   resizingExplorer
                     ? "bg-(--pc-focusBorder)"
                     : "bg-transparent hover:bg-(--pc-focusBorder)/45"

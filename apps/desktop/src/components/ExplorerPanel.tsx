@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Tooltip } from "radix-ui";
+import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import type { FileKind, Project, TreeNode } from "../types/project";
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
@@ -35,7 +35,12 @@ export function ExplorerPanel({
       style={{ width }}
       className="group/explorer flex shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)"
     >
-      <div className="flex h-9 shrink-0 items-center gap-2 pl-3 pr-1.5">
+      {/* h-10, nicht h-9: der Projektname steht hier direkt neben demselben
+          Projektnamen im Pane-Header, und der sitzt 2px tiefer (das Grid
+          darunter hat p-2, der Pane-Header ist h-6 — Mitte also bei 8+12=20).
+          Mit h-9 lagen die beiden identischen Wörter sichtbar versetzt
+          nebeneinander; 40/2 = 20 bringt sie auf dieselbe optische Achse. */}
+      <div className="flex h-10 shrink-0 items-center gap-2 pl-3 pr-1.5">
         <span
           aria-hidden="true"
           className="size-1.5 shrink-0 rounded-full bg-(--pc-focusBorder) shadow-[0_0_6px_var(--pc-pane-activeGlow)]"
@@ -43,28 +48,16 @@ export function ExplorerPanel({
         <span className="min-w-0 flex-1 truncate text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-explorerHeader-foreground)">
           {project.name}
         </span>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Explorer ausblenden"
-              onClick={onCollapse}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder) group-hover/explorer:opacity-100"
-            >
-              <SidebarIcon />
-            </button>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content
-              side="bottom"
-              align="end"
-              sideOffset={4}
-              className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
-            >
-              Explorer ausblenden
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
+        <ChromeTooltip label="Explorer ausblenden" align="end">
+          <button
+            type="button"
+            aria-label="Explorer ausblenden"
+            onClick={onCollapse}
+            className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 ${CHROME_FOCUS_RING}`}
+          >
+            <SidebarIcon />
+          </button>
+        </ChromeTooltip>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {project.tree.length === 0 ? (
@@ -94,28 +87,21 @@ export function ExplorerPanel({
 // Explorer wieder einblendet — der Weg zurück bleibt damit immer sichtbar.
 export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
   return (
-    <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-1.5">
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Explorer einblenden"
-            onClick={onExpand}
-            className="flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder)"
-          >
-            <SidebarIcon />
-          </button>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            side="right"
-            sideOffset={4}
-            className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
-          >
-            Explorer einblenden
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
+    // pt-2 spiegelt exakt die h-10-Kopfzeile des ausgeklappten Explorers
+    // (40px - 24px Button = 8px oben): sonst springt der Knopf beim Ein- und
+    // Ausklappen um 2px, und genau dieser Knopf ist das Element, auf dem der
+    // Zeiger dabei stehen bleibt.
+    <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-2">
+      <ChromeTooltip label="Explorer einblenden" side="right">
+        <button
+          type="button"
+          aria-label="Explorer einblenden"
+          onClick={onExpand}
+          className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+        >
+          <SidebarIcon />
+        </button>
+      </ChromeTooltip>
     </div>
   );
 }
@@ -129,7 +115,7 @@ function SidebarIcon() {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.2"
+      strokeWidth="1.26"
       aria-hidden="true"
     >
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
@@ -167,7 +153,11 @@ function TreeRow({
         type="button"
         onClick={() => (isFolder ? onToggleFolder(path) : onSelectFile(path))}
         style={{ paddingLeft: 10 + depth * 12 }}
-        className={`flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) ${
+        // Fokusring hier INNEN (negativer Offset) statt über CHROME_FOCUS_RING:
+        // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
+        // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
+        // auch VS Codes eigene Lösung für Listenzeilen.
+        className={`flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
           isSelected
             ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
             : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"

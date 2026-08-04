@@ -3,6 +3,8 @@
 // kein Fremdkörper, keine Illustration. Der Akzent bleibt laut Direction
 // Contract dem Fokus vorbehalten, deshalb ist der Button neutral gefüllt und
 // trägt den Akzent nur als Fokus-Ring.
+import { CHROME_FOCUS_RING } from "./ChromeTooltip";
+
 export function ProjectPicker({
   onChoose,
   busy,
@@ -11,9 +13,13 @@ export function ProjectPicker({
   busy: boolean;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
       <div className="flex flex-col gap-1.5">
-        <h1 className="text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-foreground)">
+        {/* Der einzige Text auf dem ersten Bildschirm der App. Auf gleicher
+            Größe wie der Fließtext daneben unterschieden sich Überschrift und
+            Erklärung nur noch in Gewicht und Farbe — für den Zustand, den man
+            beim allerersten Start sieht, zu wenig Stufe. */}
+        <h1 className="text-(length:--pc-chrome-fontSizeLarge) font-semibold text-(--pc-foreground)">
           Kein Projekt geöffnet
         </h1>
         <p className="max-w-80 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
@@ -24,7 +30,8 @@ export function ProjectPicker({
         type="button"
         onClick={onChoose}
         disabled={busy}
-        className="flex h-8 items-center gap-2 rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
+        aria-busy={busy}
+        className={`flex h-8 items-center gap-2 rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) disabled:opacity-50 ${CHROME_FOCUS_RING}`}
       >
         <FolderPlusIcon />
         Projekt wählen
@@ -41,7 +48,7 @@ function FolderPlusIcon() {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.2"
+      strokeWidth="1.26"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

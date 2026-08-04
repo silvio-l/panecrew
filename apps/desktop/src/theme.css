@@ -25,7 +25,8 @@
  */
 :root {
   --pc-chrome-fontSize: 0.8125rem; /* 13px — primäre Chrome-Textgröße */
-  --pc-chrome-fontSizeSmall: 0.6875rem; /* 11px — Pane-Header, Tooltips, Platzhalter */
+  --pc-chrome-fontSizeSmall: 0.6875rem; /* 11px — Pane-Header, Tooltips */
+  --pc-chrome-fontSizeLarge: 1rem; /* 16px — Überschrift eines Leerzustands */
   --pc-list-rowHeight: 1.375rem; /* 22px — Explorer-Baumzeile */
   --pc-paneControl-size: 1.125rem; /* 18px — Pane-Header-Button-Klickfläche */
   --pc-paneControl-radius: 0.25rem; /* 4px */
@@ -38,11 +39,24 @@
    * daraus — ein rem-Wert müsste hier von Hand gegen die Root-Font-Size
    * zurückgerechnet werden. Diese drei Tokens sind die einzige Quelle, aus
    * der das Terminal seine Typo liest (siehe terminal/usePtyTerminal.ts).
+   *
+   * Kein "SF Mono" in der Kette: die Familie ist auf einem unveränderten
+   * macOS gar nicht adressierbar (installiert ist nur die versteckte
+   * Systemfamilie ".SF NS Mono" — nachgeprüft über system_profiler
+   * SPFontsDataType), und genau die liefert `ui-monospace` bereits. Der
+   * Eintrag hätte also nie gegriffen. Menlo ist der reale macOS-Rückfall,
+   * Cascadia Mono/Consolas die Windows-Seite.
+   *
+   * 13px/1.4 statt 12px/1.65: 12px war spürbar kleiner als jedes ernsthafte
+   * Terminal, und 1.65 hat die Glyphen zusätzlich in Luft aufgelöst — mehr
+   * als VS Codes Terminal-Default (1.0) und Warps ~1.2, also über das Ziel
+   * "relaxed" hinaus. Die neue Kombination ergibt sogar eine flachere
+   * Zeilenbox (18.2px statt 19.8px): größere Schrift UND mehr Zeilen.
    */
-  --pc-terminal-fontFamily: ui-monospace, "SF Mono", "Cascadia Mono", Menlo,
-    Consolas, monospace;
-  --pc-terminal-fontSize: 12px;
-  --pc-terminal-lineHeight: 1.65;
+  --pc-terminal-fontFamily: ui-monospace, Menlo, "Cascadia Mono", Consolas,
+    monospace;
+  --pc-terminal-fontSize: 13px;
+  --pc-terminal-lineHeight: 1.4;
 }
 
 :root,
@@ -69,10 +83,19 @@
   --pc-titleBar-foreground: #8c8c8c;
   --pc-titleBar-border: #2a2b2c;
 
-  /* Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt */
+  /*
+   * Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt.
+   * Der Vordergrund ist bewusst descriptionForeground und nicht der volle
+   * foreground: VS Codes Command Center zeigt an dieser Stelle den echten
+   * Dateinamen (Inhalt, also hell), unseres nur eine Aufforderung
+   * ("Suchen oder Befehl ausführen"). Auf Inhaltshelligkeit gesetzt las sich
+   * der Platzhalter wie ein bereits eingegebener Wert. Beide Werte stammen
+   * weiterhin aus derselben VS-Code-Palette, nur aus einem anderen Schlüssel;
+   * Kontrast 5,5:1 auf #121314.
+   */
   --pc-titleBar-searchBackground: transparent;
   --pc-titleBar-searchBorder: #2e3031;
-  --pc-titleBar-searchForeground: #bfbfbf;
+  --pc-titleBar-searchForeground: #8c8c8c;
 
   /* Explorer (VS-Code-nahe Baum-Optik) */
   --pc-explorer-background: #191a1b;
@@ -140,10 +163,10 @@
   --pc-titleBar-foreground: #606060;
   --pc-titleBar-border: #f0f1f2;
 
-  /* Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt */
+  /* Command Center: wie im Dark-Block, Platzhalter-Ton statt Inhalts-Ton */
   --pc-titleBar-searchBackground: transparent;
   --pc-titleBar-searchBorder: #d8d8d8aa;
-  --pc-titleBar-searchForeground: #202020;
+  --pc-titleBar-searchForeground: #606060;
 
   /* Explorer (VS-Code-nahe Baum-Optik) */
   --pc-explorer-background: #fafafd;

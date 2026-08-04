@@ -1,66 +1,67 @@
-import { Tooltip } from "radix-ui";
+import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
 // Schlanke eigene Titelzeile (titleBarStyle Overlay, native Traffic-Lights
 // links freigehalten): App-Identität links, zentrierter, rein visueller
 // Command-Palette-Platzhalter (Zukunfts-Feature, ohne Funktion),
 // Settings-Zugang rechts. Kein Icon-Rail.
+//
+// Eine durchgehende Farbfläche über die volle Breite, Ampelzone eingeschlossen
+// — echtes VS Code malt die Bar auf macOS nirgends mit
+// titleBar.activeBackground, sondern lässt überall editor.background
+// durchscheinen. Am Bildschirm gemessen, Belegkette in
+// docs/agents/vscode-theming-research.md §10.
+//
+// data-tauri-drag-region wirkt nur auf dem Element selbst (keine Vererbung an
+// Kinder): Dekoratives wird pointer-events-none, damit jeder Mousedown auf
+// einem attributierten Hintergrund-Segment landet.
 export function TitleBar() {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-9 shrink-0 border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px]"
+      className="relative flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px] pr-2"
     >
-      {/* Eine durchgehende Farbfläche über die volle Breite, Ampelzone
-          eingeschlossen — echtes VS Code malt die Bar auf macOS nirgends mit
-          titleBar.activeBackground, sondern lässt überall editor.background
-          durchscheinen. Am Bildschirm gemessen, Belegkette in
-          docs/agents/vscode-theming-research.md §10. */}
       <div
         data-tauri-drag-region
-        className="flex flex-1 items-center pr-2"
+        className="flex min-w-0 flex-1 items-center gap-2"
       >
-        {/* data-tauri-drag-region wirkt nur auf dem Element selbst (keine
-            Vererbung an Kinder): Dekoratives wird pointer-events-none, damit
-            jeder Mousedown auf einem attributierten Hintergrund-Segment landet. */}
-        <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
-          <AppMark />
-          <span className="pointer-events-none text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
-            PaneCrew
-          </span>
-        </div>
-        <div
-          aria-hidden="true"
-          className="flex h-6 w-72 max-w-[40vw] items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-titleBar-searchForeground)"
-        >
-          <SearchIcon />
-          <span className="truncate">Suchen oder Befehl ausführen</span>
-        </div>
-        <div
-          data-tauri-drag-region
-          className="flex flex-1 items-center justify-end"
-        >
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Settings"
-                className="flex size-7 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder)"
-              >
-                <GearIcon />
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                side="bottom"
-                align="end"
-                sideOffset={4}
-                className="rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
-              >
-                Settings
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </div>
+        <AppMark />
+        <span className="pointer-events-none truncate text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
+          PaneCrew
+        </span>
+      </div>
+
+      {/* Am FENSTER zentriert, nicht am verbleibenden Platz rechts der Ampeln:
+          im vorherigen Drei-Spalten-Flexbau saß die Mitte um die halbe
+          Ampel-Einrückung (37,5px bei 1440px, nachgemessen) zu weit rechts —
+          neben einem echten VS-Code-Fenster sofort als Schiefstand lesbar.
+          Absolut positioniert, damit die Zentrierung nicht von der Breite der
+          beiden Seitenzonen abhängt; sie unterschreiten einander bei minWidth
+          960 nie. Das Feld ist selbst Drag-Region: als reine Deko war es
+          vorher ein toter Fleck mitten in der Ziehfläche. */}
+      <div
+        data-tauri-drag-region
+        aria-hidden="true"
+        className="absolute left-1/2 flex h-[1.625rem] w-90 -translate-x-1/2 items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
+      >
+        <SearchIcon />
+        <span className="pointer-events-none truncate">
+          Suchen oder Befehl ausführen
+        </span>
+      </div>
+
+      <div
+        data-tauri-drag-region
+        className="flex flex-1 items-center justify-end"
+      >
+        <ChromeTooltip label="Einstellungen" align="end">
+          <button
+            type="button"
+            aria-label="Einstellungen"
+            className={`flex size-7 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          >
+            <GearIcon />
+          </button>
+        </ChromeTooltip>
       </div>
     </header>
   );
@@ -146,6 +147,12 @@ function AppMark() {
 
 // Eindeutiges Zahnrad (gezahnter Ring + Nabe, Feather-"settings"-Form) — die
 // frühere Kreis-plus-Strahlen-Variante wurde als Sonne/Theme-Toggle gelesen.
+//
+// strokeWidth wird pro Icon so gewählt, dass die GERENDERTE Strichstärke
+// überall 1,1px beträgt (Attributwert x Zielgröße / viewBox-Kante). Roh
+// verglichen sahen die Werte einheitlich aus (1,2 fast überall), gerendert
+// stach dieses Zahnrad mit 1,19px gegen 1,05px der Explorer-Icons heraus —
+// bei 24er viewBox auf 15px braucht 1,1px gerendert den Wert 1,76.
 function GearIcon() {
   return (
     <svg
@@ -154,7 +161,7 @@ function GearIcon() {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.9"
+      strokeWidth="1.76"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -168,15 +175,15 @@ function GearIcon() {
 function SearchIcon() {
   return (
     <svg
-      width="11"
-      height="11"
+      width="12"
+      height="12"
       viewBox="0 0 12 12"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.2"
+      strokeWidth="1.1"
       strokeLinecap="round"
       aria-hidden="true"
-      className="shrink-0"
+      className="pointer-events-none shrink-0"
     >
       <circle cx="5" cy="5" r="3.4" />
       <path d="m7.6 7.6 2.6 2.6" />

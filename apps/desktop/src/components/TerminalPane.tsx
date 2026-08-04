@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { ContextMenu, Tooltip } from "radix-ui";
+import { ContextMenu } from "radix-ui";
+import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
 import type { Project } from "../types/project";
 
@@ -45,28 +46,16 @@ export function TerminalPane({
     >
       <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
         <span className="min-w-0 flex-1 truncate">{project.name}</span>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Pane schließen"
-              onClick={onClose}
-              className="flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-paneHeader-activeForeground) focus-visible:opacity-100 focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder) group-hover/pane:opacity-100"
-            >
-              <CloseIcon />
-            </button>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content
-              side="bottom"
-              align="end"
-              sideOffset={4}
-              className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
-            >
-              Pane schließen
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
+        <ChromeTooltip label="Pane schließen" align="end">
+          <button
+            type="button"
+            aria-label="Pane schließen"
+            onClick={onClose}
+            className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-paneHeader-activeForeground) focus-visible:opacity-100 group-hover/pane:opacity-100 ${CHROME_FOCUS_RING}`}
+          >
+            <CloseIcon />
+          </button>
+        </ChromeTooltip>
       </header>
 
       <ContextMenu.Root
