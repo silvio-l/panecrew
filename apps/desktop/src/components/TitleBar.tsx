@@ -56,32 +56,80 @@ export function TitleBar() {
   );
 }
 
-// App-Marke: 14px-Neuzeichnung des App-Icon-Emblems ("Verzahnung") — Chevron
-// (>), dessen unterer Arm über eine diagonale Gehrungsfuge in den Cursor-Block
-// (_) übergeht: Butt-Caps stehen senkrecht zur Arm-Achse, die linke Blockkante
-// ist parallel dazu angeschrägt, dazwischen ~1px Fuge. Bewusst monochrom in
-// Titelzeilen-Textfarbe (kein Amber wie im App-Icon: kollidiert mit
-// ANSI-Yellow-Semantik der Terminal-Panes) — die Wiedererkennung trägt allein
-// die verzahnte Geometrie. Block-Kanten pixel-gesnappt (y 11–13, x bis 13),
-// damit der Cursor bei echten 14px scharf bleibt.
+// App-Marke: pixelgenaue Vektor-Parität zum echten App-Icon ("K3H —
+// Verzahnung, Amber") — Chevron, dessen unterer Arm über eine diagonale
+// Gehrungsfuge in den Cursor-Block übergeht, mit dem echten Amber/Gold-
+// Verlauf und weichem Glow. Bewusste Kurskorrektur (2026-08-04): die frühere
+// monochrome Titelzeilen-Fassung wich absichtlich vom Icon ab (ANSI-Yellow-
+// Kollisionsrisiko); auf expliziten Wunsch ersetzt durch 1:1-Farbparität,
+// als eigenständige SVG-Quelle (nicht aus dem Master-PNG exportiert) neu
+// vermessen und iterativ gegen den Master abgeglichen. Gleiche SVG-Definition
+// ist Ursprung des aktuellen Icon-Masters (icons/source/panecrew-mark.svg) —
+// eine einzige Quelle für In-App-Marke und OS-Icons, kein Auseinanderdriften.
 function AppMark() {
   return (
     <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
+      width="16"
+      height="16"
+      viewBox="0 0 1600 1600"
       aria-hidden="true"
       className="pointer-events-none"
     >
+      <defs>
+        <radialGradient
+          id="pcMarkChevron"
+          gradientUnits="userSpaceOnUse"
+          cx="1330"
+          cy="780"
+          r="900"
+        >
+          <stop offset="0" stopColor="#FEF2DE" />
+          <stop offset="0.15" stopColor="#FEF0D8" />
+          <stop offset="0.35" stopColor="#FFE9C8" />
+          <stop offset="0.56" stopColor="#FFD394" />
+          <stop offset="0.67" stopColor="#FFCE8C" />
+          <stop offset="0.8" stopColor="#FEBE63" />
+          <stop offset="0.88" stopColor="#FDB14B" />
+          <stop offset="1" stopColor="#FCAD43" />
+        </radialGradient>
+        <linearGradient
+          id="pcMarkBlock"
+          gradientUnits="userSpaceOnUse"
+          x1="106"
+          y1="0"
+          x2="569"
+          y2="0"
+        >
+          <stop offset="0" stopColor="#FBB84E" />
+          <stop offset="0.15" stopColor="#FEBE64" />
+          <stop offset="0.5" stopColor="#FEE0B6" />
+          <stop offset="0.82" stopColor="#FFF2DE" />
+          <stop offset="1" stopColor="#FFF5E2" />
+        </linearGradient>
+        <mask id="pcMarkGapMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1600">
+          <rect width="1600" height="1600" fill="#ffffff" />
+          <polygon points="569,1208 749,1218 555,1485 368,1485" fill="#000000" />
+        </mask>
+        <filter id="pcMarkGlow" x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="b1" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="70" result="b2" />
+          <feMerge>
+            <feMergeNode in="b2" />
+            <feMergeNode in="b1" />
+          </feMerge>
+        </filter>
+      </defs>
+      <g mask="url(#pcMarkGapMask)">
+        <g filter="url(#pcMarkGlow)" opacity="0.5" fill="#FFA929">
+          <path d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z" />
+          <path d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
+        </g>
+      </g>
       <path
-        d="M2.1 1.4 L9.5 5.2 L2.1 9"
-        fill="none"
-        stroke="var(--pc-titleBar-foreground)"
-        strokeWidth="2.4"
-        strokeLinejoin="miter"
-        strokeLinecap="butt"
+        fill="url(#pcMarkChevron)"
+        d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"
       />
-      <path d="M4.3 11 H13 V13 H5.34 Z" fill="var(--pc-titleBar-foreground)" />
+      <path fill="url(#pcMarkBlock)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
     </svg>
   );
 }
