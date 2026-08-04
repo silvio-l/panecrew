@@ -39,7 +39,7 @@ export function TerminalPane({
       }`}
     >
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-[11px] font-medium tracking-wide ${
+        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
           focused
             ? "text-(--pc-paneHeader-activeForeground)"
             : "text-(--pc-paneHeader-foreground)"
@@ -114,7 +114,7 @@ function ZoomButton({
           aria-label={label}
           aria-pressed={active}
           onClick={() => onToggle(mode)}
-          className={`flex size-[18px] items-center justify-center rounded-[4px] transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder) ${
+          className={`flex size-(--pc-paneControl-size) items-center justify-center rounded-(--pc-paneControl-radius) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-(--pc-focusBorder) ${
             active
               ? "text-(--pc-focusBorder)"
               : "hover:text-(--pc-paneHeader-activeForeground)"
@@ -128,7 +128,7 @@ function ZoomButton({
           side="bottom"
           align="end"
           sideOffset={4}
-          className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+          className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
         >
           {label}
         </Tooltip.Content>

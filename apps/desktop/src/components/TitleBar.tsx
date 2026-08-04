@@ -15,13 +15,13 @@ export function TitleBar() {
           jeder Mousedown auf einem attributierten Hintergrund-Segment landet. */}
       <div data-tauri-drag-region className="flex flex-1 items-center gap-2">
         <AppMark />
-        <span className="pointer-events-none text-[13px] font-medium text-(--pc-titleBar-foreground)">
+        <span className="pointer-events-none text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
           PaneCrew
         </span>
       </div>
       <div
         aria-hidden="true"
-        className="flex h-6 w-72 max-w-[40vw] items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-border) bg-(--pc-pane-background) text-[11px] text-(--pc-descriptionForeground)"
+        className="flex h-6 w-72 max-w-[40vw] items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-border) bg-(--pc-pane-background) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)"
       >
         <SearchIcon />
         <span className="truncate">Suchen oder Befehl ausführen</span>
@@ -45,7 +45,7 @@ export function TitleBar() {
             side="bottom"
             align="end"
             sideOffset={4}
-            className="rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+            className="rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
           >
             Settings
           </Tooltip.Content>

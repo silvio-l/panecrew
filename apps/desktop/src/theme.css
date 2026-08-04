@@ -16,6 +16,21 @@
  *   Codes Engine-Defaults (terminalColorRegistry) — die sind theme-KIND-
  *   abhängig (eigene Light-Spalte), daher unterscheiden sich Dark und Light.
  */
+/*
+ * Maß-Tokens (Chrome-Typo-/Spacing-Skala) — theme-unabhängig, daher bewusst
+ * nur einmal unter :root (die Dark/Light-Vollständigkeits-Invariante oben
+ * betrifft die Farbpalette). In rem statt px, damit eine künftige app-eigene
+ * Textgrößen-Einstellung (Verändern der Root-Font-Size, analog VS Codes
+ * window.zoomLevel) das Chrome tatsächlich mitskaliert. Rechenbasis: 16px.
+ */
+:root {
+  --pc-chrome-fontSize: 0.8125rem; /* 13px — primäre Chrome-Textgröße */
+  --pc-chrome-fontSizeSmall: 0.6875rem; /* 11px — Pane-Header, Tooltips, Platzhalter */
+  --pc-list-rowHeight: 1.375rem; /* 22px — Explorer-Baumzeile */
+  --pc-paneControl-size: 1.125rem; /* 18px — Zoom-Button-Klickfläche */
+  --pc-paneControl-radius: 0.25rem; /* 4px */
+}
+
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;

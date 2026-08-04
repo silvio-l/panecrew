@@ -40,7 +40,7 @@ export function ExplorerPanel({
           aria-hidden="true"
           className="size-1.5 shrink-0 rounded-full bg-(--pc-focusBorder) shadow-[0_0_6px_var(--pc-pane-activeGlow)]"
         />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-(--pc-explorerHeader-foreground)">
+        <span className="min-w-0 flex-1 truncate text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-explorerHeader-foreground)">
           {project.name}
         </span>
         <Tooltip.Root>
@@ -59,7 +59,7 @@ export function ExplorerPanel({
               side="bottom"
               align="end"
               sideOffset={4}
-              className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+              className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
             >
               Explorer ausblenden
             </Tooltip.Content>
@@ -104,7 +104,7 @@ export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
           <Tooltip.Content
             side="right"
             sideOffset={4}
-            className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-[11px] text-(--pc-foreground) shadow-lg"
+            className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
           >
             Explorer einblenden
           </Tooltip.Content>
@@ -161,7 +161,7 @@ function TreeRow({
         type="button"
         onClick={() => (isFolder ? onToggleFolder(path) : onSelectFile(path))}
         style={{ paddingLeft: 10 + depth * 12 }}
-        className={`flex h-[22px] w-full items-center gap-1.5 pr-2 text-left text-[13px] ${
+        className={`flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) ${
           isSelected
             ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
             : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
