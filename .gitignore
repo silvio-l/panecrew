@@ -1,0 +1,23 @@
+# AI instruction / internal planning files — never public (see dev-standards
+# OSS-Allowlist policy: internals stay local, only .ossallowlist paths ship).
+CLAUDE.md
+CONTEXT.md
+docs/decisions.md
+docs/agents/
+.scratch/
+
+# Secrets
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
