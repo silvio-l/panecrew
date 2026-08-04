@@ -15,3 +15,8 @@ yet. Watch this space.
 ## License
 
 Licensed under the [MIT license](LICENSE).
+
+## Trademark
+
+The Panecrew name and logo are not covered by the license above. Forks and derivatives are welcome
+but may not call themselves "Panecrew" — "based on Panecrew" is fine.

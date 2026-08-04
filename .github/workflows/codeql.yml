@@ -3,11 +3,22 @@ name: CodeQL
 on:
   push:
     branches: [dev, main]
+    paths: ["apps/**"]
   pull_request:
     branches: [main]
-  schedule:
-    # Weekly on Sundays at 03:00 UTC
-    - cron: "0 3 * * 0"
+    paths: ["apps/**"]
+  # No `schedule` trigger yet: with zero source in either language, CodeQL's
+  # database-finalize step fails hard ("detected code written in GitHub
+  # Actions, but not any written in JavaScript/TypeScript") instead of
+  # no-op'ing — confirmed by the first real push (run 30914207390). The
+  # `paths` filter above stops that for push/PR; schedule ignores `paths`
+  # entirely, so it would still fire weekly against an empty tree. Re-add a
+  # schedule once apps/ has real source (ticket 02's scaffold).
+  #
+  # Also: code scanning (SARIF upload) is unavailable for private repos on
+  # GitHub Free/Pro without GitHub Advanced Security — this repo is private
+  # until the first real version ships (decisions.md), so even once apps/
+  # exists, this workflow stays a known no-op until the repo goes public.
 
 permissions:
   security-events: write
