@@ -86,9 +86,9 @@ export function TitleBar({ zoom }: { zoom: number }) {
           // neben der Grundfarbe aus der Klasse, weil background-color keinen
           // Verlauf tragen kann.
           backgroundImage:
-            "linear-gradient(180deg, var(--pc-titleBar-glassTop), transparent 62%)",
+            "linear-gradient(180deg, var(--pc-glass-topLight), transparent 62%)",
         }}
-        className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-titleBar-glassBorder) bg-(--pc-titleBar-glassBackground) pr-[3px] shadow-[0_1px_6px_var(--pc-titleBar-glassShadow),inset_0_1px_0_var(--pc-titleBar-glassSheen)] backdrop-blur-lg backdrop-saturate-150"
+        className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-glass-border) bg-(--pc-glass-background) pr-[3px] shadow-[0_1px_6px_var(--pc-glass-shadow),inset_0_1px_0_var(--pc-glass-sheen)] backdrop-blur-lg backdrop-saturate-150"
       >
         {/* Ziehfläche zwischen Ampeln und Feld — als reine Lücke wäre der
             halbe linke Kapselbereich nicht ziehbar. */}
