@@ -79,15 +79,9 @@ body {
   );
   /* Lichtabfall von der Oberkante — die Platte hat eine beleuchtete
      Oberseite, nicht nur einen Rand. */
-  background-image: linear-gradient(
-    180deg,
-    var(--pc-glass-topLight),
-    transparent 62%
-  );
-  box-shadow:
-    0 1px 4px var(--pc-glass-shadow),
-    inset 0 1px 0 var(--pc-glass-sheen);
-  backdrop-filter: blur(16px) saturate(150%);
+  background-image: var(--pc-glass-faceLight);
+  box-shadow: var(--pc-glass-elevation);
+  backdrop-filter: var(--pc-glass-blur);
   color: var(--pc-foreground);
   /* Bedient wird ausschließlich die Tastatur — Begründung in directoryPopup.ts. */
   pointer-events: none;

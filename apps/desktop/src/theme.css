@@ -66,6 +66,31 @@
     monospace;
   --pc-terminal-fontSize: 13px;
   --pc-terminal-lineHeight: 1.4;
+
+  /*
+   * Das Glas-Rezept als fertige Formeln — die Farben dazu stehen pro Theme
+   * weiter unten (--pc-glass-background/-border/-sheen/-topLight/-shadow).
+   *
+   * Der Grund für diese drei Tokens: die Farben waren von Anfang an geteilt,
+   * die FORMELN aber standen wörtlich zweimal da (Titelkapsel in TitleBar.tsx,
+   * Verzeichnisliste in App.css). Genau daran ist das Rezept schon einmal
+   * auseinandergelaufen — beim Nachkalibrieren wanderte die Schattengeometrie
+   * von 6px auf 4px und die zweite Fläche blieb einen Commit lang zurück, weil
+   * kein Token sie mitgenommen hat. Eine Fläche liest jetzt drei Tokens statt
+   * eine Formel abzuschreiben.
+   *
+   * Theme-unabhängig und deshalb hier oben: die Formeln sind in beiden Themes
+   * dieselben, die `var()` darin lösen sich erst am Verwendungsort auf und
+   * treffen dort automatisch die Farben des aktiven Themes.
+   */
+  --pc-glass-elevation:
+    0 1px 4px var(--pc-glass-shadow), inset 0 1px 0 var(--pc-glass-sheen);
+  --pc-glass-faceLight: linear-gradient(
+    180deg,
+    var(--pc-glass-topLight),
+    transparent 62%
+  );
+  --pc-glass-blur: blur(16px) saturate(150%);
 }
 
 :root,
