@@ -8,6 +8,7 @@ import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
 import { matchesShortcut, SHORTCUTS } from "../shortcuts/registry";
 import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
+import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { loadShellHistory } from "./shellHistory";
@@ -237,62 +238,10 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
         return false;
       }
 
-      // Solange das Verzeichnis-Popup einer `cd`-Zeile steht, gehören ihm
-      // Pfeil hoch/runter, Enter, Tab und Escape. Steht es nicht — der
-      // Normalfall in jeder anderen Zeile —, wird hier nichts abgefangen und
-      // alle fünf Tasten gehen unverändert an die Shell: Pfeiltasten bleiben
-      // History-Navigation, Enter schickt ab, Tab bleibt die echte
-      // Tab-Completion der Shell.
-      //
-      // Dass Enter bei sichtbarem Popup vervollständigt statt abzuschicken,
-      // ist die bewusste Folge davon (`cd src` + Enter braucht dann ein
-      // zweites Enter) — dieselbe Übernahme-Taste wie in jeder
-      // Vervollständigungsliste.
-      const popup = suggestion.directories;
-      if (
-        popup.visible() &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.shiftKey
-      ) {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          popup.move(event.key === "ArrowDown" ? 1 : -1);
-          return false;
-        }
-        if (event.key === "Escape") {
-          popup.dismiss();
-          return false;
-        }
-        if ((event.key === "Enter" || event.key === "Tab") && popup.accept()) {
-          event.preventDefault();
-          return false;
-        }
-      }
-
-      // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen die sichtbare
-      // Inline-Vervollständigung — die fish-Bindungen. Ohne sichtbare
-      // Ergänzung fallen beide Tasten auf ihr normales Verhalten zurück.
-      if (
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key === "ArrowRight" &&
-        suggestion.accept()
-      ) {
-        return false;
-      }
-      if (
-        event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === "f" &&
-        suggestion.accept()
-      ) {
-        return false;
-      }
+      // Verzeichnis-Popup und Geistertext: welche Taste ihnen gehört, steht
+      // in completionKeys.ts — der Teil ist für sich prüfbar, weil an ihm ein
+      // gemeldeter Fehler hing.
+      if (routeCompletionKey(event, suggestion)) return false;
 
       // Shift+Enter: weicher Zeilenumbruch statt Absenden. Ink-basierte CLI-
       // Tools (claude) lesen den blanken Linefeed als Zeilenumbruch im Prompt,
