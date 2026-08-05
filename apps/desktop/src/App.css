@@ -85,7 +85,7 @@ body {
     transparent 62%
   );
   box-shadow:
-    0 1px 6px var(--pc-glass-shadow),
+    0 1px 4px var(--pc-glass-shadow),
     inset 0 1px 0 var(--pc-glass-sheen);
   backdrop-filter: blur(16px) saturate(150%);
   color: var(--pc-foreground);
