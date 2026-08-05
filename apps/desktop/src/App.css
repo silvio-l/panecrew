@@ -38,16 +38,28 @@ body {
  * Hängt in einer xterm-Decoration und damit im Zellraster; hier steht nur, wie
  * es aussieht.
  *
- * TEMPORÄRER SICHERHEITS-REVERT (2026-08-05): Der Glas-Look (--pc-glass-*,
- * backdrop-filter) verursachte in der echten App ein Render-Artefakt — sechs
- * harte Vertikalbalken über fast die ganze Pane, sobald das Popup offen war
- * (Screenshot: .scratch/.../BEFUND-artefakt-in-app.png, Ticket: Task 18).
- * Nicht abschließend geklärt, ob backdrop-filter, der Verlauf oder etwas
- * anderes die Ursache ist. Bis das isoliert ist, bewusst zurück auf die
- * schlichte, bereits produktiv gelaufene Widget-Fläche ohne Weichzeichner —
- * ein unbenutzbares Terminal ist ein größeres Risiko als ein fehlender
- * Glas-Look, den es ohnehin erst seit kurzem gibt. Nach Klärung von Task 18
- * wieder auf --pc-glass-* umstellen, nicht diesen Kommentar einfach löschen.
+ * Dieselbe Glasplatte wie die Titelzeile — ein Rezept, kein zweites: Farben
+ * und Formeln kommen aus den --pc-glass-*-Tokens in theme.css. Zwei
+ * begründete Abweichungen:
+ *
+ * 1. Der Grund ist dichter. Die Titelkapsel schwebt über weitgehend leerer
+ *    Fläche, diese Platte über laufendem Terminaltext: bei deren Deckkraft
+ *    stünden fremde Zeichen mitten in den Verzeichnisnamen. Gemischt wird
+ *    dieselbe Glasfläche mit dem Widget-Grund, den die Liste vorher allein
+ *    trug — über einer harten Kulisse (helle ls-Ausgabe direkt dahinter,
+ *    Pixel ausgelesen) halten die Namen damit 7:1.
+ * 2. Der Radius ist kleiner (10px statt 13px). 13px sind an einer knapp
+ *    30 Pixel hohen Kapsel fast eine Pille; an einer mehrzeiligen Liste wären
+ *    sie ein Blasenrand. Gleiche Familie, andere Größe.
+ *
+ * Zwischenzeitlich stand hier ein Sicherheits-Revert: In der laufenden App
+ * waren sechs harte Vertikalbalken über der Pane zu sehen, während das Popup
+ * offen war. Das war KEIN Render-Fehler dieser Platte, sondern ein ANSI-
+ * Testmuster (weiß/schwarz im Wechsel), das ein paralleler Agent für den
+ * Nachweis des Weichzeichners ins selbe Terminal geschrieben hatte. Derselbe
+ * Nachweis zeigte zugleich, dass backdrop-filter im WKWebView über
+ * Terminalinhalt wirklich arbeitet: Aus der Rechteckschwingung wird innerhalb
+ * der Platte eine weiche Welle, Amplitude von 223 auf 32.
  *
  * Keine eigene Akzentfarbe: der Akzent gehört laut Direction Contract allein
  * dem Fokus, und die ANSI-Farben darunter haben im Terminalinhalt feste
@@ -66,10 +78,19 @@ body {
   /* Nur oben Luft: der Fußzeilenstreifen sitzt bündig auf der Unterkante,
      sonst schwebte er als eigene Platte in der Platte. */
   padding: 0.125rem 0 0;
-  border: 1px solid var(--pc-widget-border);
-  border-radius: 0.25rem;
+  border: 1px solid var(--pc-glass-border);
+  border-radius: 0.625rem;
   overflow: hidden;
-  background: var(--pc-widget-background);
+  background-color: color-mix(
+    in srgb,
+    var(--pc-glass-background) 55%,
+    var(--pc-widget-background)
+  );
+  /* Lichtabfall von der Oberkante — die Platte hat eine beleuchtete
+     Oberseite, nicht nur einen Rand. */
+  background-image: var(--pc-glass-faceLight);
+  box-shadow: var(--pc-glass-elevation);
+  backdrop-filter: var(--pc-glass-blur);
   color: var(--pc-foreground);
   /* Bedient wird ausschließlich die Tastatur — Begründung in directoryPopup.ts. */
   pointer-events: none;
