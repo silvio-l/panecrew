@@ -177,6 +177,13 @@ describe("App", () => {
 
   it("startet nach der Ordnerauswahl ein PTY im gewählten Verzeichnis", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    // Explizit auf einen leeren, aber ERFOLGREICHEN Baum-Read gemockt: ohne
+    // das würde der Default-Mock (`undefined`) beim Mappen einen Fehler
+    // auslösen und die eigene Fehleranzeige zeigen statt des Leer-Zustands,
+    // den dieser Test eigentlich prüfen will.
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
     render(<App />);
 
     clickPicker();
@@ -198,8 +205,202 @@ describe("App", () => {
       await screen.findByLabelText("Terminal storefront"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("storefront")).toHaveLength(2);
-    // Ticket 04 liefert den echten Baum — bis dahin wird nichts erfunden.
     expect(screen.getByText("Kein Dateibaum geladen.")).toBeInTheDocument();
+  });
+
+  it("zeigt eine eigene Fehlermeldung, wenn der Dateibaum nicht gelesen werden kann", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.reject(new Error("Permission denied (os error 13)"))
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Permission denied (os error 13)",
+    );
+    expect(
+      screen.queryByText("Kein Dateibaum geladen."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("liest beim Öffnen eines Projekts auch dessen Git-Status", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(invokeMock).toHaveBeenCalledWith("explorer_git_status", {
+      root: "/Users/dev/projects/storefront",
+    });
+  });
+
+  it("liest Baum und Git-Status neu, wenn der Refresh-Knopf gedrückt wird", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    invokeMock.mockClear();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dateibaum aktualisieren" }),
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
+        root: "/Users/dev/projects/storefront",
+      });
+    });
+    expect(invokeMock).toHaveBeenCalledWith("explorer_git_status", {
+      root: "/Users/dev/projects/storefront",
+    });
+  });
+
+  it("legt über den 'Neue Datei'-Knopf eine Datei an und liest den Baum danach neu", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Neue Datei" }));
+    const input = screen.getByLabelText("Neuer Dateiname");
+    fireEvent.change(input, { target: { value: "notes.md" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_create_file", {
+        path: "/Users/dev/projects/storefront/notes.md",
+      });
+    });
+    expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
+      root: "/Users/dev/projects/storefront",
+    });
+  });
+
+  it("legt über den 'Neuer Ordner'-Knopf einen Ordner an", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Neuer Ordner" }));
+    const input = screen.getByLabelText("Neuer Ordnername");
+    fireEvent.change(input, { target: { value: "assets" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_create_directory", {
+        path: "/Users/dev/projects/storefront/assets",
+      });
+    });
+  });
+
+  it("lehnt beim Anlegen einen Namen mit Pfadtrennzeichen ab, ohne das Backend aufzurufen", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Neue Datei" }));
+    const input = screen.getByLabelText("Neuer Dateiname");
+    fireEvent.change(input, { target: { value: "nested/notes.md" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/pfad/i);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_create_file",
+      expect.anything(),
+    );
+  });
+
+  it("verwirft die Anlege-Zeile bei Escape, ohne das Backend aufzurufen", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Neue Datei" }));
+    const input = screen.getByLabelText("Neuer Dateiname");
+    fireEvent.change(input, { target: { value: "notes.md" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByLabelText("Neuer Dateiname")).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_create_file",
+      expect.anything(),
+    );
+  });
+
+  it("markiert eine geänderte Datei im zugänglichen Namen ihrer Baumzeile", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_tree") {
+        return Promise.resolve([{ name: "App.tsx", kind: "tsx" }]);
+      }
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve([{ path: "App.tsx", status: "modified" }]);
+      }
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(
+      await screen.findByRole("button", { name: /App\.tsx,\s*geändert/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("lädt nach der Ordnerauswahl den echten Dateibaum und zeigt ihn im Explorer", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.resolve([
+            { name: "src", children: [{ name: "main.rs" }] },
+            { name: "README.md" },
+          ])
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
+      root: "/Users/dev/projects/storefront",
+    });
+    expect(screen.getByText("src")).toBeInTheDocument();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Kein Dateibaum geladen."),
+    ).not.toBeInTheDocument();
   });
 
   it("killt beim Schließen genau die Pane, die gespawnt wurde", async () => {

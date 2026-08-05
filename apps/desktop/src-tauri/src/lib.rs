@@ -1,5 +1,7 @@
 pub mod about;
 pub mod cli;
+pub mod explorer_fs;
+pub mod git_status;
 pub mod launch;
 pub mod menu;
 pub mod path_probe;
@@ -63,6 +65,10 @@ pub fn run() {
             pty_commands::pty_resize,
             pty_commands::pty_kill,
             shell_history::shell_history_read,
+            explorer_fs::explorer_read_tree,
+            explorer_fs::explorer_create_file,
+            explorer_fs::explorer_create_directory,
+            git_status::explorer_git_status,
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
             launch::get_launch_project,

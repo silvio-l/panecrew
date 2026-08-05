@@ -285,6 +285,27 @@
   --pc-icon-purple: #a074c4;
   --pc-icon-gray: #6d8086;
 
+  /*
+   * Git-Deko im Explorer (VS-Code-Kategorie 41,
+   * `gitDecoration.modifiedResourceForeground`/`.untrackedResourceForeground`).
+   *
+   * Eigenes Tokenpaar statt der --pc-icon-*-Töne, obwohl der Dark-Block
+   * dieselben Werte trägt: die Deko färbt hier den DATEINAMEN, ist also
+   * Normalsatz und muss die 4,5:1 halten, die dieser Block weiter unten für
+   * Normalsatz festlegt — als bloße Icon-Fläche (3:1) taten die Icon-Töne das
+   * auch dort noch, wo sie es als Text nicht mehr tun (siehe Light-Block).
+   * Ein eigener Slot macht diesen Unterschied überhaupt erst ausdrückbar.
+   *
+   * Gemessen auf --pc-explorer-background (#191a1b): Orange 5,80:1,
+   * Grün 8,11:1. Bewusst als eigener Hexwert und nicht als var()-Verweis auf
+   * --pc-icon-orange/-green — diese Datei aliast nirgends ein Token auf ein
+   * anderes, jeder Slot trägt seinen Wert selbst; die beiden var()-Vorkommen
+   * weiter oben stehen in zusammengesetzten Werten (Schatten/Verlauf), nicht
+   * in einer Token-Definition.
+   */
+  --pc-gitDecoration-modifiedResourceForeground: #e37933;
+  --pc-gitDecoration-untrackedResourceForeground: #8dc149;
+
   /* Terminal-Panes */
   --pc-pane-background: #121314;
   --pc-pane-border: #2a2b2c;
@@ -437,6 +458,28 @@
   --pc-icon-red: #b8383d;
   --pc-icon-purple: #9068b0;
   --pc-icon-gray: #627379;
+
+  /*
+   * Git-Deko, gleiche Rolle wie im Dark-Block — hier aber ausdrücklich NICHT
+   * die Icon-Töne: auf --pc-explorer-background (#fafafd) kommt
+   * --pc-icon-orange nur auf 3,48:1 und --pc-icon-green auf 2,51:1, beide
+   * unter den 4,5:1 für Normalsatz. Als Dateityp-Glyph (3:1) ist das nie
+   * aufgefallen, als Dateiname ist es zu wenig.
+   *
+   * Die Werte sind VS Codes eigene Light-Fassung derselben zwei Schlüssel
+   * (Light+ / Light Modern), nicht neu erfunden: #895503 misst 5,98:1,
+   * #007100 misst 6,00:1 auf demselben Grund. Beide bleiben zugleich klar
+   * unterscheidbar (warmes Braun gegen sattes Grün) und liegen als reine
+   * Chrome-Töne außerhalb der Terminal-ANSI-Palette darunter.
+   *
+   * Auf der Auswahlfüllung --pc-list-activeSelectionBackground (#00000025 über
+   * dem Panelgrund, effektiv #d6d6d8) fallen sie auf 4,29:1 bzw. 4,30:1 —
+   * knapp unter dieselbe Grenze. Die in ExplorerPanel.tsx dokumentierte
+   * Entscheidung, die Deko-FARBE auf der ausgewählten Zeile auszusetzen und
+   * nur das Kürzel M/U stehen zu lassen, bleibt damit unverändert richtig.
+   */
+  --pc-gitDecoration-modifiedResourceForeground: #895503;
+  --pc-gitDecoration-untrackedResourceForeground: #007100;
 
   /* Terminal-Panes */
   --pc-pane-background: #ffffff;

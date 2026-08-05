@@ -60,19 +60,63 @@ import {
 import { ProjectPicker } from "./components/ProjectPicker";
 import { TerminalPane } from "./components/TerminalPane";
 import { useAppZoom } from "./shortcuts/useAppZoom";
-import { projectNameFromPath, type Project } from "./types/project";
+import { gitDecorationsFromStatuses, type GitFileStatus } from "./types/gitStatus";
+import {
+  projectNameFromPath,
+  treeNodesFromRaw,
+  type Project,
+  type RawTreeNode,
+} from "./types/project";
 import "./App.css";
 
 const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
-// Einzige Stelle, die einen Project aus einem Pfad baut — Picker- und
-// CLI-Launch-Pfad rufen beide hierhin statt je eine eigene Implementierung zu
-// pflegen. Async, weil der echte Verzeichnis-Scan (Ticket 02) ein
-// IPC-Roundtrip wird; bis dahin bleibt der Baum bewusst leer statt erfunden.
-function buildProject(path: string): Promise<Project> {
-  return Promise.resolve({ path, name: projectNameFromPath(path), tree: [] });
+// Einzige Stelle, die einen Project aus einem Pfad baut — Picker-, CLI-Launch-
+// und Refresh-Pfad rufen beide hierhin statt je eine eigene Implementierung
+// zu pflegen. Ein gescheiterter Baum-Read scheitert bewusst nicht den ganzen
+// Projektaufbau (das Projekt öffnet trotzdem, cwd fürs PTY ist ja da) —
+// `treeError` trägt den Fehler stattdessen sichtbar weiter. Baum und
+// Git-Status laufen parallel: unabhängige IPC-Aufrufe, keiner blockiert den
+// anderen.
+async function buildProject(path: string): Promise<Project> {
+  const name = projectNameFromPath(path);
+  const [tree, gitDecorations] = await Promise.all([
+    readTree(path),
+    readGitDecorations(path),
+  ]);
+  return { path, name, ...tree, gitDecorations };
+}
+
+async function readTree(
+  path: string,
+): Promise<Pick<Project, "tree" | "treeError">> {
+  try {
+    const raw = await invoke<RawTreeNode[]>("explorer_read_tree", {
+      root: path,
+    });
+    return { tree: treeNodesFromRaw(raw), treeError: null };
+  } catch (error) {
+    console.error("PaneCrew: Dateibaum konnte nicht gelesen werden", error);
+    return { tree: [], treeError: String(error) };
+  }
+}
+
+// Kein Analogon zu `treeError`: ein Projekt, das kein Git-Repo ist (oder ein
+// fehlendes `git`), ist kein Fehlerzustand des Explorers — das Backend
+// (`git_status.rs`) liefert dafür schon eine leere Liste statt eines Fehlers,
+// hier bleibt nur der Transport-Fall (IPC selbst schlägt fehl) abzufangen.
+async function readGitDecorations(path: string) {
+  try {
+    const statuses = await invoke<GitFileStatus[]>("explorer_git_status", {
+      root: path,
+    });
+    return gitDecorationsFromStatuses(statuses);
+  } catch (error) {
+    console.error("PaneCrew: Git-Status konnte nicht gelesen werden", error);
+    return gitDecorationsFromStatuses([]);
+  }
 }
 
 function App() {
@@ -128,6 +172,18 @@ function App() {
         console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
       })
       .finally(() => setPicking(false));
+  };
+
+  // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
+  // auswahl anzutasten (anders als ein Projektwechsel). Der Vergleich im
+  // Setter schützt vor einer veralteten Antwort, falls der Nutzer während des
+  // Reads schon zu einem anderen Projekt gewechselt hat.
+  const refreshExplorer = () => {
+    if (project === null) return;
+    const path = project.path;
+    void buildProject(path).then((next) => {
+      setProject((current) => (current?.path === path ? next : current));
+    });
   };
 
   const nudgeExplorerWidth = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -200,6 +256,7 @@ function App() {
                 selectedFile={selectedFile}
                 onSelectFile={setSelectedFile}
                 onCollapse={() => setExplorerCollapsed(true)}
+                onRefresh={refreshExplorer}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
                   Explorer-Breite für Tastaturnutzer unerreichbar macht — das
