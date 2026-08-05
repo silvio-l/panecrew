@@ -21,6 +21,14 @@ import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 // CSS-Padding würde also mitwachsen und -schrumpfen — bei kleinem Zoom rutscht
 // die App-Marke unter die Knöpfe, bei großem klafft eine Lücke. Geteilt durch
 // den Faktor bleibt der PHYSISCHE Abstand auf jeder Stufe derselbe.
+//
+// Vertikal ist diese Kompensation nicht möglich: die Ampelhöhe steckt in
+// `trafficLightPosition` (tauri.conf.json, y=19.5 — am Bildschirm ausgemessen
+// der Wert, der die Ampelmitte auf 17,5px legt, die Mitte der 35px hohen
+// Contentbox dieser Bar, wo auch Marke, Schrift-Cap und Zahnrad sitzen).
+// Der Schlüssel greift nur bei Fenstererstellung, eine Laufzeit-API dafür hat
+// Tauri 2 nicht. Auf anderen Zoomstufen als 1.0 wandert die gerenderte Bar
+// deshalb unter den Ampeln weg — bewusst akzeptiert.
 const TRAFFIC_LIGHT_INSET = 84;
 
 export function TitleBar({ zoom }: { zoom: number }) {
