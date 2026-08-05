@@ -35,10 +35,12 @@
         "center": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "backgroundColor": "#121314",
+        "transparent": true,
+        "shadow": false,
         "visible": false
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }

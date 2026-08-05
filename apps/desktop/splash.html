@@ -9,6 +9,17 @@
         margin: 0;
         height: 100%;
         overflow: hidden;
+        /* Das native Fenster ist transparent und rechteckig — die gerundete
+           Silhouette entsteht allein aus der Bühne darin. */
+        background: transparent;
+      }
+
+      .stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        overflow: hidden;
         background: #121314;
       }
 
@@ -19,18 +30,49 @@
         /* cover statt contain: bei subpixelgenauer Fensterhöhe bliebe sonst ein
            Rand stehen — der Bühnenrand des Videos ist ohnehin die Fensterfarbe. */
         object-fit: cover;
+        /* WebKit clippt ein <video> nicht am border-radius des Elternteils, der
+           Radius muss zusätzlich auf dem Element selbst stehen. */
+        border-radius: inherit;
+      }
+
+      .colophon {
+        position: absolute;
+        right: 0;
+        bottom: 24px;
+        left: 0;
+        margin: 0;
+        text-align: center;
+        font: 400 11px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        letter-spacing: 0.07em;
+        /* Spiegelt --pc-descriptionForeground aus theme.css. Bewusst hier
+           hartkodiert: der Splash lädt kein Theme, er ist eine feste dunkle
+           Markenbühne. Kein Amber — das bleibt dem Emblem vorbehalten. */
+        color: #8c8c8c;
+        opacity: 0;
+      }
+
+      /* Eingeblendet erst, wenn die Bewegung ausläuft (Bewegungsende bei
+         1,58 s), damit der Text nie über der entstehenden Marke liegt. */
+      .playing .colophon {
+        opacity: 1;
+        transition: opacity 400ms ease-out 1100ms;
       }
     </style>
   </head>
 
   <body>
-    <video
-      id="splash-video"
-      src="/splash.mp4"
-      muted
-      playsinline
-      preload="auto"
-    ></video>
+    <div class="stage">
+      <video
+        id="splash-video"
+        src="/splash.mp4"
+        muted
+        playsinline
+        preload="auto"
+      ></video>
+      <p class="colophon">
+        PaneCrew 0.1.0 &middot; &copy; 2026 Silvio Lindstedt &middot; MIT License
+      </p>
+    </div>
     <script type="module" src="/src/splash/splash.ts"></script>
   </body>
 </html>

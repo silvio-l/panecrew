@@ -28,6 +28,9 @@ const show = (): void => {
   shown = true;
   void invoke("splash_visible")
     .then(() => video.play())
+    // Erst ab dem tatsächlichen Wiedergabestart, damit das Einblenden des
+    // Kolophons an der Animation hängt und nicht am Dokumentladen.
+    .then(() => document.body.classList.add("playing"))
     .catch(handOff);
 };
 
