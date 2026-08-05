@@ -87,19 +87,27 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, check_updates: bool) {
         .transparent(true)
         .shadow(false)
         .center()
-        .visible(false);
+        .visible(false)
+        // Hebt das Fenster auf die schwebende Fensterebene, ÜBER der normalen,
+        // auf der auch das Modal-Sheet des Hauptfensters liegt. Ohne das hier
+        // reicht ein Wechsel in eine andere App und zurück: macOS holt dann das
+        // Hauptfenster nach vorn, das Über-Fenster landet unter dessen
+        // 50-%-Schleier und sieht dadurch selbst ausgegraut aus. Nachgemessen —
+        // die Bühne wechselte von #121414 (deckend, korrekt) auf #1c2022, also
+        // exakt den Ton des gesperrten Hauptfensters.
+        //
+        // Preis: das Fenster schwebt auch über anderen Apps, etwa über dem
+        // Browser, den es per „GitHub-Repository" selbst öffnet. Das ist der
+        // kleinere Schaden gegenüber einem Modal, das hinter seinem eigenen
+        // Schleier verschwindet.
+        .always_on_top(true);
 
-    // Bewusst OHNE `parent()`, obwohl das der naheliegende Weg für „immer über
-    // dem Hauptfenster" wäre: auf macOS hängt es das Fenster per addChildWindow
-    // in die Fenstergruppe des Hauptfensters — und damit UNTER dessen
-    // Modal-Sheet (siehe `block_main`). Am Bildschirm nachgemessen: das
-    // Über-Fenster lag dann selbst unter dem 50-%-Schleier, der eigentlich nur
-    // das gesperrte Hauptfenster abdecken soll — Marke entsättigt, Text
-    // ausgewaschen. Auch kein `always_on_top`: das schwebt über allen Apps, und
-    // dieses Fenster öffnet selbst Links im Browser, vor dem es stehen bliebe.
-    //
-    // Die Reihenfolge trägt stattdessen die Modalität selbst — ein Fenster mit
-    // angehängtem Sheet lässt sich nicht mehr nach vorn holen.
+    // Die Fensterebene oben macht die Arbeit, NICHT `parent()`. Das wäre der
+    // naheliegende Weg, richtet auf macOS aber genau den Schaden an, den es
+    // verhindern soll: `addChildWindow` hängt das Fenster in die Fenstergruppe
+    // des Hauptfensters und damit unter dessen Modal-Sheet — dasselbe Ausgrauen
+    // wie oben beschrieben, nur schon beim Öffnen statt erst nach einem
+    // App-Wechsel (an zwei Screenshots gegeneinander nachgewiesen).
     if let Err(error) = builder.build() {
         eprintln!("PaneCrew: Über-Fenster konnte nicht geöffnet werden: {error}");
         return;
