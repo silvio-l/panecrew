@@ -107,6 +107,22 @@
   --pc-list-activeSelectionBackground: #ffffff22;
   --pc-list-activeSelectionForeground: #ededed;
 
+  /*
+   * Schwebende Widgets über der Inhaltsfläche (heute: das Verzeichnis-Popup
+   * der cd-Vervollständigung). Eigene Tokens statt der Explorer-Werte, obwohl
+   * die Fläche dieselbe ist — nach VS Codes eigener Trennung `editorWidget.*`
+   * gegen `sideBar.*`: ein Panel grenzt an eine bekannte Nachbarfläche, ein
+   * Widget liegt über beliebigem Inhalt und muss seine Kante allein tragen.
+   * Genau daran hängt der Unterschied im Rand: der Panel-Rand
+   * (--pc-explorer-border) ist im Light-Theme fast unsichtbar, sobald darunter
+   * nicht die erwartete Nachbarfläche liegt, sondern weißer Terminalgrund.
+   * Der Wert ist deshalb der kräftigere Hairline-Ton, den die Palette für
+   * genau diesen Fall schon führt (--pc-titleBar-searchBorder, hier ohne
+   * dessen Transparenz).
+   */
+  --pc-widget-background: #191a1b;
+  --pc-widget-border: #2e3031;
+
   /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Dark-Spalte) */
   --pc-icon-folder: #519aba;
   --pc-icon-blue: #519aba;
@@ -217,6 +233,10 @@
   --pc-list-hoverBackground: #00000014;
   --pc-list-activeSelectionBackground: #00000025;
   --pc-list-activeSelectionForeground: #202020;
+
+  /* Schwebende Widgets, gleiche Regel wie im Dark-Block oben. */
+  --pc-widget-background: #fafafd;
+  --pc-widget-border: #d8d8d8;
 
   /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Light-Spalte) */
   --pc-icon-folder: #498ba7;

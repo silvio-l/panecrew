@@ -43,8 +43,10 @@ body {
  * es aussieht.
  *
  * Es liegt über Terminalinhalt, muss sich also von ihm abheben, ohne ein
- * zweites Materialsystem aufzumachen: dieselbe Grammatik wie der Explorer —
- * dessen Fläche, dessen 1px-Hairline, dessen Listentokens für die Auswahl.
+ * zweites Materialsystem aufzumachen: dieselbe Grammatik wie der Explorer,
+ * aber mit den Widget-Tokens (--pc-widget-*), die für eine über beliebigem
+ * Inhalt schwebende Fläche gedacht sind, plus dessen Listentokens für die
+ * Auswahl.
  * Kein Schatten, kein Blur, keine eigene Akzentfarbe: der blaue Akzent gehört
  * laut Direction Contract allein dem Fokus, und die ANSI-Farben darunter haben
  * im Terminalinhalt feste Bedeutung.
@@ -60,10 +62,10 @@ body {
   min-width: 10ch;
   max-width: 44ch;
   padding: 0.125rem 0;
-  border: 1px solid var(--pc-explorer-border);
+  border: 1px solid var(--pc-widget-border);
   border-radius: 0.25rem;
-  background: var(--pc-explorer-background);
-  color: var(--pc-explorer-foreground);
+  background: var(--pc-widget-background);
+  color: var(--pc-foreground);
   /* Bedient wird ausschließlich die Tastatur — Begründung in directoryPopup.ts. */
   pointer-events: none;
 }
@@ -84,7 +86,7 @@ body {
 /* „+7": es gibt mehr Treffer, als hier hineinpassen. */
 .pc-cdpopup__more {
   padding: 0 0.5rem;
-  border-top: 1px solid var(--pc-explorer-border);
+  border-top: 1px solid var(--pc-widget-border);
   margin-top: 0.125rem;
   color: var(--pc-descriptionForeground);
   font-family: inherit;
