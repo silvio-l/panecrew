@@ -357,6 +357,105 @@ describe("App", () => {
     );
   });
 
+  it("filtert den Baum über die Kopfzeilen-Suche und zeigt nur den Pfad zu Treffern", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.resolve([
+            {
+              name: "src",
+              children: [{ name: "App.tsx" }, { name: "main.tsx" }],
+            },
+            { name: "README.md" },
+          ])
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    await screen.findByText("README.md");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dateien filtern" }));
+    const input = screen.getByLabelText("Dateien im Projekt filtern");
+    fireEvent.change(input, { target: { value: "main" } });
+
+    expect(await screen.findByText("main.tsx")).toBeInTheDocument();
+    expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
+    expect(screen.queryByText("README.md")).not.toBeInTheDocument();
+  });
+
+  it("meldet eine eigene 'keine Treffer'-Auskunft statt des Leer-Platzhalters", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.resolve([{ name: "README.md" }])
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    await screen.findByText("README.md");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dateien filtern" }));
+    fireEvent.change(screen.getByLabelText("Dateien im Projekt filtern"), {
+      target: { value: "zzz-no-match" },
+    });
+
+    expect(
+      await screen.findByText("Keine Treffer für „zzz-no-match“."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Kein Dateibaum geladen."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stellt bei Escape den vollständigen, unveränderten Baum wieder her", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.resolve([{ name: "App.tsx" }, { name: "main.tsx" }])
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    await screen.findByText("App.tsx");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dateien filtern" }));
+    const input = screen.getByLabelText("Dateien im Projekt filtern");
+    fireEvent.change(input, { target: { value: "main" } });
+    expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(
+      screen.queryByLabelText("Dateien im Projekt filtern"),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("App.tsx")).toBeInTheDocument();
+    expect(screen.getByText("main.tsx")).toBeInTheDocument();
+  });
+
+  it("deaktiviert die Suche, solange der Dateibaum nicht gelesen werden konnte", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree"
+        ? Promise.reject(new Error("Permission denied"))
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    await screen.findByRole("alert");
+
+    expect(
+      screen.getByRole("button", { name: "Dateien filtern" }),
+    ).toBeDisabled();
+  });
+
   it("markiert eine geänderte Datei im zugänglichen Namen ihrer Baumzeile", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) => {
