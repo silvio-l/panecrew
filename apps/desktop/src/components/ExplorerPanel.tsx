@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FileIcon, FolderIcon } from "./explorerIcons";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
+import { filterTree } from "../types/treeFilter";
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
 // nur der Dateibaum, kein Icon-Rail, kein Overlay. Optik an VS Codes Explorer
@@ -50,6 +51,48 @@ export function ExplorerPanel({
   // aufgesetzt (Name und Fehler zurück auf leer). Nichts davon war committet,
   // also gibt es auch nichts zurückzufragen.
   const [draftKind, setDraftKind] = useState<DraftKind | null>(null);
+  // Der Text der Explorer-Suche — `null` heißt: das Feld ist gar nicht offen.
+  // Ein einzelner Zustand statt „offen"-Flag plus Text, weil Schließen und
+  // Verwerfen hier dasselbe sind: Escape wie zweiter Klick auf den Knopf
+  // lassen keinen Text zurück, der beim nächsten Öffnen wieder auftauchen
+  // dürfte. Panel-lokal wie `collapsed`/`rootCollapsed` und aus demselben
+  // Grund — die Suche gehört zu DIESEM Baum und soll den key-Remount beim
+  // Projektwechsel nicht überleben.
+  //
+  // Gefiltert wird ausschließlich clientseitig über den bereits geladenen
+  // Baum (`filterTree`), kein neuer Backend-Aufruf; die globale Suche in der
+  // Titelzeile ist eine andere Sache und bleibt davon unberührt.
+  const [search, setSearch] = useState<string | null>(null);
+
+  // Ohne lesbaren Baum gibt es nichts zu filtern: dann gilt die Suche als
+  // geschlossen, egal was der Zustand sagt (derselbe Fall deaktiviert unten
+  // den Knopf). Der getippte Text bleibt dabei erhalten statt weggeworfen zu
+  // werden — schlägt ein späteres Aktualisieren an, kommt die Suche zurück,
+  // wie sie war.
+  const searchQuery = project.treeError === null ? search : null;
+  // `null` heißt hier zweierlei — Feld zu ODER Feld leer (das entscheidet
+  // `filterTree` selbst) — und beides bedeutet dasselbe: der Baum wird
+  // unverändert gezeigt, mit dem normalen Ein-/Ausklapp-Verhalten.
+  const filteredTree = useMemo(
+    () => (searchQuery === null ? null : filterTree(project.tree, searchQuery)),
+    [project.tree, searchQuery],
+  );
+  const shownTree = filteredTree ?? project.tree;
+
+  const toggleSearch = () => {
+    if (search === null) {
+      setSearch("");
+      // Wie `openDraft`: bei eingeklappter Wurzel gibt es keinen Baumbereich,
+      // in dem Treffer erscheinen könnten — der Knopf sähe wirkungslos aus.
+      // Suchen ist die stärkere Absicht, sie klappt den Baum wieder auf.
+      // Bewusst nur beim Öffnen: klappt der Nutzer die Wurzel bei offener
+      // Suche selbst zu, ist das seine Entscheidung, und das Schließen der
+      // Suche darf sie nicht rückgängig machen.
+      setRootCollapsed(false);
+      return;
+    }
+    setSearch(null);
+  };
 
   const openDraft = (kind: DraftKind) => {
     setDraftKind(kind);
@@ -60,6 +103,11 @@ export function ExplorerPanel({
   };
 
   const toggleFolder = (path: string) => {
+    // Während gefiltert wird, ist jeder gezeigte Ordner aufgeklappt — ein
+    // Klick könnte das Set also nur unsichtbar verändern und beim Schließen
+    // der Suche als überraschend anders geklappter Baum zurückkommen. Deshalb
+    // hier folgenlos: der handgeklappte Zustand überlebt die Suche unberührt.
+    if (filteredTree !== null) return;
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
@@ -70,6 +118,12 @@ export function ExplorerPanel({
 
   // Ersetzt das Set statt es zu ergänzen: nach „alles einklappen" gibt es
   // keinen offenen Ordner mehr, den ein Altbestand noch offenhalten dürfte.
+  //
+  // Wirkt anders als ein Chevron-Klick (s. `toggleFolder`) AUCH bei offener
+  // Suche, dann eben erst sichtbar, wenn sie wieder zu ist: das hier ist ein
+  // ausdrücklicher Befehl auf den ganzen Baum, den der Nutzer selbst erteilt
+  // hat. Ein Chevron-Klick wäre dagegen nur die unsichtbare Nebenwirkung
+  // eines Klicks, der in dem Moment aussieht, als täte er nichts.
   const collapseAll = () => {
     setCollapsed(new Set(collectFolderPaths(project.tree, "")));
   };
@@ -118,8 +172,10 @@ export function ExplorerPanel({
         </button>
         {/* Reihenfolge wie in VS Code, in drei Stufen von innen nach außen:
             zuerst die Aktionen, die etwas IM Baum anlegen, dann die auf dem
-            ganzen Baum (Aktualisieren, Einklappen), ganz rechts die auf dem
-            Panel selbst (Ausblenden). */}
+            ganzen Baum (Filtern, Aktualisieren, Einklappen), ganz rechts die
+            auf dem Panel selbst (Ausblenden). Die Suche steht in der mittleren
+            Gruppe, nicht bei den Anlege-Knöpfen: sie legt nichts an, sie
+            verändert die Sicht auf den gesamten Baum. */}
         <HeaderAction label="Neue Datei" onClick={() => openDraft("file")}>
           <NewFileIcon />
         </HeaderAction>
@@ -128,6 +184,22 @@ export function ExplorerPanel({
           onClick={() => openDraft("directory")}
         >
           <NewFolderIcon />
+        </HeaderAction>
+        <HeaderAction
+          label="Dateien filtern"
+          onClick={toggleSearch}
+          // Ohne lesbaren Baum gibt es nichts zu filtern. Deaktiviert statt
+          // stumm wirkungslos: der Grund steht zwei Zeilen tiefer schon als
+          // Fehlermeldung im Baumbereich, der ausgegraute Knopf verweist
+          // darauf, statt ein Feld anzubieten, das auf nichts arbeitet.
+          // Aktualisieren daneben bleibt aktiv — das ist der Weg heraus.
+          // Bewusst in Kauf genommen: ein deaktivierter Knopf bekommt keine
+          // Zeigerereignisse, sein Tooltip erscheint in diesem Zustand also
+          // nicht. Die Fehlermeldung darunter sagt ohnehin mehr als er.
+          disabled={project.treeError !== null}
+          pressed={searchQuery !== null}
+        >
+          <SearchIcon />
         </HeaderAction>
         <HeaderAction label="Dateibaum aktualisieren" onClick={onRefresh}>
           <RefreshIcon />
@@ -140,51 +212,77 @@ export function ExplorerPanel({
         </HeaderAction>
       </div>
       {!rootCollapsed && (
-        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          {/* Immer ganz oben, unabhängig davon, ob darunter ein Baum, der
-              Leer-Platzhalter oder der Lesefehler steht: die Zeile gehört zur
-              Wurzel, und die Wurzel beginnt hier. `key` ist die Art — der
-              Wechsel von Datei auf Ordner setzt Eingabe und Fehler zurück,
-              statt den Text der einen Absicht in die andere zu übernehmen. */}
-          {draftKind !== null && (
-            <NewEntryRow
-              key={draftKind}
-              kind={draftKind}
-              projectPath={project.path}
-              onDiscard={() => setDraftKind(null)}
-              onCreated={(name) => {
-                setDraftKind(null);
-                onRefresh();
-                // Nur Dateien: `onSelectFile` ist laut seinem Vertrag der
-                // Auswahlpfad des späteren Editors und erwartet eine Datei.
-                // Der Pfad ist relativ zur Wurzel — genau die Konvention, in
-                // der `TreeRow` seine Pfade baut (Tiefe 0: der bloße Name).
-                if (draftKind === "file") onSelectFile(name);
-              }}
+        <>
+          {/* Über dem Baumbereich statt darin: das Feld ist eine Aussage über
+              den ganzen Baum, und es soll beim Scrollen durch die Trefferliste
+              stehen bleiben, statt oben hinauszurutschen. */}
+          {searchQuery !== null && (
+            <TreeFilterRow
+              value={searchQuery}
+              onChange={setSearch}
+              onClose={() => setSearch(null)}
             />
           )}
-          {project.treeError !== null ? (
-            <TreeErrorNotice message={project.treeError} />
-          ) : project.tree.length === 0 ? (
-            <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-              Kein Dateibaum geladen.
-            </p>
-          ) : (
-            project.tree.map((node) => (
-              <TreeRow
-                key={node.name}
-                node={node}
-                path={node.name}
-                depth={0}
-                collapsed={collapsed}
-                selected={selectedFile}
-                gitDecorations={project.gitDecorations}
-                onToggleFolder={toggleFolder}
-                onSelectFile={onSelectFile}
+          <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+            {/* Immer ganz oben, unabhängig davon, ob darunter ein Baum, der
+                Leer-Platzhalter oder der Lesefehler steht: die Zeile gehört zur
+                Wurzel, und die Wurzel beginnt hier. `key` ist die Art — der
+                Wechsel von Datei auf Ordner setzt Eingabe und Fehler zurück,
+                statt den Text der einen Absicht in die andere zu übernehmen. */}
+            {draftKind !== null && (
+              <NewEntryRow
+                key={draftKind}
+                kind={draftKind}
+                projectPath={project.path}
+                onDiscard={() => setDraftKind(null)}
+                onCreated={(name) => {
+                  setDraftKind(null);
+                  onRefresh();
+                  // Nur Dateien: `onSelectFile` ist laut seinem Vertrag der
+                  // Auswahlpfad des späteren Editors und erwartet eine Datei.
+                  // Der Pfad ist relativ zur Wurzel — genau die Konvention, in
+                  // der `TreeRow` seine Pfade baut (Tiefe 0: der bloße Name).
+                  if (draftKind === "file") onSelectFile(name);
+                }}
               />
-            ))
-          )}
-        </div>
+            )}
+            {/* Der leere Baum wird VOR dem leeren Filterergebnis geprüft: ein
+                Projekt ohne Baum liefert auch auf jede Suche nichts, und
+                „Keine Treffer" wäre dort die falsche Auskunft. */}
+            {project.treeError !== null ? (
+              <TreeErrorNotice message={project.treeError} />
+            ) : project.tree.length === 0 ? (
+              <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+                Kein Dateibaum geladen.
+              </p>
+            ) : shownTree.length === 0 ? (
+              // Vom Leer-Platzhalter darüber bewusst unterscheidbar: eine
+              // Suche ohne Treffer darf nie wie ein leeres Projekt aussehen —
+              // dieselbe Sorgfalt wie bei `TreeErrorNotice`, hier aber mit
+              // einem Satz genug, weil nichts kaputt ist. Zitiert wird der
+              // getrimmte Text, also genau der, nach dem `filterTree`
+              // tatsächlich gesucht hat.
+              <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+                {`Keine Treffer für „${searchQuery?.trim() ?? ""}“.`}
+              </p>
+            ) : (
+              shownTree.map((node) => (
+                <TreeRow
+                  key={node.name}
+                  node={node}
+                  path={node.name}
+                  depth={0}
+                  collapsed={collapsed}
+                  forceOpen={filteredTree !== null}
+                  selected={selectedFile}
+                  gitDecorations={project.gitDecorations}
+                  onToggleFolder={toggleFolder}
+                  onSelectFile={onSelectFile}
+                />
+              ))
+            )}
+          </div>
+        </>
       )}
     </aside>
   );
@@ -347,6 +445,95 @@ function NewEntryRow({
   );
 }
 
+// Das Eingabefeld der Explorer-Suche. Eigene Komponente allein wegen des
+// Fokus: so läuft der Effekt genau einmal, wenn die Zeile entsteht. Der
+// Suchtext selbst liegt bewusst NICHT hier, sondern im Panel — dort
+// entscheidet er, welcher Baum überhaupt gerendert wird.
+//
+// BLUR SCHLIESST NICHT — anders als bei `NewEntryRow` weiter oben, und zwar
+// notwendigerweise: der nächste Klick nach dem Tippen ist fast immer der auf
+// einen gefundenen Treffer, und der nimmt dem Feld den Fokus. Würde Blur die
+// Suche verwerfen, wäre der gefilterte Baum genau in dem Moment weg, in dem
+// man ihn benutzt. Beendet wird deshalb nur auf ausdrückliche Ansage: Escape
+// oder ein zweiter Klick auf den Knopf in der Kopfzeile. (Bei der Anlege-Zeile
+// ist es umgekehrt richtig — dort verhindert das Verwerfen ein ungefragt
+// angelegtes Artefakt auf der Platte, hier gäbe es nichts zu schützen.)
+function TreeFilterRow({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Fokus per Ref statt `autoFocus` — dieselbe Begründung wie bei
+  // `NewEntryRow`: der Nutzer hat den Fokus angefordert, indem er den Knopf
+  // geklickt hat, dessen einziger Zweck diese Eingabe ist.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      // Geometrie der Anlege-Zeile: 10px Einzug, dieselbe 1,5er-Lücke, Glyphe
+      // in der Icon-Spalte — die linke Kante des Feldes trifft damit die der
+      // Dateinamen darunter. Bewusst OHNE die 10px-Chevron-Lücke: das hier ist
+      // keine Baumzeile, sondern eine Aussage über den ganzen Baum.
+      style={{ paddingLeft: 10 }}
+      className="flex shrink-0 items-center gap-1.5 py-1 pr-2"
+    >
+      <span
+        aria-hidden="true"
+        className="flex shrink-0 text-(--pc-descriptionForeground)"
+      >
+        <SearchIcon />
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        aria-label="Dateien im Projekt filtern"
+        placeholder="Dateien filtern"
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          onClose();
+        }}
+        className="min-w-0 flex-1 rounded-sm border border-(--pc-widget-border) bg-(--pc-widget-background) px-1 py-px text-(length:--pc-chrome-fontSize) text-(--pc-explorer-foreground) outline-none placeholder:text-(--pc-descriptionForeground) focus:border-(--pc-focusBorder)"
+      />
+    </div>
+  );
+}
+
+// Lupe in der Strichsprache der übrigen Bediensymbole dieser Datei (16er-Box,
+// 1.26, currentColor, runde Enden), nicht aus dem Seti-Set: das ist ein
+// Dateityp-Satz für den Baum, kein Bediensymbol-Satz. Der Griff setzt exakt am
+// Kreisrand an — 7 + 4.75/√2 ≈ 10.36 — statt ihn zu überlappen: zwei
+// Konturen an derselben Stelle verschmieren bei 14px zu einem Fleck, derselbe
+// Grund, aus dem das Plus der „Neu…"-Glyphen ausgespart und nicht überlagert
+// ist.
+function SearchIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.26"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="4.75" />
+      <path d="m10.4 10.4 3.1 3.1" />
+    </svg>
+  );
+}
+
 // Blatt mit umgeschlagener Ecke, unten rechts von einem Plus ausgespart — in
 // der Strichsprache der übrigen Kopfzeilen-Glyphen (16er-Box, 1.26, currentColor,
 // runde Enden), nicht aus dem Seti-Set: das ist ein Dateityp-Satz für den Baum,
@@ -420,26 +607,52 @@ function collectFolderPaths(
   });
 }
 
-// Die drei Kopfzeilen-Knöpfe unterscheiden sich nur in Beschriftung, Glyph und
+// Die Kopfzeilen-Knöpfe unterscheiden sich nur in Beschriftung, Glyph und
 // Handler — ihr Hover-Reveal (unsichtbar bis der Zeiger im Panel steht, aber
 // sofort sichtbar sobald der Fokus sie erreicht: sonst wäre die Tastatur hier
-// blind) stand vorher einmal wörtlich da und wäre dreifach kopiert worden.
+// blind) stand vorher einmal wörtlich da und wäre fünffach kopiert worden.
+//
+// Farbe und Deckkraft werden hier in JS zu genau EINER Klasse verzweigt statt
+// mehrere Kandidaten nebeneinander in die Klassenliste zu schreiben: zwei
+// gleichrangige Utilities (`opacity-0` neben `opacity-100`, zwei `text-(--…)`)
+// entscheidet nicht die Reihenfolge im JSX, sondern die im erzeugten
+// Stylesheet — das wäre ein Zufallsergebnis. Die Varianten-Regeln
+// (`group-hover/…`, `focus-visible:`) dürfen daneben stehen bleiben, sie haben
+// die höhere Spezifität.
 function HeaderAction({
   label,
   onClick,
+  disabled = false,
+  pressed,
   children,
 }: {
   label: string;
   onClick: () => void;
+  /** Sichtbar, aber ausgegraut und folgenlos — für Aktionen, die im aktuellen
+   * Zustand des Panels nichts bewirken könnten. */
+  disabled?: boolean;
+  /** Nur für Knöpfe, die etwas AUFHALTEN statt einmal auszulösen: trägt den
+   * Zustand als `aria-pressed` und hält den Knopf sichtbar, solange er aktiv
+   * ist — ein offenes Suchfeld ohne den zugehörigen Knopf daneben (weil der
+   * Zeiger das Panel verlassen hat) wäre ein Bedienelement ohne Ausschalter. */
+  pressed?: boolean;
   children: ReactNode;
 }) {
+  const tone = disabled
+    ? "text-(--pc-widget-border)"
+    : pressed === true
+      ? "bg-(--pc-list-hoverBackground) text-(--pc-foreground)"
+      : "text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)";
+
   return (
     <ChromeTooltip label={label} align="end">
       <button
         type="button"
         aria-label={label}
+        aria-pressed={pressed}
+        disabled={disabled}
         onClick={onClick}
-        className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 ${CHROME_FOCUS_RING}`}
+        className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-[opacity,color,background-color] focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
       >
         {children}
       </button>
@@ -604,6 +817,11 @@ interface TreeRowProps {
   path: string;
   depth: number;
   collapsed: ReadonlySet<string>;
+  /** Während gefiltert wird, muss JEDER gezeigte Ordner offen sein — sonst
+   * bliebe genau das unsichtbar, was die Suche herausgefiltert hat. Überstimmt
+   * `collapsed`, ohne es anzufassen: der handgeklappte Zustand kommt beim
+   * Schließen der Suche unverändert zurück. */
+  forceOpen: boolean;
   selected: string;
   /** Fertig aggregierte Git-Deko pro Baumpfad — Ordner tragen hier schon den
    * bedeutendsten Status ihres Unterbaums (`gitDecorationsFromStatuses`), diese
@@ -620,13 +838,14 @@ function TreeRow({
   path,
   depth,
   collapsed,
+  forceOpen,
   selected,
   gitDecorations,
   onToggleFolder,
   onSelectFile,
 }: TreeRowProps) {
   const isFolder = node.children !== undefined;
-  const isOpen = isFolder && !collapsed.has(path);
+  const isOpen = isFolder && (forceOpen || !collapsed.has(path));
   const isSelected = !isFolder && selected === path;
   const decoration = gitDecorations.get(path);
   // Die ausgewählte Zeile setzt die Deko-FARBE aus, behält aber das Zeichen.
@@ -689,7 +908,11 @@ function TreeRow({
         ) : (
           <span className="w-2.5 shrink-0" />
         )}
-        {isFolder ? <FolderIcon open={isOpen} /> : <FileIcon kind={node.kind} />}
+        {isFolder ? (
+          <FolderIcon open={isOpen} />
+        ) : (
+          <FileIcon kind={node.kind} />
+        )}
         <span
           className={
             decorationColor === undefined
@@ -715,6 +938,7 @@ function TreeRow({
             path={`${path}/${child.name}`}
             depth={depth + 1}
             collapsed={collapsed}
+            forceOpen={forceOpen}
             selected={selected}
             gitDecorations={gitDecorations}
             onToggleFolder={onToggleFolder}
@@ -763,13 +987,14 @@ const GIT_LETTER: Record<GitChangeStatus, string> = {
 // sondern eine Aussage: ein Ordner kann geänderte UND neue Dateien enthalten,
 // ein einzelnes Kürzel würde die eine Hälfte davon unterschlagen. Die Farbe
 // zeigt den bedeutendsten Fund, der Punkt sagt „irgendwo hier drunter".
-const GIT_SR_LABEL: Record<GitChangeStatus, { file: string; folder: string }> = {
-  modified: { file: "geändert", folder: "enthält geänderte Dateien" },
-  untracked: {
-    file: "nicht versioniert",
-    folder: "enthält nicht versionierte Dateien",
-  },
-};
+const GIT_SR_LABEL: Record<GitChangeStatus, { file: string; folder: string }> =
+  {
+    modified: { file: "geändert", folder: "enthält geänderte Dateien" },
+    untracked: {
+      file: "nicht versioniert",
+      folder: "enthält nicht versionierte Dateien",
+    },
+  };
 
 // `ml-auto` statt einer festen Spalte im Zeilen-Layout: undekorierte Zeilen —
 // der Normalfall — rendern hier gar nichts und behalten damit exakt ihre
@@ -836,4 +1061,3 @@ function Chevron({ open }: { open: boolean }) {
     </svg>
   );
 }
-
