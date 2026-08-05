@@ -87,6 +87,8 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn materialize_writes_both_shells_wrappers() {
@@ -136,5 +138,72 @@ mod tests {
             for_shell("C:\\Windows\\System32\\cmd.exe", Path::new("/pc")),
             ShellIntegration::default()
         );
+    }
+
+    /// The wrapper appends itself to `PROMPT_COMMAND`; it must never replace
+    /// one the user's own rc installed. Run against a real bash through a real
+    /// PTY, because the failure this guards against (a `--rcfile` that quietly
+    /// drops the user's hook) only shows up once bash has actually parsed it.
+    #[test]
+    fn the_bash_wrapper_keeps_the_users_own_prompt_command() {
+        let root = std::env::temp_dir().join(format!("panecrew-bash-{}", std::process::id()));
+        materialize(&root).expect("materialize should succeed");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).expect("home should be creatable");
+        std::fs::write(
+            home.join(".bashrc"),
+            "PROMPT_COMMAND='echo user-hook-ran'\nexport USER_RC_WAS_SOURCED=yes\n",
+        )
+        .expect("fake .bashrc should be writable");
+
+        let mut args = for_shell("/bin/bash", &root).args;
+        args.extend([
+            "-i".into(),
+            "-c".into(),
+            "eval \"$PROMPT_COMMAND\"; echo \"sourced=$USER_RC_WAS_SOURCED\"".into(),
+        ]);
+
+        let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = output.clone();
+        let handle = crate::pty_manager::spawn(
+            crate::pty_manager::SpawnOptions {
+                cmd: "bash".into(),
+                args,
+                cwd: std::env::temp_dir(),
+                env: vec![("HOME".into(), home.to_string_lossy().into_owned())],
+                cols: 80,
+                rows: 24,
+            },
+            move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
+        )
+        .expect("spawn should succeed");
+
+        let saw = |needle: &str| {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(5) {
+                if String::from_utf8_lossy(&output.lock().unwrap()).contains(needle) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            false
+        };
+
+        let kept_user_hook = saw("user-hook-ran");
+        let sourced_user_rc = saw("sourced=yes");
+        // PaneCrew's own hook, appended behind the user's: the OSC 7 report.
+        let reported_cwd = saw("\u{1b}]7;file://");
+
+        let _ = handle.kill();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            kept_user_hook,
+            "the user's own PROMPT_COMMAND must still run"
+        );
+        assert!(
+            sourced_user_rc,
+            "the user's own .bashrc must still be sourced"
+        );
+        assert!(reported_cwd, "PaneCrew's own hook must run alongside it");
     }
 }

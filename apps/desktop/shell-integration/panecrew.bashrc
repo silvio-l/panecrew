@@ -66,4 +66,14 @@ _panecrew_precmd() {
 }
 # Appended, never replaced: whatever the user's rc installed keeps running,
 # and runs first.
-PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}_panecrew_precmd"
+#
+# Since bash 5.1 PROMPT_COMMAND may be an array, and `$PROMPT_COMMAND` would
+# then expand to its first element only — appending that way would silently
+# throw the rest of the user's setup away. `declare -p` is the portable way to
+# tell the two apart (`${var@a}` needs 5.1 itself, and macOS still ships 3.2);
+# it runs once at startup, not per prompt.
+if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == "declare -a"* ]]; then
+  PROMPT_COMMAND+=(_panecrew_precmd)
+else
+  PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }_panecrew_precmd"
+fi
