@@ -20,7 +20,7 @@ describe("nextZoomLevel", () => {
     expect(nextZoomLevel(bottom, -1)).toBe(bottom);
   });
 
-  it("hält die Untergrenze über 0,7 — darunter sprengen die nicht mitskalierenden Ampeln die Titelzeile", () => {
+  it("hört bei 0,8 auf — darunter dominieren die nicht mitskalierenden Ampeln die Titelzeile", () => {
     expect(climb(DEFAULT_ZOOM, -1, 50)).toBeGreaterThanOrEqual(0.8);
   });
 
