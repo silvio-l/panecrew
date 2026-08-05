@@ -20,9 +20,26 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
+// Greift in die xterm-Attrappe hinein: der Tastatur-Handler der Pane wird nur
+// an xterm übergeben, ist von außen also sonst nicht auslösbar, und der
+// Schriftzoom wirkt genau auf terminal.options.fontSize.
+const xterm = vi.hoisted(() => {
+  const options: { fontSize?: number } = {};
+  return {
+    keyHandler: null as ((event: KeyboardEvent) => boolean) | null,
+    options,
+    fit: vi.fn(),
+  };
+});
+
+const setZoomMock = vi.hoisted(() =>
+  vi.fn<(zoom: number) => Promise<void>>(() => Promise.resolve()),
+);
+
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
     onDragDropEvent: vi.fn(() => Promise.resolve(() => undefined)),
+    setZoom: setZoomMock,
   }),
 }));
 
@@ -35,7 +52,7 @@ vi.mock("@xterm/addon-fit", () => ({
       /* no-op */
     }
     fit(): void {
-      /* no-op */
+      xterm.fit();
     }
   },
 }));
@@ -71,8 +88,9 @@ vi.mock("@xterm/xterm", () => ({
     hasSelection(): boolean {
       return false;
     }
-    attachCustomKeyEventHandler(): void {
-      /* no-op */
+    options = xterm.options;
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void {
+      xterm.keyHandler = handler;
     }
     onData(): { dispose: () => void } {
       return { dispose: () => undefined };
@@ -269,5 +287,95 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: "Projekt wählen" }),
     ).toBeInTheDocument();
+  });
+});
+
+// jsdom meldet keine macOS-Kennung, es gilt hier also die Strg-Belegung; dass
+// beide Positionen und beide Plattformen gleich matchen, deckt registry.test.ts
+// ab. Geprüft wird hier die Verdrahtung, nicht der Matcher.
+describe("Zoom", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+    xterm.keyHandler = null;
+    delete xterm.options.fontSize;
+  });
+
+  // Der eigentliche Fallstrick: die nativen Ampeln skalieren nicht mit, das
+  // reservierte Padding aber schon. Nur das Produkt aus beidem ist konstant.
+  it("hält den physischen Abstand zu den Ampeln über alle Zoomstufen konstant", () => {
+    const { container } = render(<App />);
+    const header = container.querySelector("header");
+
+    const physicalInset = () => {
+      const zoom = setZoomMock.mock.calls.at(-1)?.[0] ?? 1;
+      return Number.parseFloat(header?.style.paddingLeft ?? "0") * zoom;
+    };
+    const press = (code: string) =>
+      fireEvent.keyDown(window, { code, ctrlKey: true, shiftKey: true });
+
+    expect(physicalInset()).toBeCloseTo(84);
+    press("Equal");
+    press("Equal");
+    expect(setZoomMock.mock.calls.at(-1)?.[0]).toBeGreaterThan(1);
+    expect(physicalInset()).toBeCloseTo(84);
+
+    press("Minus");
+    press("Minus");
+    press("Minus");
+    expect(setZoomMock.mock.calls.at(-1)?.[0]).toBeLessThan(1);
+    expect(physicalInset()).toBeCloseTo(84);
+
+    press("Digit0");
+    expect(setZoomMock).toHaveBeenLastCalledWith(1);
+    expect(physicalInset()).toBeCloseTo(84);
+  });
+
+  it("lässt Strg+Plus ohne Shift die Oberfläche unangetastet", () => {
+    render(<App />);
+
+    fireEvent.keyDown(window, { code: "Equal", ctrlKey: true });
+
+    // Der Effekt beim Mounten setzt einmal die Ausgangsstufe; mehr nicht.
+    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
+  });
+
+  it("zoomt mit Strg+Plus die Pane-Schrift und meldet die neue Größe ans PTY", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "get_launch_project"
+        ? Promise.resolve("/Users/dev/projects/storefront")
+        : Promise.resolve(),
+    );
+    render(<App />);
+    await screen.findByLabelText("Terminal storefront");
+
+    const press = (code: string) => {
+      const event = {
+        type: "keydown",
+        code,
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: vi.fn(),
+      };
+      xterm.keyHandler?.(event as unknown as KeyboardEvent);
+      return event.preventDefault;
+    };
+
+    const prevented = press("Equal");
+    const enlarged = xterm.options.fontSize;
+    press("Digit0");
+    const base = xterm.options.fontSize;
+
+    // Ohne preventDefault liefe der eingebaute Webview-Zoom auf derselben
+    // Taste mit — die Pane-Schrift wüchse dann doppelt.
+    expect(prevented).toHaveBeenCalled();
+    expect(enlarged).toBeGreaterThan(base ?? 0);
+    // fit() ist der Weg, auf dem die neue Zellengeometrie als pty_resize
+    // beim Kindprozess ankommt.
+    expect(xterm.fit).toHaveBeenCalled();
+    // Und die Oberfläche bleibt, wo sie war.
+    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
   });
 });

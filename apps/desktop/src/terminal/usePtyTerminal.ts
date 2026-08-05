@@ -5,6 +5,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { isMacPlatform } from "../shortcuts/platform";
+import { matchesShortcut, SHORTCUTS } from "../shortcuts/registry";
+import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { loadShellHistory } from "./shellHistory";
@@ -181,10 +184,50 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       terminal.onResize(syncSize),
     ];
 
+    // Pane-eigener Schriftzoom. Bewusst NICHT über das globale Token
+    // --pc-terminal-fontSize auf :root — das würde ab Ticket 03 alle Panes
+    // zugleich verstellen, obwohl das Kürzel nur die aktive meint.
+    //
+    // terminalOptions ist zugleich die Schriftquelle des Geistertextes (per
+    // Referenz an attachInlineSuggestion übergeben), deshalb wird hier das
+    // Objekt mitgeschrieben und nicht nur terminal.options: eine Zuweisung,
+    // beide Ebenen bleiben auf derselben Größe. Ein bereits gezeichneter
+    // Geistertext hängt allerdings an seinen inline gesetzten Maßen, bis er
+    // neu rendert — daher der refresh().
+    const baseFontSize = terminalOptions.fontSize;
+    let paneZoom = DEFAULT_ZOOM;
+    const applyPaneZoom = (level: number) => {
+      paneZoom = level;
+      terminalOptions.fontSize = baseFontSize * level;
+      terminal.options.fontSize = terminalOptions.fontSize;
+      // fit() löst über onResize den bestehenden pty_resize-Pfad aus.
+      fitAddon.fit();
+      refreshSuggestion();
+    };
+
     terminal.attachCustomKeyEventHandler((event) => {
       // attachCustomKeyEventHandler wird für keydown UND keypress aufgerufen;
       // ohne diese Prüfung würde jeder Tastendruck doppelt behandelt.
       if (event.type !== "keydown") return true;
+
+      // Cmd/Strg +/-/0 ohne Shift: nur die Schrift DIESER Pane. Die
+      // Shift-Varianten gehören dem App-weiten Zoom und werden hier nicht
+      // angefasst — sie blubbern zum window-Listener in useAppZoom weiter.
+      const paneShortcut = SHORTCUTS.find(
+        (def) =>
+          def.scope === "pane" && matchesShortcut(event, def, isMacPlatform()),
+      );
+      if (paneShortcut) {
+        // `return false` hält nur xterm ab; ohne preventDefault zoomte der
+        // Webview auf derselben Taste zusätzlich mit.
+        event.preventDefault();
+        applyPaneZoom(
+          paneShortcut.glyph === "0"
+            ? DEFAULT_ZOOM
+            : nextZoomLevel(paneZoom, paneShortcut.glyph === "+" ? 1 : -1),
+        );
+        return false;
+      }
 
       // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen die sichtbare
       // Inline-Vervollständigung — die fish-Bindungen. Tab bleibt bewusst

@@ -14,11 +14,21 @@ import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 // data-tauri-drag-region wirkt nur auf dem Element selbst (keine Vererbung an
 // Kinder): Dekoratives wird pointer-events-none, damit jeder Mousedown auf
 // einem attributierten Hintergrund-Segment landet.
-export function TitleBar() {
+//
+// Der linke Freiraum für die Ampeln hängt am Zoomfaktor, statt eine feste
+// Tailwind-Klasse zu sein: `setZoom` skaliert den kompletten Webview-Inhalt,
+// die nativen Ampeln als echte Fensterelemente aber nicht. Ein konstantes
+// CSS-Padding würde also mitwachsen und -schrumpfen — bei kleinem Zoom rutscht
+// die App-Marke unter die Knöpfe, bei großem klafft eine Lücke. Geteilt durch
+// den Faktor bleibt der PHYSISCHE Abstand auf jeder Stufe derselbe.
+const TRAFFIC_LIGHT_INSET = 84;
+
+export function TitleBar({ zoom }: { zoom: number }) {
   return (
     <header
       data-tauri-drag-region
-      className="relative flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pl-[84px] pr-2"
+      style={{ paddingLeft: `${TRAFFIC_LIGHT_INSET / zoom}px` }}
+      className="relative flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pr-2"
     >
       <div
         data-tauri-drag-region

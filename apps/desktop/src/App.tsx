@@ -56,6 +56,7 @@ import {
 } from "./components/ExplorerPanel";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { TerminalPane } from "./components/TerminalPane";
+import { useAppZoom } from "./shortcuts/useAppZoom";
 import { projectNameFromPath, type Project } from "./types/project";
 import "./App.css";
 
@@ -75,6 +76,7 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
+  const zoom = useAppZoom();
 
   // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon gegen
   // das echte Dateisystem geprüft (existiert, ist ein Verzeichnis), ein
@@ -150,7 +152,7 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="flex h-full flex-col">
-        <TitleBar />
+        <TitleBar zoom={zoom} />
         <div className="flex min-h-0 flex-1">
           {/* Ohne offenes Projekt gibt es nichts, dem der Explorer folgen
               könnte — er erscheint erst mit der Pane. "Dauerhaft sichtbar"
