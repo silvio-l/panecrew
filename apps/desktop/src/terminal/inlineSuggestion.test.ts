@@ -245,6 +245,23 @@ describe("Verzeichnis-Popup bei cd", () => {
   const selected = () =>
     document.querySelector(".pc-cdpopup__item--selected")?.textContent ?? null;
 
+  it("benennt beide Tasten, nicht nur die richtige", async () => {
+    // Tab ist nicht die Taste, die man vor einer Liste erwartet; ohne den
+    // Hinweis probiert man Enter und bekommt seinen Befehl ausgeführt.
+    subdirectories = { "": ["src"] };
+
+    await type("cd ");
+
+    const footer = document.querySelector(".pc-cdpopup__footer");
+    expect(
+      [...(footer?.querySelectorAll("kbd") ?? [])].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(["Tab", "Enter"]);
+    expect(footer?.textContent).toContain("übernehmen");
+    expect(footer?.textContent).toContain("abschicken");
+  });
+
   it("zeigt die tatsächlichen Unterverzeichnisse, nicht die History", async () => {
     // In der History steht `cd apps` — hier gibt es das gar nicht.
     subdirectories = { "": ["docs", "src"] };
@@ -319,8 +336,8 @@ describe("Verzeichnis-Popup bei cd", () => {
     listPending = true;
     expect(suggestion.directories.accept()).toBe(true);
     expect(suggestion.directories.visible()).toBe(true);
-    // Ein schnelles zweites Enter darf denselben Eintrag nicht nochmal
-    // einfügen — es gehört der Shell, die die Zeile dann abschickt.
+    // Ein schnelles zweites Tab darf denselben Eintrag nicht nochmal
+    // einfügen — es gehört dann der Tab-Completion der Shell.
     expect(suggestion.directories.accept()).toBe(false);
     expect(sent).toEqual(["c/"]);
 
@@ -349,7 +366,7 @@ describe("Verzeichnis-Popup bei cd", () => {
 
     expect(document.querySelector(".pc-cdpopup")).toBeNull();
     expect(sent).toEqual([]);
-    // Unsichtbar heißt: Enter gehört wieder der Shell.
+    // Unsichtbar heißt: auch Tab gehört wieder der Shell.
     expect(suggestion.directories.visible()).toBe(false);
 
     // Verworfen ist nur DIESE Eingabe; das nächste Zeichen fragt neu.

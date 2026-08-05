@@ -18,7 +18,7 @@ import type { SubdirectoryLookup } from "./workingDirectory";
 // Textselektion landen, und eine Zeile, die auf Hover reagiert, aber auf einen
 // Klick nicht, verspricht mehr, als sie hält.
 
-/** Wie viele Einträge höchstens gleichzeitig sichtbar sind. */
+/** Wie hoch die Liste höchstens wird, in Zellzeilen — Fußzeile eingerechnet. */
 const MAX_ROWS = 8;
 
 /** Was die Tastatur mit dem Popup machen darf. */
@@ -78,8 +78,8 @@ export function attachDirectoryPopup(
    * hat sie aber noch nicht zurückgespiegelt. Sichtbar bleibt die Liste dabei
    * — sonst gäbe es genau hier wieder eine Lücke, in der ein Escape an ihr
    * vorbei in die Shell fiele. Nur übernehmen lässt sie sich nicht: ein
-   * schnelles zweites Enter würde sonst denselben Eintrag ein zweites Mal
-   * einfügen, statt die Zeile abzuschicken.
+   * schnelles zweites Tab würde sonst denselben Eintrag ein zweites Mal
+   * einfügen, statt die Vervollständigung der Shell auszulösen.
    */
   let stale = false;
   let selected = 0;
@@ -122,16 +122,35 @@ export function attachDirectoryPopup(
       item.textContent = entries[index] ?? "";
       list.append(item);
     }
+    // Welche Taste übernimmt, sieht man einer Liste nicht an — und hier ist es
+    // nicht die, die man erwartet: Enter schickt im Terminal immer ab, auch
+    // mit offener Liste. Ohne diesen Hinweis probiert man Enter, bekommt
+    // seinen Befehl ausgeführt und hält die Liste für kaputt. Beide Tasten
+    // stehen deshalb da, nicht nur die richtige.
+    const footer = document.createElement("div");
+    footer.className = "pc-cdpopup__footer";
+    for (const [cap, action] of [
+      ["Tab", "übernehmen"],
+      ["Enter", "abschicken"],
+    ]) {
+      const hint = document.createElement("span");
+      hint.className = "pc-cdpopup__hint";
+      const key = document.createElement("kbd");
+      key.textContent = cap ?? "";
+      hint.append(key, action ?? "");
+      footer.append(hint);
+    }
     if (hidden > 0) {
-      const more = document.createElement("div");
-      more.className = "pc-cdpopup__more";
+      const more = document.createElement("span");
+      more.className = "pc-cdpopup__count";
       // Ohne diesen Hinweis läse sich eine abgeschnittene Liste wie eine
       // vollständige — und der gesuchte Ordner wäre scheinbar nicht da.
       // Gezählt wird, was das Backend geliefert hat; das ist dort selbst schon
       // gedeckelt, bei sehr vielen Treffern fehlen also mehr, als hier steht.
       more.textContent = `+${hidden}`;
-      list.append(more);
+      footer.append(more);
     }
+    list.append(footer);
     return list;
   };
 
@@ -144,9 +163,10 @@ export function attachDirectoryPopup(
     const above = buffer.cursorY;
     const downwards = below >= Math.min(entries.length, MAX_ROWS) || below >= above;
     const capacity = Math.max(1, Math.min(MAX_ROWS, downwards ? below : above));
-    // Passt nicht alles, geht eine Zeile an den „+N"-Hinweis.
-    const shown =
-      entries.length > capacity && capacity > 1 ? capacity - 1 : Math.min(entries.length, capacity);
+    // Eine Zeile gehört immer der Fußzeile (Tastenhinweis, bei Bedarf mit
+    // „+N"). Bleibt dafür kein Platz, steht sie trotzdem da — der Hinweis ist
+    // wichtiger als die Zeile Einträge, die sie kostet.
+    const shown = Math.min(entries.length, Math.max(1, capacity - 1));
     const hidden = entries.length - shown;
 
     // Die Auswahl bleibt im sichtbaren Ausschnitt.
