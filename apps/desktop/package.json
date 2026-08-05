@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "knip": "knip"
+    "knip": "knip",
+    "gen:shortcuts-docs": "node --experimental-strip-types scripts/generate-shortcuts-docs.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

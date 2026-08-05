@@ -1,0 +1,130 @@
+// Deklarative Quelle für PaneCrews Tastaturkürzel — dieselben Einträge
+// treiben sowohl die Laufzeit-Erkennung (matchesShortcut) als auch die
+// generierte Referenz in docs/shortcuts.md (siehe
+// apps/desktop/scripts/generate-shortcuts-docs.ts), analog zum
+// clap/clap-markdown-Muster in src-tauri/src/cli.rs: ein Eintrag ändern,
+// beides zieht nach, nie zwei Stellen von Hand synchron halten.
+//
+// `codes` statt `key`: KeyboardEvent.code beschreibt die physische
+// Tastenposition unabhängig vom Tastaturlayout, KeyboardEvent.key dagegen das
+// Zeichen, das dieses Layout daraus macht. Bei der Plus-Taste geht das
+// international auseinander — auf einer deutschen Tastatur sitzt "+"/"*" auf
+// einer eigenen Taste rechts neben dem Ü (Code "BracketRight"), auf einer
+// US-Tastatur teilen sich "="/"+" eine Taste ("Equal") zusammen mit Shift.
+// Deshalb pro Aktion mehrere codes: die US-Position, die deutsche ISO-Position
+// und die Zifferblock-Variante decken beide Layouts ab, ohne dass die
+// Zeichenausgabe von Shift irgendeine Rolle spielt (die Chord-Erkennung selbst
+// bestimmt per `shift`, nicht das Ergebnis-Zeichen).
+type ShortcutScope = "app" | "pane";
+
+/** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
+type ShortcutGlyph = "+" | "-" | "0";
+
+export interface ShortcutDefinition {
+  readonly id: string;
+  /** Deutschsprachige Beschreibung — dieselbe Sprache wie der Rest der UI. */
+  readonly description: string;
+  readonly scope: ShortcutScope;
+  readonly glyph: ShortcutGlyph;
+  /** Physische Tastenposition(en), die diese Aktion auslösen — siehe oben. */
+  readonly codes: readonly string[];
+  /** true = mit Shift (App-weiter Zoom), false = ohne (nur aktive Pane). */
+  readonly shift: boolean;
+}
+
+const PLUS_CODES = ["Equal", "BracketRight", "NumpadAdd"] as const;
+const MINUS_CODES = ["Minus", "NumpadSubtract"] as const;
+const ZERO_CODES = ["Digit0", "Numpad0"] as const;
+
+export const SHORTCUTS: readonly ShortcutDefinition[] = [
+  {
+    id: "app.zoomIn",
+    description: "Gesamte Oberfläche vergrößern",
+    scope: "app",
+    glyph: "+",
+    codes: PLUS_CODES,
+    shift: true,
+  },
+  {
+    id: "app.zoomOut",
+    description: "Gesamte Oberfläche verkleinern",
+    scope: "app",
+    glyph: "-",
+    codes: MINUS_CODES,
+    shift: true,
+  },
+  {
+    id: "app.zoomReset",
+    description: "Oberflächen-Zoom zurücksetzen",
+    scope: "app",
+    glyph: "0",
+    codes: ZERO_CODES,
+    shift: true,
+  },
+  {
+    id: "pane.zoomIn",
+    description: "Schrift der aktiven Terminal-Pane vergrößern",
+    scope: "pane",
+    glyph: "+",
+    codes: PLUS_CODES,
+    shift: false,
+  },
+  {
+    id: "pane.zoomOut",
+    description: "Schrift der aktiven Terminal-Pane verkleinern",
+    scope: "pane",
+    glyph: "-",
+    codes: MINUS_CODES,
+    shift: false,
+  },
+  {
+    id: "pane.zoomReset",
+    description: "Schriftgröße der aktiven Terminal-Pane zurücksetzen",
+    scope: "pane",
+    glyph: "0",
+    codes: ZERO_CODES,
+    shift: false,
+  },
+];
+
+/** Die Teilmenge von KeyboardEvent, die das Matching tatsächlich braucht. */
+export interface ShortcutKeyEvent {
+  readonly code: string;
+  readonly shiftKey: boolean;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly altKey: boolean;
+}
+
+/**
+ * Prüft eine Tastenkombination gegen eine Definition. `isMac` entscheidet,
+ * ob Cmd (mac) oder Strg (Windows/Linux) der geforderte Primärmodifikator
+ * ist; der jeweils andere darf nicht zusätzlich gedrückt sein, sonst würde
+ * z. B. ein versehentliches Ctrl+Cmd+Plus auf dem Mac mitzählen.
+ */
+export function matchesShortcut(
+  event: ShortcutKeyEvent,
+  def: ShortcutDefinition,
+  isMac: boolean,
+): boolean {
+  const primaryPressed = isMac ? event.metaKey : event.ctrlKey;
+  const otherModifierPressed = isMac ? event.ctrlKey : event.metaKey;
+  return (
+    primaryPressed &&
+    !otherModifierPressed &&
+    !event.altKey &&
+    event.shiftKey === def.shift &&
+    def.codes.includes(event.code)
+  );
+}
+
+/** Menschenlesbare Chord-Darstellung für die generierte Referenz. */
+export function formatChord(
+  def: ShortcutDefinition,
+  platform: "mac" | "other",
+): string {
+  if (platform === "mac") {
+    return `${def.shift ? "⇧" : ""}⌘${def.glyph}`;
+  }
+  return `Ctrl+${def.shift ? "Shift+" : ""}${def.glyph}`;
+}
