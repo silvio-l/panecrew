@@ -38,22 +38,19 @@ body {
  * Hängt in einer xterm-Decoration und damit im Zellraster; hier steht nur, wie
  * es aussieht.
  *
- * Dieselbe Glasplatte wie die Titelzeile — ein Rezept, kein zweites (die
- * --pc-glass-*-Tokens in theme.css, samt Verlauf, Lichtkante, Schlagschatten,
- * Weichzeichner und Sättigung). Zwei begründete Abweichungen:
+ * TEMPORÄRER SICHERHEITS-REVERT (2026-08-05): Der Glas-Look (--pc-glass-*,
+ * backdrop-filter) verursachte in der echten App ein Render-Artefakt — sechs
+ * harte Vertikalbalken über fast die ganze Pane, sobald das Popup offen war
+ * (Screenshot: .scratch/.../BEFUND-artefakt-in-app.png, Ticket: Task 18).
+ * Nicht abschließend geklärt, ob backdrop-filter, der Verlauf oder etwas
+ * anderes die Ursache ist. Bis das isoliert ist, bewusst zurück auf die
+ * schlichte, bereits produktiv gelaufene Widget-Fläche ohne Weichzeichner —
+ * ein unbenutzbares Terminal ist ein größeres Risiko als ein fehlender
+ * Glas-Look, den es ohnehin erst seit kurzem gibt. Nach Klärung von Task 18
+ * wieder auf --pc-glass-* umstellen, nicht diesen Kommentar einfach löschen.
  *
- * 1. Der Grund ist dichter. Die Titelkapsel schwebt über weitgehend leerer
- *    Fläche, diese Platte über laufendem Terminaltext: bei deren Deckkraft
- *    stünden fremde Zeichen mitten in den Verzeichnisnamen. Gemischt wird
- *    dieselbe Glasfläche mit dem Widget-Grund, den die Liste vorher allein
- *    trug — die Platte bleibt sichtbar durchscheinend, aber der Name darauf
- *    ist der einzige Text, den man liest.
- * 2. Der Radius ist kleiner (10px statt 13px). 13px sind an einer knapp
- *    30 Pixel hohen Kapsel fast eine Pille; an einer mehrzeiligen Liste wären
- *    sie ein Blasenrand. Gleiche Familie, andere Größe.
- *
- * Keine eigene Akzentfarbe: der blaue Akzent gehört laut Direction Contract
- * allein dem Fokus, und die ANSI-Farben darunter haben im Terminalinhalt feste
+ * Keine eigene Akzentfarbe: der Akzent gehört laut Direction Contract allein
+ * dem Fokus, und die ANSI-Farben darunter haben im Terminalinhalt feste
  * Bedeutung.
  *
  * Die Pfadnamen stehen in der Terminalschrift (inline aus den
@@ -69,19 +66,10 @@ body {
   /* Nur oben Luft: der Fußzeilenstreifen sitzt bündig auf der Unterkante,
      sonst schwebte er als eigene Platte in der Platte. */
   padding: 0.125rem 0 0;
-  border: 1px solid var(--pc-glass-border);
-  border-radius: 0.625rem;
+  border: 1px solid var(--pc-widget-border);
+  border-radius: 0.25rem;
   overflow: hidden;
-  background-color: color-mix(
-    in srgb,
-    var(--pc-glass-background) 55%,
-    var(--pc-widget-background)
-  );
-  /* Lichtabfall von der Oberkante — die Platte hat eine beleuchtete
-     Oberseite, nicht nur einen Rand. */
-  background-image: var(--pc-glass-faceLight);
-  box-shadow: var(--pc-glass-elevation);
-  backdrop-filter: var(--pc-glass-blur);
+  background: var(--pc-widget-background);
   color: var(--pc-foreground);
   /* Bedient wird ausschließlich die Tastatur — Begründung in directoryPopup.ts. */
   pointer-events: none;
