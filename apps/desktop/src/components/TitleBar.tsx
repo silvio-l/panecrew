@@ -88,7 +88,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
           backgroundImage:
             "linear-gradient(180deg, var(--pc-glass-topLight), transparent 62%)",
         }}
-        className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-glass-border) bg-(--pc-glass-background) pr-[3px] shadow-[0_1px_6px_var(--pc-glass-shadow),inset_0_1px_0_var(--pc-glass-sheen)] backdrop-blur-lg backdrop-saturate-150"
+        className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-glass-border) bg-(--pc-glass-background) pr-[3px] shadow-[0_1px_4px_var(--pc-glass-shadow),inset_0_1px_0_var(--pc-glass-sheen)] backdrop-blur-lg backdrop-saturate-150"
       >
         {/* Ziehfläche zwischen Ampeln und Feld — als reine Lücke wäre der
             halbe linke Kapselbereich nicht ziehbar. */}

@@ -99,25 +99,32 @@
    * backdrop-filter arbeitet trotzdem sichtbar an genau einer Stelle: der
    * Fokus-Glow der aktiven Pane strahlt unter die Unterkante der Titelkapsel.
    *
-   * Die Zahlen sind gegen die echte, lokal installierte Safari 26 (macOS
-   * 26.5.2, Dark) kalibriert, nicht geschätzt — Messwerte und Herleitung in
-   * docs/agents/vscode-theming-research.md §11. Kurzfassung: Apples Toolbar
-   * liegt bei (35,42,44), unsere Kapselfläche bei (33,35,38) — der TON war von
-   * Anfang an richtig, zu hart waren die Kanten. Safaris hellste Kante steht
-   * +25 über der Fläche ihres eigenen Bedienelements; unsere Lichtkante stand
-   * +34 über der Kapselfläche und lief dabei über die ganze Fensterbreite.
-   * Reduziert wurden deshalb gezielt Lichtkante, Schlagschatten und
-   * Verlaufsstärke, nicht pauschal alles.
+   * Die Zahlen sind an echten macOS-26-Fenstern ausgemessen, nicht geschätzt —
+   * Safari 26 und Finder liefern identische Werte, Messreihen und Herleitung in
+   * docs/agents/vscode-theming-research.md §11/§11.6. Apples Referenz, Dark:
+   * Systemfläche (35,42,44), schwebendes Bedienelement darauf +5, dessen Kante
+   * +24 und oben wie unten GLEICH hell, Füllung über die ganze Höhe
+   * gleichmäßig, kein Schlagschatten.
+   *
+   * Daraus folgt, welche Signale hier klein sein müssen und welches nicht:
+   * Verlauf (topLight) und einseitige Lichtkante (sheen) sind Tiefensignale,
+   * die Apples Material GAR NICHT verwendet — beide fast auf null. Die
+   * Flächenanhebung steht bei +10 über dem Grund (Apple: +5). Der Rahmen
+   * dagegen bleibt unangetastet: er liegt mit +14 ohnehin unter Apples +24 und
+   * trägt jetzt die Kante allein. Ein Rest Schlagschatten bleibt als bewusste
+   * Abweichung — Apples Leisten schweben nicht über Inhalt, unsere schon.
    *
    * topLight ist der Startwert des Verlaufs auf der Oberseite (der Lichtabfall
    * über die Fläche), sheen die 1px-Kante ganz oben — zwei verschiedene Dinge,
-   * deshalb zwei Tokens.
+   * deshalb zwei Tokens. Im Light-Theme sind beide deutlich größer: auf weißem
+   * Grund kann die Fläche nicht heller werden als ihr Untergrund, dort ist die
+   * Kante das einzige, was die Erhebung überhaupt trägt.
    */
-  --pc-glass-background: rgba(46, 49, 55, 0.46);
+  --pc-glass-background: rgba(46, 49, 55, 0.36);
   --pc-glass-border: rgba(255, 255, 255, 0.055);
-  --pc-glass-sheen: rgba(255, 255, 255, 0.03);
-  --pc-glass-topLight: rgba(255, 255, 255, 0.025);
-  --pc-glass-shadow: rgba(0, 0, 0, 0.18);
+  --pc-glass-sheen: rgba(255, 255, 255, 0.015);
+  --pc-glass-topLight: rgba(255, 255, 255, 0.012);
+  --pc-glass-shadow: rgba(0, 0, 0, 0.1);
 
   /* Hairline schwebender Chrome-Ränder (Tooltip, Kontextmenü) — seit dem
      Glas-Umbau nicht mehr der Rand der Titelzeile selbst. */
@@ -261,11 +268,11 @@
    * plus der Schlagschatten (macOS' eigene Lösung für helle Werkzeugleisten),
    * der Ton bleibt knapp unter Weiß.
    */
-  --pc-glass-background: rgba(250, 250, 252, 0.58);
+  --pc-glass-background: rgba(250, 250, 252, 0.5);
   --pc-glass-border: rgba(0, 0, 0, 0.07);
-  --pc-glass-sheen: rgba(255, 255, 255, 0.45);
-  --pc-glass-topLight: rgba(255, 255, 255, 0.3);
-  --pc-glass-shadow: rgba(15, 23, 42, 0.07);
+  --pc-glass-sheen: rgba(255, 255, 255, 0.3);
+  --pc-glass-topLight: rgba(255, 255, 255, 0.18);
+  --pc-glass-shadow: rgba(15, 23, 42, 0.05);
 
   /* Hairline schwebender Chrome-Ränder, gleiche Regel wie im Dark-Block. */
   --pc-titleBar-border: #f0f1f2;
