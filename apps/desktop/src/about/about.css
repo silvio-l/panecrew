@@ -12,11 +12,24 @@ body,
 }
 
 body {
+  margin: 0;
   overflow: hidden;
-  background: var(--pc-app-background);
+  /* Das native Fenster ist transparent und rechteckig — die Silhouette entsteht
+     vollständig im Dokument, samt selbst gemaltem Schlagschatten. Derselbe Bau
+     wie beim Splash: der native Schatten folgte der eckigen Fensterkante, nicht
+     der Form. */
+  background: transparent;
   color: var(--pc-foreground);
   font-family: var(--pc-chrome-fontFamily);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   cursor: default;
+}
+
+/* Die Bühne steht mittig im transparenten Fenster; ringsum bleibt der Rand für
+   den Schlagschatten frei (Maße in About.tsx und about.rs). */
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

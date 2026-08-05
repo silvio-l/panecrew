@@ -35,6 +35,7 @@ pub fn run() {
             menu::CHECK_UPDATES => about::show(app, true),
             _ => {}
         })
+        .on_window_event(about::on_window_event)
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
             // panes can't race on the same three files. A failure is
@@ -69,6 +70,7 @@ pub fn run() {
             splash::splash_finished,
             splash::main_ready,
             about::about_take_update_request,
+            about::about_visible,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
