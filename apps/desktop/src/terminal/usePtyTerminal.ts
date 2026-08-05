@@ -12,7 +12,11 @@ import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { loadShellHistory } from "./shellHistory";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
-import { createDirectoryProbe, parseOsc7 } from "./workingDirectory";
+import {
+  createDirectoryProbe,
+  createSubdirectoryIndex,
+  parseOsc7,
+} from "./workingDirectory";
 
 // Bindet ein echtes xterm.js-Terminal an eine PTY-Session im Rust-Backend.
 // Der IPC-Vertrag (pty_spawn/pty_write/pty_resize/pty_kill, Output als
@@ -160,11 +164,15 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
     const directories = createDirectoryProbe(() => {
       refreshSuggestion();
     });
+    const subdirectories = createSubdirectoryIndex(() => {
+      refreshSuggestion();
+    });
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,
       cwd: () => liveCwd,
       isDirectory: directories.isDirectory,
+      listSubdirectories: subdirectories.list,
       font: terminalOptions,
     });
     refreshSuggestion = suggestion.refresh;
@@ -229,12 +237,42 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
         return false;
       }
 
+      // Solange das Verzeichnis-Popup einer `cd`-Zeile steht, gehören ihm
+      // Pfeil hoch/runter, Enter, Tab und Escape. Steht es nicht — der
+      // Normalfall in jeder anderen Zeile —, wird hier nichts abgefangen und
+      // alle fünf Tasten gehen unverändert an die Shell: Pfeiltasten bleiben
+      // History-Navigation, Enter schickt ab, Tab bleibt die echte
+      // Tab-Completion der Shell.
+      //
+      // Dass Enter bei sichtbarem Popup vervollständigt statt abzuschicken,
+      // ist die bewusste Folge davon (`cd src` + Enter braucht dann ein
+      // zweites Enter) — dieselbe Übernahme-Taste wie in jeder
+      // Vervollständigungsliste.
+      const popup = suggestion.directories;
+      if (
+        popup.visible() &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          popup.move(event.key === "ArrowDown" ? 1 : -1);
+          return false;
+        }
+        if (event.key === "Escape") {
+          popup.dismiss();
+          return false;
+        }
+        if ((event.key === "Enter" || event.key === "Tab") && popup.accept()) {
+          event.preventDefault();
+          return false;
+        }
+      }
+
       // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen die sichtbare
-      // Inline-Vervollständigung — die fish-Bindungen. Tab bleibt bewusst
-      // unbelegt und damit bei der Shell: PaneCrew hat, anders als Warp,
-      // keinen eigenen Zeileneditor und könnte die echte Tab-Completion
-      // nicht ersetzen, sondern nur verdrängen. Ohne sichtbare Ergänzung
-      // fallen beide Tasten auf ihr normales Verhalten zurück.
+      // Inline-Vervollständigung — die fish-Bindungen. Ohne sichtbare
+      // Ergänzung fallen beide Tasten auf ihr normales Verhalten zurück.
       if (
         !event.ctrlKey &&
         !event.metaKey &&
@@ -333,6 +371,7 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       unlistenDrop?.();
       resizeObserver.disconnect();
       directories.dispose();
+      subdirectories.dispose();
       suggestion.dispose();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;

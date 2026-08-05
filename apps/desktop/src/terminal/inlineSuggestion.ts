@@ -1,7 +1,9 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
+import type { DirectoryPopupControls } from "./directoryPopup";
+import { attachDirectoryPopup } from "./directoryPopup";
 import type { BufferPosition } from "./suggestion";
 import { classifyKeystroke, computeGhost, rememberCommand } from "./suggestion";
-import type { DirectoryLookup } from "./workingDirectory";
+import type { DirectoryLookup, SubdirectoryLookup } from "./workingDirectory";
 
 // xterm-Anbindung der Inline-Vervollständigung: hält den Ankerpunkt, liest
 // den Bildschirm und malt den Rest des Treffers als gedimmten Geistertext
@@ -18,6 +20,15 @@ export interface InlineSuggestion {
    * Verzeichnisprüfung, deren Antwort erst nach dem Rendern eintrifft.
    */
   refresh: () => void;
+  /**
+   * Das Verzeichnis-Popup der `cd`-Zeilen.
+   *
+   * Es hängt hier mit drin, statt eigenständig angebunden zu werden, weil es
+   * denselben Ankerpunkt braucht — und den gibt es genau einmal. Ein zweiter
+   * Halter desselben Zustands wäre der Anfang genau der Divergenz, die dieses
+   * Modul oben zu vermeiden beschreibt.
+   */
+  directories: DirectoryPopupControls;
   dispose: () => void;
 }
 
@@ -28,6 +39,7 @@ export function attachInlineSuggestion(
     baseHistory,
     cwd,
     isDirectory,
+    listSubdirectories,
     font,
   }: {
     /** Schreibt Text in die PTY (derselbe Pfad wie eine echte Eingabe). */
@@ -37,6 +49,7 @@ export function attachInlineSuggestion(
     /** Aktuelles Arbeitsverzeichnis der Shell, null solange unbekannt. */
     cwd: () => string | null;
     isDirectory: DirectoryLookup;
+    listSubdirectories: SubdirectoryLookup;
     font: { fontFamily: string; fontSize: number };
   },
 ): InlineSuggestion {
@@ -46,6 +59,12 @@ export function attachInlineSuggestion(
   let marker: IMarker | null = null;
   let decoration: IDecoration | null = null;
   let frame = 0;
+
+  const popup = attachDirectoryPopup(terminal, {
+    write,
+    listSubdirectories,
+    font,
+  });
 
   const cursorPosition = (): BufferPosition => {
     const buffer = terminal.buffer.active;
@@ -108,16 +127,25 @@ export function attachInlineSuggestion(
     // in den alten Puffer und darf nach der Rückkehr nicht wiederaufleben.
     if (buffer.type !== "normal" || anchor?.y !== cursor.y) anchor = null;
 
-    ghost = computeGhost({
+    const line = {
       bufferType: buffer.type,
       anchor,
       cursor,
       rowText: anchor ? rowText(anchor.y) : "",
-      history: [...sessionHistory, ...baseHistory()],
       cwd: cwd(),
+    };
+
+    ghost = computeGhost({
+      ...line,
+      history: [...sessionHistory, ...baseHistory()],
       isDirectory,
     });
     if (ghost) drawGhost(ghost, cursor.x);
+
+    // Beides zugleich ist Absicht: die Ergänzung im Text ist der eine wahr-
+    // scheinliche Befehl aus der History, die Liste darunter alles, was es
+    // hier wirklich gibt — dieselbe Aufteilung wie in fish.
+    popup.update(line);
   };
 
   // Ausschließlich ausgabegetrieben: `onData` feuert, BEVOR die PTY das
@@ -143,6 +171,7 @@ export function attachInlineSuggestion(
       }
       anchor = null;
       clearGhost();
+      popup.clear();
     }),
     terminal.onWriteParsed(schedule),
     terminal.onCursorMove(schedule),
@@ -165,12 +194,32 @@ export function attachInlineSuggestion(
     reset: () => {
       anchor = null;
       clearGhost();
+      popup.clear();
     },
     refresh: schedule,
+    directories: {
+      visible: popup.visible,
+      // Die Auswahl bewegt nur den Index; sichtbar wird sie im nächsten
+      // Durchgang, über denselben Pfad wie jede andere Änderung.
+      move: (delta) => {
+        popup.move(delta);
+        schedule();
+      },
+      accept: () => {
+        const accepted = popup.accept();
+        if (accepted) schedule();
+        return accepted;
+      },
+      dismiss: () => {
+        popup.dismiss();
+        schedule();
+      },
+    },
     dispose: () => {
       if (frame) cancelAnimationFrame(frame);
       for (const disposable of disposables) disposable.dispose();
       clearGhost();
+      popup.dispose();
     },
   };
 }

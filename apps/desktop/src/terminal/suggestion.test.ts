@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { GhostInput } from "./suggestion";
-import { classifyKeystroke, computeGhost, rememberCommand } from "./suggestion";
+import type { CdCompletionInput, GhostInput } from "./suggestion";
+import {
+  cdCompletion,
+  classifyKeystroke,
+  completionInsert,
+  computeGhost,
+  rememberCommand,
+} from "./suggestion";
 
 // Ein 40 Zellen breiter Bildschirm mit Prompt und Eingabe, wie xterm ihn
 // zurückgibt: rechts mit Leerzellen aufgefüllt, nicht abgeschnitten.
@@ -250,6 +256,107 @@ describe("computeGhost bei cd", () => {
     });
 
     expect(probed).toHaveLength(12);
+  });
+});
+
+describe("cdCompletion", () => {
+  const completionOf = (input: string, overrides: Partial<CdCompletionInput> = {}) =>
+    cdCompletion({
+      bufferType: "normal",
+      anchor: { x: PROMPT.length, y: 7 },
+      cursor: { x: PROMPT.length + input.length, y: 7 },
+      rowText: row(input),
+      cwd: "/Users/dev/panecrew",
+      ...overrides,
+    });
+
+  it("fragt nach dem ganzen Verzeichnis, sobald `cd ` steht", () => {
+    expect(completionOf("cd ")).toEqual({
+      cwd: "/Users/dev/panecrew",
+      directory: "",
+      prefix: "",
+      quoted: false,
+    });
+  });
+
+  it("nimmt das angefangene Segment als Filter", () => {
+    expect(completionOf("cd sr")).toMatchObject({ directory: "", prefix: "sr" });
+  });
+
+  it("trennt einen verschachtelten Pfad am letzten Schrägstrich", () => {
+    expect(completionOf("cd src/te")).toMatchObject({
+      directory: "src/",
+      prefix: "te",
+    });
+    // Der vordere Teil wird nicht aufgelöst — das ist Sache des Backends.
+    expect(completionOf("cd ~/Doc")).toMatchObject({
+      directory: "~/",
+      prefix: "Doc",
+    });
+    expect(completionOf("cd /us")).toMatchObject({
+      directory: "/",
+      prefix: "us",
+    });
+  });
+
+  it("liest ein offenes Anführungszeichen als Teil des Pfades", () => {
+    expect(completionOf('cd "My No')).toEqual({
+      cwd: "/Users/dev/panecrew",
+      directory: "",
+      prefix: "My No",
+      quoted: true,
+    });
+    // Geschlossen heißt: der Pfad steht, hier wird nichts mehr getippt.
+    expect(completionOf('cd "My Notes"')).toBeNull();
+  });
+
+  it("fragt nichts mehr, wenn hinter dem Pfad schon etwas anderes steht", () => {
+    expect(completionOf("cd apps && l")).toBeNull();
+  });
+
+  it("fragt nichts bei einem anderen Befehl", () => {
+    expect(completionOf("cdk deploy")).toBeNull();
+    expect(completionOf("code ")).toBeNull();
+    // `cd` ohne Leerzeichen dahinter ist noch kein Pfad-Argument.
+    expect(completionOf("cd")).toBeNull();
+  });
+
+  it("fragt nichts im Alternate-Screen-Puffer", () => {
+    expect(completionOf("cd ", { bufferType: "alternate" })).toBeNull();
+  });
+
+  it("fragt nichts ohne Anker oder außerhalb der Ankerzeile", () => {
+    expect(completionOf("cd ", { anchor: null })).toBeNull();
+    expect(completionOf("cd ", { cursor: { x: 16, y: 8 } })).toBeNull();
+  });
+
+  it("fragt nichts ohne bekanntes Arbeitsverzeichnis", () => {
+    // Shells ohne PaneCrews Wrapper melden keins — und in einer Pane, die
+    // gerade per ssh woanders ist, wird der Wert wieder auf null gesetzt.
+    expect(completionOf("cd ", { cwd: null })).toBeNull();
+  });
+
+  it("fragt nichts, wenn direkt hinter dem Cursor Text steht", () => {
+    // Der Cursor steht mitten in einer Zeile; eine Ergänzung landete im Rest.
+    expect(completionOf("cd sr", { rowText: row("cd sr", "c/x") })).toBeNull();
+  });
+});
+
+describe("completionInsert", () => {
+  it("schreibt nur den fehlenden Rest, mit Schrägstrich für die nächste Ebene", () => {
+    expect(completionInsert("sr", "src", false)).toBe("c/");
+    expect(completionInsert("", "docs", false)).toBe("docs/");
+  });
+
+  it("nimmt eine abweichende Schreibweise per Backspace zurück", () => {
+    // Gefiltert wird ohne Rücksicht auf Groß-/Kleinschreibung; angenommen
+    // wird der echte Name, nicht eine Mischung aus beidem.
+    expect(completionInsert("sr", "Src", false)).toBe("\x7f\x7fSrc/");
+  });
+
+  it("maskiert Leerzeichen nur außerhalb von Anführungszeichen", () => {
+    expect(completionInsert("My", "My Notes", false)).toBe("\\ Notes/");
+    expect(completionInsert("My", "My Notes", true)).toBe(" Notes/");
   });
 });
 

@@ -36,6 +36,10 @@ let suggestion: InlineSuggestion;
 let sent: string[];
 /** Verzeichnisse, die es im Arbeitsverzeichnis der Pane gibt. */
 let directories: string[];
+/** Was das Backend als Unterverzeichnisse meldet, je Verzeichnisteil. */
+let subdirectories: Record<string, string[]>;
+/** Steht die Antwort des Backends noch aus? */
+let listPending: boolean;
 /** Ziele, deren Prüfung noch läuft — zu lösen über `resolveProbes()`. */
 let unresolved: string[];
 
@@ -79,6 +83,8 @@ beforeEach(async () => {
   terminal.open(container);
   sent = [];
   directories = [];
+  subdirectories = {};
+  listPending = false;
   unresolved = [];
   suggestion = attachInlineSuggestion(terminal, {
     write: (text) => {
@@ -90,6 +96,12 @@ beforeEach(async () => {
     cwd: () => "/Users/dev/panecrew",
     isDirectory: (_cwd, path) =>
       unresolved.includes(path) ? undefined : directories.includes(path),
+    listSubdirectories: (_cwd, directory, prefix) =>
+      listPending
+        ? undefined
+        : (subdirectories[directory] ?? []).filter((name) =>
+            name.toLowerCase().startsWith(prefix.toLowerCase()),
+          ),
     font: { fontFamily: "monospace", fontSize: 13 },
   });
   await write(PROMPT);
@@ -222,5 +234,127 @@ describe("attachInlineSuggestion", () => {
     await settle();
 
     expect(ghostText()).toBe("ps");
+  });
+});
+
+describe("Verzeichnis-Popup bei cd", () => {
+  const items = () =>
+    [...document.querySelectorAll(".pc-cdpopup__item")].map(
+      (element) => element.textContent,
+    );
+  const selected = () =>
+    document.querySelector(".pc-cdpopup__item--selected")?.textContent ?? null;
+
+  it("zeigt die tatsächlichen Unterverzeichnisse, nicht die History", async () => {
+    // In der History steht `cd apps` — hier gibt es das gar nicht.
+    subdirectories = { "": ["docs", "src"] };
+
+    await type("cd ");
+
+    expect(items()).toEqual(["docs", "src"]);
+    expect(selected()).toBe("docs");
+  });
+
+  it("filtert nach dem bereits getippten Präfix", async () => {
+    subdirectories = { "": ["docs", "src", "scripts"] };
+
+    await type("cd sr");
+
+    expect(items()).toEqual(["src"]);
+  });
+
+  it("listet die nächste Ebene eines verschachtelten Pfades", async () => {
+    subdirectories = { "": ["src"], "src/": ["terminal", "test"] };
+
+    await type("cd src/te");
+
+    expect(items()).toEqual(["terminal", "test"]);
+  });
+
+  it("zeigt gar nichts, wenn nichts passt", async () => {
+    subdirectories = { "": ["docs"] };
+
+    await type("cd zz");
+
+    // Kein leerer Rahmen: ohne Treffer gibt es kein Popup.
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+    expect(suggestion.directories.visible()).toBe(false);
+  });
+
+  it("bewegt die Auswahl mit den Pfeiltasten", async () => {
+    // Sortiert wie das Backend liefert.
+    subdirectories = { "": ["docs", "scripts", "src"] };
+    await type("cd ");
+
+    suggestion.directories.move(1);
+    await settle();
+    expect(selected()).toBe("scripts");
+
+    // Am oberen Ende bleibt die Auswahl stehen, statt umzulaufen.
+    suggestion.directories.move(-5);
+    await settle();
+    expect(selected()).toBe("docs");
+  });
+
+  it("übernimmt den Eintrag samt Schrägstrich und bietet die nächste Ebene an", async () => {
+    subdirectories = { "": ["src"], "src/": ["terminal"] };
+    await type("cd sr");
+
+    expect(suggestion.directories.accept()).toBe(true);
+    // Nur der fehlende Rest wird geschrieben, plus der `/` für die nächste
+    // Ebene — geschrieben über denselben Pfad wie eine echte Eingabe.
+    expect(sent).toEqual(["c/"]);
+
+    await settle();
+    expect(items()).toEqual(["terminal"]);
+  });
+
+  it("schreibt bei abweichender Schreibweise den echten Namen", async () => {
+    // Auf einem case-insensitiven Dateisystem erreicht `cd sr` auch `Src`;
+    // dann darf nicht `srSrc` entstehen.
+    subdirectories = { "": ["Src"] };
+    await type("cd sr");
+
+    expect(suggestion.directories.accept()).toBe(true);
+    expect(sent).toEqual(["\x7f\x7fSrc/"]);
+  });
+
+  it("verwirft mit Escape, ohne die Eingabezeile anzufassen", async () => {
+    subdirectories = { "": ["docs", "src"] };
+    await type("cd ");
+
+    suggestion.directories.dismiss();
+    await settle();
+
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+    expect(sent).toEqual([]);
+    // Verworfen ist nur DIESE Eingabe; das nächste Zeichen fragt neu.
+    await type("s");
+    expect(items()).toEqual(["src"]);
+  });
+
+  it("verschwindet im Alternate Screen", async () => {
+    subdirectories = { "": ["docs"] };
+    await type("cd ");
+    expect(items()).toEqual(["docs"]);
+
+    await write("\x1b[?1049h");
+    await settle();
+
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+  });
+
+  it("zeigt erst, wenn die Abfrage beantwortet ist", async () => {
+    subdirectories = { "": ["docs", "src"] };
+    listPending = true;
+
+    await type("cd ");
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+
+    listPending = false;
+    suggestion.refresh();
+    await settle();
+
+    expect(items()).toEqual(["docs", "src"]);
   });
 });

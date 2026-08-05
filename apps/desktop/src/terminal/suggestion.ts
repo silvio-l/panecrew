@@ -191,6 +191,118 @@ function cdTarget(command: string): string | null {
   return token?.[1] ?? token?.[2] ?? token?.[3] ?? null;
 }
 
+/** Der gerade getippte Pfad eines `cd`-Befehls, aufgeteilt zum Nachschlagen. */
+export interface CdCompletion {
+  /** Arbeitsverzeichnis der Pane — hier bereits als bekannt bestätigt. */
+  cwd: string;
+  /** Getippter Pfad bis einschließlich des letzten `/`; "" heißt „im cwd". */
+  directory: string;
+  /** Das angefangene letzte Segment; "" direkt nach `cd `. */
+  prefix: string;
+  /** Steht das Argument in einem noch offenen Anführungszeichen? */
+  quoted: boolean;
+}
+
+export interface CdCompletionInput {
+  bufferType: "normal" | "alternate";
+  anchor: BufferPosition | null;
+  cursor: BufferPosition;
+  rowText: string;
+  /** Arbeitsverzeichnis der Pane, null solange unbekannt. */
+  cwd: string | null;
+}
+
+/**
+ * Was das Verzeichnis-Popup zeigen müsste — oder null für „nicht jetzt".
+ *
+ * Der Unterschied zur Geistertext-Vervollständigung darüber: die rät aus der
+ * History und lässt sich das Geratene bestätigen; das hier fragt gar nicht
+ * erst, sondern liest, was im Arbeitsverzeichnis wirklich liegt. Diese
+ * Funktion entscheidet nur, wonach zu fragen ist.
+ *
+ * Vier Bedingungen, die alle aus dem Zeigen ein Raten machen würden:
+ * - Alternate Screen: ein Vollbild-Programm besitzt den Bildschirm.
+ * - Kein Anker oder Cursor in einer anderen Zeile: die Ankerspalte, ab der die
+ *   Eingabe gelesen wird, zeigt dann ins Leere.
+ * - Kein bekanntes Arbeitsverzeichnis: ohne das gibt es kein Verzeichnis, das
+ *   man auflisten könnte. Das deckt zugleich den ssh-Fall ab — meldet in der
+ *   Pane ein anderer Rechner, setzt der Aufrufer den Wert auf null zurück.
+ * - Direkt hinter dem Cursor steht Text: der Nutzer bearbeitet die Mitte
+ *   seiner Zeile, eine übernommene Ergänzung landete mitten im Rest.
+ */
+export function cdCompletion({
+  bufferType,
+  anchor,
+  cursor,
+  rowText,
+  cwd,
+}: CdCompletionInput): CdCompletion | null {
+  if (bufferType !== "normal" || !cwd) return null;
+  if (anchor?.y !== cursor.y || cursor.x <= anchor.x) return null;
+  if (cursor.x < rowText.length && rowText[cursor.x] !== " ") return null;
+
+  const argument = cdArgument(rowText.slice(anchor.x, cursor.x));
+  if (!argument) return null;
+
+  // Getrennt wird am letzten `/`: alles davor benennt das aufzulistende
+  // Verzeichnis, alles danach ist das Präfix, gegen das gefiltert wird.
+  // Aufgelöst (`~`, relativ, absolut) wird der vordere Teil erst im Backend.
+  const cut = argument.text.lastIndexOf("/");
+  return {
+    cwd,
+    directory: argument.text.slice(0, cut + 1),
+    prefix: argument.text.slice(cut + 1),
+    quoted: argument.quoted,
+  };
+}
+
+/**
+ * Das angefangene Pfad-Argument einer `cd`-Zeile.
+ *
+ * Bewusst nicht mit `cdTarget` zusammengelegt, obwohl beide `cd` lesen: dort
+ * geht es um ein FERTIGES Ziel aus der History (Anführungszeichen geschlossen,
+ * dahinter darf noch ein `&& …` folgen), hier um ein Argument, das noch
+ * getippt wird — ein offenes Anführungszeichen ist der Normalfall, und ein
+ * Leerzeichen dahinter heißt, dass der Pfad bereits fertig ist und gerade
+ * etwas anderes entsteht.
+ */
+function cdArgument(input: string): { text: string; quoted: boolean } | null {
+  const rest = /^\s*cd\s+(.*)$/.exec(input)?.[1];
+  if (rest === undefined) return null;
+
+  const quote = /^["']/.exec(rest)?.[0];
+  if (quote) {
+    const text = rest.slice(1);
+    return text.includes(quote) ? null : { text, quoted: true };
+  }
+  return /\s/.test(rest) ? null : { text: rest, quoted: false };
+}
+
+/**
+ * Was in die PTY geschrieben wird, wenn ein Eintrag übernommen wird.
+ *
+ * Der abschließende `/` steht bewusst da: er ist für `cd` bedeutungslos, macht
+ * den Eintrag aber sofort zum Ausgangspunkt der nächsten Ebene, ohne dass ein
+ * Zeichen nachgetippt werden muss.
+ *
+ * Gefiltert wird ohne Rücksicht auf Groß-/Kleinschreibung (`cd sr` erreicht
+ * auch `Src`, so wie `cd` selbst auf diesen Dateisystemen). Dann ist das
+ * Getippte aber nicht immer ein Präfix des echten Namens — in dem Fall wird es
+ * per Backspace zurückgenommen und der Name vollständig geschrieben, statt ein
+ * `srCase` aus zwei Schreibweisen entstehen zu lassen.
+ */
+export function completionInsert(
+  prefix: string,
+  name: string,
+  quoted: boolean,
+): string {
+  const insert = name.startsWith(prefix)
+    ? `${name.slice(prefix.length)}/`
+    : `${"\x7f".repeat(prefix.length)}${name}/`;
+  // Ohne Anführungszeichen liest die Shell ein Leerzeichen als Argumentgrenze.
+  return quoted ? insert : insert.replace(/ /g, "\\ ");
+}
+
 function blankRunAfter(rowText: string, x: number): number {
   let run = 0;
   while (rowText[x + run] === " ") run += 1;
