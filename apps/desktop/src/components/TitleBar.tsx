@@ -137,15 +137,52 @@ export function TitleBar({ zoom }: { zoom: number }) {
 // monochrome Titelzeilen-Fassung wich absichtlich vom Icon ab (ANSI-Yellow-
 // Kollisionsrisiko); auf expliziten Wunsch ersetzt durch 1:1-Farbparität.
 //
-// EINE bewusste Abweichung vom Master (icons/source/panecrew-mark.svg,
-// 2026-08-05): der weiche Glow des Masters fehlt hier. Sein `stdDeviation`
-// 30/70 gilt für die 1600er viewBox — bei 16px sind das 0,3px und 0,7px, also
-// Subpixel. Er glüht dort nicht, er legt einen bräunlichen Saum um die Form
-// und verschmiert genau die Gehrungsfuge, die die Marke erkennbar macht (bei
-// 12facher Vergrößerung gegeneinandergehalten). Das ist der in CLAUDE.md
-// vorgesehene Fall: Detail, das bei 1024px trägt, muss für 16px neu gezeichnet
-// werden, statt den Master zu verkleinern. Der Master behält den Glow für die
-// großen Icon-Größen.
+// ZWEI bewusste Abweichungen vom Master (icons/source/panecrew-mark.svg):
+//
+// 1. Kein Glow (2026-08-05). Sein `stdDeviation` 30/70 gilt für die 1600er
+//    viewBox — bei 16px sind das 0,3px und 0,7px, also Subpixel. Er glüht dort
+//    nicht, er legt einen bräunlichen Saum um die Form und verschmiert genau
+//    die Gehrungsfuge, die die Marke erkennbar macht (bei 12facher
+//    Vergrößerung gegeneinandergehalten). Das ist der in CLAUDE.md vorgesehene
+//    Fall: Detail, das bei 1024px trägt, muss für 16px neu gezeichnet werden,
+//    statt den Master zu verkleinern. Der Master behält den Glow für die
+//    großen Icon-Größen.
+//
+// 2. Zwei Verlaufsfassungen statt einer (2026-08-05, Nutzerentscheidung). Die
+//    Master-Werte sind gegen den dunklen Icon-Grund (#1F243C, siehe
+//    generate-icons.sh) abgestimmt; auf der hellen Glaskapsel erreicht der
+//    kräftigste gerenderte Pixel 1,78:1 — die Marke liest sich dort als
+//    blasses Gespenst. Deshalb hat die Titelzeilen-Marke seit heute eine
+//    eigenständig kalibrierte Light-Fassung, umgeschaltet per data-theme über
+//    die beiden .pc-mark__*-Regeln in App.css. Die Plattform-Icons und das
+//    Favicon brauchen keine: die bringen ihren dunklen Grund selbst mit.
+//
+//    Die Light-Werte sind keine abgedunkelte Kopie, sondern dieselbe
+//    Herleitung wie bei der ANSI-Palette und beim Akzent — in OKLCH gerechnet,
+//    auf der neuen Grundfläche neu justiert:
+//    - Hue-Trajektorie erhalten, aber auf den chromatischen Kern der Dark-
+//      Fassung eingeengt (H 70,2 tief → 75 am Lichtpunkt). Die H 78–83 der
+//      Master-Stops stammen aus fast weißen Werten, deren Farbton numerisch
+//      kaum bestimmt ist; bei der Helligkeit der Light-Fassung wären sie
+//      sichtbar geworden und hätten die Marke nach Ocker gezogen.
+//    - Chroma am sRGB-Gamut-Rand. Bei L 0,48–0,65 ist genau das der
+//      Unterschied zwischen Gold und Lehm; 93 % davon las sich messbar stumpf.
+//    - Lichtrichtung unverändert: der Radial-Mittelpunkt oben rechts bleibt
+//      die HELLERE Seite, die Fuge unten links die tiefere. Gekippt hätte die
+//      Marke von unten links geleuchtet.
+//    Gemessen wird am gerenderten Glyph, nicht an den Stops (bei 16px auf
+//    1600er viewBox ist der halbe Arm Alpha-Blend): volle Pixel liegen bei
+//    3,3:1 am Lichtpunkt bis 7,1:1 in der Tiefe des Cursor-Blocks.
+//
+//    Der Block ist bewusst der tiefste Teil. Er ist die kleinere Form und
+//    fällt zuerst weg — bleibt er stehen, bleibt die Verzahnung lesbar, und
+//    die ist das Erkennungsmerkmal. In der Dark-Fassung trägt er dieselbe
+//    Rolle über das andere Ende der Skala (er ist dort der hellste Teil).
+//
+//    Zur Akzentfarbe (--pc-focusBorder, H 58) hält die Light-Fassung dieselbe
+//    Trennung wie die Dark: 12 Grad Farbton und, wichtiger, Material —
+//    Verlauf gegen Fläche. Über die Sättigung geht es auf hellem Grund nicht
+//    mehr, dort liegen beide am Gamut-Rand.
 function AppMark() {
   return (
     <svg
@@ -157,7 +194,7 @@ function AppMark() {
     >
       <defs>
         <radialGradient
-          id="pcMarkChevron"
+          id="pcMarkChevronDark"
           gradientUnits="userSpaceOnUse"
           cx="1330"
           cy="780"
@@ -172,8 +209,24 @@ function AppMark() {
           <stop offset="0.88" stopColor="#FDB14B" />
           <stop offset="1" stopColor="#FCAD43" />
         </radialGradient>
+        <radialGradient
+          id="pcMarkChevronLight"
+          gradientUnits="userSpaceOnUse"
+          cx="1330"
+          cy="780"
+          r="900"
+        >
+          <stop offset="0" stopColor="#BD7F00" />
+          <stop offset="0.15" stopColor="#BB7E00" />
+          <stop offset="0.35" stopColor="#B57900" />
+          <stop offset="0.56" stopColor="#A16900" />
+          <stop offset="0.67" stopColor="#9D6600" />
+          <stop offset="0.8" stopColor="#905C00" />
+          <stop offset="0.88" stopColor="#865400" />
+          <stop offset="1" stopColor="#825100" />
+        </radialGradient>
         <linearGradient
-          id="pcMarkBlock"
+          id="pcMarkBlockDark"
           gradientUnits="userSpaceOnUse"
           x1="106"
           y1="0"
@@ -186,12 +239,31 @@ function AppMark() {
           <stop offset="0.82" stopColor="#FFF2DE" />
           <stop offset="1" stopColor="#FFF5E2" />
         </linearGradient>
+        <linearGradient
+          id="pcMarkBlockLight"
+          gradientUnits="userSpaceOnUse"
+          x1="106"
+          y1="0"
+          x2="569"
+          y2="0"
+        >
+          <stop offset="0" stopColor="#774F00" />
+          <stop offset="0.15" stopColor="#7C5300" />
+          <stop offset="0.5" stopColor="#946400" />
+          <stop offset="0.82" stopColor="#A26E00" />
+          <stop offset="1" stopColor="#A46F00" />
+        </linearGradient>
       </defs>
       <path
-        fill="url(#pcMarkChevron)"
+        className="pc-mark__chevron"
+        fill="url(#pcMarkChevronDark)"
         d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"
       />
-      <path fill="url(#pcMarkBlock)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
+      <path
+        className="pc-mark__block"
+        fill="url(#pcMarkBlockDark)"
+        d="M106 1208 L569 1208 L368 1485 L106 1485 Z"
+      />
     </svg>
   );
 }

@@ -1,4 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1600">
+  <!-- Diese Verlaeufe sind gegen den dunklen Icon-Grund (#1F243C, siehe
+       generate-icons.sh) abgestimmt und bleiben die einzige Fassung, die hier
+       gebraucht wird: jedes Ziel dieser Datei - .icns, .ico, Windows-Store-Set,
+       Favicon - bringt diesen Grund selbst mit. Nur die In-App-Titelzeilen-Marke
+       sitzt im Light-Theme auf heller Flaeche und hat dafuer seit 2026-08-05
+       eine eigene, dort hergeleitete Fassung; sie lebt in
+       src/components/TitleBar.tsx (AppMark), nicht hier - eine zweite
+       Verlaufsdefinition in dieser Datei wuerde nichts rendern und nur
+       auseinanderlaufen. -->
   <defs>
     <radialGradient id="pcMarkChevron" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
       <stop offset="0" stop-color="#FEF2DE"/>

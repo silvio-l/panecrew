@@ -34,6 +34,29 @@ body {
 }
 
 /*
+ * Theme-Umschaltung der Titelzeilen-Marke (components/TitleBar.tsx → AppMark).
+ * Beide Verlaufsfassungen stehen dort neben der Geometrie; hier steht nur,
+ * welche gilt — derselbe data-theme-Schalter wie für jedes Farbtoken, nur mit
+ * einer Farbverlaufs-Referenz statt eines Farbwerts.
+ *
+ * Kein Token in theme.css: die Datei ist laut ihrem eigenen Kopf die
+ * Farbpalette, und `url(#pcMarkChevronLight)` zeigt auf eine ID, die es nur
+ * innerhalb genau eines Komponenten-SVG gibt. Kein React-Zustand: es gibt
+ * keinen Theme-Umschalter im Frontend (siehe terminal/terminalTheme.ts), und
+ * einer nur für dieses Icon wäre die zweite Umschaltmechanik neben data-theme.
+ *
+ * `fill` steht am Pfad als Präsentationsattribut und hat damit gar keine
+ * Spezifität — jede CSS-Regel schlägt es, auch diese hier.
+ */
+:root[data-theme="light"] .pc-mark__chevron {
+  fill: url(#pcMarkChevronLight);
+}
+
+:root[data-theme="light"] .pc-mark__block {
+  fill: url(#pcMarkBlockLight);
+}
+
+/*
  * Verzeichnis-Popup der `cd`-Vervollständigung (terminal/directoryPopup.ts).
  * Hängt in einer xterm-Decoration und damit im Zellraster; hier steht nur, wie
  * es aussieht.
