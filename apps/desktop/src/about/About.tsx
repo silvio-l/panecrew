@@ -102,12 +102,17 @@ export function About() {
       versionRef.current = current;
       setVersion(current);
       // Das Fenster startet unsichtbar und deckt sich erst hier selbst auf —
-      // erst ab jetzt steht die Silhouette samt Version. Zwei verschachtelte
-      // Frames, weil der erste noch VOR dem Malen läuft. Rust hat dafür eine
-      // eigene Zeitschranke, falls es nie so weit kommt.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => void invoke("about_visible"));
-      });
+      // erst ab jetzt steht die Silhouette samt Version. KEIN
+      // requestAnimationFrame: das Fenster ist zu diesem Zeitpunkt noch
+      // unsichtbar (`visible(false)` in about.rs), und ein unsichtbares
+      // WKWebView bekommt auf macOS keine regulären Frame-Callbacks mehr —
+      // gemessen: die zwei verschachtelten rAF, die hier ursprünglich auf den
+      // ersten echten Malvorgang warten sollten, brauchten dadurch bis zu
+      // ~1s statt der üblichen zwei Frames. Der Splash löst dasselbe Problem
+      // deshalb auch nicht über rAF (siehe splash.ts). Rust hat für den
+      // Fall, dass dieser Aufruf nie ankommt, ohnehin eine eigene
+      // Zeitschranke (REVEAL_WATCHDOG).
+      void invoke("about_visible");
       // Das Menü kann die Prüfung schon angefordert haben, bevor dieses
       // Fenster überhaupt existierte; Rust hat den Wunsch so lange gehalten.
       if (await invoke<boolean>("about_take_update_request")) runCheck();
