@@ -113,7 +113,48 @@ describe("App", () => {
       screen.getByRole("button", { name: "Projekt wählen" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(invokeMock).not.toHaveBeenCalled();
+    // get_launch_project läuft bei jedem Mount (siehe unten); nur pty_spawn
+    // darf ohne Auswahl nie fallen.
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_spawn",
+      expect.anything(),
+    );
+  });
+
+  it("überspringt den Picker, wenn ein CLI-Startprojekt vorliegt", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "get_launch_project"
+        ? Promise.resolve("/Users/dev/projects/storefront")
+        : Promise.resolve(),
+    );
+    render(<App />);
+
+    expect(
+      await screen.findByLabelText("Terminal storefront"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Projekt wählen" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/storefront" }),
+      );
+    });
+  });
+
+  it("bleibt beim Picker, wenn kein CLI-Startprojekt vorliegt", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "get_launch_project" ? Promise.resolve(null) : Promise.resolve(),
+    );
+    render(<App />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_launch_project");
+    });
+    expect(
+      screen.getByRole("button", { name: "Projekt wählen" }),
+    ).toBeInTheDocument();
   });
 
   it("startet nach der Ordnerauswahl ein PTY im gewählten Verzeichnis", async () => {
@@ -221,7 +262,10 @@ describe("App", () => {
     await waitFor(() => {
       expect(openMock).toHaveBeenCalled();
     });
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_spawn",
+      expect.anything(),
+    );
     expect(
       screen.getByRole("button", { name: "Projekt wählen" }),
     ).toBeInTheDocument();

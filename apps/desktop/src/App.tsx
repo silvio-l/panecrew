@@ -41,12 +41,13 @@
  * vier gefälschter. Das Raster kommt in Ticket 03 mit echten Panes zurück,
  * die Fokus-/Explorer-Kopplung ist dafür strukturell schon angelegt.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { Tooltip } from "radix-ui";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TitleBar } from "./components/TitleBar";
 import {
@@ -62,6 +63,12 @@ const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
+function projectFromPath(path: string): Project {
+  // Der echte Verzeichnis-Scan ist Ticket 04: der Baum bleibt hier bewusst
+  // leer, statt erfundene Einträge zu zeigen.
+  return { path, name: projectNameFromPath(path), selectedFile: "", tree: [] };
+}
+
 function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [picking, setPicking] = useState(false);
@@ -69,19 +76,30 @@ function App() {
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
 
+  // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon gegen
+  // das echte Dateisystem geprüft (existiert, ist ein Verzeichnis), ein
+  // ungültiges/fehlendes Argument liefert hier einfach `null` zurück und
+  // landet ganz normal beim Picker.
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<string | null>("get_launch_project")
+      .then((path) => {
+        if (!cancelled && path) setProject(projectFromPath(path));
+      })
+      .catch((error: unknown) => {
+        console.error("PaneCrew: Start-Projekt konnte nicht gelesen werden", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const chooseProject = () => {
     setPicking(true);
     void openFolderDialog({ directory: true, multiple: false })
       .then((selected) => {
         if (typeof selected !== "string") return;
-        // Der echte Verzeichnis-Scan ist Ticket 04: der Baum bleibt hier
-        // bewusst leer, statt erfundene Einträge zu zeigen.
-        setProject({
-          path: selected,
-          name: projectNameFromPath(selected),
-          selectedFile: "",
-          tree: [],
-        });
+        setProject(projectFromPath(selected));
       })
       .catch((error: unknown) => {
         console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
