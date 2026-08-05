@@ -4,22 +4,59 @@
     <meta charset="UTF-8" />
     <title>PaneCrew</title>
     <style>
+      /*
+       * Die Fensterform ist kein abgerundetes Rechteck: oben rechts ist die
+       * Bühne entlang derselben Diagonale angeschnitten, mit der im Markenmal
+       * Chevron und Cursor-Block auf Gehrung ineinandergreifen (Steigung
+       * 325:405 aus dem Emblem, hier 122:152). Die Kante läuft damit parallel
+       * zum oberen Chevron-Arm — die Form kommt aus der Marke, nicht aus einem
+       * Radius-Regler. Der Anschnitt liegt in der leeren oberen rechten Ecke
+       * und berührt das Emblem nicht (dessen Kasten endet bei x 536, y 90).
+       *
+       * Material: dasselbe Glasrezept wie die Titelleisten-Kapsel und das
+       * cd-Popup (Fläche, Lichtabfall von oben, 1px-Lichtkante, Weichzeichner
+       * plus Sättigung). Die --pc-glass-*-Werte sind hier gespiegelt statt
+       * importiert: der Splash lädt bewusst kein Theme, er ist eine feste
+       * dunkle Markenbühne und wechselt nie ins Light-Theme.
+       */
       html,
       body {
-        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         height: 100%;
+        margin: 0;
         overflow: hidden;
-        /* Das native Fenster ist transparent und rechteckig — die gerundete
-           Silhouette entsteht allein aus der Bühne darin. */
+        /* Das native Fenster ist transparent und rechteckig — die Silhouette
+           entsteht vollständig hier drin, samt selbst gemaltem Schlagschatten.
+           Der native folgte der eckigen Fensterkante, nicht der Form. */
         background: transparent;
       }
 
-      .stage {
+      .frame {
         position: relative;
-        width: 100%;
-        height: 100%;
-        border-radius: 12px;
-        overflow: hidden;
+        width: 800px;
+        height: 450px;
+      }
+
+      /* Schlagschatten als eigene Silhouette hinter der Bühne statt als filter
+         auf der Bühne selbst: ein filter-Vorfahre kappt den Backdrop des
+         Weichzeichners in der Fußleiste. */
+      .shadow {
+        position: absolute;
+        inset: 0;
+        fill: #000;
+        opacity: 0.55;
+        filter: blur(26px);
+        transform: translateY(14px);
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        clip-path: path(
+          "M 26 0 L 648 0 L 800 122 L 800 424 A 26 26 0 0 1 774 450 L 26 450 A 26 26 0 0 1 0 424 L 0 26 A 26 26 0 0 1 26 0 Z"
+        );
         background: #121314;
       }
 
@@ -30,48 +67,112 @@
         /* cover statt contain: bei subpixelgenauer Fensterhöhe bliebe sonst ein
            Rand stehen — der Bühnenrand des Videos ist ohnehin die Fensterfarbe. */
         object-fit: cover;
-        /* WebKit clippt ein <video> nicht am border-radius des Elternteils, der
-           Radius muss zusätzlich auf dem Element selbst stehen. */
-        border-radius: inherit;
+      }
+
+      /* Lichtabfall von der Oberkante — die Platte hat eine beleuchtete
+         Oberseite, nicht nur einen Rand (--pc-glass-topLight). Schräg gelegt,
+         damit das Licht aus derselben Richtung kommt wie die Gehrungskante. */
+      .topLight {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          170deg,
+          rgba(255, 255, 255, 0.045),
+          transparent 58%
+        );
+        pointer-events: none;
+      }
+
+      /* 1px-Lichtkante auf der Silhouette. Der Stroke wird mittig gezeichnet,
+         das Clipping auf denselben Pfad lässt nur die innere Hälfte stehen —
+         so sitzt die Kante bündig statt einen halben Pixel darüber. */
+      .rim {
+        position: absolute;
+        inset: 0;
+        clip-path: path(
+          "M 26 0 L 648 0 L 800 122 L 800 424 A 26 26 0 0 1 774 450 L 26 450 A 26 26 0 0 1 0 424 L 0 26 A 26 26 0 0 1 26 0 Z"
+        );
+        pointer-events: none;
       }
 
       .colophon {
         position: absolute;
         right: 0;
-        bottom: 24px;
+        bottom: 0;
         left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 54px;
         margin: 0;
-        text-align: center;
+        padding: 0 30px;
+        border-top: 1px solid rgba(255, 255, 255, 0.055);
+        background-color: rgba(46, 49, 55, 0.36);
+        background-image: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.012),
+          transparent 62%
+        );
+        backdrop-filter: blur(16px) saturate(150%);
         font: 400 11px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
         letter-spacing: 0.07em;
-        /* Spiegelt --pc-descriptionForeground aus theme.css. Bewusst hier
-           hartkodiert: der Splash lädt kein Theme, er ist eine feste dunkle
-           Markenbühne. Kein Amber — das bleibt dem Emblem vorbehalten. */
+        /* Spiegelt --pc-descriptionForeground; die Version links steht im
+           volleren --pc-foreground, weil sie tatsächlich gelesen werden soll.
+           Kein Amber — das bleibt dem Emblem vorbehalten. */
         color: #8c8c8c;
         opacity: 0;
       }
 
-      /* Eingeblendet erst, wenn die Bewegung ausläuft (Bewegungsende bei
-         1,58 s), damit der Text nie über der entstehenden Marke liegt. */
+      .version {
+        color: #bfbfbf;
+      }
+
+      /* Früh und dann stehend: die Leiste kommt kurz nach dem ersten Frame und
+         bleibt die restlichen ~1,7 s, damit die Version wirklich lesbar ist. */
       .playing .colophon {
         opacity: 1;
-        transition: opacity 400ms ease-out 1100ms;
+        transition: opacity 350ms ease-out 200ms;
       }
     </style>
   </head>
 
   <body>
-    <div class="stage">
-      <video
-        id="splash-video"
-        src="/splash.mp4"
-        muted
-        playsinline
-        preload="auto"
-      ></video>
-      <p class="colophon">
-        PaneCrew 0.1.0 &middot; &copy; 2026 Silvio Lindstedt &middot; MIT License
-      </p>
+    <div class="frame">
+      <svg class="shadow" viewBox="0 0 800 450" aria-hidden="true">
+        <path
+          d="M 26 0 L 648 0 L 800 122 L 800 424 A 26 26 0 0 1 774 450 L 26 450 A 26 26 0 0 1 0 424 L 0 26 A 26 26 0 0 1 26 0 Z"
+        />
+      </svg>
+
+      <div class="stage">
+        <video
+          id="splash-video"
+          src="/splash.mp4"
+          muted
+          playsinline
+          preload="auto"
+        ></video>
+        <div class="topLight"></div>
+        <p class="colophon">
+          <span class="version">PaneCrew 0.1.0</span>
+          <span>&copy; 2026 Silvio Lindstedt &middot; MIT License</span>
+        </p>
+      </div>
+
+      <svg class="rim" viewBox="0 0 800 450" aria-hidden="true">
+        <defs>
+          <linearGradient id="rimLight" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.16" />
+            <stop offset="1" stop-color="#ffffff" stop-opacity="0.035" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M 26 0 L 648 0 L 800 122 L 800 424 A 26 26 0 0 1 774 450 L 26 450 A 26 26 0 0 1 0 424 L 0 26 A 26 26 0 0 1 26 0 Z"
+          fill="none"
+          stroke="url(#rimLight)"
+          stroke-width="2"
+        />
+      </svg>
     </div>
     <script type="module" src="/src/splash/splash.ts"></script>
   </body>
