@@ -217,6 +217,7 @@ export function attachDirectoryPopup(
       // aus- und wieder einzublenden; und ein Escape in dieser Lücke ginge an
       // der Liste vorbei in die Shell, wo es als Meta-Präfix die nächste
       // Taste verschluckt.
+
       // Linksbündig zum angefangenen Segment, nicht zum Cursor: die Einträge
       // stehen damit unter dem Wort, das sie fortsetzen.
       draw(Math.max(0, state.cursor.x - completion.prefix.length));
