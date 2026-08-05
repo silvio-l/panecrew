@@ -42,7 +42,15 @@ export function TerminalPane({
       // Raster gestreckt. Als einziges Kind eines Spalten-Flex-Containers muss
       // sie die Höhe jetzt selbst einfordern, sonst schrumpft sie auf ihren
       // Inhalt und der FitAddon misst eine 0-hohe Box.
-      className="group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background) shadow-[0_0_0_1px_var(--pc-pane-activeBorder),0_0_24px_var(--pc-pane-activeGlow)]"
+      // Fokus trägt allein der 1px-Rahmen im Akzent (gegen
+      // --pc-pane-border der unfokussierten Panes). Der frühere Aufbau hatte
+      // drei Signale übereinander: diesen Rahmen, einen zweiten 1px-Ring in
+      // derselben Farbe und einen 24px-Glow. Nutzerentscheidung 2026-08-05,
+      // die die eigene frühere Freigabe („luminous glow", comp-2) widerruft —
+      // und deckungsgleich mit dem Craft Floor, für den ein farbiger Schein
+      // ohne Versatz Dekoration ist, keine Tiefe. Das Echo im Explorer-Kopf
+      // und der hellere Header-Text bleiben als zweites und drittes Signal.
+      className="group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)"
     >
       <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
         <span className="min-w-0 flex-1 truncate">{project.name}</span>

@@ -27,9 +27,10 @@
  * ausführen" — visual only, future feature) and the settings access on its
  * right side; per-pane header a
  * single slim text line (24px-plus click target, no thick bar) carrying the
- * project name; the single accent traces the focused pane's border as a
- * luminous glow (comp-2 material quality) and echoes in the explorer's
- * project header.
+ * project name; the single accent traces the focused pane's border and echoes
+ * in the explorer's project header. (The contract wrote that border as a
+ * luminous glow, comp-2 material quality — the user revoked their own approval
+ * of the glow on 2026-08-05; the accent border alone carries the focus now.)
  *
  * FORM: Canon path, user-pinned (VS Code grammar, Warp warmth); no seed
  * rolled. Comp-Konsolidierung (Nutzer-Freigabe 2026-08-04): Optik/Material
