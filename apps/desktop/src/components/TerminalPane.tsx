@@ -59,7 +59,11 @@ export function TerminalPane({
             type="button"
             aria-label="Pane schließen"
             onClick={onClose}
-            className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-paneHeader-activeForeground) focus-visible:opacity-100 group-hover/pane:opacity-100 ${CHROME_FOCUS_RING}`}
+            // Hover hellt auf den normalen Vordergrund auf, NICHT auf den
+            // Akzent: der gehört laut Direction Contract allein dem Fokus, und
+            // ein Knopf, der beim Überfahren die Fokusfarbe annimmt, behauptet
+            // einen Zustand, den er nicht herstellt.
+            className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/pane:opacity-100 ${CHROME_FOCUS_RING}`}
           >
             <CloseIcon />
           </button>
