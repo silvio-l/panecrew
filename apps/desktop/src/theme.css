@@ -12,9 +12,10 @@
  *   Kernmechanik) und hängt nicht am globalen focusBorder-Fallback.
  * - Das terminal-Set (background/foreground/cursor + 16 ANSI-Farben) ist
  *   strukturell 1:1 auf das ITheme-Objekt von xterm.js abbildbar und wird bei
- *   der PTY-Integration unverändert dorthin gemappt. Die ANSI-Werte sind VS
- *   Codes Engine-Defaults (terminalColorRegistry) — die sind theme-KIND-
- *   abhängig (eigene Light-Spalte), daher unterscheiden sich Dark und Light.
+ *   der PTY-Integration unverändert dorthin gemappt. Die ANSI-Werte sind seit
+ *   2026-08-05 eine EIGENE, aus den Grundflächen abgeleitete Palette und nicht
+ *   mehr VS Codes Engine-Defaults (terminalColorRegistry) — Herleitung im
+ *   Kommentarblock über dem Dark-Set.
  */
 /*
  * Maß-Tokens (Chrome-Typo-/Spacing-Skala) — theme-unabhängig, daher bewusst
@@ -125,35 +126,66 @@
   --pc-paneHeader-activeForeground: #6caddf;
   --pc-paneHeader-border: #2a2b2c;
 
-  /* Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar */
+  /*
+   * Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar.
+   *
+   * Eigene Palette, aus dem Grund #121314 hergeleitet (2026-08-05); vorher
+   * standen hier VS Codes unveränderte Engine-Defaults, deren Helligkeiten
+   * quer über die Farben um den Faktor 3 auseinanderliefen (OKLCH-L von 0,53
+   * bei Rot bis 0,87 bei Gelb) — genau das las sich neben dem eigenen Chrome
+   * als „zufällig eingesetztes Fremdschema".
+   *
+   * Konstruktionsregeln (in OKLCH gerechnet, Skript in der Herleitung, nicht
+   * im Repo — die Hexwerte hier sind die Quelle):
+   * 1. Alle Neutralen (Black, BrightBlack, White, BrightWhite, foreground,
+   *    cursor) liegen auf DERSELBEN Achse wie der Grund: Hue 250, Chroma
+   *    ~0,005. Auch ansiBlack — das frühere reine #000000 war der einzige
+   *    Wert der Palette ohne jede Verbindung zur App-Grundfläche. White und
+   *    BrightWhite waren zudem beide #e5e5e5, also nicht unterscheidbar;
+   *    Programme, die auf den Unterschied setzen, zeigten nichts.
+   * 2. Die sechs Buntfarben teilen ein Chroma-Band (0,10–0,18) und ein
+   *    gemeinsames Helligkeitsband statt VS Codes Streuung; Bright ist
+   *    durchgehend dieselbe Hue bei ~+0,11 L und leicht kleinerem Chroma.
+   * 3. Kontrast-Untergrenze auf dem Grund: 4,5:1 für den Normalsatz, 7:1 für
+   *    den Bright-Satz. VS Codes Default-Rot lag hier bei 3,4:1.
+   * 4. Rot/Gelb/Grün behalten ihre Grundfarbidentität (ANSI-Semantik im
+   *    Inhalt), sind nur in Sättigung/Helligkeit in die Familie gezogen.
+   * 5. Blau hält Abstand zum Fokus-Akzent, der laut Direction Contract
+   *    allein dem Fokus gehört: geprüft nicht nur gegen --pc-focusBorder,
+   *    sondern auch gegen --pc-pane-activeBorder (#6caddf, OKLCH H 243).
+   *    Das ANSI-Blau sitzt bei H 272/276 — ein echtes, gesättigtes Blau
+   *    gegenüber dem luftigen Azur des Akzents.
+   * 6. Gelb meidet das Marken-Amber (#fcad43, H 70): H 100 ist messingfarben
+   *    statt orange-golden, die Marke bleibt allein der Marke.
+   */
   --pc-terminal-background: #121314;
-  --pc-terminal-foreground: #cccccc;
-  --pc-terminal-cursor: #bfbfbf;
+  --pc-terminal-foreground: #c5c8ca;
+  --pc-terminal-cursor: #ced1d5;
   /*
    * Inline-Vervollständigung (Geistertext hinter dem Cursor). Weder
    * focusBorder noch eine ANSI-Farbe: der Akzent gehört laut Direction
    * Contract allein dem Fokus, und Rot/Gelb/Grün haben im Terminalinhalt
    * feste Bedeutung. Deshalb der neutrale Chrome-Ton descriptionForeground —
-   * 5,5:1 auf #121314, klar unter dem Inhaltston #cccccc (11,5:1) und damit
+   * 5,5:1 auf #121314, klar unter dem Inhaltston #c5c8ca (11,1:1) und damit
    * lesbar als Vorschlag statt als bereits Getipptes.
    */
   --pc-terminal-ghostForeground: #8c8c8c;
-  --pc-terminal-ansiBlack: #000000;
-  --pc-terminal-ansiRed: #cd3131;
-  --pc-terminal-ansiGreen: #0dbc79;
-  --pc-terminal-ansiYellow: #e5e510;
-  --pc-terminal-ansiBlue: #2472c8;
-  --pc-terminal-ansiMagenta: #bc3fbc;
-  --pc-terminal-ansiCyan: #11a8cd;
-  --pc-terminal-ansiWhite: #e5e5e5;
-  --pc-terminal-ansiBrightBlack: #666666;
-  --pc-terminal-ansiBrightRed: #f14c4c;
-  --pc-terminal-ansiBrightGreen: #23d18b;
-  --pc-terminal-ansiBrightYellow: #f5f543;
-  --pc-terminal-ansiBrightBlue: #3b8eea;
-  --pc-terminal-ansiBrightMagenta: #d670d6;
-  --pc-terminal-ansiBrightCyan: #29b8db;
-  --pc-terminal-ansiBrightWhite: #e5e5e5;
+  --pc-terminal-ansiBlack: #0c0d0f;
+  --pc-terminal-ansiRed: #d9544b;
+  --pc-terminal-ansiGreen: #32a85f;
+  --pc-terminal-ansiYellow: #b9a624;
+  --pc-terminal-ansiBlue: #687eec;
+  --pc-terminal-ansiMagenta: #c558b9;
+  --pc-terminal-ansiCyan: #29a9ac;
+  --pc-terminal-ansiWhite: #ced1d4;
+  --pc-terminal-ansiBrightBlack: #6f7275;
+  --pc-terminal-ansiBrightRed: #f87f73;
+  --pc-terminal-ansiBrightGreen: #71d38f;
+  --pc-terminal-ansiBrightYellow: #e1d069;
+  --pc-terminal-ansiBrightBlue: #8f9cf5;
+  --pc-terminal-ansiBrightMagenta: #e283d6;
+  --pc-terminal-ansiBrightCyan: #5acfd3;
+  --pc-terminal-ansiBrightWhite: #eceff1;
 }
 
 :root[data-theme="light"] {
@@ -205,28 +237,42 @@
   --pc-paneHeader-activeForeground: #0069cc;
   --pc-paneHeader-border: #f0f1f2;
 
-  /* Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar */
+  /*
+   * Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar.
+   *
+   * Dieselben sechs Konstruktionsregeln wie im Dark-Block, eigenständig auf
+   * Weiß gerechnet statt aus den Dark-Werten aufgehellt: Hue und Rangfolge
+   * sind identisch, Helligkeit und Sättigung sind gespiegelt (Normalsatz
+   * dunkel genug für ≥4,5:1 auf Weiß, Bright darüber). Die alte Spalte hatte
+   * hier mehrere Doppelbelegungen — Blau/Magenta/Cyan waren in Normal und
+   * Bright buchstäblich derselbe Wert, Rot ebenfalls; vier von acht
+   * Bright-Farben existierten also gar nicht.
+   *
+   * Zwei Werte weichen bewusst vom reinen Schema ab: ansiWhite/BrightWhite
+   * bleiben mittelgraue Töne statt echtem Weiß, sonst wären sie auf dem
+   * weißen Grund unsichtbar (VS Codes Light-Spalte löst das genauso).
+   */
   --pc-terminal-background: #ffffff;
-  --pc-terminal-foreground: #3b3b3b;
-  --pc-terminal-cursor: #202020;
+  --pc-terminal-foreground: #3b3d40;
+  --pc-terminal-cursor: #26292d;
   /* Geistertext, gleiche Regel wie im Dark-Block: 4,5:1 auf #ffffff, klar
-     unter dem Inhaltston #3b3b3b (10,9:1). Nicht descriptionForeground
+     unter dem Inhaltston #3b3d40 (10,9:1). Nicht descriptionForeground
      (#606060, 7:1) — auf Weiß las sich das schon wie echter Inhalt. */
   --pc-terminal-ghostForeground: #767676;
-  --pc-terminal-ansiBlack: #000000;
-  --pc-terminal-ansiRed: #cd3131;
-  --pc-terminal-ansiGreen: #107c10;
-  --pc-terminal-ansiYellow: #949800;
-  --pc-terminal-ansiBlue: #0451a5;
-  --pc-terminal-ansiMagenta: #bc05bc;
-  --pc-terminal-ansiCyan: #0598bc;
-  --pc-terminal-ansiWhite: #555555;
-  --pc-terminal-ansiBrightBlack: #666666;
-  --pc-terminal-ansiBrightRed: #cd3131;
-  --pc-terminal-ansiBrightGreen: #14ce14;
-  --pc-terminal-ansiBrightYellow: #b5ba00;
-  --pc-terminal-ansiBrightBlue: #0451a5;
-  --pc-terminal-ansiBrightMagenta: #bc05bc;
-  --pc-terminal-ansiBrightCyan: #0598bc;
-  --pc-terminal-ansiBrightWhite: #a5a5a5;
+  --pc-terminal-ansiBlack: #191b1d;
+  --pc-terminal-ansiRed: #b82f2b;
+  --pc-terminal-ansiGreen: #067e3f;
+  --pc-terminal-ansiYellow: #857505;
+  --pc-terminal-ansiBlue: #3c44b4;
+  --pc-terminal-ansiMagenta: #9c2892;
+  --pc-terminal-ansiCyan: #188184;
+  --pc-terminal-ansiWhite: #7e8084;
+  --pc-terminal-ansiBrightBlack: #717579;
+  --pc-terminal-ansiBrightRed: #d9453e;
+  --pc-terminal-ansiBrightGreen: #1a9951;
+  --pc-terminal-ansiBrightYellow: #9b8a16;
+  --pc-terminal-ansiBrightBlue: #585fdb;
+  --pc-terminal-ansiBrightMagenta: #ba3fad;
+  --pc-terminal-ansiBrightCyan: #03999d;
+  --pc-terminal-ansiBrightWhite: #a2a5a8;
 }
