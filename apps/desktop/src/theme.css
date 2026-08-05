@@ -127,16 +127,27 @@
    * heraus, worum es ging. Die Marken-Verläufe selbst bleiben unangetastet und
    * bleiben laut CLAUDE.md fixe Identität, kein Theme-Token.
    *
-   * focusBorder ist die generische Fallback-Basis (VS-Code-Muster) und bleibt
-   * eine Stufe dunkler und halbtransparent; --pc-pane-activeBorder weiter unten
-   * ist das eigenständige, hellere Fokus-Token der Pane. Kontrast auf dem Grund
-   * #121314: ~3,3:1 hier (mit dem Alpha-Byte b3 komponiert — der opake Hexwert
-   * allein sagt nichts über die tatsächlich sichtbare Fläche), 7,8:1 dort. Der
-   * niedrigere Wert liegt knapp über der 3:1-Untergrenze für nicht-textliche
-   * Fokusindikatoren (WCAG 1.4.11) — bewusst kein Nachschärfen ohne weitere
-   * Prüfung, ob eine höhere Deckkraft die Rahmenwirkung woanders sprengt.
+   * focusBorder ist die generische Fallback-Basis (VS-Code-Muster),
+   * --pc-pane-activeBorder weiter unten das eigenständige Fokus-Token der Pane.
+   * Beide tragen jetzt DENSELBEN Hexwert und unterscheiden sich nur über das
+   * Alpha-Byte — ein Akzent in zwei Stärken statt zweier Töne, die man getrennt
+   * nachziehen muss.
+   *
+   * Das Alpha ist beim Rechnen leicht zu übersehen und war hier zwei Commits
+   * lang falsch dokumentiert: der opake Hexwert sagt nichts über die sichtbare
+   * Fläche, gemessen werden muss die Komposition über dem Grund. Auf #121314:
+   *
+   *   focusBorder  #e59656 bei b3 (70 %)  →  #a66f42  =  4,4:1
+   *   pane.activeBorder #e59656 opak      →             7,8:1
+   *
+   * Die 4,4:1 sind kein Kompromiss, sondern eine Verbesserung: das frühere
+   * Blau #3994bcb3 kam komponiert auf 3,3:1 und lag damit haarscharf über der
+   * 3:1-Untergrenze für nicht-textliche Fokusindikatoren (WCAG 1.4.11). Die
+   * erste Amber-Fassung traf mit 3,3:1 exakt dieselbe Wirkung — richtig
+   * kalibriert, aber eben auf einen zu knappen Altwert. Deshalb hier bewusst
+   * nach oben statt nur nachgezogen.
    */
-  --pc-focusBorder: #c37c42b3;
+  --pc-focusBorder: #e59656b3;
 
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #121314;
@@ -338,6 +349,11 @@
    * 5,5:1, focusBorder 4,4:1. Anders als in Dark ist „stärker" hier dunkler,
    * nicht heller — das Pane-Token, das das Fokussignal allein trägt, ist
    * deshalb der tiefere der beiden Werte.
+   *
+   * focusBorder ist hier deckend, während es in Dark derselbe Hexwert wie
+   * pane.activeBorder mit Alpha ist. Kein Versehen: auf Weiß mischt Alpha nach
+   * OBEN und nimmt Kontrast weg, statt ihn wie auf dunklem Grund nur zu
+   * dämpfen. Ein Akzent in zwei Stärken geht dort also nur über zwei Werte.
    */
   --pc-focusBorder: #b0651f;
 
