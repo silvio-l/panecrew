@@ -6,8 +6,8 @@ pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
 pub mod shell_history;
-pub mod splash;
 pub mod shell_integration;
+pub mod splash;
 
 use about::PendingUpdateCheck;
 use cli::Cli;
