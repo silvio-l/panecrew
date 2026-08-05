@@ -28,7 +28,7 @@ pub fn shell_history_read() -> Vec<String> {
     parse_history(&String::from_utf8_lossy(&bytes), MAX_ENTRIES)
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     let home = std::env::var_os("USERPROFILE");
     #[cfg(not(windows))]

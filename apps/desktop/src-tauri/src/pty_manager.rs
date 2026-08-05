@@ -8,6 +8,8 @@ pub struct SpawnOptions {
     pub cmd: String,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    /// Set after PaneCrew's own defaults, so a caller can override them.
+    pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -64,6 +66,9 @@ where
     // only thing we do about default colors — PaneCrew never writes to
     // anyone's shell config.
     cmd.env("CLICOLOR", "1");
+    for (key, value) in opts.env {
+        cmd.env(key, value);
+    }
     let child = pair.slave.spawn_command(cmd)?;
 
     let mut reader = pair.master.try_clone_reader()?;
@@ -163,6 +168,7 @@ mod tests {
                 cmd: "sh".into(),
                 args,
                 cwd: std::env::temp_dir(),
+                env: vec![],
                 cols: 80,
                 rows: 24,
             },

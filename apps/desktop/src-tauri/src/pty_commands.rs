@@ -4,7 +4,9 @@
 //! it is in `pty_manager`.
 
 use crate::pty_manager::{self, PtyHandle};
+use crate::shell_integration;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -12,22 +14,35 @@ use tauri::State;
 #[derive(Default)]
 pub struct PtyState(Mutex<HashMap<String, PtyHandle>>);
 
+/// Where PaneCrew's shell wrappers were written at startup — `None` if that
+/// failed, in which case panes spawn unwrapped rather than not at all.
+pub struct ShellIntegrationDir(pub Option<PathBuf>);
+
 #[tauri::command]
 pub fn pty_spawn(
     state: State<PtyState>,
+    integration_dir: State<ShellIntegrationDir>,
     pane_id: String,
     cwd: String,
     cols: u16,
     rows: u16,
     on_output: Channel<Vec<u8>>,
 ) -> Result<(), String> {
+    let shell = pty_manager::default_shell();
+    let integration = integration_dir
+        .0
+        .as_deref()
+        .map(|root| shell_integration::for_shell(&shell, root))
+        .unwrap_or_default();
+
     spawn_and_register(
         &state,
         pane_id,
         pty_manager::SpawnOptions {
-            cmd: pty_manager::default_shell(),
-            args: vec![],
+            cmd: shell,
+            args: integration.args,
             cwd: cwd.into(),
+            env: integration.env,
             cols,
             rows,
         },
@@ -120,6 +135,7 @@ mod tests {
             cmd: "sh".into(),
             args: vec!["-c".into(), script.into()],
             cwd: std::env::temp_dir(),
+            env: vec![],
             cols: 80,
             rows: 24,
         }
