@@ -103,6 +103,8 @@ export function attachDirectoryPopup(
       more.className = "pc-cdpopup__more";
       // Ohne diesen Hinweis läse sich eine abgeschnittene Liste wie eine
       // vollständige — und der gesuchte Ordner wäre scheinbar nicht da.
+      // Gezählt wird, was das Backend geliefert hat; das ist dort selbst schon
+      // gedeckelt, bei sehr vielen Treffern fehlen also mehr, als hier steht.
       more.textContent = `+${hidden}`;
       list.append(more);
     }
@@ -171,6 +173,17 @@ export function attachDirectoryPopup(
       }
 
       const nextKey = `${completion.cwd}\x00${completion.directory}\x00${completion.prefix}`;
+      if (nextKey !== key) {
+        key = nextKey;
+        selected = 0;
+        windowStart = 0;
+        // Verworfen ist eine Anzeige zu genau dieser Eingabe. Sobald sich die
+        // Eingabe ändert, gilt das nicht mehr — sonst bliebe die Liste auch
+        // dann weg, wenn der Nutzer über ein Backspace wieder auf dieselbe
+        // Stelle zurückkommt, und das Verstecken hinge an einem Zustand, den
+        // er längst vergessen hat.
+        dismissedKey = null;
+      }
       if (nextKey === dismissedKey) {
         hide();
         return;
@@ -189,11 +202,6 @@ export function attachDirectoryPopup(
         return;
       }
 
-      if (nextKey !== key) {
-        key = nextKey;
-        selected = 0;
-        windowStart = 0;
-      }
       entries = names;
       prefix = completion.prefix;
       quoted = completion.quoted;

@@ -328,8 +328,29 @@ describe("Verzeichnis-Popup bei cd", () => {
 
     expect(document.querySelector(".pc-cdpopup")).toBeNull();
     expect(sent).toEqual([]);
+    // Unsichtbar heißt: Enter gehört wieder der Shell.
+    expect(suggestion.directories.visible()).toBe(false);
+
     // Verworfen ist nur DIESE Eingabe; das nächste Zeichen fragt neu.
     await type("s");
+    expect(items()).toEqual(["src"]);
+  });
+
+  it("vergisst das Verwerfen, sobald sich die Eingabe ändert", async () => {
+    subdirectories = { "": ["scripts", "src"] };
+    await type("cd sr");
+    suggestion.directories.dismiss();
+    await settle();
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+
+    // Backspace, dann dasselbe Zeichen wieder: die Liste gehört zur Eingabe,
+    // nicht zu einer Entscheidung, an die sich niemand mehr erinnert.
+    terminal.input("\x7f", true);
+    await write("\b \b");
+    await settle();
+    expect(items()).toEqual(["scripts", "src"]);
+
+    await type("r");
     expect(items()).toEqual(["src"]);
   });
 
