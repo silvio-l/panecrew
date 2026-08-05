@@ -9,12 +9,20 @@ import type { InlineSuggestion } from "./inlineSuggestion";
 //
 // Der Grundsatz, und der Grund, warum das so eng gefasst ist: eine Taste, die
 // hier durchfällt, macht in der Shell etwas Echtes. Pfeiltasten sind
-// History-Navigation, Enter schickt ab, Tab ist die Tab-Completion der Shell —
-// und ein einzelnes Escape ist in zsh der Meta-Präfix, der die NÄCHSTE Taste
-// umdeutet (aus dem folgenden Enter wird `self-insert-unmeta`, das ein
-// wörtliches CR in die Zeile schreibt, statt sie abzuschicken). Deshalb wird
-// eine Taste nur dann genommen, wenn wirklich etwas sichtbar ist, das sie
-// bedienen kann.
+// History-Navigation, Tab ist die Tab-Completion der Shell — und ein einzelnes
+// Escape ist in zsh der Meta-Präfix, der die NÄCHSTE Taste umdeutet (aus dem
+// folgenden Enter wird `self-insert-unmeta`, das ein wörtliches CR in die
+// Zeile schreibt, statt sie abzuschicken). Deshalb wird eine Taste nur dann
+// genommen, wenn wirklich etwas sichtbar ist, das sie bedienen kann.
+//
+// Enter ist von dieser Politik ganz ausgenommen und schickt immer ab
+// (Produktentscheidung 2026-08-05). Ein Terminal-Nutzer hat jahrzehntelange
+// Übung darin, dass Enter absendet; jede Ausnahme davon ist ein Stolperstein —
+// der erste gemeldete Fehler dieses Features war genau einer: Der Nutzer
+// drückte Escape nur deshalb, um sein Enter durchzubekommen, und ein Escape,
+// das an der Liste vorbeigeht, macht in der Shell Schaden. Übernommen wird
+// mit Tab, passend zur Tab-Completion, die die Shell an derselben Stelle
+// ohnehin anbietet.
 
 /** Nur das, was die Politik von einem Tastenereignis braucht. */
 export interface CompletionKey {
@@ -44,13 +52,12 @@ export function routeCompletionKey(
       popup.dismiss();
       return true;
     }
-    if ((event.key === "Enter" || event.key === "Tab") && popup.accept()) {
-      // Ohne das schöbe der Webview auf Tab zusätzlich den Fokus weiter und
-      // trüge auf Enter einen Zeilenumbruch in xterms Hilfs-Textarea ein.
+    if (event.key === "Tab" && popup.accept()) {
+      // Ohne das schöbe der Webview auf Tab zusätzlich den Fokus weiter.
       event.preventDefault();
       return true;
     }
-    // Jede andere Taste fällt weiter — die Liste beansprucht nur ihre fünf.
+    // Jede andere Taste fällt weiter — die Liste beansprucht nur ihre vier.
   }
 
   // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen den Geistertext — die

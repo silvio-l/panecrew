@@ -25,11 +25,15 @@ aus `apps/desktop`, Ausgabe nach `docs/shortcuts.md` umleiten und committen.
 
 Nicht in der Registry, weil sie nur gelten, solange die genannte Anzeige
 sichtbar ist — sonst erreichen sie unverändert die Shell (Pfeiltasten bleiben
-History-Navigation, Enter schickt ab, Tab bleibt die Tab-Completion der Shell).
+History-Navigation, Tab bleibt die Tab-Completion der Shell).
+
+**Enter ist bewusst nicht dabei und schickt immer ab**, auch bei offener
+Liste. Im Terminal hat die Taste genau eine Bedeutung, und die zu verbiegen
+kostet mehr, als die Übernahme per Enter einbringt.
 
 | Taste | Wirkung, solange sichtbar |
 | --- | --- |
 | → (am Zeilenende), Ctrl+F | Sichtbare Inline-Ergänzung übernehmen |
 | ↑ / ↓ | Auswahl im Verzeichnis-Popup bewegen |
-| Enter, Tab | Ausgewähltes Verzeichnis übernehmen |
+| Tab | Ausgewähltes Verzeichnis übernehmen |
 | Esc | Verzeichnis-Popup schließen |

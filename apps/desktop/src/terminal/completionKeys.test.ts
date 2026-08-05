@@ -42,19 +42,30 @@ describe("routeCompletionKey bei sichtbarem Popup", () => {
     expect(suggestion.directories.move.mock.calls).toEqual([[1], [-1]]);
   });
 
-  it("übernimmt mit Enter und Tab und hält den Webview davon ab mitzureagieren", () => {
+  it("übernimmt mit Tab und hält den Webview davon ab mitzureagieren", () => {
     const suggestion = completion({ visible: true });
     const tab = key({ key: "Tab" });
 
     expect(routeCompletionKey(tab, suggestion)).toBe(true);
     expect(tab.preventDefault).toHaveBeenCalled();
-    expect(routeCompletionKey(key({ key: "Enter" }), suggestion)).toBe(true);
   });
 
-  it("gibt Enter an die Shell, wenn es doch nichts zu übernehmen gibt", () => {
-    const suggestion = completion({ visible: true, accepts: false });
+  it("lässt Enter auch bei offener Liste immer abschicken", () => {
+    // Produktentscheidung: Enter behält im Terminal seine eine Bedeutung.
+    // Eine Liste, die es abfängt, war der Auslöser des ersten gemeldeten
+    // Fehlers dieses Features.
+    const suggestion = completion({ visible: true });
 
     expect(routeCompletionKey(key({ key: "Enter" }), suggestion)).toBe(false);
+    expect(suggestion.directories.accept).not.toHaveBeenCalled();
+  });
+
+  it("gibt Tab an die Shell, wenn es doch nichts zu übernehmen gibt", () => {
+    // Dann vervollständigt die Shell selbst — das ist die Taste, die ihr an
+    // dieser Stelle ohnehin gehört.
+    const suggestion = completion({ visible: true, accepts: false });
+
+    expect(routeCompletionKey(key({ key: "Tab" }), suggestion)).toBe(false);
   });
 
   it("schluckt Escape — genau dafür ist es da", () => {
@@ -67,10 +78,10 @@ describe("routeCompletionKey bei sichtbarem Popup", () => {
   it("lässt alles mit Modifikator in Ruhe", () => {
     const suggestion = completion({ visible: true });
 
-    // Shift+Enter ist der weiche Zeilenumbruch der Pane, Cmd+Enter gehört
-    // dem laufenden Programm — beides darf die Liste nicht abfangen.
+    // Shift+Tab wandert im Webview rückwärts durch den Fokus, Alt+Pfeil
+    // gehört dem laufenden Programm — beides darf die Liste nicht abfangen.
     expect(
-      routeCompletionKey(key({ key: "Enter", shiftKey: true }), suggestion),
+      routeCompletionKey(key({ key: "Tab", shiftKey: true }), suggestion),
     ).toBe(false);
     expect(
       routeCompletionKey(key({ key: "ArrowUp", altKey: true }), suggestion),
@@ -80,10 +91,10 @@ describe("routeCompletionKey bei sichtbarem Popup", () => {
 });
 
 describe("routeCompletionKey ohne sichtbares Popup", () => {
-  it("gibt alle fünf Tasten unverändert an die Shell", () => {
+  it("gibt alle vier Tasten unverändert an die Shell", () => {
     const suggestion = completion();
 
-    for (const name of ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"]) {
+    for (const name of ["ArrowDown", "ArrowUp", "Tab", "Escape"]) {
       expect(routeCompletionKey(key({ key: name }), suggestion)).toBe(false);
     }
     expect(suggestion.directories.move).not.toHaveBeenCalled();
