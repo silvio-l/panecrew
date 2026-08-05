@@ -130,11 +130,11 @@
    * focusBorder ist die generische Fallback-Basis (VS-Code-Muster) und bleibt
    * eine Stufe dunkler und halbtransparent; --pc-pane-activeBorder weiter unten
    * ist das eigenständige, hellere Fokus-Token der Pane. Kontrast auf dem Grund
-   * #121314: 5,6:1 hier, 7,8:1 dort — dieselbe Wirkung, die das frühere Blau
-   * hatte (5,4:1 und 7,7:1). Die erste Fassung lag bei 9,3:1 und las sich neben
-   * dem Terminalinhalt als Rahmen, der lauter ist als das, was er umschließt;
-   * warme Töne drängen bei gleicher Helligkeit ohnehin stärker nach vorn als
-   * kühle, deshalb die Rückkalibrierung auf die alten Kontrastwerte.
+   * #121314: ~3,3:1 hier (mit dem Alpha-Byte b3 komponiert — der opake Hexwert
+   * allein sagt nichts über die tatsächlich sichtbare Fläche), 7,8:1 dort. Der
+   * niedrigere Wert liegt knapp über der 3:1-Untergrenze für nicht-textliche
+   * Fokusindikatoren (WCAG 1.4.11) — bewusst kein Nachschärfen ohne weitere
+   * Prüfung, ob eine höhere Deckkraft die Rahmenwirkung woanders sprengt.
    */
   --pc-focusBorder: #c37c42b3;
 
