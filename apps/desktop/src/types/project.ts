@@ -29,7 +29,6 @@ export interface Project {
   path: string;
   /** Letztes Pfadsegment, der im Chrome angezeigte Projektname. */
   name: string;
-  selectedFile: string;
   tree: TreeNode[];
 }
 

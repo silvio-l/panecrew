@@ -67,14 +67,17 @@ const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
-function projectFromPath(path: string): Project {
-  // Der echte Verzeichnis-Scan ist Ticket 04: der Baum bleibt hier bewusst
-  // leer, statt erfundene Einträge zu zeigen.
-  return { path, name: projectNameFromPath(path), selectedFile: "", tree: [] };
+// Einzige Stelle, die einen Project aus einem Pfad baut — Picker- und
+// CLI-Launch-Pfad rufen beide hierhin statt je eine eigene Implementierung zu
+// pflegen. Async, weil der echte Verzeichnis-Scan (Ticket 02) ein
+// IPC-Roundtrip wird; bis dahin bleibt der Baum bewusst leer statt erfunden.
+function buildProject(path: string): Promise<Project> {
+  return Promise.resolve({ path, name: projectNameFromPath(path), tree: [] });
 }
 
 function App() {
   const [project, setProject] = useState<Project | null>(null);
+  const [selectedFile, setSelectedFile] = useState("");
   const [picking, setPicking] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
@@ -95,8 +98,12 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void invoke<string | null>("get_launch_project")
-      .then((path) => {
-        if (!cancelled && path) setProject(projectFromPath(path));
+      .then((path) => (path ? buildProject(path) : null))
+      .then((next) => {
+        if (!cancelled && next) {
+          setProject(next);
+          setSelectedFile("");
+        }
       })
       .catch((error: unknown) => {
         console.error("PaneCrew: Start-Projekt konnte nicht gelesen werden", error);
@@ -109,9 +116,13 @@ function App() {
   const chooseProject = () => {
     setPicking(true);
     void openFolderDialog({ directory: true, multiple: false })
-      .then((selected) => {
-        if (typeof selected !== "string") return;
-        setProject(projectFromPath(selected));
+      .then((selected) =>
+        typeof selected === "string" ? buildProject(selected) : null,
+      )
+      .then((next) => {
+        if (!next) return;
+        setProject(next);
+        setSelectedFile("");
       })
       .catch((error: unknown) => {
         console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
@@ -186,6 +197,8 @@ function App() {
                 key={project.path}
                 project={project}
                 width={explorerWidth}
+                selectedFile={selectedFile}
+                onSelectFile={setSelectedFile}
                 onCollapse={() => setExplorerCollapsed(true)}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die

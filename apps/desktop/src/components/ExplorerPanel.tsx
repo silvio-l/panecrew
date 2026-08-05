@@ -12,14 +12,17 @@ import type { FileKind, Project, TreeNode } from "../types/project";
 export function ExplorerPanel({
   project,
   width,
+  selectedFile,
+  onSelectFile,
   onCollapse,
 }: {
   project: Project;
   width: number;
+  selectedFile: string;
+  onSelectFile: (path: string) => void;
   onCollapse: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [selected, setSelected] = useState(project.selectedFile);
 
   const toggleFolder = (path: string) => {
     setCollapsed((prev) => {
@@ -76,9 +79,9 @@ export function ExplorerPanel({
               path={node.name}
               depth={0}
               collapsed={collapsed}
-              selected={selected}
+              selected={selectedFile}
               onToggleFolder={toggleFolder}
-              onSelectFile={setSelected}
+              onSelectFile={onSelectFile}
             />
           ))
         )}
