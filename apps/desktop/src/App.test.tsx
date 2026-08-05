@@ -86,6 +86,11 @@ vi.mock("@xterm/xterm", () => ({
     onCursorMove(): { dispose: () => void } {
       return { dispose: () => undefined };
     }
+    parser = {
+      registerOscHandler: (): { dispose: () => void } => ({
+        dispose: () => undefined,
+      }),
+    };
   },
 }));
 

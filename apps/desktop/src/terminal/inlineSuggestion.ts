@@ -1,6 +1,7 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
 import type { BufferPosition } from "./suggestion";
 import { classifyKeystroke, computeGhost, rememberCommand } from "./suggestion";
+import type { DirectoryLookup } from "./workingDirectory";
 
 // xterm-Anbindung der Inline-Vervollständigung: hält den Ankerpunkt, liest
 // den Bildschirm und malt den Rest des Treffers als gedimmten Geistertext
@@ -12,6 +13,11 @@ export interface InlineSuggestion {
   accept: () => boolean;
   /** Tracking verwerfen — für Eingaben, die nicht durch `onData` laufen. */
   reset: () => void;
+  /**
+   * Neu rechnen, ohne dass sich am Bildschirm etwas geändert hat — für die
+   * Verzeichnisprüfung, deren Antwort erst nach dem Rendern eintrifft.
+   */
+  refresh: () => void;
   dispose: () => void;
 }
 
@@ -20,12 +26,17 @@ export function attachInlineSuggestion(
   {
     write,
     baseHistory,
+    cwd,
+    isDirectory,
     font,
   }: {
     /** Schreibt Text in die PTY (derselbe Pfad wie eine echte Eingabe). */
     write: (text: string) => void;
     /** Datei-History des Nutzers, neueste zuerst; darf leer starten. */
     baseHistory: () => readonly string[];
+    /** Aktuelles Arbeitsverzeichnis der Shell, null solange unbekannt. */
+    cwd: () => string | null;
+    isDirectory: DirectoryLookup;
     font: { fontFamily: string; fontSize: number };
   },
 ): InlineSuggestion {
@@ -103,6 +114,8 @@ export function attachInlineSuggestion(
       cursor,
       rowText: anchor ? rowText(anchor.y) : "",
       history: [...sessionHistory, ...baseHistory()],
+      cwd: cwd(),
+      isDirectory,
     });
     if (ghost) drawGhost(ghost, cursor.x);
   };
@@ -153,6 +166,7 @@ export function attachInlineSuggestion(
       anchor = null;
       clearGhost();
     },
+    refresh: schedule,
     dispose: () => {
       if (frame) cancelAnimationFrame(frame);
       for (const disposable of disposables) disposable.dispose();

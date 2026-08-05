@@ -11,6 +11,8 @@
 // Bildschirm nicht ablesen kann: die Spalte, an der der Prompt endet und die
 // Eingabe beginnt (der Anker). Alles andere ist gelesener Zustand.
 
+import type { DirectoryLookup } from "./workingDirectory";
+
 /** Position im absoluten Buffer-Koordinatensystem (`baseY + cursorY`). */
 export interface BufferPosition {
   x: number;
@@ -62,7 +64,23 @@ export interface GhostInput {
   rowText: string;
   /** Kandidaten, neueste zuerst. */
   history: readonly string[];
+  /**
+   * Wo die Shell dieser Pane gerade steht, oder null, solange sie es nicht
+   * gemeldet hat. Nicht das Startverzeichnis der Pane: der Nutzer ist seither
+   * womöglich woanders hin gewechselt.
+   */
+  cwd: string | null;
+  isDirectory: DirectoryLookup;
 }
+
+/**
+ * Wie viele passende History-Einträge höchstens betrachtet werden.
+ *
+ * Ohne Grenze könnte eine History mit hundert `cd`-Zeilen bei der Eingabe
+ * `cd ` hundert Verzeichnisprüfungen auslösen — für einen Vorschlag, von dem
+ * ohnehin nur der erste bestätigte Treffer zählt.
+ */
+const MAX_CANDIDATES = 12;
 
 /**
  * Der sichtbare Rest des besten History-Treffers — oder "" für "nichts
@@ -83,6 +101,9 @@ export interface GhostInput {
  *   bereits vorhandene Vervollständigung eines Shell-Plugins davor,
  *   überschrieben zu werden, und begrenzt die Ausgabe zugleich auf die
  *   Zeilenbreite.
+ *
+ * Ein `cd`-Kandidat muss zusätzlich gegen das echte Dateisystem bestätigt
+ * sein — siehe `cdTarget`.
  */
 export function computeGhost({
   bufferType,
@@ -90,6 +111,8 @@ export function computeGhost({
   cursor,
   rowText,
   history,
+  cwd,
+  isDirectory,
 }: GhostInput): string {
   if (bufferType !== "normal") return "";
   if (anchor?.y !== cursor.y || cursor.x <= anchor.x) return "";
@@ -97,18 +120,75 @@ export function computeGhost({
   const input = rowText.slice(anchor.x, cursor.x);
   if (!input.trim()) return "";
 
-  // Mehrzeilige History-Einträge werden übersprungen statt gekürzt: ihr
-  // sichtbarer Rest wäre ein Befehl, den anzunehmen etwas anderes ausführt
-  // als angezeigt.
-  const match = history.find(
-    (entry) =>
-      entry.length > input.length &&
-      entry.startsWith(input) &&
-      !entry.includes("\n"),
-  );
-  if (!match) return "";
+  let unconfirmed = false;
+  let considered = 0;
 
-  return match.slice(input.length, input.length + blankRunAfter(rowText, cursor.x));
+  for (const entry of history) {
+    if (considered >= MAX_CANDIDATES) break;
+    // Mehrzeilige History-Einträge werden übersprungen statt gekürzt: ihr
+    // sichtbarer Rest wäre ein Befehl, den anzunehmen etwas anderes ausführt
+    // als angezeigt.
+    if (
+      entry.length <= input.length ||
+      !entry.startsWith(input) ||
+      entry.includes("\n")
+    ) {
+      continue;
+    }
+    considered += 1;
+
+    const target = cdTarget(entry);
+    if (target !== null) {
+      // Ohne bekanntes Arbeitsverzeichnis gibt es nichts, wogegen man prüfen
+      // könnte — dann lieber gar kein `cd`-Vorschlag als ein geratener.
+      if (!cwd) continue;
+      const exists = isDirectory(cwd, target);
+      if (exists === undefined) {
+        // Die Prüfung läuft noch. Weitersuchen, damit die übrigen Kandidaten
+        // im selben Durchgang mitangestoßen werden statt einer nach dem
+        // anderen.
+        unconfirmed = true;
+        continue;
+      }
+      if (!exists) continue;
+    }
+
+    // Ein bestätigter Treffer — aber ein noch ungeprüfter Kandidat davor wäre
+    // der bessere. Einen Frame lang nichts zu zeigen ist besser, als kurz das
+    // Falsche zu zeigen und es dann auszutauschen.
+    if (unconfirmed) return "";
+    return entry.slice(
+      input.length,
+      input.length + blankRunAfter(rowText, cursor.x),
+    );
+  }
+
+  return "";
+}
+
+/**
+ * Das Zielverzeichnis eines `cd`-Befehls, oder null für alles andere.
+ *
+ * Der Grund, warum es diese Prüfung überhaupt gibt: Shell-History-Dateien
+ * speichern kein Arbeitsverzeichnis. Ein irgendwann einmal getipptes
+ * `cd Desktop` wurde deshalb auch in einem Projekt vorgeschlagen, das gar kein
+ * `Desktop` enthält — angenommen ergab das ein „no such file or directory".
+ *
+ * Bewusst nur `cd` und bewusst keine Shell-Grammatik: gelesen wird das erste
+ * Wort hinter `cd`, in Anführungszeichen auch mit Leerzeichen. Alles, was
+ * daraus kein prüfbarer Pfad wird (`cd -`, `cd $PROJECT`, ein Glob), liefert
+ * hier einen Kandidaten, den das Dateisystem nicht bestätigt — der Vorschlag
+ * entfällt dann. Das ist die sichere Richtung: ein Vorschlag zu wenig statt
+ * einer, der ins Leere führt.
+ *
+ * `cd` ohne Argument (das Home-Verzeichnis) hat kein Ziel zu prüfen und gilt
+ * wie jeder andere Befehl.
+ */
+function cdTarget(command: string): string | null {
+  const rest = /^cd\s+(.*)$/.exec(command)?.[1]?.trim();
+  if (!rest) return null;
+  const token = /^"([^"]*)"|^'([^']*)'|^(\S+)/.exec(rest);
+  return token?.[1] ?? token?.[2] ?? token?.[3] ?? null;
 }
 
 function blankRunAfter(rowText: string, x: number): number {

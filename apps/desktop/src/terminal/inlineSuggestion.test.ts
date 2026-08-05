@@ -29,11 +29,20 @@ beforeAll(() => {
 });
 
 const PROMPT = "~/panecrew ❯ ";
-const HISTORY = ["pnpm tauri dev", "pnpm test", "git status --short"];
+const HISTORY = ["pnpm tauri dev", "pnpm test", "git status --short", "cd apps"];
 
 let terminal: Terminal;
 let suggestion: InlineSuggestion;
 let sent: string[];
+/** Verzeichnisse, die es im Arbeitsverzeichnis der Pane gibt. */
+let directories: string[];
+/** Ziele, deren Prüfung noch läuft — zu lösen über `resolveProbes()`. */
+let unresolved: string[];
+
+function resolveProbes(): void {
+  unresolved = [];
+  suggestion.refresh();
+}
 
 const settle = () =>
   new Promise<void>((resolve) => {
@@ -69,6 +78,8 @@ beforeEach(async () => {
   terminal = new Terminal({ cols: 60, rows: 10, allowProposedApi: true });
   terminal.open(container);
   sent = [];
+  directories = [];
+  unresolved = [];
   suggestion = attachInlineSuggestion(terminal, {
     write: (text) => {
       sent.push(text);
@@ -76,6 +87,9 @@ beforeEach(async () => {
       terminal.write(text);
     },
     baseHistory: () => HISTORY,
+    cwd: () => "/Users/dev/panecrew",
+    isDirectory: (_cwd, path) =>
+      unresolved.includes(path) ? undefined : directories.includes(path),
     font: { fontFamily: "monospace", fontSize: 13 },
   });
   await write(PROMPT);
@@ -194,5 +208,19 @@ describe("attachInlineSuggestion", () => {
     suggestion.reset();
 
     expect(ghostText()).toBe("");
+  });
+
+  it("zeigt den cd-Vorschlag erst, wenn das Verzeichnis bestätigt ist", async () => {
+    directories = ["apps"];
+    unresolved = ["apps"];
+
+    await type("cd ap");
+    // Solange die Prüfung läuft, steht dort nichts — auch nicht kurz.
+    expect(ghostText()).toBe("");
+
+    resolveProbes();
+    await settle();
+
+    expect(ghostText()).toBe("ps");
   });
 });

@@ -9,6 +9,7 @@ import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { loadShellHistory } from "./shellHistory";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
+import { createDirectoryProbe, parseOsc7 } from "./workingDirectory";
 
 // Bindet ein echtes xterm.js-Terminal an eine PTY-Session im Rust-Backend.
 // Der IPC-Vertrag (pty_spawn/pty_write/pty_resize/pty_kill, Output als
@@ -137,14 +138,44 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
     void loadShellHistory().then((entries) => {
       if (!disposed) shellHistory = entries;
     });
+
+    // Wo die Shell dieser Pane WIRKLICH steht: `cwd` oben ist nur das
+    // Startverzeichnis, der Nutzer wechselt es danach selbst. Gemeldet wird es
+    // per OSC 7 von PaneCrews eigenem Shell-Wrapper (src-tauri/shell-
+    // integration/), einmal pro Prompt — kein Pollen, keine Abfrage pro
+    // Tastendruck. Bleibt null bei Shells ohne Wrapper (fish, cmd.exe); dann
+    // unterbleiben `cd`-Vorschläge, statt geraten zu werden.
+    let liveCwd: string | null = null;
+    // Die erste Meldung kommt immer vom lokalen Prompt dieser Pane, noch bevor
+    // getippt werden kann. Meldet später ein anderer Rechner (ein `ssh` in der
+    // Pane), ist das kein Verzeichnis, das es hier zu prüfen gäbe — dann gilt
+    // wieder "unbekannt", statt am letzten lokalen Pfad festzuhalten.
+    let localHost: string | null = null;
+    // Der Verzeichnisprüfer antwortet erst nach dem Rendern; das Objekt, das
+    // dann neu rechnen muss, entsteht eine Zeile später.
+    let refreshSuggestion = noop;
+    const directories = createDirectoryProbe(() => {
+      refreshSuggestion();
+    });
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,
+      cwd: () => liveCwd,
+      isDirectory: directories.isDirectory,
       font: terminalOptions,
     });
+    refreshSuggestion = suggestion.refresh;
 
     const disposables = [
       terminal.onData(writeText),
+      terminal.parser.registerOscHandler(7, (data) => {
+        const reported = parseOsc7(data);
+        if (reported) {
+          localHost ??= reported.host;
+          liveCwd = reported.host === localHost ? reported.path : null;
+        }
+        return true;
+      }),
       // xterm feuert onResize nur bei tatsächlicher Dimensionsänderung — das
       // ist genau die Bedingung des IPC-Vertrags für pty_resize.
       terminal.onResize(syncSize),
@@ -258,6 +289,7 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       dropListenerDisposed = true;
       unlistenDrop?.();
       resizeObserver.disconnect();
+      directories.dispose();
       suggestion.dispose();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;
