@@ -95,14 +95,24 @@
    * backdrop-filter arbeitet trotzdem sichtbar an genau einer Stelle: der
    * Fokus-Glow der aktiven Pane strahlt unter die Unterkante der Kapsel.
    *
+   * Die Zahlen sind gegen die echte, lokal installierte Safari 26 (macOS
+   * 26.5.2, Dark) kalibriert, nicht geschätzt — Messwerte und Herleitung in
+   * docs/agents/vscode-theming-research.md §11. Kurzfassung: Apples Toolbar
+   * liegt bei (35,42,44), unsere Kapselfläche bei (33,35,38) — der TON war von
+   * Anfang an richtig, zu hart waren die Kanten. Safaris hellste Kante steht
+   * +25 über der Fläche ihres eigenen Bedienelements; unsere Lichtkante stand
+   * +34 über der Kapselfläche und lief dabei über die ganze Fensterbreite.
+   * Reduziert wurden deshalb gezielt Lichtkante, Schlagschatten und
+   * Verlaufsstärke, nicht pauschal alles.
+   *
    * --pc-titleBar-border bleibt der Hairline-Ton für schwebende Chrome-Ränder
    * (Tooltip, Kontextmenü) und ist nicht mehr der Rand der Titelzeile selbst.
    */
-  --pc-titleBar-glassBackground: rgba(46, 49, 55, 0.62);
-  --pc-titleBar-glassBorder: rgba(255, 255, 255, 0.09);
-  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.13);
-  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.05);
-  --pc-titleBar-glassShadow: rgba(0, 0, 0, 0.5);
+  --pc-titleBar-glassBackground: rgba(46, 49, 55, 0.46);
+  --pc-titleBar-glassBorder: rgba(255, 255, 255, 0.055);
+  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.03);
+  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.025);
+  --pc-titleBar-glassShadow: rgba(0, 0, 0, 0.18);
   --pc-titleBar-border: #2a2b2c;
 
   /*
@@ -243,11 +253,11 @@
    * die Hairline plus der Schlagschatten (macOS' eigene Lösung für helle
    * Werkzeugleisten), der Ton bleibt knapp unter Weiß.
    */
-  --pc-titleBar-glassBackground: rgba(250, 250, 252, 0.72);
-  --pc-titleBar-glassBorder: rgba(0, 0, 0, 0.11);
-  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.9);
-  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.55);
-  --pc-titleBar-glassShadow: rgba(15, 23, 42, 0.16);
+  --pc-titleBar-glassBackground: rgba(250, 250, 252, 0.58);
+  --pc-titleBar-glassBorder: rgba(0, 0, 0, 0.07);
+  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.45);
+  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.3);
+  --pc-titleBar-glassShadow: rgba(15, 23, 42, 0.07);
   --pc-titleBar-border: #f0f1f2;
 
   /* Command Center: wie im Dark-Block, Platzhalter-Ton statt Inhalts-Ton */

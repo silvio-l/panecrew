@@ -88,7 +88,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
           backgroundImage:
             "linear-gradient(180deg, var(--pc-titleBar-glassTop), transparent 62%)",
         }}
-        className="pointer-events-auto relative flex h-full items-center rounded-[11px] border border-(--pc-titleBar-glassBorder) bg-(--pc-titleBar-glassBackground) pr-[3px] shadow-[0_3px_12px_var(--pc-titleBar-glassShadow),inset_0_1px_0_var(--pc-titleBar-glassSheen)] backdrop-blur-xl backdrop-saturate-150"
+        className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-titleBar-glassBorder) bg-(--pc-titleBar-glassBackground) pr-[3px] shadow-[0_1px_6px_var(--pc-titleBar-glassShadow),inset_0_1px_0_var(--pc-titleBar-glassSheen)] backdrop-blur-lg backdrop-saturate-150"
       >
         {/* Ziehfläche zwischen Ampeln und Feld — als reine Lücke wäre der
             halbe linke Kapselbereich nicht ziehbar. */}
@@ -104,7 +104,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
         <div
           data-tauri-drag-region
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[8px] border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) px-2 text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
+          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) px-2 text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
         >
           {/* Einziges Glyph im Feld — die frühere Lupe daneben hätte zwei
               Icon-Sprachen nebeneinandergestellt (Marken-Verlauf gegen
@@ -131,16 +131,21 @@ export function TitleBar({ zoom }: { zoom: number }) {
   );
 }
 
-// App-Marke: pixelgenaue Vektor-Parität zum echten App-Icon ("K3H —
-// Verzahnung, Amber") — Chevron, dessen unterer Arm über eine diagonale
-// Gehrungsfuge in den Cursor-Block übergeht, mit dem echten Amber/Gold-
-// Verlauf und weichem Glow. Bewusste Kurskorrektur (2026-08-04): die frühere
+// App-Marke: Geometrie und Verlauf des echten App-Icons ("K3H — Verzahnung,
+// Amber") — Chevron, dessen unterer Arm über eine diagonale Gehrungsfuge in
+// den Cursor-Block übergeht. Bewusste Kurskorrektur (2026-08-04): die frühere
 // monochrome Titelzeilen-Fassung wich absichtlich vom Icon ab (ANSI-Yellow-
-// Kollisionsrisiko); auf expliziten Wunsch ersetzt durch 1:1-Farbparität,
-// als eigenständige SVG-Quelle (nicht aus dem Master-PNG exportiert) neu
-// vermessen und iterativ gegen den Master abgeglichen. Gleiche SVG-Definition
-// ist Ursprung des aktuellen Icon-Masters (icons/source/panecrew-mark.svg) —
-// eine einzige Quelle für In-App-Marke und OS-Icons, kein Auseinanderdriften.
+// Kollisionsrisiko); auf expliziten Wunsch ersetzt durch 1:1-Farbparität.
+//
+// EINE bewusste Abweichung vom Master (icons/source/panecrew-mark.svg,
+// 2026-08-05): der weiche Glow des Masters fehlt hier. Sein `stdDeviation`
+// 30/70 gilt für die 1600er viewBox — bei 16px sind das 0,3px und 0,7px, also
+// Subpixel. Er glüht dort nicht, er legt einen bräunlichen Saum um die Form
+// und verschmiert genau die Gehrungsfuge, die die Marke erkennbar macht (bei
+// 12facher Vergrößerung gegeneinandergehalten). Das ist der in CLAUDE.md
+// vorgesehene Fall: Detail, das bei 1024px trägt, muss für 16px neu gezeichnet
+// werden, statt den Master zu verkleinern. Der Master behält den Glow für die
+// großen Icon-Größen.
 function AppMark() {
   return (
     <svg
@@ -181,25 +186,7 @@ function AppMark() {
           <stop offset="0.82" stopColor="#FFF2DE" />
           <stop offset="1" stopColor="#FFF5E2" />
         </linearGradient>
-        <mask id="pcMarkGapMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1600">
-          <rect width="1600" height="1600" fill="#ffffff" />
-          <polygon points="569,1208 749,1218 555,1485 368,1485" fill="#000000" />
-        </mask>
-        <filter id="pcMarkGlow" x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="b1" />
-          <feGaussianBlur in="SourceGraphic" stdDeviation="70" result="b2" />
-          <feMerge>
-            <feMergeNode in="b2" />
-            <feMergeNode in="b1" />
-          </feMerge>
-        </filter>
       </defs>
-      <g mask="url(#pcMarkGapMask)">
-        <g filter="url(#pcMarkGlow)" opacity="0.5" fill="#FFA929">
-          <path d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z" />
-          <path d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
-        </g>
-      </g>
       <path
         fill="url(#pcMarkChevron)"
         d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"
