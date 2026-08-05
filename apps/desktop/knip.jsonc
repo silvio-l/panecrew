@@ -1,13 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   // @tauri-apps/api ist mit Ticket 02 (invoke/Channel/Webview-Drag-Drop) in
-  // echten Gebrauch gekommen und steht deshalb nicht mehr hier.
-  //
-  // Opener-Plugin: weiterhin ungenutzt, aber im Rust-Backend registriert und
-  // für das Öffnen externer Links vorgesehen — kein totes Gepäck.
-  "ignoreDependencies": ["@tauri-apps/plugin-opener"],
+  // echten Gebrauch gekommen und steht deshalb nicht mehr hier. Seit dem
+  // Über-Fenster (Links auf GitHub) gilt dasselbe für @tauri-apps/plugin-opener.
 
-  // Knip erkennt splash.html als zweiten Vite-Einstieg, liest aber dessen
-  // <script src> nicht — ohne diesen Eintrag gilt das Splash-Modul als tot.
-  "entry": ["src/splash/splash.ts"]
+  // Knip erkennt splash.html/about.html als weitere Vite-Einstiege, liest aber
+  // deren <script src> nicht — ohne diese Einträge gelten die Module als tot.
+  "entry": ["src/splash/splash.ts", "src/about/main.tsx"]
 }

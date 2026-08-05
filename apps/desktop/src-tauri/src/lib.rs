@@ -1,5 +1,7 @@
+pub mod about;
 pub mod cli;
 pub mod launch;
+pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
@@ -7,6 +9,7 @@ pub mod shell_history;
 pub mod splash;
 pub mod shell_integration;
 
+use about::PendingUpdateCheck;
 use cli::Cli;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir};
@@ -25,6 +28,13 @@ pub fn run() {
         .manage(PtyState::default())
         .manage(LaunchProject(launch_project))
         .manage(RevealGate::default())
+        .manage(PendingUpdateCheck::default())
+        .menu(menu::build)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            menu::ABOUT => about::show(app, false),
+            menu::CHECK_UPDATES => about::show(app, true),
+            _ => {}
+        })
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
             // panes can't race on the same three files. A failure is
@@ -58,6 +68,7 @@ pub fn run() {
             splash::splash_visible,
             splash::splash_finished,
             splash::main_ready,
+            about::about_take_update_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@import "../theme.css";
+
+/* Eigenes Dokument, eigener Tailwind-Durchlauf: das Über-Fenster teilt sich
+   keinen Bundle mit dem Hauptfenster und braucht dessen xterm-Stile nicht. */
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  background: var(--pc-app-background);
+  color: var(--pc-foreground);
+  font-family: var(--pc-chrome-fontFamily);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
