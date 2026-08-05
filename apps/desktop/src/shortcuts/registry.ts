@@ -7,10 +7,19 @@
 //
 // `codes` statt `key`: KeyboardEvent.code beschreibt die physische
 // Tastenposition unabhängig vom Tastaturlayout, KeyboardEvent.key dagegen das
-// Zeichen, das dieses Layout daraus macht. Bei der Plus-Taste geht das
-// international auseinander — auf einer deutschen Tastatur sitzt "+"/"*" auf
-// einer eigenen Taste rechts neben dem Ü (Code "BracketRight"), auf einer
-// US-Tastatur teilen sich "="/"+" eine Taste ("Equal") zusammen mit Shift.
+// Zeichen, das dieses Layout daraus macht. Bei Plus und Minus geht das
+// international auseinander, und zwar auf zwei verschiedene Arten:
+//
+// - Plus sitzt auf einer deutschen Tastatur auf einer eigenen Taste rechts
+//   neben dem Ü (Code "BracketRight"), auf einer US-Tastatur teilen sich
+//   "="/"+" eine Taste ("Equal") zusammen mit Shift.
+// - Minus sitzt auf einer deutschen Tastatur NICHT in der Ziffernreihe
+//   (dort liegt an dieser Stelle "ß", Code "Minus") — das Minuszeichen ist
+//   dort stattdessen die Taste zwischen "." und der rechten Umschalttaste,
+//   also an der Position, die eine US-Tastatur für "/" benutzt (Code
+//   "Slash"). Ohne diesen Code hätte das Kürzel auf deutschen Tastaturen nur
+//   für Plus funktioniert, nicht für Minus — genau der gemeldete Fehler.
+//
 // Deshalb pro Aktion mehrere codes: die US-Position, die deutsche ISO-Position
 // und die Zifferblock-Variante decken beide Layouts ab, ohne dass die
 // Zeichenausgabe von Shift irgendeine Rolle spielt (die Chord-Erkennung selbst
@@ -33,7 +42,7 @@ export interface ShortcutDefinition {
 }
 
 const PLUS_CODES = ["Equal", "BracketRight", "NumpadAdd"] as const;
-const MINUS_CODES = ["Minus", "NumpadSubtract"] as const;
+const MINUS_CODES = ["Minus", "Slash", "NumpadSubtract"] as const;
 const ZERO_CODES = ["Digit0", "Numpad0"] as const;
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [

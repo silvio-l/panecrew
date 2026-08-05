@@ -18,6 +18,8 @@ function shortcut(id: string): ShortcutDefinition {
 
 const appZoomIn = shortcut("app.zoomIn");
 const paneZoomIn = shortcut("pane.zoomIn");
+const appZoomOut = shortcut("app.zoomOut");
+const paneZoomOut = shortcut("pane.zoomOut");
 
 describe("matchesShortcut", () => {
   it("erkennt Cmd+Shift+Plus auf dem Mac als App-weiten Zoom (US-Tastenposition)", () => {
@@ -37,6 +39,26 @@ describe("matchesShortcut", () => {
       metaKey: true,
     };
     expect(matchesShortcut(event, appZoomIn, true)).toBe(true);
+  });
+
+  it("erkennt Cmd+Shift+Minus auf der US-Tastenposition", () => {
+    const event = { ...baseEvent, code: "Minus", shiftKey: true, metaKey: true };
+    expect(matchesShortcut(event, appZoomOut, true)).toBe(true);
+  });
+
+  it("erkennt Minus auch über die deutsche Tastenposition (\"Slash\")", () => {
+    // Deutsche Tastatur: "-" sitzt NICHT in der Ziffernreihe (dort liegt
+    // "ß", Code "Minus"), sondern zwischen "." und der rechten Umschalttaste
+    // — derselben Position, die eine US-Tastatur für "/" nutzt (Code
+    // "Slash"). Das war der gemeldete Fehler: Plus funktionierte über
+    // "BracketRight", Minus fehlte die entsprechende deutsche Position noch.
+    const event = {
+      ...baseEvent,
+      code: "Slash",
+      shiftKey: false,
+      metaKey: true,
+    };
+    expect(matchesShortcut(event, paneZoomOut, true)).toBe(true);
   });
 
   it("unterscheidet App-weiten Zoom vom Pane-Zoom über die Shift-Taste", () => {
