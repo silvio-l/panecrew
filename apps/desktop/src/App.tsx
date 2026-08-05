@@ -78,6 +78,13 @@ function App() {
   const [resizingExplorer, setResizingExplorer] = useState(false);
   const zoom = useAppZoom();
 
+  // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
+  // Splash und darf erst aufgedeckt werden, wenn hier etwas zu sehen ist. Rust
+  // wartet zusätzlich auf das Ende des Splash-Videos.
+  useEffect(() => {
+    void invoke("main_ready");
+  }, []);
+
   // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon gegen
   // das echte Dateisystem geprüft (existiert, ist ein Verzeichnis), ein
   // ungültiges/fehlendes Argument liefert hier einfach `null` zurück und

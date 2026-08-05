@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PaneCrew</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #121314;
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* cover statt contain: bei subpixelgenauer Fensterhöhe bliebe sonst ein
+           Rand stehen — der Bühnenrand des Videos ist ohnehin die Fensterfarbe. */
+        object-fit: cover;
+      }
+    </style>
+  </head>
+
+  <body>
+    <video
+      id="splash-video"
+      src="/splash.mp4"
+      muted
+      playsinline
+      preload="auto"
+    ></video>
+    <script type="module" src="/src/splash/splash.ts"></script>
+  </body>
+</html>

@@ -5,5 +5,9 @@
   //
   // Opener-Plugin: weiterhin ungenutzt, aber im Rust-Backend registriert und
   // für das Öffnen externer Links vorgesehen — kein totes Gepäck.
-  "ignoreDependencies": ["@tauri-apps/plugin-opener"]
+  "ignoreDependencies": ["@tauri-apps/plugin-opener"],
+
+  // Knip erkennt splash.html als zweiten Vite-Einstieg, liest aber dessen
+  // <script src> nicht — ohne diesen Eintrag gilt das Splash-Modul als tot.
+  "entry": ["src/splash/splash.ts"]
 }

@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "PaneCrew",
         "width": 1440,
         "height": 900,
@@ -20,7 +21,22 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 21, "y": 27.5 },
-        "backgroundColor": "#121314"
+        "backgroundColor": "#121314",
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splash.html",
+        "title": "PaneCrew",
+        "width": 800,
+        "height": 450,
+        "resizable": false,
+        "decorations": false,
+        "center": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "backgroundColor": "#121314",
+        "visible": false
       }
     ],
     "security": {

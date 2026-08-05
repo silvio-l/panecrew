@@ -9,6 +9,17 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  // Zwei Dokumente: das Hauptfenster (index.html) und das Splash-Fenster
+  // (splash.html). Der Splash lädt bewusst kein React — er soll sofort malen.
+  build: {
+    rollupOptions: {
+      input: {
+        main: new URL("index.html", import.meta.url).pathname,
+        splash: new URL("splash.html", import.meta.url).pathname,
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

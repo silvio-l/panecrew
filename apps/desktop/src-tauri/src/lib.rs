@@ -4,11 +4,13 @@ pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
 pub mod shell_history;
+pub mod splash;
 pub mod shell_integration;
 
 use cli::Cli;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir};
+use splash::RevealGate;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::default())
         .manage(LaunchProject(launch_project))
+        .manage(RevealGate::default())
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
             // panes can't race on the same three files. A failure is
@@ -51,6 +54,9 @@ pub fn run() {
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
             launch::get_launch_project,
+            splash::splash_visible,
+            splash::splash_finished,
+            splash::main_ready,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
