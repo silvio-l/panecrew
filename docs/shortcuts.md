@@ -20,3 +20,16 @@ aus `apps/desktop`, Ausgabe nach `docs/shortcuts.md` umleiten und committen.
 | Schrift der aktiven Terminal-Pane vergrößern | ⌘+ | Ctrl++ |
 | Schrift der aktiven Terminal-Pane verkleinern | ⌘- | Ctrl+- |
 | Schriftgröße der aktiven Terminal-Pane zurücksetzen | ⌘0 | Ctrl+0 |
+
+## Kontextabhängige Tasten im Terminal
+
+Nicht in der Registry, weil sie nur gelten, solange die genannte Anzeige
+sichtbar ist — sonst erreichen sie unverändert die Shell (Pfeiltasten bleiben
+History-Navigation, Enter schickt ab, Tab bleibt die Tab-Completion der Shell).
+
+| Taste | Wirkung, solange sichtbar |
+| --- | --- |
+| → (am Zeilenende), Ctrl+F | Sichtbare Inline-Ergänzung übernehmen |
+| ↑ / ↓ | Auswahl im Verzeichnis-Popup bewegen |
+| Enter, Tab | Ausgewähltes Verzeichnis übernehmen |
+| Esc | Verzeichnis-Popup schließen |
