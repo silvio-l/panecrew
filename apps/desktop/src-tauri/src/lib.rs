@@ -49,6 +49,7 @@ pub fn run() {
             pty_commands::pty_kill,
             shell_history::shell_history_read,
             path_probe::path_is_directory,
+            path_probe::list_subdirectories,
             launch::get_launch_project,
         ])
         .run(tauri::generate_context!())
