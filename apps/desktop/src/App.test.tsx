@@ -301,15 +301,20 @@ describe("Zoom", () => {
     delete xterm.options.fontSize;
   });
 
-  // Der eigentliche Fallstrick: die nativen Ampeln skalieren nicht mit, das
-  // reservierte Padding aber schon. Nur das Produkt aus beidem ist konstant.
+  // Der eigentliche Fallstrick: die nativen Ampeln skalieren nicht mit, der
+  // Webview-Inhalt aber schon. Die Titelzeile skaliert deshalb per transform
+  // dagegen; geprüft wird das Produkt aus beidem, nicht der Rohwert.
   it("hält den physischen Abstand zu den Ampeln über alle Zoomstufen konstant", () => {
     const { container } = render(<App />);
     const header = container.querySelector("header");
+    const capsule = header?.firstElementChild as HTMLElement;
 
     const physicalInset = () => {
       const zoom = setZoomMock.mock.calls.at(-1)?.[0] ?? 1;
-      return Number.parseFloat(header?.style.paddingLeft ?? "0") * zoom;
+      const scale = Number.parseFloat(
+        /scale\(([\d.]+)\)/.exec(header?.style.transform ?? "")?.[1] ?? "1",
+      );
+      return Number.parseFloat(capsule.style.paddingLeft) * scale * zoom;
     };
     const press = (code: string) =>
       fireEvent.keyDown(window, { code, ctrlKey: true, shiftKey: true });

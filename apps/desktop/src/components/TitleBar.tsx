@@ -1,81 +1,127 @@
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
-// Schlanke eigene Titelzeile (titleBarStyle Overlay, native Traffic-Lights
-// links freigehalten): App-Identität links, zentrierter, rein visueller
-// Command-Palette-Platzhalter (Zukunfts-Feature, ohne Funktion),
-// Settings-Zugang rechts. Kein Icon-Rail.
+// Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
+// Traffic-Lights links freigehalten): ein einzelnes abgerundetes Element mit
+// Rand zu allen drei Fensterkanten, das ÜBER der Inhaltsfläche liegt statt sie
+// wie eine Flow-Leiste nach unten zu schieben. Darin nur noch zwei Dinge —
+// mittig der rein visuelle Command-Palette-/Such-Platzhalter mit der App-Marke
+// als führendem Glyph, rechts der Settings-Zugang. Kein Icon-Rail, kein
+// sichtbarer App-Name (der Fenstertitel bleibt als Metadatum in
+// tauri.conf.json, wo ihn macOS für Mission Control und Screenreader liest).
 //
-// Eine durchgehende Farbfläche über die volle Breite, Ampelzone eingeschlossen
-// — echtes VS Code malt die Bar auf macOS nirgends mit
-// titleBar.activeBackground, sondern lässt überall editor.background
-// durchscheinen. Am Bildschirm gemessen, Belegkette in
-// docs/agents/vscode-theming-research.md §10.
+// Warum die Marke im Feld und nicht mehr links neben einem Wort: ohne Label
+// war sie dort ein Aufkleber ohne Bezug. Im Feld ist sie dasselbe Muster wie
+// VS Codes Command Center und Safaris Schild in der Adresszeile — an der
+// prominentesten Stelle des Chromes, und sie zeigt auf das, was die App eines
+// Tages öffnet.
+//
+// Material: der Weichzeichner allein trägt hier keine Tiefe — eine nahezu
+// monochrome Dunkeloberfläche bleibt verwaschen dieselbe Fläche. Die Kapsel
+// liest sich über ihre Kante (hellerer Ton als der Grund, 1px-Lichtkante oben,
+// versetzter Schlagschatten). Sichtbar arbeitet der backdrop-filter an genau
+// einer Stelle, und die ist die Kernmechanik der App: der Fokus-Glow der
+// aktiven Pane reicht unter die Unterkante der Kapsel und schimmert gedämpft
+// durch sie hindurch.
 //
 // data-tauri-drag-region wirkt nur auf dem Element selbst (keine Vererbung an
 // Kinder): Dekoratives wird pointer-events-none, damit jeder Mousedown auf
 // einem attributierten Hintergrund-Segment landet.
 //
-// Der linke Freiraum für die Ampeln hängt am Zoomfaktor, statt eine feste
-// Tailwind-Klasse zu sein: `setZoom` skaliert den kompletten Webview-Inhalt,
-// die nativen Ampeln als echte Fensterelemente aber nicht. Ein konstantes
-// CSS-Padding würde also mitwachsen und -schrumpfen — bei kleinem Zoom rutscht
-// die App-Marke unter die Knöpfe, bei großem klafft eine Lücke. Geteilt durch
-// den Faktor bleibt der PHYSISCHE Abstand auf jeder Stufe derselbe.
+// Zoom: die ganze Zeile skaliert per transform GEGEN den Webview-Zoom zurück
+// und ist damit auf jeder Stufe physisch identisch. `setZoom` fasst nur den
+// Webview-Inhalt an, die nativen Ampeln und die Fensterkanten aber nicht — und
+// die Kapsel hat, anders als die frühere randlose Leiste, sichtbare Kanten
+// direkt neben beidem. Vorher wurde nur das Ampel-Padding durch den Faktor
+// geteilt und der Rest lief weg; jetzt gibt es dafür einen Mechanismus statt
+// zweier. Preis: der Chrome-Text wächst beim Zoomen nicht mit. Das ist die
+// bewusste Wahl — der Zoom ist für den Inhalt da (Terminal, Dateibaum), und
+// eine mitwachsende Leiste hätte die Ampeln bei 2.0 im oberen Drittel einer
+// 68px-Kapsel stehen lassen.
+// 8px, nicht 7: die Terminal-Pane darunter hält per p-2 denselben Abstand zu
+// den übrigen Fensterkanten. Ein Pixel Unterschied liest sich an der rechten
+// Kante, wo Kapsel und Pane senkrecht übereinanderstehen, als Fehler.
+const CAPSULE_INSET = 8;
+const CAPSULE_HEIGHT = 34;
+
+/**
+ * Physische Höhe der gesamten Chrome-Zone (Kapsel plus Rand oben und unten).
+ * Die Inhaltsfläche hält genau diesen Abstand zur Fensteroberkante frei — die
+ * Kapsel schwebt darüber, verdeckt aber nichts.
+ */
+export const TITLE_BAR_ZONE_HEIGHT = CAPSULE_INSET * 2 + CAPSULE_HEIGHT;
+
+// Freiraum ab Kapsel-Innenkante bis zum ersten eigenen Inhalt. Die drei
+// nativen Knöpfe stehen laut tauri.conf.json bei x=21..80 (Fensterkoordinaten,
+// Kapselkante bei 8) und brauchen danach noch Luft.
 //
-// Vertikal ist diese Kompensation nicht möglich: die Ampelhöhe steckt in
-// `trafficLightPosition` (tauri.conf.json, y=19.5 — am Bildschirm ausgemessen
-// der Wert, der die Ampelmitte auf 17,5px legt, die Mitte der 35px hohen
-// Contentbox dieser Bar, wo auch Marke, Schrift-Cap und Zahnrad sitzen).
-// Der Schlüssel greift nur bei Fenstererstellung, eine Laufzeit-API dafür hat
-// Tauri 2 nicht. Auf anderen Zoomstufen als 1.0 wandert die gerenderte Bar
-// deshalb unter den Ampeln weg — bewusst akzeptiert.
+// Bleibt im macOS-Vollbild unverändert stehen, obwohl das System die Ampeln
+// dort ausblendet: links davon sitzt nichts mehr (das Kommandofeld ist am
+// Fenster zentriert, das Zahnrad rechts angeschlagen), der Wert schiebt also
+// nur den unsichtbaren Ziehflächen-Platzhalter. Genau daran hing der gemeldete
+// Fehler „im Vollbild klafft links eine Lücke": er hatte den früheren
+// Marke-plus-Schriftzug-Block vor sich, den es nicht mehr gibt.
 const TRAFFIC_LIGHT_INSET = 84;
 
 export function TitleBar({ zoom }: { zoom: number }) {
   return (
     <header
-      data-tauri-drag-region
-      style={{ paddingLeft: `${TRAFFIC_LIGHT_INSET / zoom}px` }}
-      className="relative flex h-9 shrink-0 items-center border-b border-(--pc-titleBar-border) bg-(--pc-titleBar-background) pr-2"
+      aria-label="Fenster-Titelzeile"
+      style={{
+        // Breite mal Zoom, dann alles durch Zoom zurückskaliert: ergibt exakt
+        // die physische Fensterbreite, unabhängig von der Stufe.
+        width: `${100 * zoom}%`,
+        height: TITLE_BAR_ZONE_HEIGHT,
+        padding: CAPSULE_INSET,
+        transform: `scale(${1 / zoom})`,
+        transformOrigin: "top left",
+      }}
+      className="pointer-events-none absolute left-0 top-0 z-20"
     >
       <div
         data-tauri-drag-region
-        className="flex min-w-0 flex-1 items-center gap-2"
+        style={{
+          paddingLeft: TRAFFIC_LIGHT_INSET,
+          // Lichtabfall von der oberen Kante nach unten — die Platte hat eine
+          // beleuchtete Oberseite, nicht nur einen Rand. Als background-image
+          // neben der Grundfarbe aus der Klasse, weil background-color keinen
+          // Verlauf tragen kann.
+          backgroundImage:
+            "linear-gradient(180deg, var(--pc-titleBar-glassTop), transparent 62%)",
+        }}
+        className="pointer-events-auto relative flex h-full items-center rounded-[11px] border border-(--pc-titleBar-glassBorder) bg-(--pc-titleBar-glassBackground) pr-[3px] shadow-[0_3px_12px_var(--pc-titleBar-glassShadow),inset_0_1px_0_var(--pc-titleBar-glassSheen)] backdrop-blur-xl backdrop-saturate-150"
       >
-        <AppMark />
-        <span className="pointer-events-none truncate text-(length:--pc-chrome-fontSize) font-medium text-(--pc-titleBar-foreground)">
-          PaneCrew
-        </span>
-      </div>
+        {/* Ziehfläche zwischen Ampeln und Feld — als reine Lücke wäre der
+            halbe linke Kapselbereich nicht ziehbar. */}
+        <div data-tauri-drag-region className="min-w-0 flex-1" />
 
-      {/* Am FENSTER zentriert, nicht am verbleibenden Platz rechts der Ampeln:
-          im vorherigen Drei-Spalten-Flexbau saß die Mitte um die halbe
-          Ampel-Einrückung (37,5px bei 1440px, nachgemessen) zu weit rechts —
-          neben einem echten VS-Code-Fenster sofort als Schiefstand lesbar.
-          Absolut positioniert, damit die Zentrierung nicht von der Breite der
-          beiden Seitenzonen abhängt; sie unterschreiten einander bei minWidth
-          960 nie. Das Feld ist selbst Drag-Region: als reine Deko war es
-          vorher ein toter Fleck mitten in der Ziehfläche. */}
-      <div
-        data-tauri-drag-region
-        aria-hidden="true"
-        className="absolute left-1/2 flex h-[1.625rem] w-90 -translate-x-1/2 items-center justify-center gap-1.5 rounded-md border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
-      >
-        <SearchIcon />
-        <span className="pointer-events-none truncate">
-          Suchen oder Befehl ausführen
-        </span>
-      </div>
+        {/* Am FENSTER zentriert, nicht am verbleibenden Platz rechts der
+            Ampeln: im früheren Drei-Spalten-Flexbau saß die Mitte um die halbe
+            Ampel-Einrückung zu weit rechts — neben einem echten VS-Code-Fenster
+            sofort als Schiefstand lesbar. Absolut positioniert heißt hier
+            zugleich: unabhängig davon, ob links Ampel-Freiraum steht oder im
+            Vollbild nicht. Das Feld ist selbst Drag-Region, als reine Deko wäre
+            es ein toter Fleck mitten in der Ziehfläche. */}
+        <div
+          data-tauri-drag-region
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[8px] border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) px-2 text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
+        >
+          {/* Einziges Glyph im Feld — die frühere Lupe daneben hätte zwei
+              Icon-Sprachen nebeneinandergestellt (Marken-Verlauf gegen
+              Strich-Icon), und was das Feld tut, sagt die Zeile selbst. */}
+          <span className="pointer-events-none absolute left-[7px] flex items-center">
+            <AppMark />
+          </span>
+          <span className="pointer-events-none truncate">
+            Suchen oder Befehl ausführen
+          </span>
+        </div>
 
-      <div
-        data-tauri-drag-region
-        className="flex flex-1 items-center justify-end"
-      >
         <ChromeTooltip label="Einstellungen" align="end">
           <button
             type="button"
             aria-label="Einstellungen"
-            className={`flex size-7 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <GearIcon />
           </button>
@@ -186,25 +232,6 @@ function GearIcon() {
     >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.1"
-      strokeLinecap="round"
-      aria-hidden="true"
-      className="pointer-events-none shrink-0"
-    >
-      <circle cx="5" cy="5" r="3.4" />
-      <path d="m7.6 7.6 2.6 2.6" />
     </svg>
   );
 }

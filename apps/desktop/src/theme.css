@@ -73,15 +73,28 @@
   --pc-app-background: #121314;
 
   /*
-   * Titelzeile: editor.background, NICHT titleBar.activeBackground. VS Codes
-   * Workbench-Stylesheet erzwingt `.part.titlebar{background-color:
-   * transparent!important}`; das !important schlägt den Inline-Style, den
-   * titlebarPart.updateStyles() aus titleBar.activeBackground setzt, sodass
-   * dort in Wahrheit editor.background durchscheint. Am Bildschirm gemessen,
-   * Belegkette in docs/agents/vscode-theming-research.md §10.
+   * Titelzeile: seit 2026-08-05 keine randlose Farbfläche mehr, sondern eine
+   * über dem Inhalt schwebende Glaskapsel (Apples Liquid-Glass-Sprache,
+   * Referenz Safari 26). Das VS-Code-Mapping aus
+   * docs/agents/vscode-theming-research.md §10 (die Bar sei durchgehend
+   * editor.background) gilt für diese Fläche deshalb nicht mehr — es
+   * beschreibt VS Codes Bar, nicht unsere.
+   *
+   * Der Grund ist bewusst HELLER als --pc-app-background: auf einer nahezu
+   * monochromen Dunkeloberfläche trägt nicht der Weichzeichner die Tiefe
+   * (#121314 verwaschen bleibt #121314), sondern die Materialkante — heller
+   * Ton, 1px-Lichtkante oben, echter versetzter Schlagschatten darunter. Der
+   * backdrop-filter arbeitet trotzdem sichtbar an genau einer Stelle: der
+   * Fokus-Glow der aktiven Pane strahlt unter die Unterkante der Kapsel.
+   *
+   * --pc-titleBar-border bleibt der Hairline-Ton für schwebende Chrome-Ränder
+   * (Tooltip, Kontextmenü) und ist nicht mehr der Rand der Titelzeile selbst.
    */
-  --pc-titleBar-background: #121314;
-  --pc-titleBar-foreground: #8c8c8c;
+  --pc-titleBar-glassBackground: rgba(46, 49, 55, 0.62);
+  --pc-titleBar-glassBorder: rgba(255, 255, 255, 0.09);
+  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.13);
+  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.05);
+  --pc-titleBar-glassShadow: rgba(0, 0, 0, 0.5);
   --pc-titleBar-border: #2a2b2c;
 
   /*
@@ -215,9 +228,18 @@
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #ffffff;
 
-  /* Titelzeile: editor.background, gleiche Regel wie im Dark-Block oben */
-  --pc-titleBar-background: #ffffff;
-  --pc-titleBar-foreground: #606060;
+  /*
+   * Glaskapsel der Titelzeile, gleiche Rolle wie im Dark-Block oben, aber
+   * nicht aus ihm abgeleitet: auf weißem Grund kann eine schwebende Fläche
+   * nicht heller werden als das, worüber sie liegt. Die Erhebung trägt hier
+   * die Hairline plus der Schlagschatten (macOS' eigene Lösung für helle
+   * Werkzeugleisten), der Ton bleibt knapp unter Weiß.
+   */
+  --pc-titleBar-glassBackground: rgba(250, 250, 252, 0.72);
+  --pc-titleBar-glassBorder: rgba(0, 0, 0, 0.11);
+  --pc-titleBar-glassSheen: rgba(255, 255, 255, 0.9);
+  --pc-titleBar-glassTop: rgba(255, 255, 255, 0.55);
+  --pc-titleBar-glassShadow: rgba(15, 23, 42, 0.16);
   --pc-titleBar-border: #f0f1f2;
 
   /* Command Center: wie im Dark-Block, Platzhalter-Ton statt Inhalts-Ton */

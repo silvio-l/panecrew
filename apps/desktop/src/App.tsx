@@ -49,7 +49,7 @@ import type {
 import { Tooltip } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
-import { TitleBar } from "./components/TitleBar";
+import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
 import {
   CollapsedExplorerStrip,
   ExplorerPanel,
@@ -151,9 +151,16 @@ function App() {
 
   return (
     <Tooltip.Provider delayDuration={300}>
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
         <TitleBar zoom={zoom} />
-        <div className="flex min-h-0 flex-1">
+        {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
+            statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
+            hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch
+            den Zoomfaktor, weil die Kapsel darüber physisch konstant bleibt. */}
+        <div
+          style={{ paddingTop: `${TITLE_BAR_ZONE_HEIGHT / zoom}px` }}
+          className="flex min-h-0 flex-1"
+        >
           {/* Ohne offenes Projekt gibt es nichts, dem der Explorer folgen
               könnte — er erscheint erst mit der Pane. "Dauerhaft sichtbar"
               aus dem Direction Contract beschreibt den Arbeitszustand. */}
