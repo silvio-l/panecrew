@@ -1,16 +1,16 @@
-# Command-Line Help for `panecrew`
+# Command-Line Help for `desktop`
 
-This document contains the help content for the `panecrew` command-line program.
+This document contains the help content for the `desktop` command-line program.
 
 **Command Overview:**
 
-* [`panecrew`↴](#panecrew)
+* [`desktop`↴](#desktop)
 
-## `panecrew`
+## `desktop`
 
 Panecrew — a grid of live terminal panes with a focus-following file explorer
 
-**Usage:** `panecrew [PROJECT_PATH]`
+**Usage:** `desktop [PROJECT_PATH]`
 
 ###### **Arguments:**
 

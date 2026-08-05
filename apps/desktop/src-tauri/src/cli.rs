@@ -10,8 +10,18 @@ use clap::Parser;
 
 /// PaneCrew — a grid of live terminal panes with a focus-following file
 /// explorer.
+///
+/// No explicit `name` override here: the compiled binary is currently called
+/// `desktop` (the Cargo package name, matching the `apps/desktop` scaffold
+/// folder), not `panecrew` — CLAUDE.md's brand section wants the eventual CLI
+/// binary to be lowercase `panecrew`, but renaming it is its own separate,
+/// larger decision (Cargo package rename + `tauri.conf.json`'s
+/// `mainBinaryName`), not something to fold into this doc silently. Leaving
+/// `name` unset makes clap fall back to `CARGO_PKG_NAME`, so `--help`,
+/// `--version`, and the generated `docs/cli.md` all say the command a user
+/// can actually type today rather than a name that doesn't run yet.
 #[derive(Parser, Debug, Clone, PartialEq, Eq)]
-#[command(name = "panecrew", version, about, long_about = None)]
+#[command(version, about, long_about = None)]
 pub struct Cli {
     /// Open directly with this project instead of showing the project picker.
     ///
