@@ -17,6 +17,24 @@ struct Signals {
     revealed: bool,
 }
 
+/// Letzte Rückfallebene. Beide Fenster starten unsichtbar, also bliebe die App
+/// dauerhaft unsichtbar, wenn das Splash-Dokument gar nicht erst lädt — dann
+/// läuft auch keine der Zeitschranken im Splash-Frontend. Die Frist liegt
+/// bewusst hinter deren 6 s, damit sie den regulären Ablauf nie abschneidet.
+const WATCHDOG: Duration = Duration::from_secs(8);
+
+pub fn arm_watchdog(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(WATCHDOG);
+        let gate = app.state::<RevealGate>();
+        signal(&app, gate.inner(), |signals| {
+            signals.splash_finished = true;
+            signals.main_ready = true;
+        });
+    });
+}
+
 /// Das Splash-Fenster deckt sich selbst auf, sobald sein erster Videoframe steht.
 /// Vorher ist es unsichtbar, weil ein frisches WKWebView davor kurz weiß malt.
 #[tauri::command]

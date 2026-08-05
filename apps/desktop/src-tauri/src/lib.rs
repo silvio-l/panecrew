@@ -43,6 +43,7 @@ pub fn run() {
                     }
                 });
             app.manage(ShellIntegrationDir(root));
+            splash::arm_watchdog(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
