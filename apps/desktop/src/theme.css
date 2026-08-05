@@ -241,7 +241,37 @@
   --pc-widget-background: #191a1b;
   --pc-widget-border: #2e3031;
 
-  /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Dark-Spalte) */
+  /*
+   * Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Dark-Spalte).
+   *
+   * Gemessene Nähe zum Akzent, bewusst stehen gelassen (2026-08-05):
+   * --pc-icon-orange liegt in OKLab nur ΔE 6,6 von --pc-pane-activeBorder
+   * (#e59656) entfernt, und beide erscheinen im selben Explorer-Panel — der
+   * Akzentpunkt im Kopf, die orangen Icons an .rs/.html-Zeilen darunter. Das
+   * unterschreitet die Untergrenze, die dieses Icon-Set intern selbst hält
+   * (ΔE 8,7, Gelb gegen Grün). Trotzdem unverändert, aus drei Gründen:
+   *
+   * 1. Das warme Band zwischen Akzent (H 58) und --pc-icon-red (H 27) ist nur
+   *    rund 31° breit. Jeder Schritt von Orange weg vom Akzent geht praktisch
+   *    1:1 auf Rot zu; der beste Kompromiss (L 0,64) bringt beide Abstände auf
+   *    ~10, also gerade auf die Grenze statt darüber — ein Nullsummentausch,
+   *    der am Bildschirm zudem kaum sichtbar ist (Attrappe gegengehalten).
+   * 2. Die Eigenschaft ist weder neu noch amber-spezifisch: derselbe Abstand
+   *    zwischen Akzent und Icon bestand vorher in Blau (ΔE 7,6 zu
+   *    --pc-icon-folder), und Ordner stehen auf JEDER Ordnerzeile statt nur
+   *    auf .rs/.html. VS Codes Explorer, laut Direction Contract die gepinnte
+   *    Vorlage, führt dieselbe Paarung.
+   * 3. Umfärben hieße, die Contract-Vorgabe „Explorer 1:1 nach VS Codes
+   *    Icon-Sprache" zu brechen, um „ein Akzent, allein dem Fokus" zu
+   *    schützen — zwei gepinnte Sätze gegeneinander, für eine Nachbarschaft,
+   *    die es derzeit gar nicht zu sehen gibt: der Baum ist leer (`tree: []`
+   *    ist die einzige Zuweisung im Code), echte Dateiicons kommen erst mit
+   *    dem Verzeichnis-Scan aus Ticket 04.
+   *
+   * Zu entscheiden ist das folglich am echten Baum, sobald Ticket 04 steht —
+   * dann am Bildschirm statt an dieser Zahl. Der Light-Block ist mit ΔE 10,6
+   * unauffällig, dort trägt der tiefere Akzentton die Trennung schon selbst.
+   */
   --pc-icon-folder: #519aba;
   --pc-icon-blue: #519aba;
   --pc-icon-yellow: #cbcb41;
