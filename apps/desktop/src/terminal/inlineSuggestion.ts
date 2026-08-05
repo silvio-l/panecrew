@@ -158,6 +158,10 @@ export function attachInlineSuggestion(
   const disposables: IDisposable[] = [
     terminal.onData((data) => {
       const action = classifyKeystroke(data);
+      // Alles, was hier ankommt, hat der Nutzer getippt — eine von uns selbst
+      // geschriebene Ergänzung läuft am Terminal vorbei direkt in die PTY.
+      // Genau das ist die Grenze, an der ein weggedrücktes Popup wieder gilt.
+      popup.resume();
       if (action === "arm") {
         anchor ??= cursorPosition();
         return;

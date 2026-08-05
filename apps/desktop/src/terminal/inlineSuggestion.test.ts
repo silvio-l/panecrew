@@ -309,6 +309,27 @@ describe("Verzeichnis-Popup bei cd", () => {
     expect(items()).toEqual(["terminal"]);
   });
 
+  it("bleibt nach dem Übernehmen stehen, nimmt aber nichts zweites an", async () => {
+    // Die Lücke, in der der gemeldete Fehler entstand: verschwände die Liste
+    // hier bis zum Echo der Shell, fiele ein Escape in dieser Zeit an ihr
+    // vorbei in die Shell — wo es als Meta-Präfix das nächste Enter umdeutet.
+    subdirectories = { "": ["src"], "src/": ["terminal"] };
+    await type("cd sr");
+
+    listPending = true;
+    expect(suggestion.directories.accept()).toBe(true);
+    expect(suggestion.directories.visible()).toBe(true);
+    // Ein schnelles zweites Enter darf denselben Eintrag nicht nochmal
+    // einfügen — es gehört der Shell, die die Zeile dann abschickt.
+    expect(suggestion.directories.accept()).toBe(false);
+    expect(sent).toEqual(["c/"]);
+
+    listPending = false;
+    suggestion.refresh();
+    await settle();
+    expect(items()).toEqual(["terminal"]);
+  });
+
   it("schreibt bei abweichender Schreibweise den echten Namen", async () => {
     // Auf einem case-insensitiven Dateisystem erreicht `cd sr` auch `Src`;
     // dann darf nicht `srSrc` entstehen.
@@ -334,6 +355,26 @@ describe("Verzeichnis-Popup bei cd", () => {
     // Verworfen ist nur DIESE Eingabe; das nächste Zeichen fragt neu.
     await type("s");
     expect(items()).toEqual(["src"]);
+  });
+
+  it("bleibt weg, wenn die Shell die Zeile nach dem Escape noch verändert", async () => {
+    // Der Fall, an dem eine textgebundene Regel scheitert: eine übernommene
+    // Ergänzung spiegelt die Shell erst Millisekunden später zurück. Zählte
+    // die Eingabezeile, käme die Liste durch dieses Echo von selbst zurück —
+    // direkt nachdem der Nutzer gesagt hat, dass er sie nicht will.
+    subdirectories = { "": ["src"], "src/": ["terminal"] };
+    await type("cd s");
+    expect(items()).toEqual(["src"]);
+
+    suggestion.directories.dismiss();
+    await write("rc/");
+    await settle();
+
+    expect(document.querySelector(".pc-cdpopup")).toBeNull();
+
+    // Erst der nächste Tastendruck holt sie zurück.
+    await type("t");
+    expect(items()).toEqual(["terminal"]);
   });
 
   it("vergisst das Verwerfen, sobald sich die Eingabe ändert", async () => {

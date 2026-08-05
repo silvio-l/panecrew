@@ -28,13 +28,15 @@ export interface DirectoryPopupControls {
   move: (delta: number) => void;
   /** Übernimmt den ausgewählten Eintrag; false, wenn keiner sichtbar ist. */
   accept: () => boolean;
-  /** Wegblenden, bis sich die Eingabe ändert — die Eingabezeile bleibt. */
+  /** Wegblenden bis zum nächsten Tastendruck — die Eingabezeile bleibt. */
   dismiss: () => void;
 }
 
 export interface DirectoryPopup extends DirectoryPopupControls {
   /** Neu bewerten; wird aus dem Render-Durchgang der Vervollständigung gerufen. */
   update: (state: CdCompletionInput) => void;
+  /** Der Nutzer hat getippt — ein `dismiss` gilt damit nicht weiter. */
+  resume: () => void;
   /** Alles vergessen, auch ein `dismiss` — für abgeschickte/verworfene Zeilen. */
   clear: () => void;
   dispose: () => void;
@@ -58,7 +60,28 @@ export function attachDirectoryPopup(
   let quoted = false;
   /** Identität der aktuellen Anfrage: cwd + Verzeichnis + Präfix. */
   let key = "";
-  let dismissedKey: string | null = null;
+  /**
+   * Hat der Nutzer die Liste eben weggedrückt?
+   *
+   * Gebunden an „bis zum nächsten Tastendruck", nicht an den Eingabetext: Was
+   * die Zeile gerade enthält, ändert sich auch ohne Zutun des Nutzers — die
+   * Shell spiegelt eine übernommene Ergänzung erst Millisekunden später
+   * zurück. An den Text gebunden wäre ein Escape unmittelbar nach einer
+   * Übernahme durch genau dieses Echo wieder aufgehoben, und die Liste stünde
+   * erneut da, obwohl der Nutzer gerade gesagt hat, dass er sie nicht will.
+   */
+  let dismissed = false;
+  /**
+   * Steht die Liste noch, gehört aber schon zu einer überholten Eingabe?
+   *
+   * Der Zustand direkt nach einer Übernahme: geschrieben ist sie, die Shell
+   * hat sie aber noch nicht zurückgespiegelt. Sichtbar bleibt die Liste dabei
+   * — sonst gäbe es genau hier wieder eine Lücke, in der ein Escape an ihr
+   * vorbei in die Shell fiele. Nur übernehmen lässt sie sich nicht: ein
+   * schnelles zweites Enter würde sonst denselben Eintrag ein zweites Mal
+   * einfügen, statt die Zeile abzuschicken.
+   */
+  let stale = false;
   let selected = 0;
   let windowStart = 0;
 
@@ -77,6 +100,7 @@ export function attachDirectoryPopup(
 
   const hide = () => {
     entries = [];
+    stale = false;
     detach();
   };
 
@@ -167,7 +191,7 @@ export function attachDirectoryPopup(
   return {
     update: (state) => {
       const completion = cdCompletion(state);
-      if (!completion) {
+      if (!completion || dismissed) {
         hide();
         return;
       }
@@ -177,16 +201,6 @@ export function attachDirectoryPopup(
         key = nextKey;
         selected = 0;
         windowStart = 0;
-        // Verworfen ist eine Anzeige zu genau dieser Eingabe. Sobald sich die
-        // Eingabe ändert, gilt das nicht mehr — sonst bliebe die Liste auch
-        // dann weg, wenn der Nutzer über ein Backspace wieder auf dieselbe
-        // Stelle zurückkommt, und das Verstecken hinge an einem Zustand, den
-        // er längst vergessen hat.
-        dismissedKey = null;
-      }
-      if (nextKey === dismissedKey) {
-        hide();
-        return;
       }
 
       // Immer der AKTUELLE Stand der Eingabe, auch wenn die Liste darunter
@@ -208,6 +222,7 @@ export function attachDirectoryPopup(
           return;
         }
         entries = names;
+        stale = false;
       } else if (entries.length === 0) {
         // Die erste Abfrage läuft noch; es gibt nichts zu halten.
         return;
@@ -231,23 +246,28 @@ export function attachDirectoryPopup(
     },
 
     accept: () => {
-      const name = entries[selected];
+      const name = stale ? undefined : entries[selected];
       if (!name) return false;
       // Über denselben Schreibpfad wie eine echte Eingabe: die Shell spiegelt
       // den Text zurück, und der nächste Render-Durchgang bietet direkt die
       // nächste Ebene an.
       write(completionInsert(prefix, name, quoted));
-      hide();
+      // Stehen bleiben statt verschwinden — Begründung bei `stale`.
+      stale = true;
       return true;
     },
 
     dismiss: () => {
-      dismissedKey = key;
+      dismissed = true;
       hide();
     },
 
+    resume: () => {
+      dismissed = false;
+    },
+
     clear: () => {
-      dismissedKey = null;
+      dismissed = false;
       key = "";
       selected = 0;
       windowStart = 0;
