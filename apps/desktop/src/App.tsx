@@ -10,7 +10,9 @@
  * OWN-WORLD: VS Code's token grammar — warm-dark grounds (#1E1E1E family),
  * 1px hairline borders, 13px system-UI chrome type, ui-monospace terminal
  * text — softened by Warp's polish: gentle pane radii, relaxed terminal
- * line-height, one luminous blue accent reserved exclusively for focus.
+ * line-height, one accent reserved exclusively for focus. (The contract wrote
+ * that accent as blue; the user moved it to the brand's amber on 2026-08-05 —
+ * derivation in theme.css above --pc-focusBorder.)
  *
  * STORY: Launch, and everything is already in place. One glance finds the
  * focused pane; the explorer is always showing that pane's project — never

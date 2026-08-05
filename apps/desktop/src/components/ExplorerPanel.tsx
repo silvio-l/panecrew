@@ -41,9 +41,13 @@ export function ExplorerPanel({
           Mit h-9 lagen die beiden identischen Wörter sichtbar versetzt
           nebeneinander; 40/2 = 20 bringt sie auf dieselbe optische Achse. */}
       <div className="flex h-10 shrink-0 items-center gap-2 pl-3 pr-1.5">
+        {/* Das Akzent-Echo der fokussierten Pane. Liest deren eigenes Token
+            (nicht den generischen focusBorder-Fallback), damit Echo und Anlass
+            denselben Ton haben. Der frühere 6px-Schein ist mit dem Glow der
+            Pane entfallen — die Sprache ist jetzt Kante, nicht Leuchten. */}
         <span
           aria-hidden="true"
-          className="size-1.5 shrink-0 rounded-full bg-(--pc-focusBorder) shadow-[0_0_6px_var(--pc-pane-activeGlow)]"
+          className="size-1.5 shrink-0 rounded-full bg-(--pc-pane-activeBorder)"
         />
         <span className="min-w-0 flex-1 truncate text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-explorerHeader-foreground)">
           {project.name}

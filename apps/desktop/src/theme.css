@@ -100,7 +100,43 @@
   /* Global (Fallback-Basis nach VS-Code-Muster) */
   --pc-foreground: #bfbfbf;
   --pc-descriptionForeground: #8c8c8c;
-  --pc-focusBorder: #3994bcb3;
+
+  /*
+   * DER EINE AKZENT — seit 2026-08-05 Amber statt Blau (Nutzerentscheidung:
+   * „die Akzentfarben in der gesamten App eher in Richtung unserer Markenfarbe").
+   * Er gehört weiterhin ausschließlich dem Fokus; was ihn trägt, steht im
+   * Direction Contract. Gerechnet in OKLCH, Skript in der Herleitung.
+   *
+   * Der Ton liegt bei H 58 — bewusst etwas oranger als die Marke (H 70). Das
+   * ist keine Kosmetik, sondern die Antwort auf das Kollisionsproblem, das
+   * überhaupt der Grund für das frühere Blau war (Gelb heißt im Terminalinhalt
+   * „Warnung", und Amber liegt gefährlich nah daran):
+   *
+   *   Akzent H 58  →  ANSI-Gelb H 100   = 42,3 Grad Abstand
+   *   Marke  H 70  →  ANSI-Gelb H 100   = 30,1 Grad Abstand
+   *
+   * Der Akzent hält also MEHR Abstand zur Warnfarbe als die Marke selbst, und
+   * deren 30 Grad sind im Block über der ANSI-Palette bereits als ausreichend
+   * belegt. Zu ANSI-Rot sind es 31 Grad, zu ANSI-Grün 94.
+   *
+   * Zur Marke hält er dagegen bewusst NUR 12 Grad: sie ist das Vorbild, nicht
+   * der Gegner. Getrennt wird er von ihr nicht über den Farbton, sondern über
+   * das Material — die Marke ist ein gesättigter Verlauf (C 0,149 bis 0,163),
+   * der Akzent eine flache, ruhigere Fläche (C 0,125). Eine größere
+   * Tonabweichung hätte ihn aus der Gold-Familie geschoben, also genau aus dem
+   * heraus, worum es ging. Die Marken-Verläufe selbst bleiben unangetastet und
+   * bleiben laut CLAUDE.md fixe Identität, kein Theme-Token.
+   *
+   * focusBorder ist die generische Fallback-Basis (VS-Code-Muster) und bleibt
+   * eine Stufe dunkler und halbtransparent; --pc-pane-activeBorder weiter unten
+   * ist das eigenständige, hellere Fokus-Token der Pane. Kontrast auf dem Grund
+   * #121314: 5,6:1 hier, 7,8:1 dort — dieselbe Wirkung, die das frühere Blau
+   * hatte (5,4:1 und 7,7:1). Die erste Fassung lag bei 9,3:1 und las sich neben
+   * dem Terminalinhalt als Rahmen, der lauter ist als das, was er umschließt;
+   * warme Töne drängen bei gleicher Helligkeit ohnehin stärker nach vorn als
+   * kühle, deshalb die Rückkalibrierung auf die alten Kontrastwerte.
+   */
+  --pc-focusBorder: #c37c42b3;
 
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #121314;
@@ -207,10 +243,11 @@
   /* Terminal-Panes */
   --pc-pane-background: #121314;
   --pc-pane-border: #2a2b2c;
-  --pc-pane-activeBorder: #6caddf;
-  --pc-pane-activeGlow: rgba(108, 173, 223, 0.3);
+  /* Der eine Akzent, Herleitung im Block über --pc-focusBorder. Seit dem
+     Wegfall des Glows ist dieser Rahmen das erste Fokussignal der Pane. */
+  --pc-pane-activeBorder: #e59656;
   --pc-paneHeader-foreground: #8c8c8c;
-  --pc-paneHeader-activeForeground: #6caddf;
+  --pc-paneHeader-activeForeground: #e59656;
   --pc-paneHeader-border: #2a2b2c;
 
   /*
@@ -237,11 +274,13 @@
    *    den Bright-Satz. VS Codes Default-Rot lag hier bei 3,4:1.
    * 4. Rot/Gelb/Grün behalten ihre Grundfarbidentität (ANSI-Semantik im
    *    Inhalt), sind nur in Sättigung/Helligkeit in die Familie gezogen.
-   * 5. Blau hält Abstand zum Fokus-Akzent, der laut Direction Contract
-   *    allein dem Fokus gehört: geprüft nicht nur gegen --pc-focusBorder,
-   *    sondern auch gegen --pc-pane-activeBorder (#6caddf, OKLCH H 243).
-   *    Das ANSI-Blau sitzt bei H 272/276 — ein echtes, gesättigtes Blau
-   *    gegenüber dem luftigen Azur des Akzents.
+   * 5. Abstand zum Fokus-Akzent, der laut Direction Contract allein dem Fokus
+   *    gehört. Diese Regel hat 2026-08-05 die Seite gewechselt: solange der
+   *    Akzent blau war (H 243), musste ANSI-BLAU auf Abstand gehen — es sitzt
+   *    bei H 272/276 und tut das weiterhin. Seit der Akzent Amber ist (H 58),
+   *    ist die kritische Nachbarschaft ANSI-GELB, und der Abstand dorthin ist
+   *    mit 42 Grad sogar größer als der, den die Marke selbst hält (Regel 6).
+   *    Beide Prüfungen gelten also parallel, keine ersetzt die andere.
    * 6. Gelb meidet das Marken-Amber (#fcad43, H 70): H 100 ist messingfarben
    *    statt orange-golden, die Marke bleibt allein der Marke.
    */
@@ -281,7 +320,26 @@
   /* Global (Fallback-Basis nach VS-Code-Muster) */
   --pc-foreground: #202020;
   --pc-descriptionForeground: #606060;
-  --pc-focusBorder: #0069cc;
+  /*
+   * Derselbe Akzent-Farbton (H 58), aber eigenständig auf Weiß gerechnet statt
+   * aus dem Dark-Wert abgeleitet — dieselbe Struktur-Invariante wie bei der
+   * ANSI-Palette. Auf weißem Grund muss ein warmer Ton nach UNTEN, nicht nach
+   * oben: bei Dark-Helligkeit (L 0,79) käme er auf 1,4:1 und wäre unsichtbar.
+   * L 0,55 statt 0,79 macht daraus ein tiefes, gebranntes Amber — dieselbe
+   * Familie, andere Lage, so wie ANSI-Rot in Light auch nicht das aufgehellte
+   * Dark-Rot ist.
+   *
+   * Das räumt zugleich einen Altbestand aus: --pc-pane-activeBorder stand hier
+   * auf #68a3da mit 2,68:1 gegen Weiß und lag damit unter der 3:1-Untergrenze
+   * für nicht-textliche Bedienelemente — und das ausgerechnet beim Token, das
+   * seit dem Wegfall des Glows das Fokussignal allein trägt. Jetzt 4,4:1.
+   *
+   * Kontraste auf #ffffff: pane.activeBorder und paneHeader.activeForeground
+   * 5,5:1, focusBorder 4,4:1. Anders als in Dark ist „stärker" hier dunkler,
+   * nicht heller — das Pane-Token, das das Fokussignal allein trägt, ist
+   * deshalb der tiefere der beiden Werte.
+   */
+  --pc-focusBorder: #b0651f;
 
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #ffffff;
@@ -333,10 +391,9 @@
   /* Terminal-Panes */
   --pc-pane-background: #ffffff;
   --pc-pane-border: #f0f1f2;
-  --pc-pane-activeBorder: #68a3da;
-  --pc-pane-activeGlow: rgba(104, 163, 218, 0.3);
+  --pc-pane-activeBorder: #a05605;
   --pc-paneHeader-foreground: #606060;
-  --pc-paneHeader-activeForeground: #0069cc;
+  --pc-paneHeader-activeForeground: #a05605;
   --pc-paneHeader-border: #f0f1f2;
 
   /*
