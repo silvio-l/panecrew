@@ -365,7 +365,38 @@ describe("Verzeichnis-Popup bei cd", () => {
     expect(document.querySelector(".pc-cdpopup")).toBeNull();
   });
 
-  it("zeigt erst, wenn die Abfrage beantwortet ist", async () => {
+  it("hält die stehende Liste, während die nächste Abfrage läuft", async () => {
+    // Sonst blinkte sie bei jedem Zeichen weg — und ein Escape in dieser
+    // Lücke ginge an der Shell statt an der Liste.
+    subdirectories = { "": ["scripts", "src"] };
+    await type("cd s");
+    expect(items()).toEqual(["scripts", "src"]);
+
+    listPending = true;
+    await type("r");
+    expect(items()).toEqual(["scripts", "src"]);
+    expect(suggestion.directories.visible()).toBe(true);
+
+    listPending = false;
+    suggestion.refresh();
+    await settle();
+    expect(items()).toEqual(["src"]);
+  });
+
+  it("übernimmt auch aus einer noch nicht aktualisierten Liste das Richtige", async () => {
+    subdirectories = { "": ["src"] };
+    await type("cd s");
+
+    listPending = true;
+    await type("x");
+
+    // „src" passt nicht mehr zu „sx" — die falschen Zeichen werden per
+    // Backspace zurückgenommen, statt sie zu verlängern.
+    expect(suggestion.directories.accept()).toBe(true);
+    expect(sent).toEqual(["\x7f\x7fsrc/"]);
+  });
+
+  it("zeigt erst, wenn die erste Abfrage beantwortet ist", async () => {
     subdirectories = { "": ["docs", "src"] };
     listPending = true;
 

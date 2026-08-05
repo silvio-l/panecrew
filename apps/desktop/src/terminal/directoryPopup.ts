@@ -189,22 +189,34 @@ export function attachDirectoryPopup(
         return;
       }
 
+      // Immer der AKTUELLE Stand der Eingabe, auch wenn die Liste darunter
+      // noch die vorige ist: `completionInsert` rechnet den Unterschied aus
+      // und nimmt per Backspace zurück, was nicht passt.
+      prefix = completion.prefix;
+      quoted = completion.quoted;
+
       const names = listSubdirectories(
         completion.cwd,
         completion.directory,
         completion.prefix,
       );
-      // undefined heißt „Abfrage läuft"; leer heißt „nichts, das passt". In
-      // beiden Fällen gibt es nichts zu zeigen — ein leerer Rahmen wäre nur
-      // Chrome ohne Inhalt.
-      if (!names?.length) {
-        hide();
+      if (names) {
+        // Leer heißt „nichts, das passt" — ein leerer Rahmen wäre nur Chrome
+        // ohne Inhalt.
+        if (names.length === 0) {
+          hide();
+          return;
+        }
+        entries = names;
+      } else if (entries.length === 0) {
+        // Die erste Abfrage läuft noch; es gibt nichts zu halten.
         return;
       }
-
-      entries = names;
-      prefix = completion.prefix;
-      quoted = completion.quoted;
+      // Sonst: Abfrage läuft, aber es steht schon eine Liste da — die bleibt.
+      // Sie eine Antwortzeit lang wegzunehmen hieße, sie bei JEDEM Zeichen
+      // aus- und wieder einzublenden; und ein Escape in dieser Lücke ginge an
+      // der Liste vorbei in die Shell, wo es als Meta-Präfix die nächste
+      // Taste verschluckt.
       // Linksbündig zum angefangenen Segment, nicht zum Cursor: die Einträge
       // stehen damit unter dem Wort, das sie fortsetzen.
       draw(Math.max(0, state.cursor.x - completion.prefix.length));
