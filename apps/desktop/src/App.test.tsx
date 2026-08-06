@@ -133,6 +133,15 @@ const FILE_CONTENTS = {
   stamp: { modified_ms: 1_700_000_000_000, len: 38 },
 };
 
+// Der Text, den der Nutzer in den Tests tippt, und der Stempel, den
+// `explorer_write_file` bei Erfolg zurückgibt (frischer Zeitpunkt, neue
+// Länge — genau das, was der Hook danach als erwarteten Stand führt).
+const EDITED_TEXT = "fn main() {\n    println!(\"tschüss\");\n}\n";
+const SAVED_STAMP = { modified_ms: 1_700_000_060_000, len: 41 };
+
+const CONFLICT_ERROR = () =>
+  Promise.reject(new Error("Datei wurde außerhalb von PaneCrew geändert"));
+
 describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -530,6 +539,7 @@ describe("App", () => {
   // übergänge selbst liegen in fileEditorState.test.ts.
   const openTreeFile = async (
     readFile: () => Promise<unknown> = () => Promise.resolve(FILE_CONTENTS),
+    writeFile: () => Promise<unknown> = () => Promise.resolve(SAVED_STAMP),
   ) => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) => {
@@ -539,6 +549,7 @@ describe("App", () => {
         ]);
       }
       if (cmd === "explorer_read_file") return readFile();
+      if (cmd === "explorer_write_file") return writeFile();
       return Promise.resolve();
     });
     render(<App />);
@@ -553,6 +564,18 @@ describe("App", () => {
   // fände mehrzeiligen Quelltext nie wieder. `toHaveValue` vergleicht exakt.
   const editorTextbox = () =>
     screen.findByRole("textbox", { name: "Inhalt von main.rs" });
+
+  const typeIntoEditor = async (text: string) => {
+    fireEvent.change(await editorTextbox(), { target: { value: text } });
+  };
+
+  // jsdom meldet keine macOS-Kennung, es gilt hier also die Strg-Belegung.
+  // `code` statt `key`, weil die Registry die physische Tastenposition prüft.
+  // Ausgelöst wird am Textfeld — genau die Geste aus dem Ticket; dass der
+  // Handler an der ganzen Fläche hängt, ist Zugabe.
+  const pressSaveShortcut = async () => {
+    fireEvent.keyDown(await editorTextbox(), { code: "KeyS", ctrlKey: true });
+  };
 
   it("öffnet eine angeklickte Datei mit ihrem absoluten Pfad und zeigt den Inhalt", async () => {
     await openTreeFile();
@@ -605,6 +628,12 @@ describe("App", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Datei ist zu groß für den Editor",
     );
+    // Kein Puffer, kein Speichern-Knopf: ausgegraut hieße „im Moment nichts
+    // zu schreiben" und behauptete damit einen Text, den es hier gar nicht
+    // gibt.
+    expect(
+      screen.queryByRole("button", { name: "Speichern" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "In externem Editor öffnen" }),
@@ -612,6 +641,128 @@ describe("App", () => {
     expect(openPathMock).toHaveBeenCalledWith(
       "/Users/dev/projects/storefront/src/main.rs",
     );
+  });
+
+  // Bearbeiten und Speichern (Ticket 04). Auch hier nur die Verdrahtung —
+  // die Zustandsübergänge liegen in fileEditorState.test.ts, das atomare
+  // Schreiben in den Rust-Tests von explorer_fs.rs.
+  it("schreibt den geänderten Text per Strg+S in dieselbe Datei zurück", async () => {
+    await openTreeFile();
+    await typeIntoEditor(EDITED_TEXT);
+    invokeMock.mockClear();
+
+    await pressSaveShortcut();
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "explorer_write_file",
+        // Der beim Laden erhaltene Stempel geht mit — er ist die ganze
+        // Konflikterkennung: das Backend schreibt nur, wenn die Datei auf der
+        // Platte seither unangetastet blieb.
+        expect.objectContaining({
+          path: "/Users/dev/projects/storefront/src/main.rs",
+          contents: EDITED_TEXT,
+          crlf: false,
+          expected: FILE_CONTENTS.stamp,
+        }),
+      );
+    });
+
+    // Und danach Baum plus Git-Deko neu lesen: aus einer unveränderten
+    // versionierten Datei wird durch genau dieses Schreiben ein „M".
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
+        root: "/Users/dev/projects/storefront",
+      });
+    });
+    expect(invokeMock).toHaveBeenCalledWith("explorer_git_status", {
+      root: "/Users/dev/projects/storefront",
+    });
+  });
+
+  it("gibt den Speichern-Knopf erst mit einer Änderung frei und räumt die Markierung danach wieder ab", async () => {
+    await openTreeFile();
+    await editorTextbox();
+
+    const saveButton = screen.getByRole("button", { name: "Speichern" });
+    expect(saveButton).toBeDisabled();
+
+    await typeIntoEditor(EDITED_TEXT);
+    expect(saveButton).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "explorer_write_file",
+        expect.objectContaining({ contents: EDITED_TEXT }),
+      );
+    });
+    // „Nach erfolgreichem Speichern verschwindet die Ungespeichert-
+    // Markierung" — an beiden Stellen, an denen sie steht.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Speichern" })).toBeDisabled();
+    });
+    expect(
+      screen.queryByRole("button", { name: /ungespeichert/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hält den getippten Text sichtbar, wenn das Backend das Schreiben ablehnt", async () => {
+    await openTreeFile(undefined, CONFLICT_ERROR);
+    await typeIntoEditor(EDITED_TEXT);
+
+    await pressSaveShortcut();
+
+    // Der Rohtext aus Rust, unverändert — er benennt den Fall genauer als
+    // jede Ersatzformulierung.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Datei wurde außerhalb von PaneCrew geändert",
+    );
+    // Der eigentliche Punkt: die Meldung tritt NICHT an die Stelle des
+    // Puffers. Was nicht auf die Platte kam, darf nicht auch noch vom
+    // Bildschirm verschwinden.
+    expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
+    expect(
+      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("liest bei „Trotzdem überschreiben“ den Stand frisch und schreibt dann erneut", async () => {
+    let attempt = 0;
+    await openTreeFile(undefined, () => {
+      attempt += 1;
+      return attempt === 1 ? CONFLICT_ERROR() : Promise.resolve(SAVED_STAMP);
+    });
+    await typeIntoEditor(EDITED_TEXT);
+    await pressSaveShortcut();
+
+    const forceButton = await screen.findByRole("button", {
+      name: "Trotzdem überschreiben",
+    });
+    invokeMock.mockClear();
+    fireEvent.click(forceButton);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "explorer_write_file",
+        expect.objectContaining({ contents: EDITED_TEXT }),
+      );
+    });
+    // Reihenfolge ist hier die Aussage: erst der frische Platten-Stempel,
+    // dann der Write damit. Mit dem alten Stempel liefe der Versuch in
+    // exakt denselben Konflikt.
+    const commands = invokeMock.mock.calls.map(([command]) => command);
+    expect(commands.indexOf("explorer_read_file")).toBeGreaterThanOrEqual(0);
+    expect(commands.indexOf("explorer_read_file")).toBeLessThan(
+      commands.indexOf("explorer_write_file"),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
   });
 
   it("killt beim Schließen genau die Pane, die gespawnt wurde", async () => {
@@ -746,6 +897,39 @@ describe("Zoom", () => {
     press("Digit0");
     expect(setZoomMock).toHaveBeenLastCalledWith(1);
     expect(physicalInset()).toBeCloseTo(84);
+  });
+
+  // Der Fallstrick, den das Speichern-Kürzel aufgemacht hat: der
+  // Tastatur-Handler der Pane nahm jeden Treffer mit `scope: "pane"` als Zoom
+  // entgegen und leitete die Richtung aus dem Glyph ab. Cmd/Strg+S hätte dort
+  // also die Schrift verkleinert und wäre nie bei der Shell angekommen —
+  // ausgerechnet in einem Terminal, in dem Ctrl+S eine eigene Bedeutung hat.
+  it("lässt Strg+S im Terminal unangetastet zur Shell durch", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "get_launch_project"
+        ? Promise.resolve("/Users/dev/projects/storefront")
+        : Promise.resolve(),
+    );
+    render(<App />);
+    await screen.findByLabelText("Terminal storefront");
+
+    const fontSizeBefore = xterm.options.fontSize;
+    const event = {
+      type: "keydown",
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: vi.fn(),
+    };
+
+    // true = xterm bearbeitet die Taste ganz normal weiter, schickt sie also
+    // ans PTY. Ein abgefangenes Kürzel gäbe hier false zurück.
+    expect(xterm.keyHandler?.(event as unknown as KeyboardEvent)).toBe(true);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(xterm.options.fontSize).toBe(fontSizeBefore);
   });
 
   it("lässt Strg+Plus ohne Shift die Oberfläche unangetastet", () => {

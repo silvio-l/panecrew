@@ -13,13 +13,18 @@ aus `apps/desktop`, Ausgabe nach `docs/shortcuts.md` umleiten und committen.
 | Gesamte Oberfläche verkleinern | ⇧⌘- | Ctrl+Shift+- |
 | Oberflächen-Zoom zurücksetzen | ⇧⌘0 | Ctrl+Shift+0 |
 
-## Aktive Terminal-Pane
+## Aktive Pane
+
+Nicht mehr nur „Terminal-Pane": eine Pane zeigt seit dem Mini-Editor entweder
+ihr Terminal oder eine geöffnete Datei, und beide Zustände bringen eigene
+Kürzel mit. Es gilt jeweils das der Fläche, die gerade den Tastaturfokus hat.
 
 | Aktion | macOS | Windows / Linux |
 | --- | --- | --- |
 | Schrift der aktiven Terminal-Pane vergrößern | ⌘+ | Ctrl++ |
 | Schrift der aktiven Terminal-Pane verkleinern | ⌘- | Ctrl+- |
 | Schriftgröße der aktiven Terminal-Pane zurücksetzen | ⌘0 | Ctrl+0 |
+| Geöffnete Datei speichern | ⌘S | Ctrl+S |
 
 ## Kontextabhängige Tasten im Terminal
 

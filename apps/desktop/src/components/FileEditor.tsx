@@ -1,11 +1,19 @@
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import type { FileEditorState } from "../explorer/fileEditorState";
+import { isMacPlatform } from "../shortcuts/platform";
+import {
+  matchesShortcut,
+  SAVE_FILE_SHORTCUT_ID,
+  SHORTCUTS,
+} from "../shortcuts/registry";
 
-// Die Editorfläche des Mini-Editors (.scratch/explorer-file-io/, Ticket 03).
-// In diesem Schritt ausschließlich LESEND — Editieren, Speichern, Dirty-
-// Zustand und Konflikterkennung sind Ticket 04 und stehen hier bewusst noch
-// nicht vor.
+// Die Editorfläche des Mini-Editors (.scratch/explorer-file-io/, Tickets 03
+// und 04): lesen, ändern, zurückschreiben. Die Zustandsmaschine dahinter liegt
+// vollständig in `explorer/fileEditorState.ts` — hier wird sie nur angezeigt
+// und bedient, es gibt in dieser Datei keinen zweiten Wahrheitsstand über
+// „geändert" oder „gespeichert".
 //
 // PLATZIERUNG (Nutzerentscheidung 2026-08-06, Ergänzung am Ticket): Diese
 // Fläche übernimmt vorübergehend das Rechteck der Terminal-Pane, statt neben
@@ -24,9 +32,18 @@ import type { FileEditorState } from "../explorer/fileEditorState";
 // mit anderem Inhalt.
 export function FileEditor({
   state,
+  dirty,
+  onEdit,
+  onSave,
   onClose,
 }: {
   state: FileEditorState;
+  /** `wouldLoseWork` aus dem Hook, nicht hier nachgerechnet: „ungespeichert"
+   * ist eine Aussage der Zustandsmaschine, und zwei Herleitungen desselben
+   * Satzes laufen früher oder später auseinander. */
+  dirty: boolean;
+  onEdit: (content: string) => void;
+  onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
 }) {
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
@@ -34,14 +51,86 @@ export function FileEditor({
   if (state.status === "idle") return null;
 
   const name = fileNameFromPath(state.path);
+  const saving = state.status === "saving";
+  // Exakt die Bedingung, unter der `save()` im Hook etwas tut (siehe
+  // `fileEditorState.ts`s `startSaving`): ein sauberes „ready" hat nichts zu
+  // schreiben, ein fehlgeschlagener Versuch dagegen sehr wohl.
+  const canSave =
+    state.status === "save-error" || (state.status === "ready" && state.dirty);
+  // Solange nur geladen wird oder das Laden gescheitert ist, gibt es gar
+  // keinen Puffer — dann fehlt der Knopf ganz, statt ausgegraut einen Text zu
+  // behaupten, den es nicht gibt. Ausgegraut heißt hier „im Moment nichts zu
+  // schreiben", nicht „nichts vorhanden".
+  const hasBuffer =
+    state.status !== "loading" && state.status !== "load-error";
+
+  // Cmd/Strg+S über dieselbe Registry wie jedes andere Kürzel — kein zweiter
+  // Key-Handling-Pfad. Der Handler hängt an DIESER Fläche statt am `window`:
+  // Scope „pane" heißt hier wörtlich, dass die Taste nur wirkt, solange der
+  // Tastaturfokus in der Fläche steht; im Terminal daneben gehört Cmd+S
+  // unverändert der Shell (dafür sorgt `zoomAction` in usePtyTerminal.ts).
+  //
+  // Bewusst am <section> und nicht nur an der Textarea: so greift das Kürzel
+  // auch, während der Speichern-Knopf oder „Trotzdem überschreiben" den Fokus
+  // hat — Tastenereignisse aus den Kindern blubbern hierher.
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    const shortcut = SHORTCUTS.find(
+      (def) =>
+        def.id === SAVE_FILE_SHORTCUT_ID &&
+        matchesShortcut(event, def, isMacPlatform()),
+    );
+    if (!shortcut) return;
+    // Auch dann, wenn es gerade nichts zu speichern gibt: der Webview hat auf
+    // dieser Taste eine eigene Vorstellung („Seite sichern unter …"), und die
+    // will man in einem Editor nie sehen. `onSave` ist in dem Fall ein No-Op.
+    event.preventDefault();
+    onSave();
+  };
 
   return (
     <section
       aria-label={`Datei ${name}`}
+      onKeyDown={onKeyDown}
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)"
     >
       <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
-        <span className="min-w-0 flex-1 truncate">{name}</span>
+        {/* Punkt direkt hinter dem Namen, nicht am rechten Rand: dieselbe
+            Stelle, an der jeder Editor mit Tabs ihn führt — und die einzige,
+            an der er unmissverständlich zu DIESER Datei gehört. Der Name
+            trunkiert, der Punkt nicht. */}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="min-w-0 truncate">{name}</span>
+          {dirty && <DirtyMark />}
+        </span>
+        {hasBuffer && (
+          <button
+            type="button"
+            disabled={!canSave}
+            aria-busy={saving}
+            onClick={() => onSave()}
+            // Farbe/Deckkraft in EINE Klasse verzweigt statt zwei
+            // gleichrangige Utilities nebeneinander (dieselbe Regel wie in
+            // ExplorerPanel.tsx: sonst entscheidet die Reihenfolge im
+            // erzeugten Stylesheet).
+            //
+            // Der ausgegraute Zustand bleibt bewusst LESBAR (der gedämpfte
+            // Header-Ton, nicht der fast unsichtbare Rahmenton der
+            // Explorer-Kopfzeile): dieser Knopf ist die einzige sichtbare
+            // Antwort auf „wie schreibe ich das zurück", und die darf auch
+            // dann auffindbar sein, wenn gerade nichts zu speichern ist.
+            className={`flex h-5 shrink-0 items-center rounded-(--pc-paneControl-radius) px-1.5 transition-[color,background-color] ${
+              canSave
+                ? "text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground)"
+                : "text-(--pc-paneHeader-foreground)"
+            } ${CHROME_FOCUS_RING}`}
+          >
+            {/* Eine Zeile Text statt eines Spinners — dieselbe Entscheidung
+                wie im Ladezustand weiter unten: geschrieben wird auf die
+                lokale Platte, der Zustand ist im Normalfall nach einem Frame
+                vorbei. */}
+            {saving ? "Speichert …" : "Speichern"}
+          </button>
+        )}
         <ChromeTooltip label="Datei schließen" align="end">
           <button
             type="button"
@@ -66,39 +155,131 @@ export function FileEditor({
       ) : state.status === "load-error" ? (
         <LoadErrorNotice path={state.path} message={state.message} />
       ) : (
-        <textarea
-          readOnly
-          // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen, und
-          // ein umgebrochener Block verschiebt jede Zeilennummer, die man im
-          // Terminal daneben gerade liest. Umgebrochen wird also nicht,
-          // gescrollt wird waagerecht.
-          wrap="off"
-          // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext
-          // reines Rauschen.
-          spellCheck={false}
-          aria-label={`Inhalt von ${name}`}
-          value={state.content}
-          // Die Schrift des Terminals, nicht die des Chromes: der Text steht
-          // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
-          // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
-          // (px-3 py-2), damit die erste Spalte beim Umschalten nicht springt.
-          // tabSize 4 statt der Browser-Vorgabe 8, die Quelltext auseinander-
-          // reißt.
-          style={{
-            fontFamily: "var(--pc-terminal-fontFamily)",
-            fontSize: "var(--pc-terminal-fontSize)",
-            lineHeight: "var(--pc-terminal-lineHeight)",
-            tabSize: 4,
-          }}
-          // select-text/cursor-text gegen die App-weiten `user-select: none`
-          // und `cursor: default` aus App.css: hier ist Text zum Lesen und
-          // Kopieren da. Kein eigener Fokusring — das Feld ist fokussierbar
-          // und zeigt dann seinen Cursor, wie jede Editorfläche; ein Ring um
-          // die halbe Pane wäre der lautere und zugleich unschärfere Hinweis.
-          className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) outline-none"
-        />
+        <>
+          {/* ÜBER der Textarea, nicht an ihrer Stelle: anders als beim
+              Ladefehler gibt es hier bereits Inhalt, und der ist genau das,
+              was nicht verloren gehen darf. Die Meldung schiebt sich deshalb
+              davor, statt den Puffer zu ersetzen — er bleibt sichtbar und
+              änderbar. */}
+          {state.status === "save-error" && (
+            <SaveErrorNotice
+              message={state.message}
+              conflict={state.conflict}
+              onSave={onSave}
+            />
+          )}
+          <textarea
+            // Nur während des Schreibens gesperrt, und zwar nicht aus
+            // Vorsicht: `edit()` in fileEditorState.ts nimmt aus „saving"
+            // heraus keine Änderung an (der Puffer ist in dem Moment gerade
+            // unterwegs zur Platte). Ohne dieses readOnly schluckte das Feld
+            // die Tastendrücke dieser einen Zwischenzeit stillschweigend.
+            readOnly={saving}
+            onChange={(event) => onEdit(event.target.value)}
+            // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen,
+            // und ein umgebrochener Block verschiebt jede Zeilennummer, die
+            // man im Terminal daneben gerade liest. Umgebrochen wird also
+            // nicht, gescrollt wird waagerecht.
+            wrap="off"
+            // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext
+            // reines Rauschen.
+            spellCheck={false}
+            aria-label={`Inhalt von ${name}`}
+            value={state.content}
+            // Die Schrift des Terminals, nicht die des Chromes: der Text steht
+            // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
+            // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
+            // (px-3 py-2), damit die erste Spalte beim Umschalten nicht
+            // springt. tabSize 4 statt der Browser-Vorgabe 8, die Quelltext
+            // auseinanderreißt.
+            style={{
+              fontFamily: "var(--pc-terminal-fontFamily)",
+              fontSize: "var(--pc-terminal-fontSize)",
+              lineHeight: "var(--pc-terminal-lineHeight)",
+              tabSize: 4,
+            }}
+            // select-text/cursor-text gegen die App-weiten `user-select: none`
+            // und `cursor: default` aus App.css: hier ist Text zum Lesen,
+            // Kopieren und Ändern da. Kein eigener Fokusring — das Feld ist
+            // fokussierbar und zeigt dann seinen Cursor, wie jede
+            // Editorfläche; ein Ring um die halbe Pane wäre der lautere und
+            // zugleich unschärfere Hinweis.
+            className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) outline-none"
+          />
+        </>
       )}
     </section>
+  );
+}
+
+// Der Ungespeichert-Punkt. Im Ton der Zeile, in der er steht (`bg-current`),
+// nicht in einer eigenen Farbe — dieselbe Lesart wie in jedem Editor mit Tabs,
+// und die einzige, die hier funktioniert: die Git-Deko nebenan hat ihre beiden
+// Töne bereits mit Bedeutung belegt (geändert/nicht versioniert), ein dritter
+// Farbfleck daneben würde als dritter Git-Zustand gelesen. Ungespeichert ist
+// aber keine Aussage über das Repository, sondern darüber, wo der Text gerade
+// liegt: nur im Speicher.
+//
+// Der sichtbare Punkt ist `aria-hidden`, das Wort steht daneben in `sr-only` —
+// Farbe und Form allein dürfen die Information nicht tragen. Das führende
+// Komma ist wie bei GitDecorationMark in ExplorerPanel.tsx Absicht: der
+// zugängliche Name entsteht durch Aneinanderhängen der Textknoten, und ein
+// bloßes Leerzeichen überlebt das Trimmen nicht.
+function DirtyMark() {
+  return (
+    <span className="flex shrink-0 items-center">
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      <span className="sr-only">, ungespeichert</span>
+    </span>
+  );
+}
+
+// Ein fehlgeschlagenes Speichern — als Band über dem Puffer, nicht an seiner
+// Stelle (Begründung am Aufrufer). Gleiche Aufteilung wie TreeErrorNotice im
+// Explorer: das Rot trägt das Warndreieck, der Text steht im vollen
+// Vordergrund, und die Meldung ist der ROHTEXT aus Rust. Der unterscheidet die
+// Fälle bereits genauer, als eine eigene Formulierung es könnte („Datei wurde
+// außerhalb von PaneCrew geändert" gegen eine Rechte- oder Plattenmeldung).
+//
+// Genau EINE Aktion, und sie hängt am Fall: Bei einem Stamp-Konflikt ist
+// „erneut versuchen" sinnlos — derselbe veraltete Stand träfe auf dieselbe
+// veränderte Datei und schlüge identisch fehl. Umgekehrt wäre „trotzdem
+// überschreiben" bei einem Rechteproblem eine Behauptung, die die Aktion nicht
+// einlösen kann. Zwei Knöpfe nebeneinander hießen also immer, dass einer
+// davon in die Irre führt.
+function SaveErrorNotice({
+  message,
+  conflict,
+  onSave,
+}: {
+  message: string;
+  conflict: boolean;
+  onSave: (options?: { force?: boolean }) => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-start gap-2 border-b border-(--pc-paneHeader-border) bg-(--pc-widget-background) px-3 py-2"
+    >
+      {/* mt-0.5 zieht die 16px-Glyphe auf die optische Grundlinie der
+          13px-Zeile daneben. */}
+      <span className="mt-0.5 flex shrink-0">
+        <WarningIcon />
+      </span>
+      <p className="min-w-0 flex-1 select-text break-words text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-foreground)">
+        {message}
+      </p>
+      <button
+        type="button"
+        // `force` ist genau die Unterscheidung, die der Knopf beschriftet:
+        // erzwungen wird nur beim Konflikt (der Hook holt dafür den aktuellen
+        // Platten-Stamp frisch), sonst ist es eine schlichte Wiederholung.
+        onClick={() => onSave({ force: conflict })}
+        className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-pane-border) px-2.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+      >
+        {conflict ? "Trotzdem überschreiben" : "Erneut versuchen"}
+      </button>
+    </div>
   );
 }
 

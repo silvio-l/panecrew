@@ -24,6 +24,7 @@ export function ExplorerPanel({
   project,
   width,
   selectedFile,
+  dirtyFile,
   onSelectFile,
   onCollapse,
   onRefresh,
@@ -31,6 +32,10 @@ export function ExplorerPanel({
   project: Project;
   width: number;
   selectedFile: string;
+  /** Die im Editor geöffnete Datei, solange sie ungespeicherte Änderungen
+   * trägt — projekt-relativ, also in derselben Pfad-Konvention wie
+   * `selectedFile`. `null`, wenn nichts offen oder alles geschrieben ist. */
+  dirtyFile: string | null;
   onSelectFile: (path: string) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
@@ -275,6 +280,7 @@ export function ExplorerPanel({
                   collapsed={collapsed}
                   forceOpen={filteredTree !== null}
                   selected={selectedFile}
+                  dirtyFile={dirtyFile}
                   gitDecorations={project.gitDecorations}
                   onToggleFolder={toggleFolder}
                   onSelectFile={onSelectFile}
@@ -823,6 +829,8 @@ interface TreeRowProps {
    * Schließen der Suche unverändert zurück. */
   forceOpen: boolean;
   selected: string;
+  /** Siehe `ExplorerPanel` — hier nur durchgereicht und pro Zeile verglichen. */
+  dirtyFile: string | null;
   /** Fertig aggregierte Git-Deko pro Baumpfad — Ordner tragen hier schon den
    * bedeutendsten Status ihres Unterbaums (`gitDecorationsFromStatuses`), diese
    * Zeile schlägt also nur noch nach. Die Schlüssel sind exakt die Pfade, die
@@ -840,6 +848,7 @@ function TreeRow({
   collapsed,
   forceOpen,
   selected,
+  dirtyFile,
   gitDecorations,
   onToggleFolder,
   onSelectFile,
@@ -847,6 +856,11 @@ function TreeRow({
   const isFolder = node.children !== undefined;
   const isOpen = isFolder && (forceOpen || !collapsed.has(path));
   const isSelected = !isFolder && selected === path;
+  // Nur Dateien: geöffnet und geändert werden kann im Editor genau eine, und
+  // Ordner tragen hier bewusst keine hochgereichte Sammel-Aussage wie bei der
+  // Git-Deko — die Datei mit dem ungespeicherten Stand steht in der Fläche
+  // daneben ohnehin offen, sie muss nicht auch noch gesucht werden.
+  const isDirty = !isFolder && dirtyFile === path;
   const decoration = gitDecorations.get(path);
   // Die ausgewählte Zeile setzt die Deko-FARBE aus, behält aber das Zeichen.
   // Zwei Gründe: die Auswahl bringt mit
@@ -922,6 +936,7 @@ function TreeRow({
         >
           {node.name}
         </span>
+        {isDirty && <DirtyMark />}
         {decoration !== undefined && (
           <GitDecorationMark
             status={decoration}
@@ -940,6 +955,7 @@ function TreeRow({
             collapsed={collapsed}
             forceOpen={forceOpen}
             selected={selected}
+            dirtyFile={dirtyFile}
             gitDecorations={gitDecorations}
             onToggleFolder={onToggleFolder}
             onSelectFile={onSelectFile}
@@ -995,6 +1011,26 @@ const GIT_SR_LABEL: Record<GitChangeStatus, { file: string; folder: string }> =
       folder: "enthält nicht versionierte Dateien",
     },
   };
+
+// Der Ungespeichert-Punkt der Baumzeile — dieselbe Marke wie in der Kopfzeile
+// der Editorfläche (FileEditor.tsx), und dort steht auch die ausführliche
+// Begründung. Kurz: `bg-current`, also im Ton der Zeile selbst, damit er nicht
+// als dritter Git-Zustand neben „geändert" und „nicht versioniert" gelesen
+// wird — und damit er auf der ausgewählten Zeile mit deren eigenem
+// Vordergrund mitgeht, statt auf ihrer Füllung zu versacken.
+//
+// Er steht direkt hinter dem Namen und NICHT am rechten Zeilenrand: dort sitzt
+// die Git-Deko, und beide Zeichen sind gleichzeitig möglich (eine geänderte,
+// versionierte Datei mit ungespeichertem Puffer). Der Platz am rechten Rand
+// gehört dem Repository-Zustand, der Platz am Namen dem Puffer.
+function DirtyMark() {
+  return (
+    <span className="flex shrink-0 items-center">
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      <span className="sr-only">, ungespeichert</span>
+    </span>
+  );
+}
 
 // `ml-auto` statt einer festen Spalte im Zeilen-Layout: undekorierte Zeilen —
 // der Normalfall — rendern hier gar nichts und behalten damit exakt ihre

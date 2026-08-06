@@ -128,7 +128,25 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
-  const fileEditor = useFileEditor();
+  // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
+  // auswahl anzutasten (anders als ein Projektwechsel). Der Vergleich im
+  // Setter schützt vor einer veralteten Antwort, falls der Nutzer während des
+  // Reads schon zu einem anderen Projekt gewechselt hat.
+  //
+  // Steht vor `useFileEditor`, weil der Hook es als `onSaved` bekommt und ein
+  // späteres `const` hier in seiner temporalen Totzone läge.
+  const refreshExplorer = () => {
+    if (project === null) return;
+    const path = project.path;
+    void buildProject(path).then((next) => {
+      setProject((current) => (current?.path === path ? next : current));
+    });
+  };
+
+  // Nach jedem erfolgreichen Schreiben Baum und Git-Deko neu lesen — sonst
+  // stünde die Deko der eben gespeicherten Datei veraltet da: aus einer
+  // unveränderten versionierten Datei macht genau dieses Schreiben ein „M".
+  const fileEditor = useFileEditor(refreshExplorer);
   const zoom = useAppZoom();
 
   // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
@@ -204,17 +222,21 @@ function App() {
     fileEditor.open(`${project.path}/${path}`);
   };
 
-  // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
-  // auswahl anzutasten (anders als ein Projektwechsel). Der Vergleich im
-  // Setter schützt vor einer veralteten Antwort, falls der Nutzer während des
-  // Reads schon zu einem anderen Projekt gewechselt hat.
-  const refreshExplorer = () => {
-    if (project === null) return;
-    const path = project.path;
-    void buildProject(path).then((next) => {
-      setProject((current) => (current?.path === path ? next : current));
-    });
-  };
+  // Der ungespeicherte Stand bekommt seine Marke an ZWEI Stellen: in der
+  // Kopfzeile der Editorfläche und in der Baumzeile der Datei. Die zweite
+  // braucht den Pfad in der Konvention des Baums (projekt-relativ, wie
+  // `selectedFile`) — der Editor führt ihn absolut, weil das Backend ihn so
+  // will. Zurückgerechnet wird deshalb genau hier, spiegelbildlich zur
+  // Zusammensetzung in `selectFile`.
+  const openFilePath =
+    fileEditor.state.status === "idle" ? null : fileEditor.state.path;
+  const dirtyFile =
+    fileEditor.wouldLoseWork &&
+    openFilePath !== null &&
+    project !== null &&
+    openFilePath.startsWith(`${project.path}/`)
+      ? openFilePath.slice(project.path.length + 1)
+      : null;
 
   const nudgeExplorerWidth = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 32 : 8;
@@ -284,6 +306,7 @@ function App() {
                 project={project}
                 width={explorerWidth}
                 selectedFile={selectedFile}
+                dirtyFile={dirtyFile}
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
                 onRefresh={refreshExplorer}
@@ -343,6 +366,9 @@ function App() {
                 </div>
                 <FileEditor
                   state={fileEditor.state}
+                  dirty={fileEditor.wouldLoseWork}
+                  onEdit={fileEditor.editContent}
+                  onSave={fileEditor.save}
                   onClose={fileEditor.close}
                 />
               </>

@@ -56,8 +56,14 @@ export interface FileEditorHandle {
  * `usePtyTerminal.ts`/`useAppZoom.ts`) — die Zustandsübergänge sind in
  * `fileEditorState.test.ts` abgedeckt, die IPC-Verdrahtung im
  * App-Level-Wiring-Test.
+ *
+ * `onSaved` läuft nach jedem erfolgreichen Schreiben (App liest damit Baum
+ * und Git-Deko neu, sonst stünde die Deko der eben geänderten Datei veraltet
+ * da). Bewusst am Schreib-Erfolg und nicht am Zustandsübergang: die Datei auf
+ * der Platte hat sich auch dann geändert, wenn der Nutzer inzwischen eine
+ * andere geöffnet hat und `saveSucceeded` die Antwort verwirft.
  */
-export function useFileEditor(): FileEditorHandle {
+export function useFileEditor(onSaved: () => void): FileEditorHandle {
   const [state, setState] = useState<FileEditorState>(IDLE_STATE);
 
   const open = (path: string) => {
@@ -80,7 +86,10 @@ export function useFileEditor(): FileEditorHandle {
 
     const writeWith = (expected: FileStamp) =>
       invoke<FileStamp>("explorer_write_file", { path, contents: content, crlf, expected })
-        .then((newStamp) => setState((current) => saveSucceeded(current, path, newStamp)))
+        .then((newStamp) => {
+          setState((current) => saveSucceeded(current, path, newStamp));
+          onSaved();
+        })
         .catch((error: unknown) => {
           const message = String(error);
           setState((current) =>

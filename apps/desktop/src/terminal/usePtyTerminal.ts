@@ -6,7 +6,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
-import { matchesShortcut, SHORTCUTS } from "../shortcuts/registry";
+import { matchesShortcut, SHORTCUTS, zoomAction } from "../shortcuts/registry";
 import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
@@ -222,18 +222,25 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       // Cmd/Strg +/-/0 ohne Shift: nur die Schrift DIESER Pane. Die
       // Shift-Varianten gehören dem App-weiten Zoom und werden hier nicht
       // angefasst — sie blubbern zum window-Listener in useAppZoom weiter.
+      //
+      // `zoomAction` ist hier keine Zierde: nicht jedes Kürzel mit
+      // `scope: "pane"` ist ein Zoom. Cmd+S (Speichern, gilt nur in der
+      // Editorfläche) trägt denselben Scope und muss hier durchfallen, damit
+      // es unverändert bei der Shell ankommt, statt die Schrift zu
+      // verkleinern.
       const paneShortcut = SHORTCUTS.find(
         (def) =>
           def.scope === "pane" && matchesShortcut(event, def, isMacPlatform()),
       );
-      if (paneShortcut) {
+      const action = paneShortcut ? zoomAction(paneShortcut) : null;
+      if (action !== null) {
         // `return false` hält nur xterm ab; ohne preventDefault zoomte der
         // Webview auf derselben Taste zusätzlich mit.
         event.preventDefault();
         applyPaneZoom(
-          paneShortcut.glyph === "0"
+          action === "reset"
             ? DEFAULT_ZOOM
-            : nextZoomLevel(paneZoom, paneShortcut.glyph === "+" ? 1 : -1),
+            : nextZoomLevel(paneZoom, action === "in" ? 1 : -1),
         );
         return false;
       }

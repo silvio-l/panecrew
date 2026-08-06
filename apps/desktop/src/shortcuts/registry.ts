@@ -26,8 +26,13 @@
 // bestimmt per `shift`, nicht das Ergebnis-Zeichen).
 type ShortcutScope = "app" | "pane";
 
+/** Die drei Zoomstufen. Eigener Typ, weil daran seit dem Mini-Editor eine
+ * Verhaltensfrage hängt und nicht nur die Darstellung: `zoomAction()` weiter
+ * unten unterscheidet damit Zoom-Kürzel von allem anderen. */
+type ZoomGlyph = "+" | "-" | "0";
+
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = "+" | "-" | "0";
+type ShortcutGlyph = ZoomGlyph | "S";
 
 export interface ShortcutDefinition {
   readonly id: string;
@@ -44,6 +49,10 @@ export interface ShortcutDefinition {
 const PLUS_CODES = ["Equal", "BracketRight", "NumpadAdd"] as const;
 const MINUS_CODES = ["Minus", "Slash", "NumpadSubtract"] as const;
 const ZERO_CODES = ["Digit0", "Numpad0"] as const;
+
+/** Id des Speichern-Kürzels — `FileEditor.tsx` schlägt seine Definition damit
+ * nach, statt den Akkord ein zweites Mal zu beschreiben. */
+export const SAVE_FILE_SHORTCUT_ID = "pane.saveFile";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -94,7 +103,45 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     codes: ZERO_CODES,
     shift: false,
   },
+  {
+    // Genau EIN Code, anders als bei +/-/0: die Mehrfach-Codes oben gibt es
+    // nur, weil die Satzzeichen auf QWERTZ und QWERTY an verschiedenen
+    // physischen Positionen sitzen. Buchstabentasten tun das nicht — "KeyS"
+    // ist auf beiden Layouts dieselbe Taste.
+    id: SAVE_FILE_SHORTCUT_ID,
+    description: "Geöffnete Datei speichern",
+    scope: "pane",
+    glyph: "S",
+    codes: ["KeyS"],
+    shift: false,
+  },
 ];
+
+/**
+ * Welche Zoom-Wirkung ein Kürzel hat — `null` für jedes, das gar keins ist.
+ *
+ * Existiert seit dem Speichern-Kürzel und ist der Grund, warum es kein
+ * stilles Eigentor wurde: der Tastatur-Handler der Terminal-Pane nahm bis
+ * dahin JEDEN Treffer mit `scope: "pane"` als Zoom entgegen und leitete die
+ * Richtung aus dem Glyph ab („alles, was nicht 0 oder + ist, ist minus") —
+ * Cmd+S hätte dort also die Pane-Schrift verkleinert und wäre nie bei der
+ * Shell angekommen. Die Zuordnung ist deshalb jetzt vollständig statt
+ * erschöpfend geraten.
+ */
+export function zoomAction(
+  def: ShortcutDefinition,
+): "in" | "out" | "reset" | null {
+  switch (def.glyph) {
+    case "+":
+      return "in";
+    case "-":
+      return "out";
+    case "0":
+      return "reset";
+    default:
+      return null;
+  }
+}
 
 /** Die Teilmenge von KeyboardEvent, die das Matching tatsächlich braucht. */
 export interface ShortcutKeyEvent {
