@@ -63,65 +63,13 @@ import { TerminalPane } from "./components/TerminalPane";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
+import { useProjects } from "./projects/useProjects";
 import { useAppZoom } from "./shortcuts/useAppZoom";
-import { gitDecorationsFromStatuses, type GitFileStatus } from "./types/gitStatus";
-import {
-  projectNameFromPath,
-  treeNodesFromRaw,
-  type Project,
-  type RawTreeNode,
-} from "./types/project";
 import "./App.css";
 
 const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
-
-// Einzige Stelle, die einen Project aus einem Pfad baut — Picker-, CLI-Launch-
-// und Refresh-Pfad rufen beide hierhin statt je eine eigene Implementierung
-// zu pflegen. Ein gescheiterter Baum-Read scheitert bewusst nicht den ganzen
-// Projektaufbau (das Projekt öffnet trotzdem, cwd fürs PTY ist ja da) —
-// `treeError` trägt den Fehler stattdessen sichtbar weiter. Baum und
-// Git-Status laufen parallel: unabhängige IPC-Aufrufe, keiner blockiert den
-// anderen.
-async function buildProject(path: string): Promise<Project> {
-  const name = projectNameFromPath(path);
-  const [tree, gitDecorations] = await Promise.all([
-    readTree(path),
-    readGitDecorations(path),
-  ]);
-  return { path, name, ...tree, gitDecorations };
-}
-
-async function readTree(
-  path: string,
-): Promise<Pick<Project, "tree" | "treeError">> {
-  try {
-    const raw = await invoke<RawTreeNode[]>("explorer_read_tree", {
-      root: path,
-    });
-    return { tree: treeNodesFromRaw(raw), treeError: null };
-  } catch (error) {
-    console.error("PaneCrew: Dateibaum konnte nicht gelesen werden", error);
-    return { tree: [], treeError: String(error) };
-  }
-}
-
-// Kein Analogon zu `treeError`: ein Projekt, das kein Git-Repo ist (oder ein
-// fehlendes `git`), ist kein Fehlerzustand des Explorers — das Backend
-// (`git_status.rs`) liefert dafür schon eine leere Liste statt eines Fehlers,
-// hier bleibt nur der Transport-Fall (IPC selbst schlägt fehl) abzufangen.
-async function readGitDecorations(path: string) {
-  try {
-    const statuses = await invoke<GitFileStatus[]>("explorer_git_status", {
-      root: path,
-    });
-    return gitDecorationsFromStatuses(statuses);
-  } catch (error) {
-    console.error("PaneCrew: Git-Status konnte nicht gelesen werden", error);
-    return gitDecorationsFromStatuses([]);
-  }
-}
 
 // Bis Schritt 4/5 dieses Plans (echte `paneId`s aus dem Grid-Store) gibt es
 // nur diese eine Pane — der Schlüssel ist ein fixer Platzhalter, damit der
@@ -132,7 +80,21 @@ async function readGitDecorations(path: string) {
 const SINGLE_PANE_ID = "single-pane";
 
 function App() {
-  const [project, setProject] = useState<Project | null>(null);
+  // `project` selbst ist abgeleitet, kein eigener State: die schwere
+  // `Project`-Struktur (Baum, Git-Deko) lebt im pfad-geschlüsselten Cache aus
+  // `useProjects.ts`, App hält nur noch, WELCHER Pfad gerade offen ist. Damit
+  // erledigt sich die frühere Race-Absicherung in `refreshExplorer` von
+  // selbst: ein `refresh()` auf einem inzwischen verlassenen Pfad schreibt
+  // nur dessen eigenen Cache-Eintrag, nie den des mittlerweile aktuellen.
+  const [projectPath, setProjectPath] = useState<string | null>(null);
+  // Destrukturiert statt als `projects`-Objekt weitergereicht: `load`/
+  // `refresh` sind eigene, stabile Bindungen (in `useProjects.ts` per
+  // `useCallback` memoisiert) — das hält sie aus `useEffect`-Dep-Arrays
+  // heraus, die sonst bei jeder Cache-Änderung neu feuern würden.
+  const { projects: projectRecords, load: loadProject, refresh: refreshProject } =
+    useProjects();
+  const project =
+    projectPath !== null ? (projectRecords[projectPath] ?? null) : null;
   const [selectedFile, setSelectedFile] = useState<Record<string, string>>({});
   const [picking, setPicking] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
@@ -140,18 +102,13 @@ function App() {
   const [resizingExplorer, setResizingExplorer] = useState(false);
   const focusedPaneId = SINGLE_PANE_ID;
   // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
-  // auswahl anzutasten (anders als ein Projektwechsel). Der Vergleich im
-  // Setter schützt vor einer veralteten Antwort, falls der Nutzer während des
-  // Reads schon zu einem anderen Projekt gewechselt hat.
+  // auswahl anzutasten (anders als ein Projektwechsel).
   //
   // Steht vor `usePaneFileEditors`, weil der Hook es als `onSaved` bekommt und
   // ein späteres `const` hier in seiner temporalen Totzone läge.
   const refreshExplorer = () => {
-    if (project === null) return;
-    const path = project.path;
-    void buildProject(path).then((next) => {
-      setProject((current) => (current?.path === path ? next : current));
-    });
+    if (projectPath === null) return;
+    void refreshProject(projectPath);
   };
 
   // Nach jedem erfolgreichen Schreiben Baum und Git-Deko neu lesen — sonst
@@ -177,10 +134,10 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void invoke<string | null>("get_launch_project")
-      .then((path) => (path ? buildProject(path) : null))
+      .then((path) => (path ? loadProject(path) : null))
       .then((next) => {
         if (!cancelled && next) {
-          setProject(next);
+          setProjectPath(next.path);
           setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
         }
       })
@@ -190,7 +147,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [focusedPaneId]);
+  }, [focusedPaneId, loadProject]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -234,11 +191,11 @@ function App() {
     setPicking(true);
     void openFolderDialog({ directory: true, multiple: false })
       .then((selected) =>
-        typeof selected === "string" ? buildProject(selected) : null,
+        typeof selected === "string" ? loadProject(selected) : null,
       )
       .then((next) => {
         if (!next) return;
-        setProject(next);
+        setProjectPath(next.path);
         setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
         // Eine offene Datei gehört immer zum Projekt, aus dem sie kam — sie
         // darf den Wechsel nicht überleben, sonst stünde nach dem Öffnen des
@@ -270,7 +227,7 @@ function App() {
   // samt ihrem Schließkreuz (`hidden`).
   const closeProject = () =>
     guardLeave(focusedPaneId, () => {
-      setProject(null);
+      setProjectPath(null);
       fileEditor.close();
     });
 
