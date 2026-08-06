@@ -1342,6 +1342,114 @@ describe("Grid / Mehrfach-Pane", () => {
     // admins ungespeicherter Puffer blieb unangetastet.
     expect(textbox).toHaveValue("geändert");
   });
+
+  it("erhält beim Wachsen (Quad→Viererreihe) alle Panes ohne Kill oder Spawn", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/a")
+      .mockResolvedValueOnce("/Users/dev/projects/b");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal a");
+    clickPicker();
+    await screen.findByLabelText("Terminal b");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Viererreihe" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Viererreihe" }),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(0);
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+    ).toHaveLength(0);
+    expect(screen.getByLabelText("Terminal a")).toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal b")).toBeInTheDocument();
+  });
+
+  it("blockiert ein nicht passendes Schrumpfen mit Erklärtext, ohne etwas zu killen", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/a")
+      .mockResolvedValueOnce("/Users/dev/projects/b")
+      .mockResolvedValueOnce("/Users/dev/projects/c");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal a");
+    clickPicker();
+    await screen.findByLabelText("Terminal b");
+    clickPicker();
+    await screen.findByLabelText("Terminal c");
+    invokeMock.mockClear();
+
+    // Der Blockiert-Zustand UND die Begründung stehen schon vor dem Klick am
+    // Knopf, aus `templateSwitchBlockReason` am Render — nicht erst danach.
+    const splitButton = screen.getByRole("button", { name: /Geteilt/ });
+    expect(splitButton).toBeDisabled();
+    expect(splitButton).toHaveAccessibleName(/3.*2/);
+
+    fireEvent.click(splitButton);
+
+    // Blockiert bleibt blockiert: Quad weiterhin aktiv, keine Pane verschwunden.
+    expect(
+      screen.getByRole("button", { name: "Vierergrid" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(0);
+    expect(screen.getByLabelText("Terminal a")).toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal b")).toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal c")).toBeInTheDocument();
+  });
+
+  it("kompaktiert beim erlaubten Schrumpfen (Quad→Geteilt, Panes an Slot 0 und 3) ohne Kill oder Spawn", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    fireEvent.click(pickerButton(0));
+    await screen.findByLabelText("Terminal storefront");
+    // Alle vier Slots sind noch leer bis auf Slot 0 — der dritte verbleibende
+    // Picker (Index 2 unter den drei übrigen) ist Slot 3.
+    fireEvent.click(pickerButton(2));
+    await screen.findByLabelText("Terminal admin");
+    invokeMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Geteilt" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Geteilt" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    // Der eigentliche Diskriminator: eine Kompaktierung bewegt DOM-Knoten
+    // (paneId-Key bleibt stabil), sie unmountet nichts. Ein pro-Slot-Index
+    // geschlüsselter Wrapper würde hier stattdessen einen Kill+Spawn zeigen.
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(0);
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+    ).toHaveLength(0);
+    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal admin")).toBeInTheDocument();
+  });
 });
 
 // jsdom meldet keine macOS-Kennung, es gilt hier also die Strg-Belegung; dass

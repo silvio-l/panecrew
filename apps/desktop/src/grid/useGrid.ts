@@ -3,7 +3,9 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   closePane as closePaneInState,
+  switchTemplate as switchTemplateInState,
   type GridState,
+  type TemplateId,
 } from "./gridState";
 
 export interface Grid {
@@ -14,6 +16,10 @@ export interface Grid {
    * Neuzuweisung erzeugt immer eine neue). */
   assignProject: (slotIndex: number, projectPath: string) => void;
   closePane: (paneId: string) => void;
+  /** No-Op (identische `state`-Referenz), wenn `templateSwitchBlockReason`
+   * für `target` nicht `null` ist — die Steuerung entscheidet daran selbst,
+   * ob sie den Aufruf überhaupt zulässt, hier wird nur noch ausgeführt. */
+  switchTemplate: (target: TemplateId) => void;
 }
 
 /**
@@ -39,5 +45,9 @@ export function useGrid(): Grid {
     setState((current) => closePaneInState(current, paneId));
   }, []);
 
-  return { state, assignProject, closePane };
+  const switchTemplate = useCallback((target: TemplateId) => {
+    setState((current) => switchTemplateInState(current, target));
+  }, []);
+
+  return { state, assignProject, closePane, switchTemplate };
 }

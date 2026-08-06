@@ -61,7 +61,11 @@ import { PaneGrid } from "./components/PaneGrid";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
-import { focusedProjectPath } from "./grid/gridState";
+import {
+  GRID_TEMPLATES,
+  focusedProjectPath,
+  templateSwitchBlockReason,
+} from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { useAppZoom } from "./shortcuts/useAppZoom";
@@ -76,7 +80,8 @@ function App() {
   // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
   // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
   // jeden `useEffect`, der eine der beiden Funktionen aufruft, mit sich.
-  const { state: gridState, assignProject, closePane } = useGrid();
+  const { state: gridState, assignProject, closePane, switchTemplate } =
+    useGrid();
   // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
   // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
   // das explizit, statt eine Pane vorzutäuschen, die es nicht gibt.
@@ -378,6 +383,40 @@ function App() {
             </>
           )}
           <main className="flex min-w-0 flex-1 flex-col p-2">
+            {/* Platzhalter-Steuerung (Schritt 7 des Plans): sieben schlichte
+                Knöpfe, keine Optik — den echten Switcher (Icons, Layout,
+                Blockiert-Feedback-Mechanismus) baut der Opus-Durchgang
+                (Schritt 8) an genau dieser Verdrahtung. Blockiert-Zustand UND
+                Begründung kommen beide aus `templateSwitchBlockReason`, AM
+                RENDER neu berechnet — nie aus geklickt-dann-State, weil
+                `switchTemplate` bei einem blockierten Versuch dieselbe
+                State-Referenz zurückgibt und also kein Re-Render auslöst. */}
+            <div
+              role="group"
+              aria-label="Template wählen"
+              className="mb-2 flex gap-1"
+            >
+              {GRID_TEMPLATES.map((template) => {
+                const reason = templateSwitchBlockReason(
+                  gridState,
+                  template.id,
+                );
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => switchTemplate(template.id)}
+                    disabled={reason !== null}
+                    aria-pressed={template.id === gridState.template}
+                    aria-label={
+                      reason ? `${template.label} — ${reason}` : template.label
+                    }
+                  >
+                    {template.label}
+                  </button>
+                );
+              })}
+            </div>
             {/* Jede Pane trägt ihr eigenes Terminal+Editor-Paar (Begründung
                 fürs Nur-Ausblenden statt Unmount jetzt in `PaneGrid.tsx`).
                 Ein leerer Slot zeigt seinen eigenen Ordner-Dialog-Platzhalter
