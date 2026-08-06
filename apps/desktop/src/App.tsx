@@ -62,7 +62,7 @@ import { ProjectPicker } from "./components/ProjectPicker";
 import { TerminalPane } from "./components/TerminalPane";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
-import { useFileEditor } from "./explorer/useFileEditor";
+import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { gitDecorationsFromStatuses, type GitFileStatus } from "./types/gitStatus";
 import {
@@ -123,20 +123,29 @@ async function readGitDecorations(path: string) {
   }
 }
 
+// Bis Schritt 4/5 dieses Plans (echte `paneId`s aus dem Grid-Store) gibt es
+// nur diese eine Pane — der Schlüssel ist ein fixer Platzhalter, damit der
+// Umbau von "eine Editor-Instanz" auf "Editor pro Pane" für sich allein
+// verifizierbar bleibt, ohne zugleich das Grid zu verdrahten. Jede Stelle,
+// die ihn braucht, liest ihn über `focusedPaneId` — die einzige Zeile, die
+// beim Wechsel auf den echten Grid-Fokus ersetzt werden muss.
+const SINGLE_PANE_ID = "single-pane";
+
 function App() {
   const [project, setProject] = useState<Project | null>(null);
-  const [selectedFile, setSelectedFile] = useState("");
+  const [selectedFile, setSelectedFile] = useState<Record<string, string>>({});
   const [picking, setPicking] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
+  const focusedPaneId = SINGLE_PANE_ID;
   // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
   // auswahl anzutasten (anders als ein Projektwechsel). Der Vergleich im
   // Setter schützt vor einer veralteten Antwort, falls der Nutzer während des
   // Reads schon zu einem anderen Projekt gewechselt hat.
   //
-  // Steht vor `useFileEditor`, weil der Hook es als `onSaved` bekommt und ein
-  // späteres `const` hier in seiner temporalen Totzone läge.
+  // Steht vor `usePaneFileEditors`, weil der Hook es als `onSaved` bekommt und
+  // ein späteres `const` hier in seiner temporalen Totzone läge.
   const refreshExplorer = () => {
     if (project === null) return;
     const path = project.path;
@@ -148,7 +157,10 @@ function App() {
   // Nach jedem erfolgreichen Schreiben Baum und Git-Deko neu lesen — sonst
   // stünde die Deko der eben gespeicherten Datei veraltet da: aus einer
   // unveränderten versionierten Datei macht genau dieses Schreiben ein „M".
-  const fileEditor = useFileEditor(refreshExplorer);
+  const paneFileEditors = usePaneFileEditors(refreshExplorer);
+  // Der Editor der fokussierten Pane — das Rechteck der Editorfläche zeigt
+  // immer nur sie.
+  const fileEditor = paneFileEditors.editorFor(focusedPaneId);
   const zoom = useAppZoom();
 
   // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
@@ -169,7 +181,7 @@ function App() {
       .then((next) => {
         if (!cancelled && next) {
           setProject(next);
-          setSelectedFile("");
+          setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
         }
       })
       .catch((error: unknown) => {
@@ -178,7 +190,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [focusedPaneId]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -188,30 +200,33 @@ function App() {
   // Was die Zustandsmaschine dazu beiträgt, ist genau ein Boolean
   // (`wouldLoseWork`), und das hat sie schon.
   //
-  // Gespeichert wird die Handlung als Thunk in einem Objekt: `useState` deutet
-  // eine direkt übergebene Funktion als Updater, ein `{ run }` drumherum ist
-  // der kürzere Weg als `setState(() => fn)`.
-  const [pendingLeave, setPendingLeave] = useState<{ run: () => void } | null>(
-    null,
-  );
+  // Gespeichert wird die Handlung als Thunk in einem Objekt, zusammen mit der
+  // Pane, deren ungespeicherter Stand sie ausgelöst hat — der Dialog fragt
+  // nach GENAU dieser Datei, unabhängig davon, was inzwischen anderswo im
+  // Grid passiert. `useState` deutet eine direkt übergebene Funktion als
+  // Updater, das Objekt drumherum ist der kürzere Weg als `setState(() =>
+  // fn)`.
+  const [pendingLeave, setPendingLeave] = useState<
+    { paneId: string; run: () => void } | null
+  >(null);
 
   // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
-  // absichtlich zwischen Absicht und Ausführung statt in den drei Aufrufern:
-  // dreimal derselbe Dialog wären drei Stellen, an denen er künftig
-  // auseinanderläuft — und die vierte (das Raster aus Ticket 06) käme dann
-  // ohne ihn.
-  const guardLeave = (run: () => void) => {
-    if (fileEditor.wouldLoseWork) {
-      setPendingLeave({ run });
+  // absichtlich zwischen Absicht und Ausführung statt in den Aufrufern:
+  // derselbe Dialog mehrfach direkt verdrahtet wären ebenso viele Stellen, an
+  // denen er künftig auseinanderläuft. Pane-genau: nur der ungespeicherte
+  // Stand DIESER Pane blockiert ihren eigenen Wechsel, nie den einer anderen.
+  const guardLeave = (paneId: string, run: () => void) => {
+    if (paneFileEditors.editorFor(paneId).wouldLoseWork) {
+      setPendingLeave({ paneId, run });
       return;
     }
     run();
   };
 
-  // Der Pfad der Datei, die die Editorfläche gerade führt — `null`, solange
-  // keine offen ist. Steht vor den Handlern darunter, weil `selectFile` ihn
-  // braucht, um einen echten Wechsel von einem erneuten Klick auf dieselbe
-  // Zeile zu unterscheiden.
+  // Der Pfad der Datei, die die Editorfläche der fokussierten Pane gerade
+  // führt — `null`, solange keine offen ist. Steht vor den Handlern darunter,
+  // weil `selectFile` ihn braucht, um einen echten Wechsel von einem
+  // erneuten Klick auf dieselbe Zeile zu unterscheiden.
   const openFilePath =
     fileEditor.state.status === "idle" ? null : fileEditor.state.path;
 
@@ -224,7 +239,7 @@ function App() {
       .then((next) => {
         if (!next) return;
         setProject(next);
-        setSelectedFile("");
+        setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
         // Eine offene Datei gehört immer zum Projekt, aus dem sie kam — sie
         // darf den Wechsel nicht überleben, sonst stünde nach dem Öffnen des
         // neuen Projekts weiter eine fremde Datei über dessen Terminal.
@@ -246,7 +261,7 @@ function App() {
   // keine Datei offen. Der Guard steht trotzdem, weil er einer der drei im
   // Ticket benannten Verlassen-Wege ist und mit dem Raster (mehrere Projekte
   // gleichzeitig) unmittelbar erreichbar wird.
-  const chooseProject = () => guardLeave(openProjectFromDialog);
+  const chooseProject = () => guardLeave(focusedPaneId, openProjectFromDialog);
 
   // Zurück zum Picker. Schließt die Editorfläche mit: ihr Zustand lebt in App
   // und überlebt das Ausblenden der Pane sonst unsichtbar bis zur nächsten
@@ -254,7 +269,7 @@ function App() {
   // solange eine Datei offen ist: die Editorfläche verdeckt dann die Pane
   // samt ihrem Schließkreuz (`hidden`).
   const closeProject = () =>
-    guardLeave(() => {
+    guardLeave(focusedPaneId, () => {
       setProject(null);
       fileEditor.close();
     });
@@ -270,7 +285,7 @@ function App() {
   // die Anlege-Zeile des Explorers schon für `explorer_create_file` verwendet.
   const selectFile = (path: string) => {
     if (project === null) {
-      setSelectedFile(path);
+      setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
       return;
     }
     const absolutePath = `${project.path}/${path}`;
@@ -289,8 +304,8 @@ function App() {
     // Auswahl-Markierung und Öffnen gehören in DIESELBE Handlung: bliebe das
     // `setSelectedFile` außerhalb, hübe ein Abbruch die Zeile im Baum hervor,
     // während die Fläche daneben unverändert die alte Datei zeigt.
-    guardLeave(() => {
-      setSelectedFile(path);
+    guardLeave(focusedPaneId, () => {
+      setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
       fileEditor.open(absolutePath);
     });
   };
@@ -376,7 +391,7 @@ function App() {
                 key={project.path}
                 project={project}
                 width={explorerWidth}
-                selectedFile={selectedFile}
+                selectedFile={selectedFile[focusedPaneId] ?? ""}
                 dirtyFile={dirtyFile}
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
@@ -445,7 +460,7 @@ function App() {
                   // deshalb hier an der Übergabe und nicht in FileEditor.tsx:
                   // die Fläche zeigt eine Datei an, sie entscheidet nicht, was
                   // ein Verlassen kostet.
-                  onClose={() => guardLeave(fileEditor.close)}
+                  onClose={() => guardLeave(focusedPaneId, fileEditor.close)}
                 />
               </>
             )}
@@ -456,16 +471,27 @@ function App() {
             Dialog, der sich im selben Augenblick mit seiner Umgebung
             aushängt, gibt den Fokus nicht mehr geordnet zurück.
 
-            `pendingLeave` wird nur bei `wouldLoseWork` gesetzt, und das
-            bedingt einen Nicht-idle-Zustand — `openFilePath` ist hier also
-            immer da; die Prüfung steht für TypeScript, nicht für den Fall. */}
-        {pendingLeave !== null && openFilePath !== null && (
-          <UnsavedChangesDialog
-            fileName={fileNameFromPath(openFilePath)}
-            onConfirm={pendingLeave.run}
-            onClose={() => setPendingLeave(null)}
-          />
-        )}
+            Der Dateiname kommt bewusst aus der Pane, die `pendingLeave`
+            genannt hat — nicht aus der zufällig fokussierten. Mit mehreren
+            Panes (ab Schritt 5) kann das auseinanderfallen; heute sind sie
+            noch identisch. `pendingLeave` wird nur bei `wouldLoseWork`
+            gesetzt, und das bedingt einen Nicht-idle-Zustand — der Pfad ist
+            hier also immer da; die Prüfung steht für TypeScript, nicht für
+            den Fall. */}
+        {pendingLeave !== null &&
+          (() => {
+            const state = paneFileEditors.editorFor(pendingLeave.paneId).state;
+            const path = state.status === "idle" ? null : state.path;
+            return (
+              path !== null && (
+                <UnsavedChangesDialog
+                  fileName={fileNameFromPath(path)}
+                  onConfirm={pendingLeave.run}
+                  onClose={() => setPendingLeave(null)}
+                />
+              )
+            );
+          })()}
       </div>
     </Tooltip.Provider>
   );
