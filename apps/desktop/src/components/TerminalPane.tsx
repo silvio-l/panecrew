@@ -3,49 +3,47 @@ import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
-import type { Project } from "../types/project";
 
 // Echte, PTY-gestützte Terminal-Pane: sehr dünner Header (eine schlanke
 // Textzeile, 24px Klickfläche) mit dem Projektnamen, darunter das
 // xterm.js-Terminal. Der Fokus-Akzent (Ring + Glow + hellerer Header-Text)
-// bleibt aus dem Direction Contract erhalten, obwohl es in diesem Ticket nur
-// eine Pane gibt — er ist die Kernmechanik, die Ticket 03 mit dem echten Grid
-// wieder trägt.
+// bleibt aus dem Direction Contract erhalten — er ist die Kernmechanik, die
+// Ticket 03 mit dem echten Grid wieder trägt.
 //
-// Die Zoom-Buttons (volle Breite/Höhe/maximieren) sind hier bewusst ENTFERNT
-// statt nur ausgeblendet: bei genau einer Pane ist jede Stufe ein No-Op, die
-// Steuerung hätte also keinen ehrlichen Zustand, und ungenutzter Code wider-
-// spricht der Knip-Regel des Repos. Ticket 03 baut sie gegen die dann echte
-// Grid-Geometrie neu auf; die alten Icons stehen in der Git-Historie. Der
-// freigewordene Header-Slot trägt jetzt eine Aktion, die es in diesem Ticket
-// wirklich gibt: die Pane schließen (→ pty_kill, zurück zum Projekt-Picker).
+// `paneId`/`projectPath`/`projectName` kommen jetzt vom Grid-Store
+// (`PaneGrid.tsx`) statt aus einer eigenen Erzeugung hier — eine Pane weiß
+// nichts mehr über ihre Slot-Zuordnung, sie bekommt sie gereicht.
 export function TerminalPane({
-  project,
+  paneId,
+  projectPath,
+  projectName,
+  focused,
   onClose,
 }: {
-  project: Project;
+  paneId: string;
+  projectPath: string;
+  projectName: string;
+  /** Noch ohne sichtbare Wirkung (Schritt 5 des Plans) — die
+   * fokussiert/unfokussiert-Token-Anwendung über N Panes ist Teil des
+   * Opus-Durchgangs (Schritt 8), NICHT bereits erledigt. Bis dahin trägt der
+   * Rahmen unten unbedingt den Aktiv-Ton, unabhängig vom tatsächlichen
+   * Fokus. */
+  focused: boolean;
   onClose: () => void;
 }) {
-  // Lazy-Initializer statt Erzeugung im Effekt: `usePtyTerminal` braucht eine
-  // über seine ganze Lebensdauer stabile `paneId` (Begründung dort, beim
-  // `cancelled`-Flag), damit React-StrictModes Mount→Cleanup→Mount nie zwei
-  // echte Spawns für dieselbe Id in Flug schickt. Bis Ticket 03 den Grid-Store
-  // verdrahtet (Schritt 5), liefert dieser State die Id — eine pro
-  // Komponenten-Mount, stabil über Re-Renders, frisch bei jedem
-  // Projektwechsel (der `key={project.path}` in App.tsx remountet die ganze
-  // Pane ohnehin).
-  const [paneId] = useState(() => crypto.randomUUID());
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
   const { containerRef, copySelection, paste, clear, focus, hasSelection } =
-    usePtyTerminal(paneId, project.path);
+    usePtyTerminal(paneId, projectPath);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
 
   return (
     <section
-      aria-label={`Terminal ${project.name}`}
+      aria-label={`Terminal ${projectName}`}
+      aria-current={focused ? "true" : undefined}
+      data-pane-id={paneId}
       onMouseDown={focus}
       // flex-1: die Pane war im alten 2x2-Grid ein Grid-Item und wurde vom
       // Raster gestreckt. Als einziges Kind eines Spalten-Flex-Containers muss
@@ -59,10 +57,14 @@ export function TerminalPane({
       // und deckungsgleich mit dem Craft Floor, für den ein farbiger Schein
       // ohne Versatz Dekoration ist, keine Tiefe. Das Echo im Explorer-Kopf
       // und der hellere Header-Text bleiben als zweites und drittes Signal.
+      //
+      // TODO(Schritt 8, Opus): `focused` bedingt hier zwischen
+      // `--pc-pane-activeBorder` und `--pc-pane-border` (unfokussiert) —
+      // heute hart auf den Aktiv-Ton verdrahtet, siehe `focused`-Prop-Doc.
       className="group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)"
     >
       <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
-        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        <span className="min-w-0 flex-1 truncate">{projectName}</span>
         <ChromeTooltip label="Pane schließen" align="end">
           <button
             type="button"

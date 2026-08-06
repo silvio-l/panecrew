@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -29,13 +29,26 @@ vi.mock("@tauri-apps/api/core", () => ({
 // Greift in die xterm-Attrappe hinein: der Tastatur-Handler der Pane wird nur
 // an xterm übergeben, ist von außen also sonst nicht auslösbar, und der
 // Schriftzoom wirkt genau auf terminal.options.fontSize.
+//
+// EINE Instanz pro `Terminal`-Konstruktion (Ticket 03, Mehrfach-Pane): früher
+// teilten sich alle Panes denselben `options`/`fit`/`keyHandler` — mit
+// mehreren echten Terminals wäre "Pane-Zoom wirkt nur auf die fokussierte
+// Pane" gar nicht mehr prüfbar, ein grüner Test hätte nichts mehr ausgesagt.
+// Panes entstehen in Render-Reihenfolge, `instances[i]` adressiert also die
+// i-te gemountete Pane — für die bestehenden Einzel-Pane-Tests bleibt das
+// schlicht `instances[0]`.
+interface XtermInstance {
+  options: { fontSize?: number };
+  fit: ReturnType<typeof vi.fn<() => void>>;
+  keyHandler: ((event: KeyboardEvent) => boolean) | null;
+  /** Der an `terminal.onData` übergebene Handler — simuliert Tippen in GENAU
+   * dieser Pane, ohne die anderen Instanzen zu berühren. */
+  dataHandler: ((data: string) => void) | null;
+}
+
 const xterm = vi.hoisted(() => {
-  const options: { fontSize?: number } = {};
-  return {
-    keyHandler: null as ((event: KeyboardEvent) => boolean) | null,
-    options,
-    fit: vi.fn(),
-  };
+  const instances: XtermInstance[] = [];
+  return { instances };
 });
 
 const setZoomMock = vi.hoisted(() =>
@@ -50,15 +63,20 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 
 vi.mock("@xterm/addon-fit", () => ({
+  // `activate(terminal)` ist der reale xterm-Vertrag: `Terminal.loadAddon`
+  // ruft ihn mit sich selbst auf. Die Attrappe nutzt das, um `fit()` an genau
+  // die `XtermInstance` der Pane zu binden, die sie geladen hat — nicht an
+  // eine globale Attrappe.
   FitAddon: class {
-    activate(): void {
-      /* no-op */
+    private instance: XtermInstance | null = null;
+    activate(terminal: { __xterm: XtermInstance }): void {
+      this.instance = terminal.__xterm;
     }
     dispose(): void {
       /* no-op */
     }
     fit(): void {
-      xterm.fit();
+      this.instance?.fit();
     }
   },
 }));
@@ -67,11 +85,24 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 120;
     rows = 32;
+    // Feld-Initialisierer laufen der Reihe nach — `__xterm` steht damit schon,
+    // wenn `options` es referenziert.
+    __xterm: XtermInstance = (() => {
+      const instance: XtermInstance = {
+        options: {},
+        fit: vi.fn<() => void>(),
+        keyHandler: null,
+        dataHandler: null,
+      };
+      xterm.instances.push(instance);
+      return instance;
+    })();
+    options = this.__xterm.options;
     open(): void {
       /* no-op */
     }
-    loadAddon(): void {
-      /* no-op */
+    loadAddon(addon: { activate: (terminal: unknown) => void }): void {
+      addon.activate(this);
     }
     write(): void {
       /* no-op */
@@ -94,11 +125,11 @@ vi.mock("@xterm/xterm", () => ({
     hasSelection(): boolean {
       return false;
     }
-    options = xterm.options;
     attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void {
-      xterm.keyHandler = handler;
+      this.__xterm.keyHandler = handler;
     }
-    onData(): { dispose: () => void } {
+    onData(handler: (data: string) => void): { dispose: () => void } {
+      this.__xterm.dataHandler = handler;
       return { dispose: () => undefined };
     }
     onResize(): { dispose: () => void } {
@@ -122,8 +153,21 @@ const openMock = vi.mocked(open);
 const openPathMock = vi.mocked(openPath);
 const invokeMock = vi.mocked(invoke);
 
-const clickPicker = () =>
-  fireEvent.click(screen.getByRole("button", { name: "Projekt wählen" }));
+// Quad zeigt seit Ticket 03 vier leere Slots statt der früheren einen
+// vollflächigen Picker — die allermeisten Bestandstests wollen weiterhin
+// "irgendein Projekt öffnen" und greifen dafür zu Slot 0 (der danach auch
+// fokussiert ist, s. `assignProjectToSlot` in `gridState.ts`). Tests, die
+// gezielt einen ANDEREN Slot brauchen, klicken direkt über
+// `pickerButton(index)`.
+const pickerButton = (index: number) => {
+  const button = screen.getAllByRole("button", { name: "Projekt wählen" })[
+    index
+  ];
+  if (!button) throw new Error(`Kein leerer Slot-Picker an Index ${index}`);
+  return button;
+};
+
+const clickPicker = () => fireEvent.click(pickerButton(0));
 
 // Die Antwort von `explorer_read_file` in der Form, die `useFileEditor`
 // erwartet — ein bloßes `Promise.resolve()` (der Default-Mock) landet im
@@ -143,18 +187,28 @@ const SAVED_STAMP = { modified_ms: 1_700_000_060_000, len: 41 };
 const CONFLICT_ERROR = () =>
   Promise.reject(new Error("Datei wurde außerhalb von PaneCrew geändert"));
 
+// Top-Level statt in einem einzelnen `describe`: `xterm.instances` ist ein
+// modulweit geteiltes Array, das sonst über die ganze Testdatei hinweg
+// akkumuliert — ein Test, der `instances[0]`/`[1]` adressiert (Mehrfach-Pane-
+// Block unten), träfe damit still Instanzen aus längst abgeschlossenen
+// Tests, nicht die eigenen. Läuft vor jedem einzelnen `it`, unabhängig vom
+// umgebenden `describe`.
+beforeEach(() => {
+  xterm.instances.length = 0;
+});
+
 describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invokeMock.mockResolvedValue(undefined);
   });
 
-  it("zeigt vor der Projektwahl den Picker und noch keine Terminal-Pane", () => {
+  it("zeigt vor der Projektwahl Quad mit vier leeren Slot-Pickern und noch keiner Terminal-Pane", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("button", { name: "Projekt wählen" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     // get_launch_project läuft bei jedem Mount (siehe unten); nur pty_spawn
     // darf ohne Auswahl nie fallen.
@@ -175,9 +229,12 @@ describe("App", () => {
     expect(
       await screen.findByLabelText("Terminal storefront"),
     ).toBeInTheDocument();
+    // Slot 0 zeigt jetzt die Pane, die übrigen drei Quad-Slots bleiben leere
+    // Picker — Quad verschwindet nie als Ganzes, anders als der frühere
+    // vollflächige Picker.
     expect(
-      screen.queryByRole("button", { name: "Projekt wählen" }),
-    ).not.toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(3);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
         "pty_spawn",
@@ -196,8 +253,8 @@ describe("App", () => {
       expect(invokeMock).toHaveBeenCalledWith("get_launch_project");
     });
     expect(
-      screen.getByRole("button", { name: "Projekt wählen" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
   });
 
   it("startet nach der Ordnerauswahl ein PTY im gewählten Verzeichnis", async () => {
@@ -1004,8 +1061,286 @@ describe("App", () => {
       expect.anything(),
     );
     expect(
-      screen.getByRole("button", { name: "Projekt wählen" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
+  });
+});
+
+// Mehrfach-Pane (Ticket 03, Schritt 5): Quad mit N unabhängigen PTYs. Jeder
+// Test hier belegt mindestens zwei Slots — die Einzel-Pane-Fälle deckt der
+// "App"-Block oben bereits ab.
+describe("Grid / Mehrfach-Pane", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  const spawnCallFor = (cwd: string) =>
+    invokeMock.mock.calls.find(
+      ([cmd, args]) =>
+        cmd === "pty_spawn" && (args as { cwd: string }).cwd === cwd,
+    );
+
+  it("löst für einen gezielten Slot genau einen pty_spawn mit dessen cwd aus", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    // Alle vier Slots sind leer — Index 2 im DOM ist wörtlich Slot 2.
+    fireEvent.click(pickerButton(2));
+    await screen.findByLabelText("Terminal storefront");
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+      ).toHaveLength(1);
+    });
+    expect(spawnCallFor("/Users/dev/projects/storefront")).toBeTruthy();
+  });
+
+  it("startet zwei unabhängige PTYs für zwei verschiedene Ordner in zwei Slots", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const spawnCalls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "pty_spawn",
+    );
+    expect(spawnCalls).toHaveLength(2);
+    const paneIds = spawnCalls.map(
+      ([, args]) => (args as { paneId: string }).paneId,
+    );
+    expect(new Set(paneIds).size).toBe(2);
+  });
+
+  it("erlaubt denselben Ordner in zwei Slots, ohne zu deduplizieren", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+
+    const spawnCalls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "pty_spawn",
+    );
+    expect(spawnCalls).toHaveLength(2);
+    expect(
+      spawnCalls.every(
+        ([, args]) =>
+          (args as { cwd: string }).cwd === "/Users/dev/projects/storefront",
+      ),
+    ).toBe(true);
+    const paneIds = spawnCalls.map(
+      ([, args]) => (args as { paneId: string }).paneId,
+    );
+    expect(new Set(paneIds).size).toBe(2);
+  });
+
+  it("schreibt Eingaben nur mit der paneId der Pane, in der getippt wurde", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const storefrontId = (
+      spawnCallFor("/Users/dev/projects/storefront")?.[1] as {
+        paneId: string;
+      }
+    ).paneId;
+    const adminId = (
+      spawnCallFor("/Users/dev/projects/admin")?.[1] as { paneId: string }
+    ).paneId;
+
+    // pty_resize läuft nur nach erfolgreich aufgelöstem Spawn (`syncSize` in
+    // usePtyTerminal.ts) — ein zuverlässiges Signal, dass beide Sessions
+    // wirklich "ready" sind, bevor simuliert getippt wird.
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_resize"),
+      ).toHaveLength(2);
+    });
+
+    // instances[0] = zuerst gemountete Pane (storefront), [1] = admin.
+    xterm.instances[0]?.dataHandler?.("a");
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_write",
+        expect.objectContaining({ paneId: storefrontId }),
+      );
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_write",
+      expect.objectContaining({ paneId: adminId }),
+    );
+  });
+
+  it("killt beim Schließen einer Pane nur diese, die andere bleibt gemountet", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const storefrontId = (
+      spawnCallFor("/Users/dev/projects/storefront")?.[1] as {
+        paneId: string;
+      }
+    ).paneId;
+
+    fireEvent.click(
+      within(screen.getByLabelText("Terminal storefront")).getByRole(
+        "button",
+        { name: "Pane schließen" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("pty_kill", {
+        paneId: storefrontId,
+      });
+    });
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(1);
+    expect(screen.getByLabelText("Terminal admin")).toBeInTheDocument();
+  });
+
+  // Neuzuweisung eines BELEGTEN Slots (dritter der drei im Plan genannten
+  // Verlassen-Wege, `App.tsx`s `assignProjectToSlot` guardet und vergisst
+  // die verdrängte Pane bereits) hat in diesem Schritt noch keinen
+  // UI-Auslöser — der echte Pro-Slot-Picker mit einer Neu-zuweisen-Geste ist
+  // laut Plan-Tabelle Teil des Opus-Durchgangs (Schritt 8). Der Regressions-
+  // test dafür (genau ein `pty_kill` mit der alten, genau ein `pty_spawn`
+  // mit einer neuen `paneId`) gehört dorthin, sobald es einen Knopf gibt,
+  // den ein Test drücken kann.
+
+  it("folgt mit dem Explorer der zuletzt fokussierten Pane", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    // admin wurde zuletzt zugewiesen und ist damit fokussiert: sein Name
+    // steht doppelt (eigener Pane-Header + Explorer-Kopf), storefronts nur
+    // noch in seinem eigenen Pane-Header.
+    await waitFor(() => {
+      expect(screen.getAllByText("admin")).toHaveLength(2);
+    });
+    expect(screen.getAllByText("storefront")).toHaveLength(1);
+  });
+
+  it("blendet beim Datei-Öffnen nur das Terminal der fokussierten Pane aus, die andere bleibt sichtbar", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_tree") {
+        return Promise.resolve([{ name: "README.md" }]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    // admin ist fokussiert, der Explorer zeigt also dessen Baum.
+    fireEvent.click(await screen.findByRole("button", { name: "README.md" }));
+
+    const adminPane = screen.getByLabelText("Terminal admin");
+    const storefrontPane = screen.getByLabelText("Terminal storefront");
+    await waitFor(() => {
+      expect(adminPane).not.toBeVisible();
+    });
+    expect(storefrontPane).toBeVisible();
+    // Storefronts eigener Editor bleibt idle (FileEditor rendert dann null)
+    // — es gibt also nur EIN "Datei schließen"-Kreuz, nicht zwei.
+    expect(
+      screen.getAllByRole("button", { name: "Datei schließen" }),
+    ).toHaveLength(1);
+  });
+
+  it("guardet nur die Pane mit ungespeichertem Stand, nicht die andere", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_tree") {
+        return Promise.resolve([{ name: "README.md" }]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    // admin (fokussiert) bekommt ungespeicherten Stand.
+    fireEvent.click(await screen.findByRole("button", { name: "README.md" }));
+    const textbox = await screen.findByRole("textbox", {
+      name: "Inhalt von README.md",
+    });
+    fireEvent.change(textbox, { target: { value: "geändert" } });
+
+    // storefront hat nichts Ungespeichertes — sein Schließen braucht keine
+    // Rückfrage, obwohl admin gerade dirty ist.
+    fireEvent.click(
+      within(screen.getByLabelText("Terminal storefront")).getByRole(
+        "button",
+        { name: "Pane schließen" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Terminal storefront"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // admins ungespeicherter Puffer blieb unangetastet.
+    expect(textbox).toHaveValue("geändert");
   });
 });
 
@@ -1016,9 +1351,15 @@ describe("Zoom", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invokeMock.mockResolvedValue(undefined);
-    xterm.keyHandler = null;
-    delete xterm.options.fontSize;
   });
+
+  // Jeder Test hier hält genau eine Pane offen (CLI-Start ODER der Picker) —
+  // die einzige xterm-Instanz, die entstanden ist.
+  const soloTerminal = () => {
+    const instance = xterm.instances[0];
+    if (!instance) throw new Error("Keine Pane gemountet");
+    return instance;
+  };
 
   // Der eigentliche Fallstrick: die nativen Ampeln skalieren nicht mit, der
   // Webview-Inhalt aber schon. Die Titelzeile skaliert deshalb per transform
@@ -1069,7 +1410,7 @@ describe("Zoom", () => {
     render(<App />);
     await screen.findByLabelText("Terminal storefront");
 
-    const fontSizeBefore = xterm.options.fontSize;
+    const fontSizeBefore = soloTerminal().options.fontSize;
     const event = {
       type: "keydown",
       key: "s",
@@ -1083,9 +1424,11 @@ describe("Zoom", () => {
 
     // true = xterm bearbeitet die Taste ganz normal weiter, schickt sie also
     // ans PTY. Ein abgefangenes Kürzel gäbe hier false zurück.
-    expect(xterm.keyHandler?.(event as unknown as KeyboardEvent)).toBe(true);
+    expect(soloTerminal().keyHandler?.(event as unknown as KeyboardEvent)).toBe(
+      true,
+    );
     expect(event.preventDefault).not.toHaveBeenCalled();
-    expect(xterm.options.fontSize).toBe(fontSizeBefore);
+    expect(soloTerminal().options.fontSize).toBe(fontSizeBefore);
   });
 
   it("lässt Strg+Plus ohne Shift die Oberfläche unangetastet", () => {
@@ -1116,14 +1459,14 @@ describe("Zoom", () => {
         altKey: false,
         preventDefault: vi.fn(),
       };
-      xterm.keyHandler?.(event as unknown as KeyboardEvent);
+      soloTerminal().keyHandler?.(event as unknown as KeyboardEvent);
       return event.preventDefault;
     };
 
     const prevented = press("Equal");
-    const enlarged = xterm.options.fontSize;
+    const enlarged = soloTerminal().options.fontSize;
     press("Digit0");
-    const base = xterm.options.fontSize;
+    const base = soloTerminal().options.fontSize;
 
     // Ohne preventDefault liefe der eingebaute Webview-Zoom auf derselben
     // Taste mit — die Pane-Schrift wüchse dann doppelt.
@@ -1131,7 +1474,7 @@ describe("Zoom", () => {
     expect(enlarged).toBeGreaterThan(base ?? 0);
     // fit() ist der Weg, auf dem die neue Zellengeometrie als pty_resize
     // beim Kindprozess ankommt.
-    expect(xterm.fit).toHaveBeenCalled();
+    expect(soloTerminal().fit).toHaveBeenCalled();
     // Und die Oberfläche bleibt, wo sie war.
     expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
   });

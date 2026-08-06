@@ -39,8 +39,9 @@ export interface Pane {
   projectPath: string;
 }
 
-// Nicht exportiert, solange nur dieses Modul den Typ braucht — `useGrid.ts`
-// (Schritt 5) bekommt den Export erst mit seinem ersten echten Verwender.
+// Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
+// braucht (nur seine Form über `GridState.slots`) — `PaneGrid.tsx` iteriert
+// `state.slots` und lässt TS den Elementtyp ableiten.
 type Slot = Pane | null;
 
 export interface GridState {

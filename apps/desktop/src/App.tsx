@@ -57,12 +57,12 @@ import {
   CollapsedExplorerStrip,
   ExplorerPanel,
 } from "./components/ExplorerPanel";
-import { FileEditor } from "./components/FileEditor";
-import { ProjectPicker } from "./components/ProjectPicker";
-import { TerminalPane } from "./components/TerminalPane";
+import { PaneGrid } from "./components/PaneGrid";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
+import { focusedProjectPath } from "./grid/gridState";
+import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import "./App.css";
@@ -71,44 +71,46 @@ const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
-// Bis Schritt 4/5 dieses Plans (echte `paneId`s aus dem Grid-Store) gibt es
-// nur diese eine Pane — der Schlüssel ist ein fixer Platzhalter, damit der
-// Umbau von "eine Editor-Instanz" auf "Editor pro Pane" für sich allein
-// verifizierbar bleibt, ohne zugleich das Grid zu verdrahten. Jede Stelle,
-// die ihn braucht, liest ihn über `focusedPaneId` — die einzige Zeile, die
-// beim Wechsel auf den echten Grid-Fokus ersetzt werden muss.
-const SINGLE_PANE_ID = "single-pane";
-
 function App() {
-  // `project` selbst ist abgeleitet, kein eigener State: die schwere
-  // `Project`-Struktur (Baum, Git-Deko) lebt im pfad-geschlüsselten Cache aus
-  // `useProjects.ts`, App hält nur noch, WELCHER Pfad gerade offen ist. Damit
-  // erledigt sich die frühere Race-Absicherung in `refreshExplorer` von
-  // selbst: ein `refresh()` auf einem inzwischen verlassenen Pfad schreibt
-  // nur dessen eigenen Cache-Eintrag, nie den des mittlerweile aktuellen.
-  const [projectPath, setProjectPath] = useState<string | null>(null);
+  // Destrukturiert wie `useProjects()`s Rückgabe: `assignProject`/
+  // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
+  // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
+  // jeden `useEffect`, der eine der beiden Funktionen aufruft, mit sich.
+  const { state: gridState, assignProject, closePane } = useGrid();
+  // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
+  // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
+  // das explizit, statt eine Pane vorzutäuschen, die es nicht gibt.
+  const focusedPaneId = gridState.focusedPaneId;
+  const focusedPath = focusedProjectPath(gridState);
   // Destrukturiert statt als `projects`-Objekt weitergereicht: `load`/
   // `refresh` sind eigene, stabile Bindungen (in `useProjects.ts` per
   // `useCallback` memoisiert) — das hält sie aus `useEffect`-Dep-Arrays
   // heraus, die sonst bei jeder Cache-Änderung neu feuern würden.
   const { projects: projectRecords, load: loadProject, refresh: refreshProject } =
     useProjects();
+  // `project` ist abgeleitet, kein eigener State: die schwere `Project`-
+  // Struktur (Baum, Git-Deko) lebt im pfad-geschlüsselten Cache, hier steht
+  // nur noch, welches Projekt die fokussierte Pane gerade zeigt — der
+  // Explorer bindet auf GENAU dieses Projekt.
   const project =
-    projectPath !== null ? (projectRecords[projectPath] ?? null) : null;
+    focusedPath !== null ? (projectRecords[focusedPath] ?? null) : null;
   const [selectedFile, setSelectedFile] = useState<Record<string, string>>({});
-  const [picking, setPicking] = useState(false);
+  // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
+  // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
+  // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
+  const [pickingSlot, setPickingSlot] = useState<number | null>(null);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
-  const focusedPaneId = SINGLE_PANE_ID;
-  // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
-  // auswahl anzutasten (anders als ein Projektwechsel).
+  // Liest Baum + Git-Status des von der fokussierten Pane gezeigten Projekts
+  // neu, ohne die offene Dateiauswahl anzutasten (anders als ein
+  // Projektwechsel).
   //
   // Steht vor `usePaneFileEditors`, weil der Hook es als `onSaved` bekommt und
   // ein späteres `const` hier in seiner temporalen Totzone läge.
   const refreshExplorer = () => {
-    if (projectPath === null) return;
-    void refreshProject(projectPath);
+    if (focusedPath === null) return;
+    void refreshProject(focusedPath);
   };
 
   // Nach jedem erfolgreichen Schreiben Baum und Git-Deko neu lesen — sonst
@@ -116,8 +118,10 @@ function App() {
   // unveränderten versionierten Datei macht genau dieses Schreiben ein „M".
   const paneFileEditors = usePaneFileEditors(refreshExplorer);
   // Der Editor der fokussierten Pane — das Rechteck der Editorfläche zeigt
-  // immer nur sie.
-  const fileEditor = paneFileEditors.editorFor(focusedPaneId);
+  // immer nur sie. Ohne fokussierte Pane (leeres Grid) liest `editorFor("")`
+  // denselben `IDLE_STATE` wie jede unbenutzte `paneId` — kein Sonderfall
+  // nötig.
+  const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
   const zoom = useAppZoom();
 
   // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
@@ -130,16 +134,17 @@ function App() {
   // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon gegen
   // das echte Dateisystem geprüft (existiert, ist ein Verzeichnis), ein
   // ungültiges/fehlendes Argument liefert hier einfach `null` zurück und
-  // landet ganz normal beim Picker.
+  // landet ganz normal beim Picker. Landet in Slot 0 des Default-Templates —
+  // `assignProject` erzeugt dafür eine frische `paneId`, ein Eintrag in
+  // `selectedFile` ist für sie also nie vorhanden und muss nicht eigens
+  // zurückgesetzt werden (anders als früher bei einer wiederverwendeten
+  // Konstante).
   useEffect(() => {
     let cancelled = false;
     void invoke<string | null>("get_launch_project")
       .then((path) => (path ? loadProject(path) : null))
       .then((next) => {
-        if (!cancelled && next) {
-          setProjectPath(next.path);
-          setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
-        }
+        if (!cancelled && next) assignProject(0, next.path);
       })
       .catch((error: unknown) => {
         console.error("PaneCrew: Start-Projekt konnte nicht gelesen werden", error);
@@ -147,7 +152,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [focusedPaneId, loadProject]);
+  }, [loadProject, assignProject]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -187,48 +192,42 @@ function App() {
   const openFilePath =
     fileEditor.state.status === "idle" ? null : fileEditor.state.path;
 
-  const openProjectFromDialog = () => {
-    setPicking(true);
-    void openFolderDialog({ directory: true, multiple: false })
-      .then((selected) =>
-        typeof selected === "string" ? loadProject(selected) : null,
-      )
-      .then((next) => {
-        if (!next) return;
-        setProjectPath(next.path);
-        setSelectedFile((current) => ({ ...current, [focusedPaneId]: "" }));
-        // Eine offene Datei gehört immer zum Projekt, aus dem sie kam — sie
-        // darf den Wechsel nicht überleben, sonst stünde nach dem Öffnen des
-        // neuen Projekts weiter eine fremde Datei über dessen Terminal.
-        fileEditor.close();
-      })
-      .catch((error: unknown) => {
-        console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
-      })
-      .finally(() => setPicking(false));
+  // Öffnet den Ordner-Dialog für Slot `slotIndex` — leer oder belegt. Bei
+  // einem belegten Slot ersetzt eine Zuweisung die Pane vollständig (neue
+  // `paneId`, die alte PTY stirbt beim Remount, s. `PaneGrid.tsx`s
+  // Invariante) — das ist einer der drei im Ticket benannten Verlassen-Wege
+  // und wird deshalb genauso geguardet wie ein Dateiwechsel. `forget` räumt
+  // den Editor-Zustand der verdrängten Pane auf; ohne das hielte der Record
+  // in `usePaneFileEditors` sie für immer als "ungespeichert", falls sie das
+  // beim Verdrängen war.
+  const assignProjectToSlot = (slotIndex: number) => {
+    const outgoing = gridState.slots[slotIndex];
+    const proceed = () => {
+      setPickingSlot(slotIndex);
+      void openFolderDialog({ directory: true, multiple: false })
+        .then((selected) =>
+          typeof selected === "string" ? loadProject(selected) : null,
+        )
+        .then((next) => {
+          if (!next) return;
+          if (outgoing) paneFileEditors.forget(outgoing.paneId);
+          assignProject(slotIndex, next.path);
+        })
+        .catch((error: unknown) => {
+          console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
+        })
+        .finally(() => setPickingSlot(null));
+    };
+    if (outgoing) guardLeave(outgoing.paneId, proceed);
+    else proceed();
   };
 
-  // Gefragt wird VOR dem Ordner-Dialog des Systems, nicht danach: hinter dem
-  // nativen Fenster stünde die Rückfrage plötzlich zwischen „Ordner gewählt"
-  // und „Projekt offen", also mitten in einer Handlung, die der Nutzer für
-  // abgeschlossen hält.
-  //
-  // Heute erreicht diese Rückfrage niemand: `chooseProject` hängt allein am
-  // Projekt-Picker, und den sieht man nur ohne offenes Projekt — dann ist auch
-  // keine Datei offen. Der Guard steht trotzdem, weil er einer der drei im
-  // Ticket benannten Verlassen-Wege ist und mit dem Raster (mehrere Projekte
-  // gleichzeitig) unmittelbar erreichbar wird.
-  const chooseProject = () => guardLeave(focusedPaneId, openProjectFromDialog);
-
-  // Zurück zum Picker. Schließt die Editorfläche mit: ihr Zustand lebt in App
-  // und überlebt das Ausblenden der Pane sonst unsichtbar bis zur nächsten
-  // Projektwahl. Ebenfalls geguardet und ebenfalls heute nicht erreichbar,
-  // solange eine Datei offen ist: die Editorfläche verdeckt dann die Pane
-  // samt ihrem Schließkreuz (`hidden`).
-  const closeProject = () =>
-    guardLeave(focusedPaneId, () => {
-      setProjectPath(null);
-      fileEditor.close();
+  // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
+  // Stand, unabhängig davon, was in den anderen Panes liegt.
+  const closePaneGuarded = (paneId: string) =>
+    guardLeave(paneId, () => {
+      closePane(paneId);
+      paneFileEditors.forget(paneId);
     });
 
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
@@ -241,10 +240,11 @@ function App() {
   // einen absoluten — zusammengesetzt wird genau hier, im selben Muster, das
   // die Anlege-Zeile des Explorers schon für `explorer_create_file` verwendet.
   const selectFile = (path: string) => {
-    if (project === null) {
-      setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
-      return;
-    }
+    // Der Explorer wird nur sichtbar, solange eine Pane fokussiert ist und
+    // deren Projekt geladen ist (s. u.) — `focusedPaneId`/`project` sind hier
+    // also praktisch immer gesetzt. Die Prüfung steht für TypeScript, nicht
+    // für einen echten Fall.
+    if (focusedPaneId === null || project === null) return;
     const absolutePath = `${project.path}/${path}`;
 
     // Ein Klick auf die bereits offene Datei ist kein Wechsel — die Fläche
@@ -348,7 +348,7 @@ function App() {
                 key={project.path}
                 project={project}
                 width={explorerWidth}
-                selectedFile={selectedFile[focusedPaneId] ?? ""}
+                selectedFile={selectedFile[focusedPaneId ?? ""] ?? ""}
                 dirtyFile={dirtyFile}
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
@@ -378,49 +378,19 @@ function App() {
             </>
           )}
           <main className="flex min-w-0 flex-1 flex-col p-2">
-            {project === null ? (
-              <ProjectPicker onChoose={chooseProject} busy={picking} />
-            ) : (
-              <>
-                {/* Eine offene Datei übernimmt vorübergehend das Rechteck der
-                    Pane (Nutzerentscheidung 2026-08-06, Begründung in
-                    FileEditor.tsx) — die Pane wird dabei aber NUR AUSGEBLENDET,
-                    nie ausgehängt: der Effekt-Cleanup von `usePtyTerminal`
-                    ruft `pty_kill`, ein Unmount würde also die echte
-                    Shell-Sitzung samt laufendem Agenten töten. Das
-                    hidden-Attribut ist dafür der ehrliche Weg — es nimmt die
-                    Pane zugleich aus dem Zugänglichkeitsbaum, während ihr DOM
-                    (und damit xterm.js) unangetastet stehen bleibt. Der
-                    ResizeObserver im Hook misst beim Wiedereinblenden von
-                    selbst nach und meldet die Geometrie ans PTY.
-
-                    key = Projektpfad: ein Projektwechsel remountet die Pane
-                    und fährt damit die alte PTY-Session sauber herunter,
-                    statt sie umzuhängen. */}
-                <div
-                  hidden={fileEditor.state.status !== "idle"}
-                  className="flex min-h-0 flex-1 flex-col"
-                >
-                  <TerminalPane
-                    key={project.path}
-                    project={project}
-                    onClose={closeProject}
-                  />
-                </div>
-                <FileEditor
-                  state={fileEditor.state}
-                  dirty={fileEditor.wouldLoseWork}
-                  onEdit={fileEditor.editContent}
-                  onSave={fileEditor.save}
-                  // Das Schließkreuz der Fläche verlässt die Datei genauso wie
-                  // ein Klick auf eine andere Zeile im Baum — geguardet wird
-                  // deshalb hier an der Übergabe und nicht in FileEditor.tsx:
-                  // die Fläche zeigt eine Datei an, sie entscheidet nicht, was
-                  // ein Verlassen kostet.
-                  onClose={() => guardLeave(focusedPaneId, fileEditor.close)}
-                />
-              </>
-            )}
+            {/* Jede Pane trägt ihr eigenes Terminal+Editor-Paar (Begründung
+                fürs Nur-Ausblenden statt Unmount jetzt in `PaneGrid.tsx`).
+                Ein leerer Slot zeigt seinen eigenen Ordner-Dialog-Platzhalter
+                — nie mehr die volle `<main>`-Leerdarstellung, die es vor
+                Ticket 03 hier gab. */}
+            <PaneGrid
+              state={gridState}
+              paneFileEditors={paneFileEditors}
+              guardLeave={guardLeave}
+              pickingSlot={pickingSlot}
+              onAssignProject={assignProjectToSlot}
+              onClosePane={closePaneGuarded}
+            />
           </main>
         </div>
         {/* Außerhalb des `project !== null`-Zweigs: die bestätigte Handlung
