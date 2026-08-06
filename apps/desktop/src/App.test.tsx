@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -921,6 +922,42 @@ describe("App", () => {
     expect(
       invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
     ).toHaveLength(0);
+  });
+
+  // Der wertvollste neue Fall aus Ticket 03: `paneId` kommt jetzt stabil vom
+  // Aufrufer statt frisch pro Effekt-Durchlauf (`usePtyTerminal.ts`). Reacts
+  // StrictMode führt Mount → Cleanup → Mount trotzdem weiter synchron im
+  // selben Tick aus — ohne die Verzögerung vor dem eigentlichen
+  // `pty_spawn`-Aufruf (`queueMicrotask` + `cancelled`-Prüfung in
+  // `usePtyTerminal.ts`) gingen hier zwei echte Spawns für dieselbe Id in
+  // Flug, und welcher überlebt entschiede reine Backend-Fertigstellungs-
+  // reihenfolge statt React. Geprüft wird deshalb nicht nur "genau ein
+  // Spawn", sondern auch, dass der SPAWN der letzte PTY-Lifecycle-Aufruf
+  // bleibt — kein Kill, der ihn gleich wieder einholt.
+  it("spawnt unter StrictMode genau eine lebende PTY statt zwei mit anschließendem Kill", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+      ).toHaveLength(1);
+    });
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(0);
+
+    const lifecycleCommands = invokeMock.mock.calls
+      .map(([cmd]) => cmd)
+      .filter((cmd) => cmd === "pty_spawn" || cmd === "pty_kill");
+    expect(lifecycleCommands.at(-1)).toBe("pty_spawn");
   });
 
   // Der Griff ist sonst nur ziehbar, also für Tastaturbedienung unerreichbar.

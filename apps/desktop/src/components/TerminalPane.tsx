@@ -26,12 +26,21 @@ export function TerminalPane({
   project: Project;
   onClose: () => void;
 }) {
+  // Lazy-Initializer statt Erzeugung im Effekt: `usePtyTerminal` braucht eine
+  // über seine ganze Lebensdauer stabile `paneId` (Begründung dort, beim
+  // `cancelled`-Flag), damit React-StrictModes Mount→Cleanup→Mount nie zwei
+  // echte Spawns für dieselbe Id in Flug schickt. Bis Ticket 03 den Grid-Store
+  // verdrahtet (Schritt 5), liefert dieser State die Id — eine pro
+  // Komponenten-Mount, stabil über Re-Renders, frisch bei jedem
+  // Projektwechsel (der `key={project.path}` in App.tsx remountet die ganze
+  // Pane ohnehin).
+  const [paneId] = useState(() => crypto.randomUUID());
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
   const { containerRef, copySelection, paste, clear, focus, hasSelection } =
-    usePtyTerminal(project.path);
+    usePtyTerminal(paneId, project.path);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
 
   return (

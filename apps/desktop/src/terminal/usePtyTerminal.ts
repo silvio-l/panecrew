@@ -27,8 +27,10 @@ import {
 //
 // Der gesamte imperative Lebenszyklus (Terminal, FitAddon, Channel, Spawn/Kill,
 // Webview-Drag-Drop) liegt in genau einem Effekt; die Komponente darüber bleibt
-// reines Chrome. Ticket 03 mountet denselben Hook mehrfach — `paneId` ist
-// bereits pro Session eigenständig.
+// reines Chrome. Ticket 03 mountet denselben Hook mehrfach — `paneId` kommt
+// dafür stabil vom Grid-Store, nicht mehr aus einer eigenen Erzeugung hier
+// (Begründung des StrictMode-Umgangs mit einer stabilen Id: siehe `cancelled`
+// weiter unten).
 
 /** Bytes, die wir selbst erzeugen (Shift+Enter). */
 const LINE_FEED = 0x0a;
@@ -43,21 +45,13 @@ export interface PtyTerminal {
   hasSelection: () => boolean;
 }
 
-export function usePtyTerminal(cwd: string): PtyTerminal {
+export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    // paneId wird bewusst INNERHALB des Effekts erzeugt: Reacts StrictMode
-    // führt Mount-Effekte doppelt aus (mount → cleanup → mount). Mit einer
-    // stabilen, außen erzeugten Id würde der zweite pty_spawn denselben
-    // HashMap-Key im Backend überschreiben und den ersten Kindprozess
-    // verwaisen lassen. Zwei Durchläufe → zwei Ids → der erste wird sauber
-    // gekillt, der zweite lebt.
-    const paneId = crypto.randomUUID();
 
     const terminalOptions = readTerminalOptions();
     const terminal = new Terminal({
@@ -79,6 +73,27 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
     terminal.focus();
     terminalRef.current = terminal;
 
+    // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `paneId`
+    // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
+    // Effekt-Durchlauf. Reacts StrictMode führt Mount → Cleanup → Mount aber
+    // weiter synchron im selben Tick aus, bevor die Mikrotask-Queue leert —
+    // ohne Gegenmaßnahme würden zwei echte `pty_spawn`-Aufrufe für DIESELBE
+    // `paneId` in Flug gehen. Welcher davon dann im Backend übrig bleibt,
+    // entschiede `spawn_and_register`s Insert-Reihenfolge (`pty_commands.rs`)
+    // — die richtet sich nach Rust-seitiger Fertigstellung, nicht danach,
+    // welcher Aufruf zuerst losgeschickt wurde. Der eigentliche Spawn-Aufruf
+    // steht deshalb unten in einem `queueMicrotask` und prüft `cancelled`
+    // unmittelbar davor: läuft der Cleanup des ERSTEN Durchlaufs synchron
+    // dazwischen (der StrictMode-Fall), setzt er `cancelled`, bevor die
+    // Mikrotask feuert — der erste Durchlauf spawnt dann nie wirklich, es
+    // gibt also nie zwei Prozesse, zwischen denen das Backend entscheiden
+    // müsste. Bei einem echten Unmount (kein zweiter Durchlauf folgt) läuft
+    // dieselbe Prüfung genauso: der Spawn unterbleibt ganz.
+    //
+    // Feuert die Mikrotask hingegen VOR dem Cleanup (normaler Einzel-Mount,
+    // oder Cleanup erst nach dem Absetzen des Aufrufs), bleibt `cancelled`
+    // die einzige Instanz: sie killt dann im `.then()` unten, sobald der
+    // Spawn aufgelöst hat.
     let cancelled = false;
     let sessionReady = false;
     // Zwischen Cleanup und dem Auflösen des Spawns lebt der Channel weiter,
@@ -114,30 +129,33 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       terminal.write(decodeChunk(bytes));
     };
 
-    void invoke("pty_spawn", {
-      paneId,
-      cwd,
-      cols: terminal.cols,
-      rows: terminal.rows,
-      onOutput,
-    })
-      .then(() => {
-        sessionReady = true;
-        if (cancelled) {
-          killPane(paneId);
-          return;
-        }
-        // Zwischen fit() und dem Auflösen des Spawns kann sich der Container
-        // schon wieder verändert haben — einmal nachziehen.
-        syncSize();
+    queueMicrotask(() => {
+      if (cancelled) return;
+      void invoke("pty_spawn", {
+        paneId,
+        cwd,
+        cols: terminal.cols,
+        rows: terminal.rows,
+        onOutput,
       })
-      .catch((error: unknown) => {
-        // Kein stiller leerer Kasten: der Fehler landet sichtbar im Puffer.
-        if (disposed) return;
-        terminal.write(
-          `\r\n\x1b[31mPTY konnte nicht gestartet werden: ${String(error)}\x1b[0m\r\n`,
-        );
-      });
+        .then(() => {
+          sessionReady = true;
+          if (cancelled) {
+            killPane(paneId);
+            return;
+          }
+          // Zwischen fit() und dem Auflösen des Spawns kann sich der
+          // Container schon wieder verändert haben — einmal nachziehen.
+          syncSize();
+        })
+        .catch((error: unknown) => {
+          // Kein stiller leerer Kasten: der Fehler landet sichtbar im Puffer.
+          if (disposed) return;
+          terminal.write(
+            `\r\n\x1b[31mPTY konnte nicht gestartet werden: ${String(error)}\x1b[0m\r\n`,
+          );
+        });
+    });
 
     // Inline-Vervollständigung: rein additiv auf dem bestehenden I/O-Pfad —
     // sie liest den Terminal-Puffer und schreibt eine angenommene Ergänzung
@@ -337,7 +355,7 @@ export function usePtyTerminal(cwd: string): PtyTerminal {
       // der then-Zweig oben das Aufräumen (cancelled === true).
       if (sessionReady) killPane(paneId);
     };
-  }, [cwd]);
+  }, [paneId, cwd]);
 
   const copySelection = useCallback(() => {
     const terminal = terminalRef.current;
