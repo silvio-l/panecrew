@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
@@ -43,11 +41,23 @@ export interface PtyTerminal {
   clear: () => void;
   focus: () => void;
   hasSelection: () => boolean;
+  /** Schreibt abgelegte Pfade in DIESE Pane, als wären sie getippt worden.
+   * Der Aufrufer (Ticket 03: `useWebviewFileDrop.ts` auf Grid-Ebene) hat
+   * bereits entschieden, dass der Drop hier landet — die Pane weiß nur noch,
+   * wie sie damit umgeht. No-Op vor dem ersten Mount-Effekt-Durchlauf. */
+  insertDroppedPaths: (paths: string[]) => void;
 }
 
 export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  // Die eigentliche Einfüge-Handlung braucht `writeText` (kennt `paneId` UND
+  // den `sessionReady`-Schutz) und `suggestion.reset()` — beides lebt nur als
+  // lokale Variable im Effekt unten. `insertDroppedPaths` (der öffentliche,
+  // stabile Teil der Rückgabe) ruft deshalb nur diesen Ref auf; der Effekt
+  // befüllt ihn beim Mount und leert ihn beim Cleanup wieder, damit ein Drop
+  // nach dem Unmount ins Leere läuft statt eine tote Closure zu treffen.
+  const insertRef = useRef<((paths: string[]) => void) | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -308,41 +318,27 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     resizeObserver.observe(container);
 
     // Absolute Pfade gibt es im Webview nur über Tauris eigenes Drag-Drop-
-    // Event; ein HTML5-drop-Event liefert File-Objekte ohne Pfad.
-    //
-    // `dragDropEnabled` musste in tauri.conf.json NICHT gesetzt werden: die
-    // Option ist per Default aktiv (Tauri 2, WebviewOptions.dragDropEnabled —
-    // "By default it is enabled"), und genau dieser Default ist der, den wir
-    // brauchen. Kehrseite und Grund, warum hier kein DOM-Handler steht: solange
-    // sie aktiv ist, ist DOM-Drag-and-Drop im Webview abgeschaltet.
-    //
-    // Das Event ist fensterweit — mit genau einer Pane eindeutig; Ticket 03
-    // muss die mitgelieferte Position gegen die Pane-Rechtecke prüfen.
-    let unlistenDrop: UnlistenFn | null = null;
-    let dropListenerDisposed = false;
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
-        if (event.payload.type !== "drop") return;
-        const text = formatDroppedPaths(event.payload.paths);
-        // Trailing Space, damit direkt weitergetippt werden kann ("<pfad> was
-        // ist hier kaputt?") — der Kernfall für CLI-Agenten.
-        if (!text) return;
-        // Dieser Weg läuft an onData vorbei, der Ankerpunkt der Vorschläge
-        // bekäme den Einwurf also nicht mit.
-        suggestion.reset();
-        writeText(`${text} `);
-      })
-      .then((unlisten) => {
-        if (dropListenerDisposed) unlisten();
-        else unlistenDrop = unlisten;
-      })
-      .catch(reportIpcFailure);
+    // Event; ein HTML5-drop-Event liefert File-Objekte ohne Pfad. Das Event
+    // selbst ist fensterweit — mit mehreren Panes uneindeutig, welche davon
+    // gemeint ist. Die eine Registrierung UND die Positionsprüfung gegen die
+    // Pane-Rechtecke liegen deshalb seit Ticket 03 auf Grid-Ebene
+    // (`useWebviewFileDrop.ts`); hier steht nur noch, WIE diese eine Pane mit
+    // abgelegten Pfaden umgeht, sobald feststeht, dass sie das Ziel ist.
+    insertRef.current = (paths: string[]) => {
+      const text = formatDroppedPaths(paths);
+      // Trailing Space, damit direkt weitergetippt werden kann ("<pfad> was
+      // ist hier kaputt?") — der Kernfall für CLI-Agenten.
+      if (!text) return;
+      // Dieser Weg läuft an onData vorbei, der Ankerpunkt der Vorschläge
+      // bekäme den Einwurf also nicht mit.
+      suggestion.reset();
+      writeText(`${text} `);
+    };
 
     return () => {
       cancelled = true;
       disposed = true;
-      dropListenerDisposed = true;
-      unlistenDrop?.();
+      insertRef.current = null;
       resizeObserver.disconnect();
       directories.dispose();
       subdirectories.dispose();
@@ -371,8 +367,19 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     () => terminalRef.current?.hasSelection() ?? false,
     [],
   );
+  const insertDroppedPaths = useCallback((paths: string[]) => {
+    insertRef.current?.(paths);
+  }, []);
 
-  return { containerRef, copySelection, paste, clear, focus, hasSelection };
+  return {
+    containerRef,
+    copySelection,
+    paste,
+    clear,
+    focus,
+    hasSelection,
+    insertDroppedPaths,
+  };
 }
 
 // Kopieren über navigator.clipboard.writeText (kaum eingeschränkt). Das Lesen

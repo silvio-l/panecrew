@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
 
 // Echte, PTY-gestützte Terminal-Pane: sehr dünner Header (eine schlanke
@@ -18,6 +19,7 @@ export function TerminalPane({
   projectPath,
   projectName,
   focused,
+  dropTargets,
   onClose,
 }: {
   paneId: string;
@@ -29,15 +31,31 @@ export function TerminalPane({
    * Rahmen unten unbedingt den Aktiv-Ton, unabhängig vom tatsächlichen
    * Fokus. */
   focused: boolean;
+  /** Grid-weite Drag-Drop-Registrierung (`useWebviewFileDrop.ts`) — diese
+   * Pane trägt sich hier ein, damit ein Drop auf ihrer Fläche bei ihr
+   * landet. */
+  dropTargets: PaneDropRegistration;
   onClose: () => void;
 }) {
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
-  const { containerRef, copySelection, paste, clear, focus, hasSelection } =
-    usePtyTerminal(paneId, projectPath);
+  const {
+    containerRef,
+    copySelection,
+    paste,
+    clear,
+    focus,
+    hasSelection,
+    insertDroppedPaths,
+  } = usePtyTerminal(paneId, projectPath);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
+
+  useEffect(() => {
+    dropTargets.register(paneId, insertDroppedPaths);
+    return () => dropTargets.unregister(paneId);
+  }, [paneId, dropTargets, insertDroppedPaths]);
 
   return (
     <section

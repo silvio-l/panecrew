@@ -388,6 +388,7 @@ function App() {
               paneFileEditors={paneFileEditors}
               guardLeave={guardLeave}
               pickingSlot={pickingSlot}
+              zoom={zoom}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
             />

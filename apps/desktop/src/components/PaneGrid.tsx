@@ -15,6 +15,10 @@
 // PTY killen.
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState } from "../grid/gridState";
+import {
+  useWebviewFileDrop,
+  type PaneDropRegistration,
+} from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
 import { FileEditor } from "./FileEditor";
 import { ProjectPicker } from "./ProjectPicker";
@@ -25,6 +29,7 @@ export function PaneGrid({
   paneFileEditors,
   guardLeave,
   pickingSlot,
+  zoom,
   onAssignProject,
   onClosePane,
 }: {
@@ -35,9 +40,15 @@ export function PaneGrid({
    * keiner. Der native Dialog ist ohnehin modal, es kann also nie mehr als
    * einer gleichzeitig sein. */
   pickingSlot: number | null;
+  /** Für die Drop-Positionsprüfung (`useWebviewFileDrop.ts`) — physische
+   * Drop-Koordinaten sind vom App-Zoom mitskaliert. */
+  zoom: number;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
 }) {
+  // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort).
+  const dropTargets = useWebviewFileDrop(zoom);
+
   return (
     <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-2">
       {state.slots.map((slot, index) =>
@@ -49,6 +60,7 @@ export function PaneGrid({
             focused={slot.paneId === state.focusedPaneId}
             editor={paneFileEditors.editorFor(slot.paneId)}
             guardLeave={guardLeave}
+            dropTargets={dropTargets}
             onClose={() => onClosePane(slot.paneId)}
           />
         ) : (
@@ -69,6 +81,7 @@ function PaneCell({
   focused,
   editor,
   guardLeave,
+  dropTargets,
   onClose,
 }: {
   paneId: string;
@@ -76,6 +89,7 @@ function PaneCell({
   focused: boolean;
   editor: ReturnType<PaneFileEditors["editorFor"]>;
   guardLeave: (paneId: string, run: () => void) => void;
+  dropTargets: PaneDropRegistration;
   onClose: () => void;
 }) {
   return (
@@ -91,6 +105,7 @@ function PaneCell({
           projectPath={projectPath}
           projectName={projectNameFromPath(projectPath)}
           focused={focused}
+          dropTargets={dropTargets}
           onClose={onClose}
         />
       </div>
