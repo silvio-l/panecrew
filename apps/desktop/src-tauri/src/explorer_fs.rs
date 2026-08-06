@@ -56,6 +56,161 @@ pub fn explorer_create_directory(path: String) -> Result<(), String> {
         .map_err(|error| format!("Ordner konnte nicht angelegt werden: {error}"))
 }
 
+/// The mini editor loads a whole file into one `<textarea>` — refusing
+/// anything above a sane ceiling keeps that plan-text-only, in-memory
+/// approach from freezing the app on an accidental huge file.
+const MAX_EDITABLE_FILE_BYTES: u64 = 1024 * 1024;
+
+/// A file's on-disk identity at read time, round-tripped back into
+/// `explorer_write_file` so it can refuse to overwrite a file that changed
+/// underneath PaneCrew (e.g. a CLI agent editing the same tree) instead of
+/// silently clobbering it.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub modified_ms: u64,
+    pub len: u64,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct FileContents {
+    /// Always LF-normalized, regardless of the file's actual line endings —
+    /// a `<textarea>`'s `.value` normalizes to LF anyway, so this is what the
+    /// frontend needs; `crlf` lets `explorer_write_file` restore the original
+    /// ending on save instead of rewriting every line of a CRLF file.
+    pub text: String,
+    pub crlf: bool,
+    pub stamp: FileStamp,
+}
+
+fn file_stamp(metadata: &std::fs::Metadata) -> Result<FileStamp, String> {
+    let modified_ms = metadata
+        .modified()
+        .and_then(|modified| {
+            modified
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| io::Error::other(error.to_string()))
+        })
+        .map_err(|error| format!("Änderungszeitpunkt konnte nicht gelesen werden: {error}"))?
+        .as_millis() as u64;
+    Ok(FileStamp {
+        modified_ms,
+        len: metadata.len(),
+    })
+}
+
+/// Reads a file for the mini editor. The size check happens against
+/// `metadata()` first, before any byte of the file is read into memory, so a
+/// huge file is refused up front rather than after loading it.
+#[tauri::command]
+pub fn explorer_read_file(path: String) -> Result<FileContents, String> {
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    if metadata.is_dir() {
+        return Err("Ordner können nicht im Editor geöffnet werden".to_string());
+    }
+    if metadata.len() > MAX_EDITABLE_FILE_BYTES {
+        return Err(format!(
+            "Datei ist zu groß für den Editor ({} Bytes, Grenze {MAX_EDITABLE_FILE_BYTES} Bytes)",
+            metadata.len()
+        ));
+    }
+
+    let bytes =
+        std::fs::read(&path).map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    // `from_utf8`, never the `_lossy` sibling: lossy decoding silently turns
+    // invalid bytes into U+FFFD, and writing that back out would corrupt a
+    // binary file instead of refusing to open it.
+    let raw = String::from_utf8(bytes)
+        .map_err(|_error| "Datei ist keine UTF-8-Textdatei und kann nicht bearbeitet werden".to_string())?;
+    let crlf = raw.contains("\r\n");
+    let text = if crlf { raw.replace("\r\n", "\n") } else { raw };
+    let stamp = file_stamp(&metadata)?;
+    Ok(FileContents { text, crlf, stamp })
+}
+
+/// Removes its temp file on drop — a `?` on any step between creating the
+/// temp file and the final rename in `explorer_write_file` must not leave a
+/// `.panecrew-tmp-*` file behind. Harmless to run after a successful rename
+/// too: the temp path is already gone by then, so the removal is a no-op.
+struct TempFileGuard(std::path::PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).ok();
+    }
+}
+
+/// Writes `contents` back to `path` — but only if `expected` (the stamp
+/// `explorer_read_file` returned when the edit started) still matches the
+/// file's current on-disk stamp. A mismatch means something outside
+/// PaneCrew changed the file since — the most likely data-loss scenario in
+/// an app whose whole point is a CLI agent editing the same tree the user
+/// has open, so this refuses to write rather than silently clobbering it.
+/// To force the write through anyway, call again with `expected` set to the
+/// file's current stamp (e.g. re-read it first).
+///
+/// The write itself never touches the target in place: contents go to a
+/// sibling temp file first, `sync_all()`'d before the rename, so a crash
+/// between writing and renaming leaves either the old file or the new one
+/// intact, never a half-written one.
+#[tauri::command]
+pub fn explorer_write_file(
+    path: String,
+    contents: String,
+    crlf: bool,
+    expected: FileStamp,
+) -> Result<FileStamp, String> {
+    use std::io::Write;
+
+    let path = std::fs::canonicalize(&path)
+        .map_err(|error| format!("Datei konnte nicht gefunden werden: {error}"))?;
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    if file_stamp(&metadata)? != expected {
+        return Err("Datei wurde außerhalb von PaneCrew geändert".to_string());
+    }
+
+    let dir = path
+        .parent()
+        .ok_or_else(|| "Datei hat kein Elternverzeichnis".to_string())?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Ungültiger Dateiname".to_string())?
+        .to_string_lossy();
+    // In the target's own directory, not `env::temp_dir()`: a rename across
+    // filesystem/device boundaries isn't atomic (and can outright fail).
+    let temp_path = dir.join(format!(".{file_name}.panecrew-tmp-{}", std::process::id()));
+
+    let bytes = if crlf {
+        contents.replace('\n', "\r\n").into_bytes()
+    } else {
+        contents.into_bytes()
+    };
+
+    let mut file = std::fs::File::create(&temp_path)
+        .map_err(|error| format!("Temporäre Datei konnte nicht angelegt werden: {error}"))?;
+    let guard = TempFileGuard(temp_path.clone());
+    file.write_all(&bytes)
+        .map_err(|error| format!("Datei konnte nicht geschrieben werden: {error}"))?;
+    // Without this, a crash right after the rename below can still leave a
+    // 0-byte or partially flushed file — the actual corruption case "never
+    // acceptable" refers to.
+    file.sync_all()
+        .map_err(|error| format!("Datei konnte nicht geschrieben werden: {error}"))?;
+    drop(file);
+    // Applies mode bits on unix, the readonly flag on windows — otherwise a
+    // save silently drops e.g. a shell script's executable bit.
+    std::fs::set_permissions(&temp_path, metadata.permissions()).ok();
+
+    std::fs::rename(&temp_path, &path)
+        .map_err(|error| format!("Datei konnte nicht gespeichert werden: {error}"))?;
+    drop(guard);
+
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    file_stamp(&metadata)
+}
+
 /// `budget` is shared across the whole recursion (decremented, never reset
 /// per directory), so the cap holds for the tree as a whole. Once it hits
 /// zero, remaining siblings and their subtrees are silently dropped instead
@@ -287,5 +442,197 @@ mod tests {
 
         assert!(result.is_err());
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn reads_a_normal_utf8_file_exactly() {
+        let fixture = Fixture::new("read-utf8", &[]);
+        let path = fixture.0.join("readme.md");
+        std::fs::write(&path, "Hällo, Wörld\nzweite Zeile").expect("fixture write");
+
+        let contents =
+            explorer_read_file(path.to_string_lossy().into_owned()).expect("should read");
+
+        assert_eq!(contents.text, "Hällo, Wörld\nzweite Zeile");
+        assert!(!contents.crlf);
+        assert_eq!(contents.stamp.len, "Hällo, Wörld\nzweite Zeile".len() as u64);
+    }
+
+    #[test]
+    fn detects_and_normalizes_crlf_line_endings() {
+        let fixture = Fixture::new("read-crlf", &[]);
+        let path = fixture.0.join("windows.txt");
+        std::fs::write(&path, b"first\r\nsecond\r\n").expect("fixture write");
+
+        let contents =
+            explorer_read_file(path.to_string_lossy().into_owned()).expect("should read");
+
+        assert!(contents.crlf);
+        assert_eq!(contents.text, "first\nsecond\n");
+    }
+
+    #[test]
+    fn refuses_non_utf8_content_instead_of_returning_garbled_text() {
+        let fixture = Fixture::new("read-non-utf8", &[]);
+        let path = fixture.0.join("binary.dat");
+        std::fs::write(&path, [0xFF, 0xFE, 0x00, 0x01]).expect("fixture write");
+
+        let result = explorer_read_file(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn refuses_a_file_above_the_size_ceiling() {
+        let fixture = Fixture::new("read-too-large", &[]);
+        let path = fixture.0.join("huge.txt");
+        std::fs::write(&path, vec![b'a'; (MAX_EDITABLE_FILE_BYTES + 1) as usize])
+            .expect("fixture write");
+
+        let result = explorer_read_file(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn refuses_to_open_a_directory_in_the_editor() {
+        let fixture = Fixture::new("read-directory", &["subdir/"]);
+        let path = fixture.0.join("subdir");
+
+        let result = explorer_read_file(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn errors_on_a_missing_file_instead_of_panicking() {
+        let fixture = Fixture::new("read-missing", &[]);
+        let path = fixture.0.join("nope.txt");
+
+        let result = explorer_read_file(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn write_then_read_round_trips_the_new_content() {
+        let fixture = Fixture::new("write-roundtrip", &[]);
+        let path = fixture.0.join("file.txt");
+        std::fs::write(&path, "original").expect("fixture write");
+        let path = path.to_string_lossy().into_owned();
+        let stamp = explorer_read_file(path.clone()).expect("should read").stamp;
+
+        explorer_write_file(path.clone(), "changed".to_string(), false, stamp)
+            .expect("should write");
+
+        assert_eq!(
+            explorer_read_file(path).expect("should read back").text,
+            "changed"
+        );
+    }
+
+    #[test]
+    fn refuses_to_write_when_the_file_changed_on_disk_since_the_stamp() {
+        let fixture = Fixture::new("write-conflict", &[]);
+        let path = fixture.0.join("file.txt");
+        std::fs::write(&path, "original").expect("fixture write");
+        let path_string = path.to_string_lossy().into_owned();
+        let stale_stamp = explorer_read_file(path_string.clone())
+            .expect("should read")
+            .stamp;
+        // Change the file "externally" (e.g. a CLI agent) after the stamp
+        // was taken, without going through `explorer_write_file`.
+        std::fs::write(&path, "changed by someone else").expect("simulated external edit");
+
+        let result = explorer_write_file(
+            path_string.clone(),
+            "clobbered?".to_string(),
+            false,
+            stale_stamp,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("file should still exist"),
+            "changed by someone else"
+        );
+    }
+
+    #[test]
+    fn leaves_no_temp_file_behind_after_a_conflict_refusal() {
+        let fixture = Fixture::new("write-conflict-no-litter", &[]);
+        let path = fixture.0.join("file.txt");
+        std::fs::write(&path, "original").expect("fixture write");
+        let path_string = path.to_string_lossy().into_owned();
+        let stale_stamp = explorer_read_file(path_string.clone())
+            .expect("should read")
+            .stamp;
+        std::fs::write(&path, "changed by someone else").expect("simulated external edit");
+
+        let _ = explorer_write_file(path_string, "clobbered?".to_string(), false, stale_stamp);
+
+        let leftovers: Vec<_> = std::fs::read_dir(&fixture.0)
+            .expect("fixture dir readable")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().contains("panecrew-tmp"))
+            .collect();
+        assert!(leftovers.is_empty());
+    }
+
+    #[test]
+    fn preserves_the_original_files_permissions_after_a_write() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = Fixture::new("write-preserves-mode", &[]);
+        let path = fixture.0.join("script.sh");
+        std::fs::write(&path, "#!/bin/sh\necho hi").expect("fixture write");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("fixture chmod");
+        let path_string = path.to_string_lossy().into_owned();
+        let stamp = explorer_read_file(path_string.clone())
+            .expect("should read")
+            .stamp;
+
+        explorer_write_file(path_string, "#!/bin/sh\necho bye".to_string(), false, stamp)
+            .expect("should write");
+
+        let mode = std::fs::metadata(&path).expect("readable").permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn restores_crlf_line_endings_on_write() {
+        let fixture = Fixture::new("write-crlf", &[]);
+        let path = fixture.0.join("windows.txt");
+        std::fs::write(&path, b"first\r\nsecond\r\n").expect("fixture write");
+        let path_string = path.to_string_lossy().into_owned();
+        let read = explorer_read_file(path_string.clone()).expect("should read");
+        assert!(read.crlf);
+
+        explorer_write_file(
+            path_string,
+            "first\nsecond\nthird".to_string(),
+            true,
+            read.stamp,
+        )
+        .expect("should write");
+
+        let bytes = std::fs::read(&path).expect("readable");
+        assert_eq!(bytes, b"first\r\nsecond\r\nthird");
+    }
+
+    #[test]
+    fn refuses_to_write_a_file_that_does_not_exist() {
+        let fixture = Fixture::new("write-missing", &[]);
+        let path = fixture.0.join("nope.txt");
+
+        let result = explorer_write_file(
+            path.to_string_lossy().into_owned(),
+            "content".to_string(),
+            false,
+            FileStamp { modified_ms: 0, len: 0 },
+        );
+
+        assert!(result.is_err());
     }
 }

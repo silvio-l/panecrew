@@ -66,6 +66,8 @@ pub fn run() {
             pty_commands::pty_kill,
             shell_history::shell_history_read,
             explorer_fs::explorer_read_tree,
+            explorer_fs::explorer_read_file,
+            explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
             explorer_fs::explorer_create_directory,
             git_status::explorer_git_status,
