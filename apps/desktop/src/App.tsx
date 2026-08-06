@@ -57,8 +57,10 @@ import {
   CollapsedExplorerStrip,
   ExplorerPanel,
 } from "./components/ExplorerPanel";
+import { FileEditor } from "./components/FileEditor";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { TerminalPane } from "./components/TerminalPane";
+import { useFileEditor } from "./explorer/useFileEditor";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { gitDecorationsFromStatuses, type GitFileStatus } from "./types/gitStatus";
 import {
@@ -126,6 +128,7 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
+  const fileEditor = useFileEditor();
   const zoom = useAppZoom();
 
   // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
@@ -167,11 +170,38 @@ function App() {
         if (!next) return;
         setProject(next);
         setSelectedFile("");
+        // Eine offene Datei gehört immer zum Projekt, aus dem sie kam — sie
+        // darf den Wechsel nicht überleben, sonst stünde nach dem Öffnen des
+        // neuen Projekts weiter eine fremde Datei über dessen Terminal.
+        fileEditor.close();
       })
       .catch((error: unknown) => {
         console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
       })
       .finally(() => setPicking(false));
+  };
+
+  // Zurück zum Picker. Schließt die Editorfläche mit: ihr Zustand lebt in App
+  // und überlebt das Ausblenden der Pane sonst unsichtbar bis zur nächsten
+  // Projektwahl.
+  const closeProject = () => {
+    setProject(null);
+    fileEditor.close();
+  };
+
+  // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
+  // Zeile UND öffnet die Datei in der Editorfläche. Bewusst kein zusätzlicher
+  // Doppelklick-Handler (Nutzerentscheidung, deckt sich mit Story 8 des
+  // Tickets) — der bestehende Einfachklick-Pfad bekommt die zweite Wirkung.
+  //
+  // Der Baum führt seine Pfade projekt-relativ (`TreeRow` baut sie als
+  // `${eltern}/${name}`, Tiefe 0 der bloße Name), `explorer_read_file` will
+  // einen absoluten — zusammengesetzt wird genau hier, im selben Muster, das
+  // die Anlege-Zeile des Explorers schon für `explorer_create_file` verwendet.
+  const selectFile = (path: string) => {
+    setSelectedFile(path);
+    if (project === null) return;
+    fileEditor.open(`${project.path}/${path}`);
   };
 
   // Liest Baum + Git-Status desselben Projekts neu, ohne die offene Datei-
@@ -254,7 +284,7 @@ function App() {
                 project={project}
                 width={explorerWidth}
                 selectedFile={selectedFile}
-                onSelectFile={setSelectedFile}
+                onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
                 onRefresh={refreshExplorer}
               />
@@ -285,14 +315,37 @@ function App() {
             {project === null ? (
               <ProjectPicker onChoose={chooseProject} busy={picking} />
             ) : (
-              // key = Projektpfad: ein Projektwechsel remountet die Pane und
-              // fährt damit die alte PTY-Session sauber herunter (pty_kill im
-              // Effekt-Cleanup), statt sie umzuhängen.
-              <TerminalPane
-                key={project.path}
-                project={project}
-                onClose={() => setProject(null)}
-              />
+              <>
+                {/* Eine offene Datei übernimmt vorübergehend das Rechteck der
+                    Pane (Nutzerentscheidung 2026-08-06, Begründung in
+                    FileEditor.tsx) — die Pane wird dabei aber NUR AUSGEBLENDET,
+                    nie ausgehängt: der Effekt-Cleanup von `usePtyTerminal`
+                    ruft `pty_kill`, ein Unmount würde also die echte
+                    Shell-Sitzung samt laufendem Agenten töten. Das
+                    hidden-Attribut ist dafür der ehrliche Weg — es nimmt die
+                    Pane zugleich aus dem Zugänglichkeitsbaum, während ihr DOM
+                    (und damit xterm.js) unangetastet stehen bleibt. Der
+                    ResizeObserver im Hook misst beim Wiedereinblenden von
+                    selbst nach und meldet die Geometrie ans PTY.
+
+                    key = Projektpfad: ein Projektwechsel remountet die Pane
+                    und fährt damit die alte PTY-Session sauber herunter,
+                    statt sie umzuhängen. */}
+                <div
+                  hidden={fileEditor.state.status !== "idle"}
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <TerminalPane
+                    key={project.path}
+                    project={project}
+                    onClose={closeProject}
+                  />
+                </div>
+                <FileEditor
+                  state={fileEditor.state}
+                  onClose={fileEditor.close}
+                />
+              </>
             )}
           </main>
         </div>

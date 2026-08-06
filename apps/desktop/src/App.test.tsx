@@ -2,16 +2,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import App from "./App";
 
 // Unter jsdom läuft weder eine Tauri-Runtime noch ein echtes xterm.js (das
 // misst Zellgrößen am realen Renderer). Gemockt wird deshalb genau die
-// Außengrenze: IPC-Brücke, Ordner-Dialog, Webview-Drag-Drop und xterm selbst.
-// Geprüft wird damit die Verdrahtung Picker → pty_spawn; die eigentliche
-// PTY-Logik ist bereits in Rust getestet, tiefere xterm-Rendering-Details
-// sind hier bewusst nicht testbar.
+// Außengrenze: IPC-Brücke, Ordner-Dialog, Öffnen-mit-dem-System, Webview-
+// Drag-Drop und xterm selbst. Geprüft wird damit die Verdrahtung Picker →
+// pty_spawn; die eigentliche PTY-Logik ist bereits in Rust getestet, tiefere
+// xterm-Rendering-Details sind hier bewusst nicht testbar.
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(() => Promise.resolve()),
@@ -113,10 +118,20 @@ vi.mock("@xterm/xterm", () => ({
 }));
 
 const openMock = vi.mocked(open);
+const openPathMock = vi.mocked(openPath);
 const invokeMock = vi.mocked(invoke);
 
 const clickPicker = () =>
   fireEvent.click(screen.getByRole("button", { name: "Projekt wählen" }));
+
+// Die Antwort von `explorer_read_file` in der Form, die `useFileEditor`
+// erwartet — ein bloßes `Promise.resolve()` (der Default-Mock) landet im
+// Fehlerzweig, weil der Hook `text`/`stamp` daraus liest.
+const FILE_CONTENTS = {
+  text: "fn main() {\n    println!(\"hallo\");\n}\n",
+  crlf: false,
+  stamp: { modified_ms: 1_700_000_000_000, len: 38 },
+};
 
 describe("App", () => {
   beforeEach(() => {
@@ -264,9 +279,17 @@ describe("App", () => {
 
   it("legt über den 'Neue Datei'-Knopf eine Datei an und liest den Baum danach neu", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
-    );
+    // explorer_read_file gehört seit dem Mini-Editor mit in diesen Mock: die
+    // Anlege-Zeile meldet den neuen Namen über `onSelectFile`, und der öffnet
+    // die Datei jetzt zusätzlich. Ohne das liefe der Öffnen-Pfad in den
+    // Default-Mock und die Fläche zeigte hier einen Fehler.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_tree") return Promise.resolve([]);
+      if (cmd === "explorer_read_file") {
+        return Promise.resolve({ ...FILE_CONTENTS, text: "" });
+      }
+      return Promise.resolve();
+    });
     render(<App />);
 
     clickPicker();
@@ -500,6 +523,95 @@ describe("App", () => {
     expect(
       screen.queryByText("Kein Dateibaum geladen."),
     ).not.toBeInTheDocument();
+  });
+
+  // Der Mini-Editor (.scratch/explorer-file-io/, Ticket 03). Geprüft wird die
+  // Verdrahtung Baumzeile → explorer_read_file → Fläche; die Zustands-
+  // übergänge selbst liegen in fileEditorState.test.ts.
+  const openTreeFile = async (
+    readFile: () => Promise<unknown> = () => Promise.resolve(FILE_CONTENTS),
+  ) => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_tree") {
+        return Promise.resolve([
+          { name: "src", children: [{ name: "main.rs" }] },
+        ]);
+      }
+      if (cmd === "explorer_read_file") return readFile();
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    fireEvent.click(await screen.findByRole("button", { name: "main.rs" }));
+  };
+
+  // Bewusst über die Rolle und nicht über `findByDisplayValue`: dessen
+  // Standard-Normalisierer zieht Zeilenumbrüche zu Leerzeichen zusammen und
+  // fände mehrzeiligen Quelltext nie wieder. `toHaveValue` vergleicht exakt.
+  const editorTextbox = () =>
+    screen.findByRole("textbox", { name: "Inhalt von main.rs" });
+
+  it("öffnet eine angeklickte Datei mit ihrem absoluten Pfad und zeigt den Inhalt", async () => {
+    await openTreeFile();
+
+    // Der Baum führt projekt-relative Pfade, das Backend will einen absoluten:
+    // genau diese Zusammensetzung ist hier der Prüfgegenstand.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
+        path: "/Users/dev/projects/storefront/src/main.rs",
+      });
+    });
+    expect(await editorTextbox()).toHaveValue(FILE_CONTENTS.text);
+    expect(await screen.findByLabelText("Datei main.rs")).toBeInTheDocument();
+  });
+
+  it("blendet die Terminal-Pane nur aus, statt sie zu schließen", async () => {
+    await openTreeFile();
+    await editorTextbox();
+
+    // Der harte Constraint dieses Tickets: der Effekt-Cleanup von
+    // usePtyTerminal ruft pty_kill. Die Pane muss also im Dokument bleiben und
+    // darf nur unsichtbar werden — sonst stirbt die echte Shell samt allem,
+    // was gerade darin läuft.
+    const pane = screen.getByLabelText("Terminal storefront");
+    expect(pane).toBeInTheDocument();
+    expect(pane).not.toBeVisible();
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+  });
+
+  it("gibt das Rechteck beim Schließen der Datei ans Terminal zurück", async () => {
+    await openTreeFile();
+    await editorTextbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "Datei schließen" }));
+
+    expect(
+      screen.queryByRole("textbox", { name: "Inhalt von main.rs" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal storefront")).toBeVisible();
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+  });
+
+  it("zeigt den Fehlertext des Backends und bietet den externen Editor an", async () => {
+    await openTreeFile(() =>
+      Promise.reject(new Error("Datei ist zu groß für den Editor")),
+    );
+
+    // Der Rohtext aus Rust unterscheidet die Fälle („zu groß", „kein
+    // UTF-8-Text") bereits genauer als jede eigene Ersatzformulierung.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Datei ist zu groß für den Editor",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "In externem Editor öffnen" }),
+    );
+    expect(openPathMock).toHaveBeenCalledWith(
+      "/Users/dev/projects/storefront/src/main.rs",
+    );
   });
 
   it("killt beim Schließen genau die Pane, die gespawnt wurde", async () => {
