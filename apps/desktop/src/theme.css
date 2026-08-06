@@ -246,6 +246,25 @@
   --pc-widget-border: #2e3031;
 
   /*
+   * Abdunklung hinter einem modalen Dialog (heute: die Rückfrage vor dem
+   * Verlassen einer Datei mit ungespeichertem Stand, components/
+   * UnsavedChangesDialog.tsx). Bewusst KEIN --pc-glass-*-Wert: die Glas-Tokens
+   * beschreiben eine durchscheinende Fläche, die selbst Material ist; das hier
+   * ist das Gegenteil, nämlich weggenommenes Licht über fremdem Inhalt.
+   *
+   * Der Dark-Wert ist deutlich kräftiger als der Light-Wert, und das ist keine
+   * Symmetriepanne: der Grund darunter (#121314) ist bereits fast schwarz, ein
+   * Schwarzschleier kann ihn kaum noch senken. Sichtbar abgedunkelt wird hier
+   * in Wahrheit der helle INHALT — Terminaltext #eceff1 fällt bei 0,5 auf
+   * #767879 und damit von 15,8:1 auf 4,4:1 gegen den abgedunkelten Grund:
+   * noch lesbar (man soll sehen, was man verlässt), aber unmissverständlich
+   * zurückgetreten. Im Light-Theme trägt der Grund die Abdunklung selbst, dort
+   * reichen 0,3 (Weiß fällt auf #b3b3b3) — 0,5 machten daraus ein
+   * Mittelgrau, das die Seite eher auslöscht als zurückstellt.
+   */
+  --pc-dialog-overlayBackground: rgba(0, 0, 0, 0.5);
+
+  /*
    * Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Dark-Spalte).
    *
    * Gemessene Nähe zum Akzent, bewusst stehen gelassen (2026-08-05):
@@ -448,6 +467,10 @@
   /* Schwebende Widgets, gleiche Regel wie im Dark-Block oben. */
   --pc-widget-background: #fafafd;
   --pc-widget-border: #d8d8d8;
+
+  /* Dialog-Abdunklung, Herleitung im Dark-Block oben — hier trägt der helle
+     Grund die Abdunklung selbst, deshalb der schwächere Schleier. */
+  --pc-dialog-overlayBackground: rgba(0, 0, 0, 0.3);
 
   /* Datei-/Ordner-Icons (Seti-Farbschema, vs-seti-icon-theme Light-Spalte) */
   --pc-icon-folder: #498ba7;

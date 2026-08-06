@@ -60,6 +60,8 @@ import {
 import { FileEditor } from "./components/FileEditor";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { TerminalPane } from "./components/TerminalPane";
+import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
+import { fileNameFromPath } from "./explorer/filePath";
 import { useFileEditor } from "./explorer/useFileEditor";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { gitDecorationsFromStatuses, type GitFileStatus } from "./types/gitStatus";
@@ -178,7 +180,42 @@ function App() {
     };
   }, []);
 
-  const chooseProject = () => {
+  // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
+  // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
+  // Zweig in `fileEditorState.ts`: „wartet auf Bestätigung" ist keine Aussage
+  // über die Datei — die liegt unverändert da, der Puffer ist unangetastet,
+  // und ein Neustart der App würde diese Frage nicht wiederherstellen wollen.
+  // Was die Zustandsmaschine dazu beiträgt, ist genau ein Boolean
+  // (`wouldLoseWork`), und das hat sie schon.
+  //
+  // Gespeichert wird die Handlung als Thunk in einem Objekt: `useState` deutet
+  // eine direkt übergebene Funktion als Updater, ein `{ run }` drumherum ist
+  // der kürzere Weg als `setState(() => fn)`.
+  const [pendingLeave, setPendingLeave] = useState<{ run: () => void } | null>(
+    null,
+  );
+
+  // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
+  // absichtlich zwischen Absicht und Ausführung statt in den drei Aufrufern:
+  // dreimal derselbe Dialog wären drei Stellen, an denen er künftig
+  // auseinanderläuft — und die vierte (das Raster aus Ticket 06) käme dann
+  // ohne ihn.
+  const guardLeave = (run: () => void) => {
+    if (fileEditor.wouldLoseWork) {
+      setPendingLeave({ run });
+      return;
+    }
+    run();
+  };
+
+  // Der Pfad der Datei, die die Editorfläche gerade führt — `null`, solange
+  // keine offen ist. Steht vor den Handlern darunter, weil `selectFile` ihn
+  // braucht, um einen echten Wechsel von einem erneuten Klick auf dieselbe
+  // Zeile zu unterscheiden.
+  const openFilePath =
+    fileEditor.state.status === "idle" ? null : fileEditor.state.path;
+
+  const openProjectFromDialog = () => {
     setPicking(true);
     void openFolderDialog({ directory: true, multiple: false })
       .then((selected) =>
@@ -199,13 +236,28 @@ function App() {
       .finally(() => setPicking(false));
   };
 
+  // Gefragt wird VOR dem Ordner-Dialog des Systems, nicht danach: hinter dem
+  // nativen Fenster stünde die Rückfrage plötzlich zwischen „Ordner gewählt"
+  // und „Projekt offen", also mitten in einer Handlung, die der Nutzer für
+  // abgeschlossen hält.
+  //
+  // Heute erreicht diese Rückfrage niemand: `chooseProject` hängt allein am
+  // Projekt-Picker, und den sieht man nur ohne offenes Projekt — dann ist auch
+  // keine Datei offen. Der Guard steht trotzdem, weil er einer der drei im
+  // Ticket benannten Verlassen-Wege ist und mit dem Raster (mehrere Projekte
+  // gleichzeitig) unmittelbar erreichbar wird.
+  const chooseProject = () => guardLeave(openProjectFromDialog);
+
   // Zurück zum Picker. Schließt die Editorfläche mit: ihr Zustand lebt in App
   // und überlebt das Ausblenden der Pane sonst unsichtbar bis zur nächsten
-  // Projektwahl.
-  const closeProject = () => {
-    setProject(null);
-    fileEditor.close();
-  };
+  // Projektwahl. Ebenfalls geguardet und ebenfalls heute nicht erreichbar,
+  // solange eine Datei offen ist: die Editorfläche verdeckt dann die Pane
+  // samt ihrem Schließkreuz (`hidden`).
+  const closeProject = () =>
+    guardLeave(() => {
+      setProject(null);
+      fileEditor.close();
+    });
 
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
   // Zeile UND öffnet die Datei in der Editorfläche. Bewusst kein zusätzlicher
@@ -217,9 +269,30 @@ function App() {
   // einen absoluten — zusammengesetzt wird genau hier, im selben Muster, das
   // die Anlege-Zeile des Explorers schon für `explorer_create_file` verwendet.
   const selectFile = (path: string) => {
-    setSelectedFile(path);
-    if (project === null) return;
-    fileEditor.open(`${project.path}/${path}`);
+    if (project === null) {
+      setSelectedFile(path);
+      return;
+    }
+    const absolutePath = `${project.path}/${path}`;
+
+    // Ein Klick auf die bereits offene Datei ist kein Wechsel — die Fläche
+    // zeigt sie schon. Solange ungespeicherter Stand darin liegt, wäre ein
+    // erneutes `open()` sogar genau der stille Verlust, den dieses Ticket
+    // ausschließt: es läse die Datei frisch von der Platte und überschriebe
+    // den Puffer wortlos. Der Klick bleibt dann folgenlos, statt zu fragen —
+    // gefragt wird beim Verlassen, und hier verlässt niemand etwas.
+    //
+    // Ohne ungespeicherten Stand lädt derselbe Klick weiterhin neu; das ist
+    // der einzige Weg, einen gescheiterten Lesevorgang zu wiederholen.
+    if (absolutePath === openFilePath && fileEditor.wouldLoseWork) return;
+
+    // Auswahl-Markierung und Öffnen gehören in DIESELBE Handlung: bliebe das
+    // `setSelectedFile` außerhalb, hübe ein Abbruch die Zeile im Baum hervor,
+    // während die Fläche daneben unverändert die alte Datei zeigt.
+    guardLeave(() => {
+      setSelectedFile(path);
+      fileEditor.open(absolutePath);
+    });
   };
 
   // Der ungespeicherte Stand bekommt seine Marke an ZWEI Stellen: in der
@@ -228,8 +301,6 @@ function App() {
   // `selectedFile`) — der Editor führt ihn absolut, weil das Backend ihn so
   // will. Zurückgerechnet wird deshalb genau hier, spiegelbildlich zur
   // Zusammensetzung in `selectFile`.
-  const openFilePath =
-    fileEditor.state.status === "idle" ? null : fileEditor.state.path;
   const dirtyFile =
     fileEditor.wouldLoseWork &&
     openFilePath !== null &&
@@ -369,12 +440,32 @@ function App() {
                   dirty={fileEditor.wouldLoseWork}
                   onEdit={fileEditor.editContent}
                   onSave={fileEditor.save}
-                  onClose={fileEditor.close}
+                  // Das Schließkreuz der Fläche verlässt die Datei genauso wie
+                  // ein Klick auf eine andere Zeile im Baum — geguardet wird
+                  // deshalb hier an der Übergabe und nicht in FileEditor.tsx:
+                  // die Fläche zeigt eine Datei an, sie entscheidet nicht, was
+                  // ein Verlassen kostet.
+                  onClose={() => guardLeave(fileEditor.close)}
                 />
               </>
             )}
           </main>
         </div>
+        {/* Außerhalb des `project !== null`-Zweigs: die bestätigte Handlung
+            kann genau dieses Projekt schließen (`closeProject`), und ein
+            Dialog, der sich im selben Augenblick mit seiner Umgebung
+            aushängt, gibt den Fokus nicht mehr geordnet zurück.
+
+            `pendingLeave` wird nur bei `wouldLoseWork` gesetzt, und das
+            bedingt einen Nicht-idle-Zustand — `openFilePath` ist hier also
+            immer da; die Prüfung steht für TypeScript, nicht für den Fall. */}
+        {pendingLeave !== null && openFilePath !== null && (
+          <UnsavedChangesDialog
+            fileName={fileNameFromPath(openFilePath)}
+            onConfirm={pendingLeave.run}
+            onClose={() => setPendingLeave(null)}
+          />
+        )}
       </div>
     </Tooltip.Provider>
   );

@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import type { FileEditorState } from "../explorer/fileEditorState";
+import { fileNameFromPath } from "../explorer/filePath";
 import { isMacPlatform } from "../shortcuts/platform";
 import {
   matchesShortcut,
@@ -360,15 +361,6 @@ function LoadErrorNotice({
       </div>
     </div>
   );
-}
-
-/** Letztes Segment eines Dateipfads (POSIX wie Windows). Dieselbe Regel wie
- * `projectNameFromPath` in `types/project.ts`, bewusst nicht von dort
- * importiert: dessen Name macht eine Aussage über ein Projekt, und was hier
- * benannt wird, ist eine Datei. */
-function fileNameFromPath(path: string): string {
-  const segments = path.split(/[/\\]/).filter(Boolean);
-  return segments.at(-1) ?? path;
 }
 
 // Wie in TerminalPane.tsx und About.tsx: das Schließkreuz steht in jeder Datei

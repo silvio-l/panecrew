@@ -544,8 +544,12 @@ describe("App", () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "explorer_read_tree") {
+        // Zwei Dateien, weil der Verlassen-Guard aus Ticket 05 ein ZIEL
+        // braucht: „Wechsel auf eine andere Datei" ist ohne zweite Zeile im
+        // Baum nicht auslösbar.
         return Promise.resolve([
           { name: "src", children: [{ name: "main.rs" }] },
+          { name: "README.md" },
         ]);
       }
       if (cmd === "explorer_read_file") return readFile();
@@ -763,6 +767,121 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
+  });
+
+  // Der Verlassen-Guard (Ticket 05). Geprüft wird ausschließlich die
+  // Verdrahtung Absicht → Rückfrage → Ausführung; dass `wouldLoseWork` genau
+  // bei ungespeichertem Stand meldet, liegt in fileEditorState.test.ts.
+  //
+  // Radix macht alles außerhalb seines Portals `aria-hidden`, solange das
+  // modale Fenster offen ist — `*ByRole`-Abfragen auf die Editorfläche
+  // dahinter finden dann nichts. Der Puffer wird deshalb erst NACH dem
+  // Schließen der Rückfrage geprüft, nie währenddessen.
+  const dirtyEditorWithSecondFile = async () => {
+    await openTreeFile();
+    await typeIntoEditor(EDITED_TEXT);
+    invokeMock.mockClear();
+  };
+
+  const leaveDialog = () => screen.findByRole("alertdialog");
+
+  it("fragt vor dem Wechsel auf eine andere Datei nach, statt den Stand zu verwerfen", async () => {
+    await dirtyEditorWithSecondFile();
+
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+
+    // Die Rückfrage nennt die Datei, um die es geht — nicht die, auf die
+    // geklickt wurde.
+    expect(await leaveDialog()).toHaveTextContent("main.rs");
+    // Der eigentliche Punkt: der Wechsel hat noch NICHT stattgefunden. Ein
+    // Read der neuen Datei wäre bereits der Verlust, denn er setzt den
+    // Editorzustand um.
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_read_file",
+      expect.anything(),
+    );
+  });
+
+  it("führt den Wechsel nach dem Bestätigen der Rückfrage doch aus", async () => {
+    await dirtyEditorWithSecondFile();
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    await leaveDialog();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Änderungen verwerfen" }),
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
+        path: "/Users/dev/projects/storefront/README.md",
+      });
+    });
+  });
+
+  it("lässt beim Abbrechen den ungespeicherten Puffer unangetastet stehen", async () => {
+    await dirtyEditorWithSecondFile();
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    await leaveDialog();
+
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_read_file",
+      expect.anything(),
+    );
+    // Und die Baumzeile hebt weiter die Datei hervor, die auch wirklich offen
+    // ist — die Auswahl wandert nicht ohne den Editor mit.
+    expect(
+      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("fragt auch nach, wenn die Fläche über ihr Schließkreuz verlassen wird", async () => {
+    await dirtyEditorWithSecondFile();
+
+    fireEvent.click(screen.getByRole("button", { name: "Datei schließen" }));
+    await leaveDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
+
+    // Und nach dem Bestätigen gibt die Fläche das Rechteck wie gehabt frei.
+    fireEvent.click(screen.getByRole("button", { name: "Datei schließen" }));
+    await leaveDialog();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Änderungen verwerfen" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Inhalt von main.rs" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Terminal storefront")).toBeVisible();
+  });
+
+  it("lädt die bereits offene Datei bei einem erneuten Klick nicht neu", async () => {
+    await dirtyEditorWithSecondFile();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+    );
+
+    // Kein Wechsel, also keine Rückfrage — aber eben auch kein erneutes Lesen:
+    // das überschriebe den getippten Stand wortlos mit dem Platteninhalt.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_read_file",
+      expect.anything(),
+    );
+    expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
   });
 
   it("killt beim Schließen genau die Pane, die gespawnt wurde", async () => {
