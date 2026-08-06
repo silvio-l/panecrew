@@ -39,10 +39,10 @@
  * aus mocks/comp-2-overlay-explorer.png, Explorer-Struktur und dünne
  * Pane-Header aus mocks/comp-3-zero-chrome.png.
  *
- * STAND TICKET 02: Das 2x2-Raster im FIRST VIEWPORT ist noch nicht erreicht —
- * dieser Schritt zeigt bewusst GENAU EINE echte, PTY-gestützte Pane statt
- * vier gefälschter. Das Raster kommt in Ticket 03 mit echten Panes zurück,
- * die Fokus-/Explorer-Kopplung ist dafür strukturell schon angelegt.
+ * STAND TICKET 03: Das 2x2-Raster des FIRST VIEWPORT steht — mit echten,
+ * PTY-gestützten Panes, und als Default unter sieben wählbaren Geometrien
+ * (Geometrie in App.css, Slot-Zahl in grid/gridState.ts). Der Akzent trägt
+ * jetzt tatsächlich nur EINE Pane: den Rahmen der fokussierten.
  */
 import { useEffect, useState } from "react";
 import type {
@@ -58,14 +58,11 @@ import {
   ExplorerPanel,
 } from "./components/ExplorerPanel";
 import { PaneGrid } from "./components/PaneGrid";
+import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
-import {
-  GRID_TEMPLATES,
-  focusedProjectPath,
-  templateSwitchBlockReason,
-} from "./grid/gridState";
+import { focusedProjectPath } from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { useAppZoom } from "./shortcuts/useAppZoom";
@@ -383,40 +380,10 @@ function App() {
             </>
           )}
           <main className="flex min-w-0 flex-1 flex-col p-2">
-            {/* Platzhalter-Steuerung (Schritt 7 des Plans): sieben schlichte
-                Knöpfe, keine Optik — den echten Switcher (Icons, Layout,
-                Blockiert-Feedback-Mechanismus) baut der Opus-Durchgang
-                (Schritt 8) an genau dieser Verdrahtung. Blockiert-Zustand UND
-                Begründung kommen beide aus `templateSwitchBlockReason`, AM
-                RENDER neu berechnet — nie aus geklickt-dann-State, weil
-                `switchTemplate` bei einem blockierten Versuch dieselbe
-                State-Referenz zurückgibt und also kein Re-Render auslöst. */}
-            <div
-              role="group"
-              aria-label="Template wählen"
-              className="mb-2 flex gap-1"
-            >
-              {GRID_TEMPLATES.map((template) => {
-                const reason = templateSwitchBlockReason(
-                  gridState,
-                  template.id,
-                );
-                return (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => switchTemplate(template.id)}
-                    disabled={reason !== null}
-                    aria-pressed={template.id === gridState.template}
-                    aria-label={
-                      reason ? `${template.label} — ${reason}` : template.label
-                    }
-                  >
-                    {template.label}
-                  </button>
-                );
-              })}
-            </div>
+            <TemplateSwitcher
+              state={gridState}
+              onSwitchTemplate={switchTemplate}
+            />
             {/* Jede Pane trägt ihr eigenes Terminal+Editor-Paar (Begründung
                 fürs Nur-Ausblenden statt Unmount jetzt in `PaneGrid.tsx`).
                 Ein leerer Slot zeigt seinen eigenen Ordner-Dialog-Platzhalter

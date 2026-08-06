@@ -1,18 +1,18 @@
-// Platzhalter-Verdrahtung für das Grid (Ticket 03, Schritt 5 des Plans):
-// funktional vollständig (vier unabhängige Panes, Picker pro leerem Slot,
-// pane-genaue Datei-Editoren), aber bewusst UNGESTYLT — nur Quad, ein
-// simples CSS-Grid ohne die restlichen sechs Templates. Die Geometrie für
-// alle sieben Templates, den echten Pro-Slot-Picker und die
-// fokussiert/unfokussiert-Tokens liefert der Opus-Durchgang (Schritt 8),
-// ohne diese Verdrahtung anzufassen.
+// Das Grid: N unabhängige Panes in der Geometrie des aktiven Templates, ein
+// leerer Slot zeigt seinen eigenen Picker.
 //
-// Invariante (gilt für den finalen Opus-Umbau genauso): jede Zelle ist
-// direktes Kind DIESES Grid-Containers, in einem flachen Array. Belegte
-// Zellen sind nach `paneId` geschlüsselt, leere nach Slot-Index — nie ein
-// pro-Region-Wrapper-`<div>`, der nach Slot-Index geschlüsselt ist, sonst
-// würde eine spätere Kompaktierung (Ticket 03, Schritt 7) über einen
-// Index-Key-Wechsel unmounten und per `usePtyTerminal`s Cleanup eine lebende
-// PTY killen.
+// Invariante: jede Zelle ist direktes Kind DIESES Grid-Containers, in einem
+// flachen Array. Belegte Zellen sind nach `paneId` geschlüsselt, leere nach
+// Slot-Index — nie ein pro-Region-Wrapper-`<div>`, der nach Slot-Index
+// geschlüsselt ist, sonst würde eine Kompaktierung (Quad→Geteilt mit Panes an
+// Slot 0 und 3) über einen Index-Key-Wechsel unmounten und per
+// `usePtyTerminal`s Cleanup eine lebende PTY killen.
+//
+// Daraus folgt unmittelbar, wie die sieben Templates aussehen dürfen: als
+// Klasse am Container, nie als Struktur darin. Kein Template fügt ein Kind
+// hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
+// zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
+// überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState } from "../grid/gridState";
 import {
@@ -50,7 +50,10 @@ export function PaneGrid({
   const dropTargets = useWebviewFileDrop(zoom);
 
   return (
-    <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-2">
+    // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
+    // — Spuren und Spannen aller sieben Geometrien stehen in App.css
+    // (`.pc-layout--*`), die Begründung dafür ebenfalls dort.
+    <div className={`pc-workspace pc-layout--${state.template}`}>
       {state.slots.map((slot, index) =>
         slot ? (
           <PaneCell

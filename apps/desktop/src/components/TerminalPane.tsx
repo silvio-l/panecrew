@@ -7,9 +7,10 @@ import { usePtyTerminal } from "../terminal/usePtyTerminal";
 
 // Echte, PTY-gestützte Terminal-Pane: sehr dünner Header (eine schlanke
 // Textzeile, 24px Klickfläche) mit dem Projektnamen, darunter das
-// xterm.js-Terminal. Der Fokus-Akzent (Ring + Glow + hellerer Header-Text)
-// bleibt aus dem Direction Contract erhalten — er ist die Kernmechanik, die
-// Ticket 03 mit dem echten Grid wieder trägt.
+// xterm.js-Terminal. Der Fokus-Akzent aus dem Direction Contract — seit dem
+// Widerruf des Glows der 1px-Rahmen plus der aufgehellte Header-Text — ist die
+// Kernmechanik, die mit dem echten Grid überhaupt erst etwas unterscheidet:
+// bei einer einzigen Pane war "fokussiert" keine Aussage.
 //
 // `paneId`/`projectPath`/`projectName` kommen jetzt vom Grid-Store
 // (`PaneGrid.tsx`) statt aus einer eigenen Erzeugung hier — eine Pane weiß
@@ -25,11 +26,9 @@ export function TerminalPane({
   paneId: string;
   projectPath: string;
   projectName: string;
-  /** Noch ohne sichtbare Wirkung (Schritt 5 des Plans) — die
-   * fokussiert/unfokussiert-Token-Anwendung über N Panes ist Teil des
-   * Opus-Durchgangs (Schritt 8), NICHT bereits erledigt. Bis dahin trägt der
-   * Rahmen unten unbedingt den Aktiv-Ton, unabhängig vom tatsächlichen
-   * Fokus. */
+  /** Genau eine Pane im ganzen Grid ist das (`state.focusedPaneId`). Trägt
+   * zwei der drei Fokussignale: den Akzentrahmen und den aufgehellten
+   * Header-Text; das dritte ist das Akzent-Echo im Explorer-Kopf. */
   focused: boolean;
   /** Grid-weite Drag-Drop-Registrierung (`useWebviewFileDrop.ts`) — diese
    * Pane trägt sich hier ein, damit ein Drop auf ihrer Fläche bei ihr
@@ -76,12 +75,25 @@ export function TerminalPane({
       // ohne Versatz Dekoration ist, keine Tiefe. Das Echo im Explorer-Kopf
       // und der hellere Header-Text bleiben als zweites und drittes Signal.
       //
-      // TODO(Schritt 8, Opus): `focused` bedingt hier zwischen
-      // `--pc-pane-activeBorder` und `--pc-pane-border` (unfokussiert) —
-      // heute hart auf den Aktiv-Ton verdrahtet, siehe `focused`-Prop-Doc.
-      className="group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)"
+      // Der Rahmen ist damit das einzige Element der Pane, das die Farbe
+      // wechselt — und weil ihn jede Pane trägt, nur eben in zwei Tönen,
+      // springt die Breite beim Fokuswechsel nicht (ein Rahmen, der nur bei
+      // Fokus da ist, verschöbe das Terminal darin um 1px).
+      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) ${
+        focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
+      }`}
     >
-      <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
+      {/* Zweites Fokussignal: der Projektname der aktiven Pane steht im
+          Akzent, die der übrigen im gedimmten Header-Ton. Bei einer einzelnen
+          Pane war das nicht unterscheidbar — mit sieben Templates und bis zu
+          vier Panes ist es der Unterschied, den man ohne Suchen liest. */}
+      <header
+        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+          focused
+            ? "text-(--pc-paneHeader-activeForeground)"
+            : "text-(--pc-paneHeader-foreground)"
+        }`}
+      >
         <span className="min-w-0 flex-1 truncate">{projectName}</span>
         <ChromeTooltip label="Pane schließen" align="end">
           <button
