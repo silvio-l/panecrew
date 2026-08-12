@@ -51,6 +51,7 @@ import type {
 } from "react";
 import { Tooltip } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
 import {
@@ -271,7 +272,10 @@ function App() {
     const outgoing = gridState.slots[slotIndex];
     const proceed = () => {
       setPickingSlot(slotIndex);
-      void openFolderDialog({ directory: true, multiple: false })
+      void defaultProjectPickerPath()
+        .then((defaultPath) =>
+          openFolderDialog({ directory: true, multiple: false, defaultPath }),
+        )
         .then((selected) =>
           typeof selected === "string" ? loadProject(selected) : null,
         )
@@ -495,6 +499,32 @@ function App() {
       </div>
     </Tooltip.Provider>
   );
+}
+
+// macOS' NSOpenPanel stellt beim Öffnen sonst den zuletzt genutzten Ordner
+// wieder her — liegt der auf einem langsam erreichbaren Pfad (Netzlaufwerk,
+// ausgehängtes Volume, nicht vollständig heruntergeladener iCloud-Ordner),
+// verzögert das JEDES Öffnen des Dialogs, nicht nur das erste (2026-08-12
+// vom Nutzer live bestätigt). Ein expliziter `defaultPath` überspringt diese
+// Wiederherstellung. `homeDir()` ist immer lokal und schnell auflösbar;
+// schlägt die Auflösung selbst fehl, öffnet der Dialog wie zuvor ohne
+// `defaultPath`, statt den Klick ins Leere laufen zu lassen.
+//
+// UNVERIFIZIERTE HYPOTHESE (2026-08-12): passt zur Nutzerbeobachtung (1a/2a),
+// ist aber nicht gemessen. Nebenwirkung: der Dialog startet jetzt immer im
+// Home-Verzeichnis statt beim zuletzt genutzten Ordner — falls sich das
+// Delay-Problem dadurch nicht löst, diesen Block wieder entfernen statt die
+// Ergonomie-Regression stehen zu lassen.
+async function defaultProjectPickerPath(): Promise<string | undefined> {
+  try {
+    return await homeDir();
+  } catch (error) {
+    console.error(
+      "PaneCrew: homeDir() für Ordnerauswahl fehlgeschlagen",
+      error,
+    );
+    return undefined;
+  }
 }
 
 export default App;
