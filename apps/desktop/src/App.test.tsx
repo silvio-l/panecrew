@@ -1702,10 +1702,18 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {
         return Promise.resolve({
-          template: "split",
-          slots: [
-            { project_path: "/Users/dev/projects/storefront", last_selected_file: null },
-            null,
+          windows: [
+            {
+              template: "split",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+              ],
+            },
           ],
         });
       }
@@ -1733,15 +1741,21 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     invokeMock.mockImplementation((cmd, args) => {
       if (cmd === "session_load") {
         return Promise.resolve({
-          template: "quad",
-          slots: [
+          windows: [
             {
-              project_path: "/Users/dev/projects/storefront",
-              last_selected_file: "src/App.tsx",
+              template: "quad",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "file" },
+                  file_tab: { path: "src/App.tsx" },
+                },
+                null,
+                null,
+                null,
+              ],
             },
-            null,
-            null,
-            null,
           ],
         });
       }
@@ -1772,19 +1786,29 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     ).toHaveValue(FILE_CONTENTS.text);
   });
 
-  it("ein Slot ohne `last_selected_file`-Feld öffnet keine Datei namens \"undefined\"", async () => {
+  it("ein Slot ohne `file_tab`-Feld öffnet keine Datei namens \"undefined\"", async () => {
     // `session_store.rs` überspringt das Feld beim Schreiben ganz, wenn
     // nichts ausgewählt war (`skip_serializing_if`) — über die IPC-Brücke
-    // kommt so ein Slot-Objekt ohne dieses Feld an, `last_selected_file` ist
-    // dann `undefined`, nicht `null`. Ein zu strenger `=== null`-Check ließ
-    // das früher durch und öffnete buchstäblich eine Datei "undefined"
+    // kommt so ein Slot-Objekt ohne dieses Feld an, `file_tab` ist dann
+    // `undefined`, nicht `null`. Ein zu strenger `=== null`-Check ließ das
+    // früher durch und öffnete buchstäblich eine Datei "undefined"
     // (2026-08-12, Nutzerbeobachtung: alle Panes zeigen beim Start denselben
     // Lesefehler).
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {
         return Promise.resolve({
-          template: "single",
-          slots: [{ project_path: "/Users/dev/projects/storefront" }],
+          windows: [
+            {
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+              ],
+            },
+          ],
         });
       }
       if (cmd === "get_launch_project") return Promise.resolve(null);
@@ -1814,12 +1838,20 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {
         return Promise.resolve({
-          template: "quad",
-          slots: [
-            { project_path: "/Users/dev/projects/storefront", last_selected_file: null },
-            null,
-            null,
-            null,
+          windows: [
+            {
+              template: "quad",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+                null,
+                null,
+              ],
+            },
           ],
         });
       }
@@ -1865,11 +1897,15 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
 
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
-      const state = (payload as { state?: { slots: unknown[] } } | undefined)
-        ?.state;
-      expect(state?.slots[0]).toEqual({
+      const state = (
+        payload as { state?: { windows: { slots: unknown[] }[] } } | undefined
+      )?.state;
+      expect(state?.windows[0]?.slots[0]).toEqual({
         project_path: "/Users/dev/projects/storefront",
-        last_selected_file: null,
+        terminal_tabs: [{}],
+        active_tab: { kind: "terminal", index: 0 },
+        file_tab: null,
+        adapter_id: null,
       });
     });
   });
@@ -1889,9 +1925,10 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
 
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
-      const state = (payload as { state?: { template: string } } | undefined)
-        ?.state;
-      expect(state?.template).toBe("split");
+      const state = (
+        payload as { state?: { windows: { template: string }[] } } | undefined
+      )?.state;
+      expect(state?.windows[0]?.template).toBe("split");
     });
   });
 });

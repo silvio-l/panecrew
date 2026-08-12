@@ -1,8 +1,16 @@
-//! Whole-session persistence (Ticket 06): grid template, slot→project
-//! assignments and each slot's last-opened explorer file, written to
+//! Whole-session persistence (Ticket 06, v2 schema per Ticket 17): windows,
+//! each with a grid template, slot→project assignments, per-pane terminal
+//! tabs/file tab, and each slot's last-opened explorer file, written to
 //! `session.json` in the app-data dir. The PTY process itself is never
-//! persisted — restoring a slot only respawns a fresh shell in the right
-//! `cwd` (the frontend's job), this module only round-trips the JSON.
+//! persisted — restoring a pane only respawns fresh shells for its terminal
+//! tabs in the right `cwd` (the frontend's job), this module only
+//! round-trips the JSON.
+//!
+//! v2 is a hard cutover (Ticket 17): no v1 migration/compat code. A v1 file
+//! (top-level `template`/`slots` instead of `windows`) simply fails to
+//! deserialize into this shape and `read_session` returns `None`, exactly
+//! like a missing or corrupt file — the app starts at the picker instead of
+//! failing to launch.
 //!
 //! `read_session` also validates every `project_path` against the real
 //! filesystem: a folder that no longer exists must fall back to an empty
@@ -17,41 +25,79 @@ use tauri::{AppHandle, Manager};
 
 const FILE_NAME: &str = "session.json";
 
+/// One PTY-backed terminal tab within a pane. `title` is a user-set rename;
+/// number and colour are index-derived UI state (Spec 2026-08-12: "konkretes
+/// Farbschema ist Implementierungsdetail"), not persisted.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct PersistedSlot {
-    pub project_path: String,
-    /// Project-relative path of the file selected/open in this slot's
-    /// explorer — the same string `App.tsx`'s `selectedFile` map already
-    /// holds per pane. `None` when nothing was open.
+pub struct PersistedTerminalTab {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_selected_file: Option<String>,
+    pub title: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq, Default)]
-pub struct SessionState {
+/// The at-most-one file tab of a pane (Spec: "höchstens einen File-Tab pro
+/// Pane"), always ordered after every terminal tab in the live tab strip.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct PersistedFileTab {
+    /// Project-relative path, same convention as the pre-v2
+    /// `last_selected_file` field it replaces.
+    pub path: String,
+}
+
+/// Which of a pane's tabs is active. A plain index would silently misparse
+/// after either array changed shape independently; the explicit `kind` tag
+/// makes "which tab" unambiguous regardless of how many terminal tabs exist.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ActiveTab {
+    Terminal { index: usize },
+    File,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct PersistedPane {
+    pub project_path: String,
+    pub terminal_tabs: Vec<PersistedTerminalTab>,
+    pub active_tab: ActiveTab,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_tab: Option<PersistedFileTab>,
+    /// Chosen CLI-tool adapter (Ticket 17 cross-cutting note: identified as a
+    /// missing field in round-1 research, added here). References the
+    /// adapter manifest from Ticket 12; `None` means a bare shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_id: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct PersistedWindow {
     pub template: String,
-    pub slots: Vec<Option<PersistedSlot>>,
+    pub slots: Vec<Option<PersistedPane>>,
+    /// Grid-track ratios for the template's cut lines (not its topology —
+    /// Ticket 03 stays closed on that point). Empty means "use the
+    /// template's own default ratios".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub split_ratios: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximized_pane_id: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct SessionState {
+    pub windows: Vec<PersistedWindow>,
     /// Which folders the user has *expanded* in the explorer tree, keyed by
-    /// absolute project path rather than by slot: the live explorer state is
+    /// absolute project path rather than by pane: the live explorer state is
     /// itself bound to `project.path` (`ExplorerPanel` remounts on that key,
     /// not on a pane/slot id — the same project open in two panes shares one
-    /// live tree). Keying this per-slot instead would silently drop one of the
-    /// two states whenever that happened. Absent entry means "nothing expanded
-    /// yet for this project" — the frontend then falls back to its own
-    /// all-collapsed default.
-    ///
-    /// Deliberately the expanded set, not the collapsed one (2026-08-12): the
-    /// frontend default became "everything collapsed" earlier the same day,
-    /// which made the collapsed set equal to *every folder in the project* —
-    /// measured at 135 KB and ~1900 paths for four open projects, rewritten in
-    /// full on every selection change. Storing the deviation from the default
-    /// instead keeps this a handful of paths. The field was renamed rather
-    /// than reinterpreted in place, because reading an existing file's old
-    /// `collapsed_folders` list as this one would silently restore "everything
-    /// expanded" — precisely the behaviour that was just removed. An old file
-    /// simply has no entry here and starts at the default.
+    /// live tree). Deliberately the expanded set, not the collapsed one
+    /// (2026-08-12): the frontend default is "everything collapsed", which
+    /// would make the collapsed set equal to *every folder in the project* —
+    /// storing the deviation from the default instead keeps this a handful
+    /// of paths. Unchanged by the v2 cutover itself, just carried over.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub expanded_folders: HashMap<String, Vec<String>>,
+    /// Explorer panel width in CSS pixels (Ticket 17: already a live UI
+    /// feature, `App.tsx`'s resize handle — this is only its persistence).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explorer_width: Option<f64>,
 }
 
 fn session_path(dir: &Path) -> PathBuf {
@@ -59,27 +105,31 @@ fn session_path(dir: &Path) -> PathBuf {
 }
 
 /// Reads the persisted session, or `None` if there is none yet, the file is
-/// unreadable, or it fails to parse — a corrupt or foreign file must not
-/// fail app startup (same "survivable, not fatal" stance as `launch.rs`),
-/// it just means starting at the picker exactly as on first launch.
+/// unreadable, or it fails to parse — a corrupt, foreign, or v1-shaped file
+/// must not fail app startup (same "survivable, not fatal" stance as
+/// `launch.rs`), it just means starting at the picker exactly as on first
+/// launch.
 pub fn read_session(dir: &Path) -> Option<SessionState> {
     let bytes = std::fs::read(session_path(dir)).ok()?;
     let mut state: SessionState = serde_json::from_slice(&bytes).ok()?;
-    for slot in &mut state.slots {
-        if let Some(persisted) = slot {
-            if !Path::new(&persisted.project_path).is_dir() {
-                *slot = None;
+    for window in &mut state.windows {
+        for slot in &mut window.slots {
+            if let Some(pane) = slot {
+                if !Path::new(&pane.project_path).is_dir() {
+                    *slot = None;
+                }
             }
         }
     }
-    // Prune entries for projects no longer occupying any surviving slot —
-    // otherwise a closed pane's expand state accumulates in the file forever,
-    // growing it for no restorable benefit.
+    // Prune entries for projects no longer occupying any surviving slot in
+    // any window — otherwise a closed pane's expand state accumulates in the
+    // file forever, growing it for no restorable benefit.
     let live_paths: std::collections::HashSet<&str> = state
-        .slots
+        .windows
         .iter()
+        .flat_map(|window| window.slots.iter())
         .flatten()
-        .map(|slot| slot.project_path.as_str())
+        .map(|pane| pane.project_path.as_str())
         .collect();
     state
         .expanded_folders
@@ -141,8 +191,10 @@ mod tests {
 
     impl Fixture {
         fn new(name: &str) -> Self {
-            let root = std::env::temp_dir()
-                .join(format!("panecrew-session-store-{}-{name}", std::process::id()));
+            let root = std::env::temp_dir().join(format!(
+                "panecrew-session-store-{}-{name}",
+                std::process::id()
+            ));
             std::fs::remove_dir_all(&root).ok();
             std::fs::create_dir_all(&root).expect("test fixture root should be creatable");
             Self(root)
@@ -155,10 +207,13 @@ mod tests {
         }
     }
 
-    fn slot(project_path: &str, last_selected_file: Option<&str>) -> Option<PersistedSlot> {
-        Some(PersistedSlot {
+    fn terminal_only_pane(project_path: &str) -> Option<PersistedPane> {
+        Some(PersistedPane {
             project_path: project_path.to_string(),
-            last_selected_file: last_selected_file.map(str::to_string),
+            terminal_tabs: vec![PersistedTerminalTab { title: None }],
+            active_tab: ActiveTab::Terminal { index: 0 },
+            file_tab: None,
+            adapter_id: None,
         })
     }
 
@@ -177,8 +232,25 @@ mod tests {
         assert_eq!(read_session(&fixture.0), None);
     }
 
+    /// The whole point of the hard cutover (Ticket 17): a v1 file has
+    /// top-level `template`/`slots` instead of `windows`, so it is missing a
+    /// required field and fails to deserialize outright — no partial parse,
+    /// no migration, just the same "start at the picker" fallback as a
+    /// missing file.
     #[test]
-    fn round_trips_the_full_state_through_write_and_read() {
+    fn a_v1_shaped_session_file_fails_to_parse_and_reads_as_none() {
+        let fixture = Fixture::new("v1-cutover");
+        std::fs::write(
+            session_path(&fixture.0),
+            br#"{"template":"single","slots":[{"project_path":"/some/project"}]}"#,
+        )
+        .expect("fixture write");
+
+        assert_eq!(read_session(&fixture.0), None);
+    }
+
+    #[test]
+    fn round_trips_the_full_v2_state_through_write_and_read() {
         let fixture = Fixture::new("roundtrip");
         // The two project paths must actually exist on disk — `read_session`
         // validates every slot against the real filesystem.
@@ -186,16 +258,44 @@ mod tests {
         let project_b = fixture.0.join("project-b");
         std::fs::create_dir_all(&project_a).expect("fixture dir");
         std::fs::create_dir_all(&project_b).expect("fixture dir");
+        let project_a = project_a.to_string_lossy().into_owned();
+        let project_b = project_b.to_string_lossy().into_owned();
         let state = SessionState {
-            template: "split".to_string(),
-            slots: vec![
-                slot(&project_a.to_string_lossy(), Some("src/App.tsx")),
-                slot(&project_b.to_string_lossy(), None),
+            windows: vec![
+                PersistedWindow {
+                    template: "split".to_string(),
+                    slots: vec![
+                        Some(PersistedPane {
+                            project_path: project_a.clone(),
+                            terminal_tabs: vec![
+                                PersistedTerminalTab {
+                                    title: Some("build".to_string()),
+                                },
+                                PersistedTerminalTab { title: None },
+                            ],
+                            active_tab: ActiveTab::Terminal { index: 1 },
+                            file_tab: Some(PersistedFileTab {
+                                path: "src/App.tsx".to_string(),
+                            }),
+                            adapter_id: Some("claude-code".to_string()),
+                        }),
+                        terminal_only_pane(&project_b),
+                    ],
+                    split_ratios: vec![0.35, 0.65],
+                    maximized_pane_id: Some("pane-1".to_string()),
+                },
+                PersistedWindow {
+                    template: "quad".to_string(),
+                    slots: vec![None, None, None, None],
+                    split_ratios: Vec::new(),
+                    maximized_pane_id: None,
+                },
             ],
             expanded_folders: HashMap::from([(
-                project_a.to_string_lossy().into_owned(),
+                project_a.clone(),
                 vec!["src".to_string(), "src/core".to_string()],
             )]),
+            explorer_width: Some(260.0),
         };
 
         write_session(&fixture.0, &state).expect("should write");
@@ -205,18 +305,23 @@ mod tests {
     }
 
     #[test]
-    fn prunes_expanded_folder_entries_for_projects_no_longer_in_any_slot() {
+    fn prunes_expanded_folder_entries_for_projects_no_longer_in_any_slot_of_any_window() {
         let fixture = Fixture::new("prune-expanded");
         let project = fixture.0.join("kept-project");
         std::fs::create_dir_all(&project).expect("fixture dir");
         let kept_path = project.to_string_lossy().into_owned();
         let state = SessionState {
-            template: "single".to_string(),
-            slots: vec![slot(&kept_path, None)],
+            windows: vec![PersistedWindow {
+                template: "single".to_string(),
+                slots: vec![terminal_only_pane(&kept_path)],
+                split_ratios: Vec::new(),
+                maximized_pane_id: None,
+            }],
             expanded_folders: HashMap::from([
                 (kept_path.clone(), vec!["src".to_string()]),
                 ("/no/longer/open".to_string(), vec!["old".to_string()]),
             ]),
+            explorer_width: None,
         };
         write_session(&fixture.0, &state).expect("should write");
 
@@ -228,49 +333,29 @@ mod tests {
         );
     }
 
-    /// The pre-2026-08-12 field held the *collapsed* folders — the exact
-    /// inverse. Reading it into `expanded_folders` would restore "everything
-    /// expanded" for every project the user had ever opened, silently undoing
-    /// the all-collapsed default. It must be ignored outright, leaving the
-    /// project at that default, and must not fail the parse either (an
-    /// unreadable session would drop the user back at the picker).
-    #[test]
-    fn ignores_the_old_inverted_collapsed_folders_field_instead_of_reusing_it() {
-        let fixture = Fixture::new("legacy-collapsed");
-        let project = fixture.0.join("legacy-project");
-        std::fs::create_dir_all(&project).expect("fixture dir");
-        let project_path = project.to_string_lossy().into_owned();
-        // Written as raw JSON on purpose: the old shape no longer has a Rust
-        // type here to serialize from — that is the whole point of the rename.
-        let escaped = project_path.replace('\\', "\\\\");
-        std::fs::write(
-            session_path(&fixture.0),
-            format!(
-                r#"{{"template":"single","slots":[{{"project_path":"{escaped}"}}],"collapsed_folders":{{"{escaped}":["src","src/core"]}}}}"#
-            ),
-        )
-        .expect("fixture write");
-
-        let read_back = read_session(&fixture.0).expect("should still parse");
-
-        assert_eq!(read_back.slots, vec![slot(&project_path, None)]);
-        assert!(read_back.expanded_folders.is_empty());
-    }
-
     #[test]
     fn drops_a_slot_whose_project_folder_no_longer_exists_instead_of_erroring() {
         let fixture = Fixture::new("missing-folder");
-        let gone = fixture.0.join("gone-project").to_string_lossy().into_owned();
+        let gone = fixture
+            .0
+            .join("gone-project")
+            .to_string_lossy()
+            .into_owned();
         let state = SessionState {
-            template: "quad".to_string(),
-            slots: vec![slot(&gone, Some("README.md")), None],
+            windows: vec![PersistedWindow {
+                template: "quad".to_string(),
+                slots: vec![terminal_only_pane(&gone), None],
+                split_ratios: Vec::new(),
+                maximized_pane_id: None,
+            }],
             expanded_folders: HashMap::new(),
+            explorer_width: None,
         };
         write_session(&fixture.0, &state).expect("should write");
 
         let read_back = read_session(&fixture.0).expect("file itself is valid JSON");
 
-        assert_eq!(read_back.slots, vec![None, None]);
+        assert_eq!(read_back.windows[0].slots, vec![None, None]);
     }
 
     #[test]
@@ -282,9 +367,14 @@ mod tests {
         write_session(
             &fixture.0,
             &SessionState {
-                template: "single".to_string(),
-                slots: vec![slot(&path_string, None)],
+                windows: vec![PersistedWindow {
+                    template: "single".to_string(),
+                    slots: vec![terminal_only_pane(&path_string)],
+                    split_ratios: Vec::new(),
+                    maximized_pane_id: None,
+                }],
                 expanded_folders: HashMap::new(),
+                explorer_width: None,
             },
         )
         .expect("first write");
@@ -292,16 +382,21 @@ mod tests {
         write_session(
             &fixture.0,
             &SessionState {
-                template: "quad".to_string(),
-                slots: vec![None, None, None, None],
+                windows: vec![PersistedWindow {
+                    template: "quad".to_string(),
+                    slots: vec![None, None, None, None],
+                    split_ratios: Vec::new(),
+                    maximized_pane_id: None,
+                }],
                 expanded_folders: HashMap::new(),
+                explorer_width: None,
             },
         )
         .expect("second write");
 
         let read_back = read_session(&fixture.0).expect("should read back");
-        assert_eq!(read_back.template, "quad");
-        assert_eq!(read_back.slots, vec![None, None, None, None]);
+        assert_eq!(read_back.windows[0].template, "quad");
+        assert_eq!(read_back.windows[0].slots, vec![None, None, None, None]);
     }
 
     #[test]
@@ -311,9 +406,14 @@ mod tests {
         write_session(
             &fixture.0,
             &SessionState {
-                template: "quad".to_string(),
-                slots: vec![None, None, None, None],
+                windows: vec![PersistedWindow {
+                    template: "quad".to_string(),
+                    slots: vec![None, None, None, None],
+                    split_ratios: Vec::new(),
+                    maximized_pane_id: None,
+                }],
                 expanded_folders: HashMap::new(),
+                explorer_width: None,
             },
         )
         .expect("should write");
@@ -334,9 +434,14 @@ mod tests {
         write_session(
             &nested,
             &SessionState {
-                template: "quad".to_string(),
-                slots: vec![None, None, None, None],
+                windows: vec![PersistedWindow {
+                    template: "quad".to_string(),
+                    slots: vec![None, None, None, None],
+                    split_ratios: Vec::new(),
+                    maximized_pane_id: None,
+                }],
                 expanded_folders: HashMap::new(),
+                explorer_width: None,
             },
         )
         .expect("should create the directory and write");

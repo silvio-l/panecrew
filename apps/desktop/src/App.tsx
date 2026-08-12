@@ -64,7 +64,7 @@ import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
 import { focusedProjectPath } from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
-import { buildSessionState, restoredTemplate } from "./session/sessionState";
+import { buildSessionState, restoredSlots, restoredTemplate } from "./session/sessionState";
 import { loadSession, saveSession } from "./session/sessionStore";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import "./App.css";
@@ -127,6 +127,16 @@ function App() {
     () => new Set(),
   );
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
+  // Persistierter Nachfolger von `explorerWidth`: Drag-Resize ruft
+  // `setExplorerWidth` pro `pointermove` auf (bis zu Hunderte Male pro
+  // Ziehvorgang), aber `session_save` schreibt über einen einzigen
+  // Prozess-Temp-Pfad + atomarem Rename — überlappende Aufrufe würden sich
+  // gegenseitig die Datei zerschießen. Dieser State wird deshalb nur am Ende
+  // eines Drags (pointerup) bzw. je Tastendruck aktualisiert, nie während des
+  // Ziehens selbst, und ist die einzige Breite, die `buildSessionState` sieht.
+  const [persistedExplorerWidth, setPersistedExplorerWidth] = useState(
+    EXPLORER_DEFAULT_WIDTH,
+  );
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
   // Liest Baum + Git-Status des von der fokussierten Pane gezeigten Projekts
@@ -178,7 +188,7 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
-      lastSelectedFile: string | null | undefined,
+      lastSelectedFile: string | null,
     ) => {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
@@ -189,13 +199,6 @@ function App() {
         next.delete(slotIndex);
         return next;
       });
-      // `null` heißt "bewusst keine Datei ausgewählt", `undefined` heißt "das
-      // Feld fehlte im JSON" (s. `PersistedSlot`-Kommentar in
-      // sessionState.ts) — für den Restore ist das derselbe Fall. Ein
-      // striktes `=== null` hätte `undefined` durchgelassen und `${lastSelectedFile}`
-      // unten zum buchstäblichen Dateinamen "undefined" gemacht (2026-08-12,
-      // Nutzerbeobachtung: alle Panes zeigen beim Start denselben
-      // Lesefehler).
       if (!lastSelectedFile) return;
       setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
       paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
@@ -209,15 +212,20 @@ function App() {
         // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
         // gespeicherte Zustand passt unverändert auf `expandedFolders`.
         setExpandedFolders(session.expanded_folders ?? {});
+        if (session.explorer_width) {
+          const restoredWidth = Math.min(
+            EXPLORER_MAX_WIDTH,
+            Math.max(EXPLORER_MIN_WIDTH, session.explorer_width),
+          );
+          setExplorerWidth(restoredWidth);
+          setPersistedExplorerWidth(restoredWidth);
+        }
+        const slots = restoredSlots(session);
         // Vor dem ersten `await` in `restoreSlot` gesetzt, damit der erste
         // Render nach `switchTemplate` (leere Slots im neuen Template) sie
         // schon als "wird noch befüllt" statt als klickbare Picker zeigt.
         setRestoringSlots(
-          new Set(
-            session.slots.flatMap((slot, slotIndex) =>
-              slot === null ? [] : [slotIndex],
-            ),
-          ),
+          new Set(slots.flatMap((slot, slotIndex) => (slot === null ? [] : [slotIndex]))),
         );
         // Parallel statt sequenziell: jeder Slot schreibt über
         // `assignProject`/`setSelectedFile`s Updater-Form einen eigenen,
@@ -226,10 +234,10 @@ function App() {
         // beim Start aufaddiert statt sich zu überlappen — bei vier Panes
         // spürbar (Nutzerbeobachtung 2026-08-12).
         await Promise.all(
-          session.slots.map((slot, slotIndex) =>
+          slots.map((slot, slotIndex) =>
             slot === null || isCancelled()
               ? Promise.resolve()
-              : restoreSlot(slotIndex, slot.project_path, slot.last_selected_file),
+              : restoreSlot(slotIndex, slot.project_path, slot.file_tab?.path ?? null),
           ),
         );
       }
@@ -277,8 +285,10 @@ function App() {
   // überschreibt, bevor sie überhaupt angewendet ist.
   useEffect(() => {
     if (!hydrated) return;
-    void saveSession(buildSessionState(gridState, selectedFile, expandedFolders));
-  }, [hydrated, gridState, selectedFile, expandedFolders]);
+    void saveSession(
+      buildSessionState(gridState, selectedFile, expandedFolders, persistedExplorerWidth),
+    );
+  }, [hydrated, gridState, selectedFile, expandedFolders, persistedExplorerWidth]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -416,12 +426,12 @@ function App() {
       e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
     if (delta === 0) return;
     e.preventDefault();
-    setExplorerWidth((current) =>
-      Math.min(
-        EXPLORER_MAX_WIDTH,
-        Math.max(EXPLORER_MIN_WIDTH, current + delta),
-      ),
+    const next = Math.min(
+      EXPLORER_MAX_WIDTH,
+      Math.max(EXPLORER_MIN_WIDTH, explorerWidth + delta),
     );
+    setExplorerWidth(next);
+    setPersistedExplorerWidth(next);
   };
 
   const startExplorerResize = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -429,18 +439,19 @@ function App() {
     const handle = e.currentTarget;
     const startX = e.clientX;
     const startWidth = explorerWidth;
+    let latestWidth = startWidth;
     setResizingExplorer(true);
     handle.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
-      setExplorerWidth(
-        Math.min(
-          EXPLORER_MAX_WIDTH,
-          Math.max(EXPLORER_MIN_WIDTH, startWidth + ev.clientX - startX),
-        ),
+      latestWidth = Math.min(
+        EXPLORER_MAX_WIDTH,
+        Math.max(EXPLORER_MIN_WIDTH, startWidth + ev.clientX - startX),
       );
+      setExplorerWidth(latestWidth);
     };
     const onUp = () => {
       setResizingExplorer(false);
+      setPersistedExplorerWidth(latestWidth);
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
       handle.removeEventListener("pointercancel", onUp);
