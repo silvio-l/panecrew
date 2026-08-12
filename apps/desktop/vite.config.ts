@@ -19,6 +19,35 @@ export default defineConfig(async () => ({
         splash: new URL("splash.html", import.meta.url).pathname,
         about: new URL("about.html", import.meta.url).pathname,
       },
+      output: {
+        // Vendor-Code nach Paket getrennt vom eigenen App-Code (statt eines
+        // einzigen >500kB-„main"-Chunks): die eigentliche Größe kommt fast
+        // vollständig aus node_modules (xterm.js + Addons, Radix, React),
+        // nicht aus dem eigenen Quelltext. Getrennte Chunks ändern sich nicht
+        // bei jedem Feature-Commit — der Tauri-Webview lädt zwar von der
+        // lokalen Platte, nicht über ein Netz, aber `pnpm tauri dev`s
+        // Vite-Server nutzt fürs HMR dieselbe Chunk-Struktur, und ein Vendor-
+        // Chunk, der nicht bei jeder App-Änderung neu gehasht/neu geparst
+        // werden muss, bleibt auch dort der schlankere Fall. Liste bewusst
+        // nach Paketname statt nach Größe geschnitten, damit ein neu
+        // hinzukommendes Paket automatisch in "vendor" statt unbenannt in
+        // den App-Chunk fällt.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@xterm")) return "vendor-xterm";
+          if (id.includes("radix-ui")) return "vendor-radix";
+          // `scheduler` extra genannt statt im generischen "vendor" zu
+          // landen: react-dom importiert es zur Laufzeit, ein Split über
+          // zwei Chunks hinweg ergäbe einen Zirkelbezug zwischen "vendor" und
+          // "vendor-react" (von Rollup selbst als Warnung gemeldet). Anker
+          // auf den node_modules-Ordnernamen, nicht nur einen Teilstring —
+          // sonst matchte das hier z. B. auch @tanstack/react-virtual mit.
+          if (/[/\\]node_modules[/\\](react|react-dom|scheduler)[/\\]/.test(id)) {
+            return "vendor-react";
+          }
+          return "vendor";
+        },
+      },
     },
   },
 
