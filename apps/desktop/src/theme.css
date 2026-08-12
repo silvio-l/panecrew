@@ -401,6 +401,21 @@
   --pc-terminal-ansiBrightMagenta: #e283d6;
   --pc-terminal-ansiBrightCyan: #5acfd3;
   --pc-terminal-ansiBrightWhite: #eceff1;
+  /*
+   * Textauswahl im Terminal — bewusst NICHT --pc-focusBorder direkt (Nutzer-
+   * wunsch 2026-08-12: die Auswahl soll als Marken-Amber erkennbar sein).
+   * Regel 5 oben hält den Akzent zwar dem Fokus vorbehalten, aber das gilt für
+   * VORDERGRUND-Inhalt (Text, der mit ANSI-Semantik kollidieren könnte) —
+   * eine Auswahl ist eine transluzente Fläche HINTER dem Text, kein
+   * Fremdton im Inhalt selbst, und bleibt vom Fokus-Rahmen (der Panes äußerer
+   * Kante) klar getrennt. Eigenes Token statt direkter Wiederverwendung von
+   * --pc-focusBorder, damit ein künftiges Nachziehen des Fokustons nicht
+   * versehentlich die Auswahlfläche mitzieht. Alpha 40 (25 %) hält Bright-Text
+   * darüber lesbar, deutlich kräftiger als die neutralen Listen-Selektionen
+   * (13–14 %), damit die Farbe als Amber erkennbar bleibt statt nur als
+   * Abdunkelung.
+   */
+  --pc-terminal-selectionBackground: #e5965640;
 }
 
 :root[data-theme="light"] {
@@ -554,4 +569,7 @@
   --pc-terminal-ansiBrightMagenta: #ba3fad;
   --pc-terminal-ansiBrightCyan: #03999d;
   --pc-terminal-ansiBrightWhite: #a2a5a8;
+  /* Herleitung im Dark-Block über --pc-terminal-selectionBackground — hier
+     derselbe Alpha-Anteil (25 %) auf dem Light-focusBorder-Ton. */
+  --pc-terminal-selectionBackground: #b0651f40;
 }

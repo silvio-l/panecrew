@@ -32,9 +32,12 @@ export function readTerminalOptions(): {
 /**
  * Bewusst ohne MutationObserver auf data-theme: es gibt noch keinen
  * Theme-Umschalter, den er beobachten könnte — dann ist er hinzuzufügen,
- * nicht jetzt auf Vorrat. Die Auswahlfarbe kommt aus dem neutralen
- * Listen-Token, nie aus dem Fokus-Akzent: der Akzent ist laut Direction
- * Contract ausschließlich für Fokus reserviert.
+ * nicht jetzt auf Vorrat. Die Auswahlfarbe kommt aus dem eigenen
+ * Marken-Amber-Token --pc-terminal-selectionBackground, nicht aus dem
+ * neutralen Listen-Token und nicht direkt aus --pc-focusBorder (Nutzerwunsch
+ * 2026-08-12: Auswahl soll optisch als PaneCrew-Amber erkennbar sein — die
+ * Herleitung, warum das den Direction-Contract-Grundsatz "Akzent gehört dem
+ * Fokus" nicht verletzt, steht bei der Token-Definition in theme.css).
  *
  * Ein nicht auflösbares Token liefert bewusst undefined statt "": jedes Feld
  * von ITheme ist optional, xterm nimmt dann seinen eigenen Default — ein
@@ -47,7 +50,7 @@ export function readTerminalTheme(): ITheme {
     foreground: readToken("--pc-terminal-foreground"),
     cursor: readToken("--pc-terminal-cursor"),
     cursorAccent: readToken("--pc-terminal-background"),
-    selectionBackground: readToken("--pc-list-activeSelectionBackground"),
+    selectionBackground: readToken("--pc-terminal-selectionBackground"),
     scrollbarSliderBackground: readToken("--pc-list-hoverBackground"),
     scrollbarSliderHoverBackground: readToken(
       "--pc-list-activeSelectionBackground",
