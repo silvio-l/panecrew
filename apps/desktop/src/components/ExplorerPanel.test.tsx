@@ -92,23 +92,26 @@ describe("ExplorerPanel", () => {
     expect(sizer).toHaveStyle({ height: `${String(5000 * ROW_HEIGHT)}px` });
   });
 
-  it("nimmt beim Einklappen eines Ordners dessen Kinder aus der Zeilenfolge", () => {
+  it("startet mit eingeklappten Ordnern und klappt sie erst per Klick auf", () => {
     renderPanel([
       { name: "src", children: [{ name: "main.rs" }, { name: "lib.rs" }] },
       { name: "README.md", kind: "md" },
     ]);
-    expect(mountedRows()).toHaveLength(4);
-
-    fireEvent.click(screen.getByRole("button", { name: "src" }));
-
-    // Der Ordner bleibt stehen, seine Kinder verschwinden — und die Zeile
-    // darunter rückt auf, statt eine Lücke zu lassen.
+    // Standard seit 2026-08-12: alle Ordner starten eingeklappt, nur die
+    // Wurzelkinder sind sichtbar — vorher war das Set beim ersten Mount leer,
+    // ein neu geöffnetes Projekt zeigte also sofort den ganzen Baum.
     expect(mountedRows()).toHaveLength(2);
     expect(screen.queryByText("main.rs")).not.toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "src" }));
+
+    // Der Ordner bleibt stehen, seine Kinder erscheinen darunter.
     expect(mountedRows()).toHaveLength(4);
+    expect(screen.getByText("main.rs")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "src" }));
+    expect(mountedRows()).toHaveLength(2);
   });
 
   it("findet die Git-Deko auch für tief liegende Zeilen unter ihrem zusammengesetzten Pfad", () => {
@@ -131,6 +134,10 @@ describe("ExplorerPanel", () => {
         ["src/core/main.rs", "modified"],
       ]),
     );
+    // Standardmäßig eingeklappt (2026-08-12) — erst beide Ebenen aufklappen,
+    // damit `main.rs` überhaupt eine Zeile bekommt.
+    fireEvent.click(screen.getByRole("button", { name: /^src,/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^core,/ }));
 
     expect(
       screen.getByRole("button", { name: /main\.rs,\s*geändert/ }),

@@ -669,6 +669,9 @@ describe("App", () => {
 
     clickPicker();
     await screen.findByLabelText("Terminal storefront");
+    // Ordner starten seit 2026-08-12 eingeklappt — "src" muss erst geöffnet
+    // werden, bevor "main.rs" darin überhaupt eine Zeile bekommt.
+    fireEvent.click(await screen.findByRole("button", { name: "src" }));
     fireEvent.click(await screen.findByRole("button", { name: "main.rs" }));
   };
 

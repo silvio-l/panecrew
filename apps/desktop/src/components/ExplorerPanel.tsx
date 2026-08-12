@@ -64,7 +64,14 @@ export function ExplorerPanel({
    * dass es ihn gibt. */
   onRefresh: () => void;
 }) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Startzustand: alles eingeklappt, nur die Wurzelkinder sichtbar (2026-08-12
+  // Nutzerentscheidung — vorher stand hier ein leeres Set, also ALLES
+  // aufgeklappt, was bei größeren Projekten sofort einen Bildschirm voller
+  // Zeilen ergab). Dieselbe Menge, die `collapseAll` unten erzeugt, nur als
+  // Initialwert statt als Reaktion auf einen Klick.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(collectFolderPaths(project.tree, "")),
+  );
   // Zweiter, bewusst eigener Einklapp-Zustand statt eines Eintrags in
   // `collapsed`: Der Projektknoten hat gar keine Zeile im Baum — der beginnt
   // schon bei seinen Kindern — und damit auch keinen Pfad, unter dem ihn das
