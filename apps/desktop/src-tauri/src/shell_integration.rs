@@ -56,7 +56,16 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
     if name.contains("zsh") {
         let dir = root.join("zsh").to_string_lossy().into_owned();
         return ShellIntegration {
-            args: vec![],
+            // `-l`: a Finder-launched app's PTY isn't a login shell by
+            // default, unlike Terminal.app/iTerm2's own default profile — so
+            // without this, `.zprofile` (where Homebrew's and nvm's own
+            // installers put PATH setup, not `.zshrc`) never runs, and tools
+            // installed through them silently vanish from every pane
+            // (2026-08-12, reported as `node: command not found` from inside
+            // a pane's Claude Code). panecrew.zshenv sources the user's real
+            // `.zprofile` itself — see the comment there for why zsh's own
+            // automatic lookup can't be relied on once ZDOTDIR points here.
+            args: vec!["-l".into()],
             env: vec![
                 ("ZDOTDIR".into(), dir.clone()),
                 // Passed separately from ZDOTDIR because the wrapper hands
@@ -103,12 +112,13 @@ mod tests {
     }
 
     #[test]
-    fn zsh_is_wrapped_via_zdotdir_not_arguments() {
+    fn zsh_is_wrapped_via_zdotdir_plus_a_login_flag() {
         let integration = for_shell("/bin/zsh", Path::new("/pc"));
 
-        assert!(
-            integration.args.is_empty(),
-            "zsh must not be given extra arguments — ZDOTDIR is the whole mechanism"
+        assert_eq!(
+            integration.args,
+            vec!["-l"],
+            "login mode is what makes zsh read .zprofile — see panecrew.zshenv"
         );
         assert!(integration
             .env
@@ -205,5 +215,130 @@ mod tests {
             "the user's own .bashrc must still be sourced"
         );
         assert!(reported_cwd, "PaneCrew's own hook must run alongside it");
+    }
+
+    /// The whole point of the `-l` flag added in `for_shell` (2026-08-12): a
+    /// pane's zsh must read the user's real `.zprofile` — where Homebrew's
+    /// and nvm's own installers put PATH setup, not `.zshrc` — same as it
+    /// already does in Terminal.app/iTerm2. Run through a real PTY, same
+    /// reasoning as the bash test above: the ZDOTDIR hand-off only proves
+    /// itself once zsh has actually walked its own startup-file chain.
+    #[test]
+    fn the_login_flag_makes_zsh_source_the_users_own_zprofile() {
+        let root = std::env::temp_dir().join(format!("panecrew-zsh-{}", std::process::id()));
+        materialize(&root).expect("materialize should succeed");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).expect("home should be creatable");
+        std::fs::write(
+            home.join(".zprofile"),
+            "export USER_ZPROFILE_WAS_SOURCED=yes\n",
+        )
+        .expect("fake .zprofile should be writable");
+
+        let integration = for_shell("/bin/zsh", &root);
+        let mut env = integration.env;
+        env.push(("HOME".into(), home.to_string_lossy().into_owned()));
+        // Overrides whatever `for_shell` captured from *this test process's*
+        // own ambient ZDOTDIR (non-empty on a machine that sets one, e.g. via
+        // its own .zshenv) — production always reflects the real launching
+        // environment, but this fixture's home must win here regardless of
+        // what happens to be set on the machine running the test.
+        env.push(("PANECREW_USER_ZDOTDIR".into(), String::new()));
+        let mut args = integration.args;
+        args.extend([
+            "-c".into(),
+            "echo \"sourced=$USER_ZPROFILE_WAS_SOURCED\"".into(),
+        ]);
+
+        let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = output.clone();
+        let handle = crate::pty_manager::spawn(
+            crate::pty_manager::SpawnOptions {
+                cmd: "zsh".into(),
+                args,
+                cwd: std::env::temp_dir(),
+                env,
+                cols: 80,
+                rows: 24,
+            },
+            move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
+        )
+        .expect("spawn should succeed");
+
+        let saw = |needle: &str| {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(5) {
+                if String::from_utf8_lossy(&output.lock().unwrap()).contains(needle) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            false
+        };
+
+        let sourced = saw("sourced=yes");
+        let _ = handle.kill();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(sourced, "the user's own .zprofile must be sourced under -l");
+    }
+
+    /// bash can't take the same `-l` route as zsh (the module doc explains
+    /// why: it would silently disable --rcfile), so panecrew.bashrc sources
+    /// the login-profile file itself. Same real-PTY reasoning as the two
+    /// tests above.
+    #[test]
+    fn the_bash_wrapper_sources_the_users_own_login_profile() {
+        let root = std::env::temp_dir().join(format!("panecrew-bash-profile-{}", std::process::id()));
+        materialize(&root).expect("materialize should succeed");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).expect("home should be creatable");
+        std::fs::write(
+            home.join(".bash_profile"),
+            "export USER_PROFILE_WAS_SOURCED=yes\n",
+        )
+        .expect("fake .bash_profile should be writable");
+
+        let mut args = for_shell("/bin/bash", &root).args;
+        args.extend([
+            // -i: --rcfile is only honored for an interactive bash — see the
+            // existing PROMPT_COMMAND test above, which needs the same flag.
+            "-i".into(),
+            "-c".into(),
+            "echo \"sourced=$USER_PROFILE_WAS_SOURCED\"".into(),
+        ]);
+
+        let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = output.clone();
+        let handle = crate::pty_manager::spawn(
+            crate::pty_manager::SpawnOptions {
+                cmd: "bash".into(),
+                args,
+                cwd: std::env::temp_dir(),
+                env: vec![("HOME".into(), home.to_string_lossy().into_owned())],
+                cols: 80,
+                rows: 24,
+            },
+            move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
+        )
+        .expect("spawn should succeed");
+
+        let saw = |needle: &str| {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(5) {
+                if String::from_utf8_lossy(&output.lock().unwrap()).contains(needle) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            false
+        };
+
+        let sourced = saw("sourced=yes");
+        let _ = handle.kill();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            sourced,
+            "the user's own .bash_profile must be sourced even without -l"
+        );
     }
 }

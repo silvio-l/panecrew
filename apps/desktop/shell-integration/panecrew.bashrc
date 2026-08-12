@@ -2,8 +2,21 @@
 #
 # Reached via `bash --rcfile <this file>`, which replaces ~/.bashrc for an
 # interactive non-login shell — so the user's own rc is sourced here first.
-# Note for whoever adds `-l` to the spawn: bash ignores --rcfile for login
-# shells, and this file would silently stop running.
+#
+# Deliberately NOT spawned with `-l` (unlike zsh, see shell_integration.rs and
+# panecrew.zshenv): bash ignores --rcfile entirely once it's a login shell,
+# which would silently stop this whole file from running. Instead, the first
+# of the real login-profile files bash itself would have read is sourced here
+# by hand — this is where Homebrew's and nvm's own installers put PATH setup,
+# not .bashrc, same reasoning as the zsh fix (2026-08-12, reported as
+# `node: command not found` from inside a pane).
+for _panecrew_profile in .bash_profile .bash_login .profile; do
+  if [[ -f $HOME/$_panecrew_profile ]]; then
+    source "$HOME/$_panecrew_profile"
+    break
+  fi
+done
+unset _panecrew_profile
 
 [[ -f $HOME/.bashrc ]] && source "$HOME/.bashrc"
 
