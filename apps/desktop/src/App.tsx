@@ -176,10 +176,19 @@ function App() {
       const session = await loadSession();
       if (!isCancelled() && session) {
         switchTemplate(restoredTemplate(session));
-        for (const [slotIndex, slot] of session.slots.entries()) {
-          if (isCancelled() || slot === null) continue;
-          await restoreSlot(slotIndex, slot.project_path, slot.last_selected_file);
-        }
+        // Parallel statt sequenziell: jeder Slot schreibt über
+        // `assignProject`/`setSelectedFile`s Updater-Form einen eigenen,
+        // unabhängigen Teil des States, Reihenfolge der Auflösung spielt also
+        // keine Rolle. Sequenziell hätte sich die Ladezeit mehrerer Panes
+        // beim Start aufaddiert statt sich zu überlappen — bei vier Panes
+        // spürbar (Nutzerbeobachtung 2026-08-12).
+        await Promise.all(
+          session.slots.map((slot, slotIndex) =>
+            slot === null || isCancelled()
+              ? Promise.resolve()
+              : restoreSlot(slotIndex, slot.project_path, slot.last_selected_file),
+          ),
+        );
       }
 
       // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon
