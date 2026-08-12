@@ -362,6 +362,17 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
         !event.metaKey &&
         !event.altKey
       ) {
+        // `return false` hält nur xterms EIGENE Tastaturauswertung ab (die
+        // hätte sonst \r geschickt, siehe oben). Ohne dieses preventDefault
+        // bleibt Enters Browser-Standardaktion auf xterms versteckter Helper-
+        // Textarea aktiv — dort fügt sie einen echten Zeilenumbruch in deren
+        // Wert ein, was ein "input"-Event auf demselben Element auslöst. xterm
+        // behandelt Eingaben auf diesem Element sonst als Paste und übersetzt
+        // enthaltene \n dabei in \r (dieselbe Enter/Paste-Äquivalenz wie in
+        // jedem Terminal) — genau das erklärt die gemeldete Unzuverlässigkeit:
+        // gelegentlich kam trotz Shift ein echtes Absenden durch. Derselbe
+        // Grund wie beim Zoom-Zweig oben (2026-08-12).
+        event.preventDefault();
         writeBytes(new Uint8Array([LINE_FEED]));
         return false;
       }
