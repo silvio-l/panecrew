@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
+import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { PaneTabs } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
@@ -57,6 +58,7 @@ export function TerminalPane({
    * das nur xterm.js' DOM-Fokus setzt und den Grid-Store nie erreicht. */
   onFocus: () => void;
 }) {
+  const { t } = useTranslation();
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
@@ -80,7 +82,7 @@ export function TerminalPane({
 
   return (
     <section
-      aria-label={`Terminal ${projectName}`}
+      aria-label={t("terminalPane.terminalAria", { projectName })}
       aria-current={focused ? "true" : undefined}
       data-pane-id={paneId}
       onMouseDown={() => {
@@ -136,10 +138,10 @@ export function TerminalPane({
             onSelectFile={tabs.onSelectFile}
           />
         )}
-        <ChromeTooltip label="Pane schließen" align="end">
+        <ChromeTooltip label={t("terminalPane.closePane")} align="end">
           <button
             type="button"
-            aria-label="Pane schließen"
+            aria-label={t("terminalPane.closePane")}
             onClick={onClose}
             // Hover hellt auf den normalen Vordergrund auf, NICHT auf den
             // Akzent: der gehört laut Direction Contract allein dem Fokus, und
@@ -181,7 +183,7 @@ export function TerminalPane({
               überhaupt startet. */}
           {spawning && (
             <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-3 py-2 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-              Terminal wird gestartet …
+              {t("terminalPane.starting")}
             </p>
           )}
         </div>
@@ -199,14 +201,14 @@ export function TerminalPane({
               onSelect={copySelection}
               disabled={!selectionAvailable}
             >
-              Kopieren
+              {t("terminalPane.copy")}
             </TerminalMenuItem>
             <TerminalMenuItem onSelect={paste}>
-              Einfügen
+              {t("terminalPane.paste")}
             </TerminalMenuItem>
             <ContextMenu.Separator className="my-1 h-px bg-(--pc-titleBar-border)" />
             <TerminalMenuItem onSelect={clear}>
-              Terminal leeren
+              {t("terminalPane.clear")}
             </TerminalMenuItem>
           </ContextMenu.Content>
         </ContextMenu.Portal>

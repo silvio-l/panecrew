@@ -46,6 +46,26 @@ export default tseslint.config(
       // wir bevorzugen `as Type` mit Begründungskommentar an den seltenen
       // Stellen, an denen wir eine Nicht-Null-Invariante kodieren.
       "@typescript-eslint/non-nullable-type-assertion-style": "off",
+      // Ticket 16 (i18n-Vollretrofit): jeder sichtbare UI-String läuft über
+      // `t()`/`<Trans>`, damit keine Sprache am i18n-System vorbei in die JSX
+      // einsickert. Zwei Fälle: Text zwischen Tags, und die üblichen
+      // textartigen Attribute als Literal (nicht per `{t(...)}` gefüllt).
+      // Grenze bei 2+ Buchstaben in Folge, damit reine Interpunktion/Ziffern/
+      // Icon-Zeichen ("—", "×", "1") nicht anschlagen.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXText[value=/[A-Za-zÀ-ÿ]{2,}/]",
+          message:
+            "Hartcodierter UI-Text in JSX — über t()/<Trans> aus den i18n-Ressourcen (src/i18n/locales/*.json) einbinden statt Literal.",
+        },
+        {
+          selector:
+            'JSXAttribute[name.name=/^(aria-label|title|placeholder|alt)$/][value.type="Literal"][value.value=/[A-Za-zÀ-ÿ]{2,}/]',
+          message:
+            "Hartcodierter UI-Text in einem Text-Attribut (aria-label/title/placeholder/alt) — über t() aus den i18n-Ressourcen einbinden statt Literal.",
+        },
+      ],
     },
   },
   {

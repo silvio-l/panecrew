@@ -1,0 +1,105 @@
+{
+  "common": {
+    "loading": "Wird geladen …",
+    "unsavedSuffix": ", ungespeichert"
+  },
+  "titleBar": {
+    "searchPlaceholder": "Suchen oder Befehl ausführen",
+    "settings": "Einstellungen",
+    "explorerWidthAria": "Explorer-Breite anpassen",
+    "language": "Sprache wechseln",
+    "windowTitleBarAria": "Fenster-Titelzeile"
+  },
+  "explorer": {
+    "newFile": "Neue Datei",
+    "newFolder": "Neuer Ordner",
+    "filterFiles": "Dateien filtern",
+    "refreshTree": "Dateibaum aktualisieren",
+    "moreActions": "Weitere Aktionen",
+    "collapseAll": "Alle Ordner einklappen",
+    "hideExplorer": "Explorer ausblenden",
+    "showExplorer": "Explorer einblenden",
+    "noTreeLoaded": "Kein Dateibaum geladen.",
+    "noSearchResults": "Keine Treffer für „{{query}}“.",
+    "newFileNamePlaceholder": "Neuer Dateiname",
+    "newFolderNamePlaceholder": "Neuer Ordnername",
+    "nameContainsPathError": "Name darf keinen Pfad enthalten.",
+    "filterFilesAria": "Dateien im Projekt filtern",
+    "treeReadError": "Dateibaum konnte nicht gelesen werden.",
+    "gitStatus": {
+      "modifiedFile": "geändert",
+      "modifiedFolder": "enthält geänderte Dateien",
+      "untrackedFile": "nicht versioniert",
+      "untrackedFolder": "enthält nicht versionierte Dateien"
+    }
+  },
+  "fileEditor": {
+    "fileAria": "Datei {{name}}",
+    "contentAria": "Inhalt von {{name}}",
+    "saving": "Speichert …",
+    "save": "Speichern",
+    "closeFile": "Datei schließen",
+    "overwriteAnyway": "Trotzdem überschreiben",
+    "retry": "Erneut versuchen",
+    "openFailed": "Datei konnte nicht geöffnet werden",
+    "openExternally": "In externem Editor öffnen",
+    "conflictMessage": "Datei wurde außerhalb von PaneCrew geändert"
+  },
+  "unsavedDialog": {
+    "title": "Ungespeicherte Änderungen verwerfen?",
+    "description": "Die Änderungen an <bold>{{fileName}}</bold> sind noch nicht gespeichert. Beim Verlassen der Datei gehen sie verloren.",
+    "discard": "Änderungen verwerfen",
+    "cancel": "Abbrechen"
+  },
+  "terminalPane": {
+    "terminalAria": "Terminal {{projectName}}",
+    "closePane": "Pane schließen",
+    "starting": "Terminal wird gestartet …",
+    "copy": "Kopieren",
+    "paste": "Einfügen",
+    "clear": "Terminal leeren"
+  },
+  "paneTabs": {
+    "selectView": "Ansicht wählen",
+    "terminal": "Terminal"
+  },
+  "projectPicker": {
+    "choose": "Projekt wählen",
+    "hint": "PaneCrew startet darin eine echte Shell."
+  },
+  "templateSwitcher": {
+    "selectTemplate": "Template wählen",
+    "blockedAriaLabel": "{{label}} — {{reason}}",
+    "templates": {
+      "single": "Einzeln",
+      "split": "Geteilt",
+      "twoOverOne": "Zwei über eins",
+      "oneOverTwo": "Eins über zwei",
+      "row3": "Dreierreihe",
+      "quad": "Vierergrid",
+      "row4": "Viererreihe"
+    },
+    "blockReason_one": "{{active}} aktive Panes passen nicht in {{target}} ({{targetSlots}} Platz).",
+    "blockReason_other": "{{active}} aktive Panes passen nicht in {{target}} ({{targetSlots}} Plätze)."
+  },
+  "about": {
+    "close": "Schließen",
+    "version": "Version {{version}}",
+    "description": "Mehrere echte Terminal-Sitzungen nebeneinander statt hintereinander — ein Raster aus lebenden Panes, dazu ein Datei-Explorer, der immer der gerade fokussierten Pane folgt.",
+    "checkForUpdates": "Nach Updates suchen",
+    "githubRepo": "GitHub-Repository",
+    "licenseText": "Lizenztext",
+    "copyright": "© 2026 Silvio Lindstedt",
+    "mitLicense": "MIT-Lizenz",
+    "checking": "Wird geprüft …",
+    "current": "PaneCrew {{version}} ist aktuell.",
+    "availableVersion": "Version {{version}} ist verfügbar.",
+    "openRelease": "Release öffnen",
+    "checkFailed": "Konnte nicht geprüft werden.",
+    "checkOnGithub": "Auf GitHub nachsehen"
+  },
+  "directoryPopup": {
+    "tabHint": "übernehmen",
+    "enterHint": "abschicken"
+  }
+}

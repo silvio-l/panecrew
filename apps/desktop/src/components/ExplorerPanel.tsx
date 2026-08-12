@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "radix-ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FileIcon, FolderIcon } from "./explorerIcons";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
@@ -81,6 +82,7 @@ export function ExplorerPanel({
    * dass es ihn gibt. */
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   // Jeder Ordnerpfad des Baums — die Bezugsmenge, gegen die sich „eingeklappt"
   // und „aufgeklappt" ineinander umrechnen lassen. Ändert sich nur, wenn der
   // Baum neu von der Platte gelesen wurde.
@@ -253,17 +255,17 @@ export function ExplorerPanel({
             auf dem Panel selbst (Ausblenden). Die Suche steht in der mittleren
             Gruppe, nicht bei den Anlege-Knöpfen: sie legt nichts an, sie
             verändert die Sicht auf den gesamten Baum. */}
-        <HeaderAction label="Neue Datei" onClick={() => openDraft("file")}>
+        <HeaderAction label={t("explorer.newFile")} onClick={() => openDraft("file")}>
           <NewFileIcon />
         </HeaderAction>
         <HeaderAction
-          label="Neuer Ordner"
+          label={t("explorer.newFolder")}
           onClick={() => openDraft("directory")}
         >
           <NewFolderIcon />
         </HeaderAction>
         <HeaderAction
-          label="Dateien filtern"
+          label={t("explorer.filterFiles")}
           onClick={toggleSearch}
           // Ohne lesbaren Baum gibt es nichts zu filtern. Deaktiviert statt
           // stumm wirkungslos: der Grund steht zwei Zeilen tiefer schon als
@@ -278,7 +280,7 @@ export function ExplorerPanel({
         >
           <SearchIcon />
         </HeaderAction>
-        <HeaderAction label="Dateibaum aktualisieren" onClick={onRefresh}>
+        <HeaderAction label={t("explorer.refreshTree")} onClick={onRefresh}>
           <RefreshIcon />
         </HeaderAction>
         {/* "Alle Ordner einklappen" und "Explorer ausblenden" waren bis
@@ -291,11 +293,11 @@ export function ExplorerPanel({
             statt in zwei feste Plätze. Das gibt dem Namen einen Icon-Platz
             zurück, ohne eine der beiden Funktionen zu verlieren. */}
         <DropdownMenu.Root>
-          <ChromeTooltip label="Weitere Aktionen" align="end">
+          <ChromeTooltip label={t("explorer.moreActions")} align="end">
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
-                aria-label="Weitere Aktionen"
+                aria-label={t("explorer.moreActions")}
                 className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
               >
                 <MoreIcon />
@@ -313,14 +315,14 @@ export function ExplorerPanel({
                 className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
               >
                 <CollapseAllIcon />
-                Alle Ordner einklappen
+                {t("explorer.collapseAll")}
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 onSelect={onCollapse}
                 className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
               >
                 <SidebarIcon />
-                Explorer ausblenden
+                {t("explorer.hideExplorer")}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
@@ -384,7 +386,7 @@ export function ExplorerPanel({
           ) : project.tree.length === 0 ? (
             <TreeNoticeArea>
               <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-                Kein Dateibaum geladen.
+                {t("explorer.noTreeLoaded")}
               </p>
             </TreeNoticeArea>
           ) : shownTree.length === 0 ? (
@@ -396,7 +398,7 @@ export function ExplorerPanel({
             // hat.
             <TreeNoticeArea>
               <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-                {`Keine Treffer für „${searchQuery?.trim() ?? ""}“.`}
+                {t("explorer.noSearchResults", { query: searchQuery?.trim() ?? "" })}
               </p>
             </TreeNoticeArea>
           ) : (
@@ -567,9 +569,9 @@ const CREATE_COMMAND: Record<DraftKind, string> = {
   directory: "explorer_create_directory",
 };
 
-const DRAFT_PLACEHOLDER: Record<DraftKind, string> = {
-  file: "Neuer Dateiname",
-  directory: "Neuer Ordnername",
+const DRAFT_PLACEHOLDER_KEY: Record<DraftKind, "newFileNamePlaceholder" | "newFolderNamePlaceholder"> = {
+  file: "newFileNamePlaceholder",
+  directory: "newFolderNamePlaceholder",
 };
 
 // Die Anlege-Zeile: eine Baumzeile, in der statt des Namens ein Textfeld
@@ -602,6 +604,7 @@ function NewEntryRow({
    * soll denselben Namen sehen, unter dem die Datei auf der Platte liegt. */
   onCreated: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -625,7 +628,7 @@ function NewEntryRow({
     // weder anlegen noch meckern.
     if (trimmed === "") return;
     if (trimmed.includes("/") || trimmed.includes("\\")) {
-      setError("Name darf keinen Pfad enthalten.");
+      setError(t("explorer.nameContainsPathError"));
       return;
     }
     if (pending.current) return;
@@ -677,8 +680,8 @@ function NewEntryRow({
           ref={inputRef}
           type="text"
           value={name}
-          aria-label={DRAFT_PLACEHOLDER[kind]}
-          placeholder={DRAFT_PLACEHOLDER[kind]}
+          aria-label={t(`explorer.${DRAFT_PLACEHOLDER_KEY[kind]}`)}
+          placeholder={t(`explorer.${DRAFT_PLACEHOLDER_KEY[kind]}`)}
           onChange={(event) => {
             setName(event.target.value);
             // Der Fehler gehört zum abgeschickten Namen, nicht zum Feld: wer
@@ -740,6 +743,7 @@ function TreeFilterRow({
   onChange: (value: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   // Fokus per Ref statt `autoFocus` — dieselbe Begründung wie bei
   // `NewEntryRow`: der Nutzer hat den Fokus angefordert, indem er den Knopf
@@ -767,8 +771,8 @@ function TreeFilterRow({
         ref={inputRef}
         type="text"
         value={value}
-        aria-label="Dateien im Projekt filtern"
-        placeholder="Dateien filtern"
+        aria-label={t("explorer.filterFilesAria")}
+        placeholder={t("explorer.filterFiles")}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
@@ -1004,16 +1008,17 @@ function HeaderAction({
 // Eingeklappter Zustand: schmale Leiste an derselben Stelle, deren Button den
 // Explorer wieder einblendet — der Weg zurück bleibt damit immer sichtbar.
 export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
+  const { t } = useTranslation();
   return (
     // pt-2 spiegelt exakt die h-10-Kopfzeile des ausgeklappten Explorers
     // (40px - 24px Button = 8px oben): sonst springt der Knopf beim Ein- und
     // Ausklappen um 2px, und genau dieser Knopf ist das Element, auf dem der
     // Zeiger dabei stehen bleibt.
     <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-2">
-      <ChromeTooltip label="Explorer einblenden" side="right">
+      <ChromeTooltip label={t("explorer.showExplorer")} side="right">
         <button
           type="button"
-          aria-label="Explorer einblenden"
+          aria-label={t("explorer.showExplorer")}
           onClick={onExpand}
           className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
@@ -1130,12 +1135,13 @@ function RefreshIcon() {
 // `break-words` gegen die langen Pfade darin bei schmalem Explorer.
 // Rein anzeigend, ohne Aktion — Wiederholen/Schließen ist nicht Teil davon.
 function TreeErrorNotice({ message }: { message: string }) {
+  const { t } = useTranslation();
   return (
     <div role="alert" className="flex items-start gap-1.5 px-3 py-1">
       <WarningIcon />
       <div className="min-w-0 flex-1">
         <p className="text-(length:--pc-chrome-fontSize) text-(--pc-explorer-foreground)">
-          Dateibaum konnte nicht gelesen werden.
+          {t("explorer.treeReadError")}
         </p>
         <p className="mt-0.5 select-text break-words text-(length:--pc-chrome-fontSizeSmall) leading-relaxed text-(--pc-descriptionForeground)">
           {message}
@@ -1348,14 +1354,19 @@ const GIT_LETTER: Record<GitChangeStatus, string> = {
 // sondern eine Aussage: ein Ordner kann geänderte UND neue Dateien enthalten,
 // ein einzelnes Kürzel würde die eine Hälfte davon unterschlagen. Die Farbe
 // zeigt den bedeutendsten Fund, der Punkt sagt „irgendwo hier drunter".
-const GIT_SR_LABEL: Record<GitChangeStatus, { file: string; folder: string }> =
-  {
-    modified: { file: "geändert", folder: "enthält geänderte Dateien" },
-    untracked: {
-      file: "nicht versioniert",
-      folder: "enthält nicht versionierte Dateien",
-    },
-  };
+const GIT_SR_LABEL_KEY: Record<
+  GitChangeStatus,
+  { file: string; folder: string }
+> = {
+  modified: {
+    file: "explorer.gitStatus.modifiedFile",
+    folder: "explorer.gitStatus.modifiedFolder",
+  },
+  untracked: {
+    file: "explorer.gitStatus.untrackedFile",
+    folder: "explorer.gitStatus.untrackedFolder",
+  },
+};
 
 // Der Ungespeichert-Punkt der Baumzeile — dieselbe Marke wie in der Kopfzeile
 // der Editorfläche (FileEditor.tsx), und dort steht auch die ausführliche
@@ -1369,10 +1380,11 @@ const GIT_SR_LABEL: Record<GitChangeStatus, { file: string; folder: string }> =
 // versionierte Datei mit ungespeichertem Puffer). Der Platz am rechten Rand
 // gehört dem Repository-Zustand, der Platz am Namen dem Puffer.
 function DirtyMark() {
+  const { t } = useTranslation();
   return (
     <span className="flex shrink-0 items-center">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      <span className="sr-only">, ungespeichert</span>
+      <span className="sr-only">{t("common.unsavedSuffix")}</span>
     </span>
   );
 }
@@ -1394,6 +1406,7 @@ function GitDecorationMark({
   isFolder: boolean;
   colored: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <span className="ml-auto flex w-3 shrink-0 items-center justify-center">
       {isFolder ? (
@@ -1416,7 +1429,7 @@ function GitDecorationMark({
           „App.tsxgeändert". Das Komma überlebt und ergibt zugleich die
           Sprechpause, die man an dieser Stelle hören will. */}
       <span className="sr-only">
-        {`, ${isFolder ? GIT_SR_LABEL[status].folder : GIT_SR_LABEL[status].file}`}
+        {`, ${t(isFolder ? GIT_SR_LABEL_KEY[status].folder : GIT_SR_LABEL_KEY[status].file)}`}
       </span>
     </span>
   );

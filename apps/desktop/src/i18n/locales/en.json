@@ -1,0 +1,105 @@
+{
+  "common": {
+    "loading": "Loading …",
+    "unsavedSuffix": ", unsaved"
+  },
+  "titleBar": {
+    "searchPlaceholder": "Search or run a command",
+    "settings": "Settings",
+    "explorerWidthAria": "Adjust explorer width",
+    "language": "Switch language",
+    "windowTitleBarAria": "Window title bar"
+  },
+  "explorer": {
+    "newFile": "New File",
+    "newFolder": "New Folder",
+    "filterFiles": "Filter files",
+    "refreshTree": "Refresh file tree",
+    "moreActions": "More actions",
+    "collapseAll": "Collapse all folders",
+    "hideExplorer": "Hide explorer",
+    "showExplorer": "Show explorer",
+    "noTreeLoaded": "No file tree loaded.",
+    "noSearchResults": "No matches for “{{query}}”.",
+    "newFileNamePlaceholder": "New file name",
+    "newFolderNamePlaceholder": "New folder name",
+    "nameContainsPathError": "Name must not contain a path.",
+    "filterFilesAria": "Filter files in project",
+    "treeReadError": "File tree could not be read.",
+    "gitStatus": {
+      "modifiedFile": "modified",
+      "modifiedFolder": "contains modified files",
+      "untrackedFile": "untracked",
+      "untrackedFolder": "contains untracked files"
+    }
+  },
+  "fileEditor": {
+    "fileAria": "File {{name}}",
+    "contentAria": "Contents of {{name}}",
+    "saving": "Saving …",
+    "save": "Save",
+    "closeFile": "Close file",
+    "overwriteAnyway": "Overwrite anyway",
+    "retry": "Retry",
+    "openFailed": "File could not be opened",
+    "openExternally": "Open in external editor",
+    "conflictMessage": "File was changed outside of PaneCrew"
+  },
+  "unsavedDialog": {
+    "title": "Discard unsaved changes?",
+    "description": "The changes to <bold>{{fileName}}</bold> haven't been saved yet. They will be lost if you leave the file.",
+    "discard": "Discard changes",
+    "cancel": "Cancel"
+  },
+  "terminalPane": {
+    "terminalAria": "Terminal {{projectName}}",
+    "closePane": "Close pane",
+    "starting": "Terminal is starting …",
+    "copy": "Copy",
+    "paste": "Paste",
+    "clear": "Clear terminal"
+  },
+  "paneTabs": {
+    "selectView": "Select view",
+    "terminal": "Terminal"
+  },
+  "projectPicker": {
+    "choose": "Choose project",
+    "hint": "PaneCrew starts a real shell in it."
+  },
+  "templateSwitcher": {
+    "selectTemplate": "Choose template",
+    "blockedAriaLabel": "{{label}} — {{reason}}",
+    "templates": {
+      "single": "Single",
+      "split": "Split",
+      "twoOverOne": "Two over one",
+      "oneOverTwo": "One over two",
+      "row3": "Three-row",
+      "quad": "Quad grid",
+      "row4": "Four-row"
+    },
+    "blockReason_one": "{{active}} active panes don't fit into {{target}} ({{targetSlots}} slot).",
+    "blockReason_other": "{{active}} active panes don't fit into {{target}} ({{targetSlots}} slots)."
+  },
+  "about": {
+    "close": "Close",
+    "version": "Version {{version}}",
+    "description": "Several real terminal sessions side by side instead of one after another — a grid of live panes, plus a file explorer that always follows the currently focused pane.",
+    "checkForUpdates": "Check for updates",
+    "githubRepo": "GitHub repository",
+    "licenseText": "License text",
+    "copyright": "© 2026 Silvio Lindstedt",
+    "mitLicense": "MIT License",
+    "checking": "Checking …",
+    "current": "PaneCrew {{version}} is up to date.",
+    "availableVersion": "Version {{version}} is available.",
+    "openRelease": "Open release",
+    "checkFailed": "Could not check for updates.",
+    "checkOnGithub": "Check on GitHub"
+  },
+  "directoryPopup": {
+    "tabHint": "accept",
+    "enterHint": "submit"
+  }
+}

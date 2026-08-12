@@ -144,8 +144,8 @@ describe("gridState", () => {
       "pane-2",
     );
     const reason = templateSwitchBlockReason(threeActive, "split");
-    expect(reason).toContain("3");
-    expect(reason).toContain("2");
+    expect(reason?.active).toBe(3);
+    expect(reason?.targetSlots).toBe(2);
 
     const attempted = switchTemplate(threeActive, "split");
     expect(attempted).toBe(threeActive);

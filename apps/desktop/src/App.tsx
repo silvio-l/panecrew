@@ -50,6 +50,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { Tooltip } from "radix-ui";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
@@ -73,6 +74,7 @@ const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
 function App() {
+  const { t } = useTranslation();
   // Destrukturiert wie `useProjects()`s Rückgabe: `assignProject`/
   // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
   // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
@@ -496,7 +498,7 @@ function App() {
                 role="separator"
                 tabIndex={0}
                 aria-orientation="vertical"
-                aria-label="Explorer-Breite anpassen"
+                aria-label={t("titleBar.explorerWidthAria")}
                 aria-valuenow={explorerWidth}
                 aria-valuemin={EXPLORER_MIN_WIDTH}
                 aria-valuemax={EXPLORER_MAX_WIDTH}

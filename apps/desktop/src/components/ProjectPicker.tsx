@@ -12,6 +12,7 @@
 // Gestrichelte Hairline statt der durchgezogenen der Panes: dieselbe
 // 1px-Grammatik, aber auf einen Blick als "hier ist noch nichts" lesbar —
 // genau die Frage, die das Chrome laut Direction Contract beantworten darf.
+import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 
 export function ProjectPicker({
@@ -29,12 +30,13 @@ export function ProjectPicker({
    * Wiederherstellung um genau diesen Slot konkurrieren (2026-08-12). */
   restoring?: boolean;
 }) {
+  const { t } = useTranslation();
   if (restoring) {
     return (
       <div className="@container flex min-h-0 min-w-0">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--pc-pane-border) px-4 py-3 text-center text-(--pc-descriptionForeground)">
           <span className="text-(length:--pc-chrome-fontSize) font-medium">
-            Wird geladen …
+            {t("common.loading")}
           </span>
         </div>
       </div>
@@ -54,19 +56,19 @@ export function ProjectPicker({
         // Der zugängliche Name ist der Knopftext; das aria-label hält ihn
         // stabil, wenn die Erklärzeile darunter mitrendert (die sonst in den
         // Namen einginge und ihn bei jeder Slot-Breite anders lauten ließe).
-        aria-label="Projekt wählen"
+        aria-label={t("projectPicker.choose")}
         className={`flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--pc-pane-border) px-4 py-3 text-center text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
       >
         <FolderPlusIcon />
         <span className="text-(length:--pc-chrome-fontSize) font-medium">
-          Projekt wählen
+          {t("projectPicker.choose")}
         </span>
         {/* Erst ab 18rem Slot-Breite: in einer Viererreihen-Spalte bliebe von
             dem Satz ein vierzeiliger Block, der den Knopf darüber erschlägt.
             Ein leerer Slot braucht dort ein Ziel und eine Beschriftung, keine
             Prosa. */}
         <span className="hidden max-w-64 text-(length:--pc-chrome-fontSizeSmall) @2xs:block">
-          PaneCrew startet darin eine echte Shell.
+          {t("projectPicker.hint")}
         </span>
       </button>
     </div>

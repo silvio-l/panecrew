@@ -18,18 +18,22 @@ export type TemplateId =
 
 export interface GridTemplate {
   id: TemplateId;
-  label: string;
+  /** i18n-Schlüssel unterhalb von `templateSwitcher.templates` — kein
+   * fertiger Text: dieses Modul bleibt bewusst frei von React-/i18next-
+   * Importen (s. Kopfkommentar), die Übersetzung übernimmt der Aufrufer
+   * (`TemplateSwitcher.tsx`), der ohnehin schon `useTranslation()` hält. */
+  labelKey: string;
   slotCount: number;
 }
 
 export const GRID_TEMPLATES: readonly GridTemplate[] = [
-  { id: "single", label: "Einzeln", slotCount: 1 },
-  { id: "split", label: "Geteilt", slotCount: 2 },
-  { id: "two-over-one", label: "Zwei über eins", slotCount: 3 },
-  { id: "one-over-two", label: "Eins über zwei", slotCount: 3 },
-  { id: "row-3", label: "Dreierreihe", slotCount: 3 },
-  { id: "quad", label: "Vierergrid", slotCount: 4 },
-  { id: "row-4", label: "Viererreihe", slotCount: 4 },
+  { id: "single", labelKey: "templateSwitcher.templates.single", slotCount: 1 },
+  { id: "split", labelKey: "templateSwitcher.templates.split", slotCount: 2 },
+  { id: "two-over-one", labelKey: "templateSwitcher.templates.twoOverOne", slotCount: 3 },
+  { id: "one-over-two", labelKey: "templateSwitcher.templates.oneOverTwo", slotCount: 3 },
+  { id: "row-3", labelKey: "templateSwitcher.templates.row3", slotCount: 3 },
+  { id: "quad", labelKey: "templateSwitcher.templates.quad", slotCount: 4 },
+  { id: "row-4", labelKey: "templateSwitcher.templates.row4", slotCount: 4 },
 ];
 
 export const DEFAULT_TEMPLATE: TemplateId = "quad";
@@ -69,24 +73,31 @@ export function activePanes(state: GridState): readonly Pane[] {
   return state.slots.filter((slot): slot is Pane => slot !== null);
 }
 
+/** Die beiden Zahlen (plus der Ziel-Label-Schlüssel) hinter einer blockierten
+ * Vorlagenumschaltung — der fertige Satz entsteht erst beim Aufrufer, der
+ * `t()` zur Verfügung hat (s. `GridTemplate.labelKey`). */
+export interface TemplateSwitchBlock {
+  active: number;
+  targetSlots: number;
+  targetLabelKey: string;
+}
+
 /**
- * `null`, wenn der Wechsel erlaubt ist, sonst eine Nachricht mit beiden
- * Zahlen. Wachsen (mehr Slots) ist immer erlaubt; Schrumpfen nur, wenn die
- * Zahl aktiver Panes in die Ziel-Slot-Zahl passt. Einzige Quelle für
- * Disabled-State *und* Erklärtext im Switcher.
+ * `null`, wenn der Wechsel erlaubt ist, sonst die Zahlen hinter der Sperre.
+ * Wachsen (mehr Slots) ist immer erlaubt; Schrumpfen nur, wenn die Zahl
+ * aktiver Panes in die Ziel-Slot-Zahl passt. Einzige Quelle für Disabled-State
+ * *und* Erklärtext im Switcher.
  */
 export function templateSwitchBlockReason(
   state: GridState,
   target: TemplateId,
-): string | null {
+): TemplateSwitchBlock | null {
   const targetSlots = slotCount(target);
   const active = activePanes(state).length;
   if (active <= targetSlots) return null;
-  const targetLabel =
-    GRID_TEMPLATES.find((t) => t.id === target)?.label ?? target;
-  return `${active} aktive Panes passen nicht in ${targetLabel} (${targetSlots} ${
-    targetSlots === 1 ? "Platz" : "Plätze"
-  }).`;
+  const targetLabelKey =
+    GRID_TEMPLATES.find((t) => t.id === target)?.labelKey ?? target;
+  return { active, targetSlots, targetLabelKey };
 }
 
 /**

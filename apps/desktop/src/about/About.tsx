@@ -26,6 +26,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useTranslation } from "react-i18next";
 // Aus der echten LICENSE des Repos statt aus einer Kopie im Code: eine zweite
 // Fassung des Lizenztextes wäre genau die Art Duplikat, die still veraltet.
 import licenseText from "../../../../LICENSE?raw";
@@ -79,6 +80,7 @@ type UpdateState =
   | { phase: "done"; result: UpdateCheck };
 
 export function About() {
+  const { t } = useTranslation();
   const [version, setVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ phase: "idle" });
   const [licenseOpen, setLicenseOpen] = useState(false);
@@ -182,7 +184,7 @@ export function About() {
       >
         <button
           type="button"
-          aria-label="Schließen"
+          aria-label={t("about.close")}
           onClick={() => void getCurrentWindow().close()}
           className="absolute left-3 top-3 z-10 flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
         >
@@ -199,20 +201,21 @@ export function About() {
         >
           <BrandMark />
           <div className="pointer-events-none flex flex-col items-center gap-1">
+            {/* Markenname, keine Übersetzungssache — "PaneCrew" bleibt laut
+                CLAUDE.md in jeder Sprache gleich geschrieben. */}
+            {/* eslint-disable-next-line no-restricted-syntax */}
             <h1 className="text-(length:--pc-chrome-fontSizeDisplay) font-semibold tracking-tight text-(--pc-foreground)">
               PaneCrew
             </h1>
             <p className="text-(length:--pc-chrome-fontSizeSmall) tracking-[0.07em] text-(--pc-descriptionForeground)">
-              Version {version ?? "…"}
+              {t("about.version", { version: version ?? "…" })}
             </p>
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-7 pb-14 pt-5">
           <p className="text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-descriptionForeground)">
-            Mehrere echte Terminal-Sitzungen nebeneinander statt hintereinander
-            — ein Raster aus lebenden Panes, dazu ein Datei-Explorer, der immer
-            der gerade fokussierten Pane folgt.
+            {t("about.description")}
           </p>
 
           <section className="flex flex-col items-start gap-2.5">
@@ -223,20 +226,20 @@ export function About() {
               aria-busy={update.phase === "checking"}
               className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
             >
-              Nach Updates suchen
+              {t("about.checkForUpdates")}
             </button>
             <UpdateStatus state={update} version={version} />
           </section>
 
           <div className="flex items-center gap-5">
             <QuietButton onClick={() => void openUrl(REPOSITORY_URL)}>
-              GitHub-Repository
+              {t("about.githubRepo")}
             </QuietButton>
             <QuietButton
               onClick={() => setLicenseOpen((open) => !open)}
               expanded={licenseOpen}
             >
-              Lizenztext
+              {t("about.licenseText")}
             </QuietButton>
           </div>
 
@@ -256,8 +259,8 @@ export function About() {
           style={{ backgroundImage: "var(--pc-glass-faceLight)" }}
           className="absolute inset-x-0 bottom-0 flex h-11 items-center justify-between border-t border-(--pc-glass-border) bg-(--pc-glass-background) px-7 text-(length:--pc-chrome-fontSizeSmall) tracking-[0.07em] text-(--pc-descriptionForeground) backdrop-blur-lg backdrop-saturate-150"
         >
-          <span>© 2026 Silvio Lindstedt</span>
-          <span>MIT-Lizenz</span>
+          <span>{t("about.copyright")}</span>
+          <span>{t("about.mitLicense")}</span>
         </footer>
       </div>
 
@@ -290,6 +293,7 @@ function UpdateStatus({
   state: UpdateState;
   version: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <p
       role="status"
@@ -297,36 +301,40 @@ function UpdateStatus({
       // rutscht beim ersten Ergebnis alles darunter eine Zeile nach unten.
       className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)"
     >
-      {message(state, version)}
+      {message(state, version, t)}
     </p>
   );
 }
 
-function message(state: UpdateState, version: string | null) {
+function message(
+  state: UpdateState,
+  version: string | null,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
   if (state.phase === "idle") return null;
-  if (state.phase === "checking") return "Wird geprüft …";
+  if (state.phase === "checking") return t("about.checking");
 
   const result = state.result;
   switch (result.status) {
     case "current":
-      return `PaneCrew ${version ?? ""} ist aktuell.`;
+      return t("about.current", { version: version ?? "" });
     case "available":
       return (
         <>
           <span className="text-(--pc-foreground)">
-            Version {result.version} ist verfügbar.
+            {t("about.availableVersion", { version: result.version })}
           </span>
           <QuietButton onClick={() => void openUrl(result.url)}>
-            Release öffnen
+            {t("about.openRelease")}
           </QuietButton>
         </>
       );
     case "failed":
       return (
         <>
-          Konnte nicht geprüft werden.
+          {t("about.checkFailed")}
           <QuietButton onClick={() => void openUrl(RELEASES_URL)}>
-            Auf GitHub nachsehen
+            {t("about.checkOnGithub")}
           </QuietButton>
         </>
       );

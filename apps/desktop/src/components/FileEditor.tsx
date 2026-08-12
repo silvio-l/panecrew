@@ -1,5 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { PaneTabs } from "./PaneTabs";
 import type { FileEditorState } from "../explorer/fileEditorState";
@@ -62,6 +63,7 @@ export function FileEditor({
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
   // bedingungslos und stellt die Bedingung damit genau einmal — hier.
   if (state.status === "idle") return null;
@@ -105,7 +107,7 @@ export function FileEditor({
 
   return (
     <section
-      aria-label={`Datei ${name}`}
+      aria-label={t("fileEditor.fileAria", { name })}
       onKeyDown={onKeyDown}
       className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
@@ -159,13 +161,13 @@ export function FileEditor({
                 wie im Ladezustand weiter unten: geschrieben wird auf die
                 lokale Platte, der Zustand ist im Normalfall nach einem Frame
                 vorbei. */}
-            {saving ? "Speichert …" : "Speichern"}
+            {saving ? t("fileEditor.saving") : t("fileEditor.save")}
           </button>
         )}
-        <ChromeTooltip label="Datei schließen" align="end">
+        <ChromeTooltip label={t("fileEditor.closeFile")} align="end">
           <button
             type="button"
-            aria-label="Datei schließen"
+            aria-label={t("fileEditor.closeFile")}
             onClick={onClose}
             // Anders als das X der Terminal-Pane NICHT hover-enthüllt
             // (`opacity-0` … `group-hover`): dort ist Schließen eine
@@ -215,7 +217,7 @@ export function FileEditor({
             // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext
             // reines Rauschen.
             spellCheck={false}
-            aria-label={`Inhalt von ${name}`}
+            aria-label={t("fileEditor.contentAria", { name })}
             value={state.content}
             // Die Schrift des Terminals, nicht die des Chromes: der Text steht
             // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
@@ -265,6 +267,7 @@ function SaveErrorNotice({
   conflict: boolean;
   onSave: (options?: { force?: boolean }) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       role="alert"
@@ -286,7 +289,7 @@ function SaveErrorNotice({
         onClick={() => onSave({ force: conflict })}
         className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-pane-border) px-2.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
       >
-        {conflict ? "Trotzdem überschreiben" : "Erneut versuchen"}
+        {conflict ? t("fileEditor.overwriteAnyway") : t("fileEditor.retry")}
       </button>
     </div>
   );
@@ -296,9 +299,10 @@ function SaveErrorNotice({
 // lokalen Platte, der Zustand ist im Normalfall nach einem Frame vorbei. Eine
 // animierte Attrappe würde in dieser Zeit mehr flackern als sie erklärt.
 function LoadingNotice() {
+  const { t } = useTranslation();
   return (
     <p className="flex min-h-0 flex-1 items-center justify-center p-8 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-      Wird geladen …
+      {t("common.loading")}
     </p>
   );
 }
@@ -321,6 +325,7 @@ function LoadErrorNotice({
   path: string;
   message: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       role="alert"
@@ -335,7 +340,7 @@ function LoadErrorNotice({
         <div className="flex flex-col items-center gap-1.5">
           <WarningIcon />
           <h2 className="text-(length:--pc-chrome-fontSizeLarge) font-semibold text-(--pc-foreground)">
-            Datei konnte nicht geöffnet werden
+            {t("fileEditor.openFailed")}
           </h2>
           <p className="max-w-96 select-text text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-descriptionForeground)">
             {message}
@@ -364,7 +369,7 @@ function LoadErrorNotice({
           className={`flex h-8 shrink-0 items-center gap-2 rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
           <ExternalIcon />
-          In externem Editor öffnen
+          {t("fileEditor.openExternally")}
         </button>
       </div>
     </div>

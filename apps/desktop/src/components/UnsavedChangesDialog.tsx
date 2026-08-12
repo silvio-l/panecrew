@@ -1,4 +1,5 @@
 import { AlertDialog } from "radix-ui";
+import { Trans, useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 
 // Die Rückfrage vor dem Verlassen einer Datei mit ungespeichertem Stand
@@ -44,6 +45,7 @@ export function UnsavedChangesDialog({
    * Bestätigen gleich mit. */
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     // Gerendert wird diese Komponente in App.tsx nur, solange eine Rückfrage
     // offen ist — `open` ist hier deshalb konstant wahr.
@@ -79,7 +81,7 @@ export function UnsavedChangesDialog({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <AlertDialog.Title className="text-(length:--pc-chrome-fontSizeLarge) font-semibold text-(--pc-foreground)">
-                Ungespeicherte Änderungen verwerfen?
+                {t("unsavedDialog.title")}
               </AlertDialog.Title>
               {/* Unpersönlich formuliert, ohne „du"/„Sie": die gesamte übrige
                   Oberfläche spricht den Nutzer nirgends an („Keine Treffer
@@ -87,15 +89,18 @@ export function UnsavedChangesDialog({
                   Anredeform, die genau an einer Stelle auftaucht, ist an
                   dieser Stelle das Auffälligste am Satz. */}
               <AlertDialog.Description className="min-w-0 select-text break-words text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-descriptionForeground)">
-                Die Änderungen an{" "}
                 {/* Der Dateiname im vollen Vordergrund: er ist das eine Wort
                     im Satz, an dem hängt, ob die Rückfrage die erwartete
-                    Datei meint. */}
-                <span className="font-medium text-(--pc-foreground)">
-                  {fileName}
-                </span>{" "}
-                sind noch nicht gespeichert. Beim Verlassen der Datei gehen sie
-                verloren.
+                    Datei meint — `<bold>` bindet genau diesen Interpolations-
+                    Platzhalter an den Span, unabhängig davon, wo ihn die
+                    jeweilige Übersetzung im Satz platziert. */}
+                <Trans
+                  i18nKey="unsavedDialog.description"
+                  values={{ fileName }}
+                  components={{
+                    bold: <span className="font-medium text-(--pc-foreground)" />,
+                  }}
+                />
               </AlertDialog.Description>
             </div>
           </div>
@@ -114,7 +119,7 @@ export function UnsavedChangesDialog({
               >
                 {/* Benennt die Folge, nicht den Weg: „Fortfahren"/„OK"
                     verschwiegen genau das, was hier auf dem Spiel steht. */}
-                Änderungen verwerfen
+                {t("unsavedDialog.discard")}
               </button>
             </AlertDialog.Action>
             {/* Ohne eigenen onClick: Radix schließt über diesen Knopf von
@@ -131,7 +136,7 @@ export function UnsavedChangesDialog({
                 // gerade stehst".
                 className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-widget-border) bg-(--pc-list-activeSelectionBackground) px-3 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
               >
-                Abbrechen
+                {t("unsavedDialog.cancel")}
               </button>
             </AlertDialog.Cancel>
           </div>

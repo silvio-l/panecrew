@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 
 // Zwei-Tab-Umschalter zwischen der Terminal- und der Datei-Ansicht EINER
@@ -27,13 +28,14 @@ export function PaneTabs({
   onSelectTerminal: () => void;
   onSelectFile: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       role="group"
-      aria-label="Ansicht wählen"
+      aria-label={t("paneTabs.selectView")}
       className="flex min-w-0 shrink items-center gap-px rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) p-px"
     >
-      <PaneTab label="Terminal" active={active === "terminal"} onClick={onSelectTerminal} />
+      <PaneTab label={t("paneTabs.terminal")} active={active === "terminal"} onClick={onSelectTerminal} />
       <PaneTab
         label={fileName}
         dirty={fileDirty}
@@ -88,10 +90,11 @@ function PaneTab({
 // Der sichtbare Punkt ist `aria-hidden`, das Wort steht daneben in `sr-only`
 // — Farbe und Form allein dürfen die Information nicht tragen.
 function DirtyMark() {
+  const { t } = useTranslation();
   return (
     <span className="flex shrink-0 items-center">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      <span className="sr-only">, ungespeichert</span>
+      <span className="sr-only">{t("common.unsavedSuffix")}</span>
     </span>
   );
 }

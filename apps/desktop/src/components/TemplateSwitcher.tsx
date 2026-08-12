@@ -13,6 +13,7 @@
 //
 // Der Name bleibt trotzdem der zugängliche Name des Knopfes, und bei einem
 // blockierten Wechsel tritt die Begründung hinzu.
+import { useTranslation } from "react-i18next";
 import {
   GRID_TEMPLATES,
   templateSwitchBlockReason,
@@ -28,6 +29,7 @@ export function TemplateSwitcher({
   state: GridState;
   onSwitchTemplate: (target: TemplateId) => void;
 }) {
+  const { t } = useTranslation();
   return (
     // `self-end` statt eines eigenen Zeilen-Wrappers: `<main>` ist ein
     // Spalten-Flex, die Querachse ist also die waagerechte — das rückt den
@@ -35,7 +37,7 @@ export function TemplateSwitcher({
     // Inhaltsbreite schrumpfen, statt die Zeile zu füllen.
     <div
       role="group"
-      aria-label="Template wählen"
+      aria-label={t("templateSwitcher.selectTemplate")}
       className="mb-2 flex shrink-0 items-center gap-px self-end rounded-md border border-(--pc-pane-border) p-px"
     >
       {GRID_TEMPLATES.map((template) => {
@@ -45,7 +47,16 @@ export function TemplateSwitcher({
         // dieselbe State-Referenz zurück, es folgt also kein Re-Render, und
         // ein beim Klick gesetzter Zustand käme nie an. Hier steht die Sperre
         // schon da, bevor jemand sie auslöst.
-        const reason = templateSwitchBlockReason(state, template.id);
+        const block = templateSwitchBlockReason(state, template.id);
+        const label = t(template.labelKey);
+        const reason = block
+          ? t("templateSwitcher.blockReason", {
+              active: block.active,
+              targetSlots: block.targetSlots,
+              target: t(block.targetLabelKey),
+              count: block.targetSlots,
+            })
+          : null;
         const active = template.id === state.template;
         return (
           // Der Tooltip hängt am Wrapper, nicht am Knopf: ein `disabled`
@@ -53,7 +64,7 @@ export function TemplateSwitcher({
           // gesperrte Knopf könnte seine Begründung sonst nie zeigen. Das
           // `disabled:pointer-events-none` unten reicht sie an dieses <span>
           // durch.
-          <ChromeTooltip key={template.id} label={reason ?? template.label}>
+          <ChromeTooltip key={template.id} label={reason ?? label}>
             <span className="inline-flex">
               <button
                 type="button"
@@ -61,7 +72,9 @@ export function TemplateSwitcher({
                 disabled={reason !== null}
                 aria-pressed={active}
                 aria-label={
-                  reason ? `${template.label} — ${reason}` : template.label
+                  reason
+                    ? t("templateSwitcher.blockedAriaLabel", { label, reason })
+                    : label
                 }
                 // Der aktive Zustand trägt die neutrale Auswahlfüllung des
                 // Explorers, NICHT den Akzent: der gehört laut Direction

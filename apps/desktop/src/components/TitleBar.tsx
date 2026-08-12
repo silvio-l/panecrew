@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { setLanguage, SUPPORTED_LANGUAGES } from "../i18n";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
 // Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
@@ -63,9 +65,18 @@ export const TITLE_BAR_ZONE_HEIGHT = CAPSULE_INSET * 2 + CAPSULE_HEIGHT;
 const TRAFFIC_LIGHT_INSET = 84;
 
 export function TitleBar({ zoom }: { zoom: number }) {
+  const { t, i18n } = useTranslation();
+  const nextLanguage =
+    SUPPORTED_LANGUAGES[
+      (SUPPORTED_LANGUAGES.indexOf(
+        i18n.language as (typeof SUPPORTED_LANGUAGES)[number],
+      ) +
+        1) %
+        SUPPORTED_LANGUAGES.length
+    ] ?? SUPPORTED_LANGUAGES[0];
   return (
     <header
-      aria-label="Fenster-Titelzeile"
+      aria-label={t("titleBar.windowTitleBarAria")}
       style={{
         // Breite mal Zoom, dann alles durch Zoom zurückskaliert: ergibt exakt
         // die physische Fensterbreite, unabhängig von der Stufe.
@@ -113,14 +124,25 @@ export function TitleBar({ zoom }: { zoom: number }) {
             <AppMark />
           </span>
           <span className="pointer-events-none truncate">
-            Suchen oder Befehl ausführen
+            {t("titleBar.searchPlaceholder")}
           </span>
         </div>
 
-        <ChromeTooltip label="Einstellungen" align="end">
+        <ChromeTooltip label={t("titleBar.language")} align="end">
           <button
             type="button"
-            aria-label="Einstellungen"
+            aria-label={t("titleBar.language")}
+            onClick={() => setLanguage(nextLanguage)}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          >
+            {i18n.language}
+          </button>
+        </ChromeTooltip>
+
+        <ChromeTooltip label={t("titleBar.settings")} align="end">
+          <button
+            type="button"
+            aria-label={t("titleBar.settings")}
             className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <GearIcon />

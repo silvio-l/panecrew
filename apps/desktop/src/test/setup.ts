@@ -1,6 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
+import "./jsdomStorageFix";
+import "../i18n";
 
 // Testing Library hängt sein automatisches cleanup nur ein, wenn Vitest mit
 // `globals: true` läuft — tut es hier nicht. Ohne diesen Aufruf bliebe das DOM

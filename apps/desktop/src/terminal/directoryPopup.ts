@@ -1,4 +1,5 @@
 import type { IDecoration, IMarker, Terminal } from "@xterm/xterm";
+import i18next from "../i18n";
 import type { CdCompletionInput } from "./suggestion";
 import { cdCompletion, completionInsert } from "./suggestion";
 import type { SubdirectoryLookup } from "./workingDirectory";
@@ -130,8 +131,8 @@ export function attachDirectoryPopup(
     const footer = document.createElement("div");
     footer.className = "pc-cdpopup__footer";
     for (const [cap, action] of [
-      ["Tab", "übernehmen"],
-      ["Enter", "abschicken"],
+      ["Tab", i18next.t("directoryPopup.tabHint")],
+      ["Enter", i18next.t("directoryPopup.enterHint")],
     ]) {
       const hint = document.createElement("span");
       hint.className = "pc-cdpopup__hint";
