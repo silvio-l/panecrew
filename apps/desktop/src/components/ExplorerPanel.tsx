@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FileIcon, FolderIcon } from "./explorerIcons";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
@@ -20,6 +21,26 @@ import { filterTree } from "../types/treeFilter";
 // sich einklappt — einzelne Ordner und die Wurzel — gehört dagegen hierher:
 // beides ist an den konkreten Baum gebunden und soll den Projektwechsel gerade
 // NICHT überleben.
+//
+// DER BAUM IST VIRTUALISIERT (seit 2026-08-12). Vorher rendert `TreeRow` sich
+// rekursiv über den ganzen Baum, also bis zu MAX_ENTRIES = 5000 echte
+// DOM-Zeilen — und weil das Panel pro Projekt gekeyt ist (s. App.tsx), fiel
+// genau dieser Aufbau bei JEDEM Pane-Wechsel neu an. Das ist die
+// Kernbewegung dieser App, und sie war dadurch spürbar zäh.
+//
+// Der Weg heraus ist der, den VS Code für seine eigenen Listen-/Baum-Widgets
+// geht (`vs/base/browser/ui/list`): feste Zeilenhöhe, den aufgeklappten Baum
+// zu EINER flachen Liste ausrollen und daraus nur das mounten, was im
+// Sichtfenster steht (plus ein kleiner Puffer). Zwei Konsequenzen tragen
+// diesen Umbau:
+//   1. `TreeRow` rekursiert nicht mehr — `flattenTree` unten macht aus dem
+//      Baum die sichtbare Zeilenfolge, `TreeRow` ist nur noch Darstellung.
+//   2. Die Zeilen liegen absolut positioniert übereinander in einem
+//      Platzhalter der vollen Höhe, damit die Bildlaufleiste die WAHRE Länge
+//      des Baums zeigt und nicht nur die des gemounteten Ausschnitts.
+// Was dabei nicht mehr von allein funktioniert, ist das Weiterwandern per
+// Tastatur über nicht gemountete Zeilen hinweg — dafür stehen die
+// Pfeiltasten weiter unten (`moveRowFocus`).
 export function ExplorerPanel({
   project,
   width,
@@ -133,6 +154,14 @@ export function ExplorerPanel({
     setCollapsed(new Set(collectFolderPaths(project.tree, "")));
   };
 
+  // Die sichtbare Zeilenfolge des Baums — genau das, was der rekursive Aufbau
+  // vorher implizit erzeugt hat, hier nur als Liste ausgeschrieben, damit sich
+  // ein Sichtfenster darauf ausrechnen lässt.
+  const rows = useMemo(
+    () => flattenTree(shownTree, collapsed, filteredTree !== null),
+    [shownTree, collapsed, filteredTree],
+  );
+
   return (
     <aside
       style={{ width }}
@@ -228,69 +257,223 @@ export function ExplorerPanel({
               onClose={() => setSearch(null)}
             />
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-            {/* Immer ganz oben, unabhängig davon, ob darunter ein Baum, der
-                Leer-Platzhalter oder der Lesefehler steht: die Zeile gehört zur
-                Wurzel, und die Wurzel beginnt hier. `key` ist die Art — der
-                Wechsel von Datei auf Ordner setzt Eingabe und Fehler zurück,
-                statt den Text der einen Absicht in die andere zu übernehmen. */}
-            {draftKind !== null && (
-              <NewEntryRow
-                key={draftKind}
-                kind={draftKind}
-                projectPath={project.path}
-                onDiscard={() => setDraftKind(null)}
-                onCreated={(name) => {
-                  setDraftKind(null);
-                  onRefresh();
-                  // Nur Dateien: `onSelectFile` ist laut seinem Vertrag der
-                  // Auswahlpfad des späteren Editors und erwartet eine Datei.
-                  // Der Pfad ist relativ zur Wurzel — genau die Konvention, in
-                  // der `TreeRow` seine Pfade baut (Tiefe 0: der bloße Name).
-                  if (draftKind === "file") onSelectFile(name);
-                }}
-              />
-            )}
-            {/* Der leere Baum wird VOR dem leeren Filterergebnis geprüft: ein
-                Projekt ohne Baum liefert auch auf jede Suche nichts, und
-                „Keine Treffer" wäre dort die falsche Auskunft. */}
-            {project.treeError !== null ? (
+          {/* Immer ganz oben, unabhängig davon, ob darunter ein Baum, der
+              Leer-Platzhalter oder der Lesefehler steht: die Zeile gehört zur
+              Wurzel, und die Wurzel beginnt hier. `key` ist die Art — der
+              Wechsel von Datei auf Ordner setzt Eingabe und Fehler zurück,
+              statt den Text der einen Absicht in die andere zu übernehmen.
+
+              Sie steht ÜBER dem Baumbereich statt darin — dieselbe Aufteilung
+              wie beim Suchfeld darüber, hier aber aus einem zweiten Grund:
+              der Bereich darunter ist der Scroll-Container des virtualisierten
+              Baums, und der muss bei sich nur die Liste haben. Sonst läge die
+              Liste um die Höhe dieser Zeile versetzt — eine Höhe, die mit
+              ihrer Fehlermeldung auch noch wechselt. Sichtbar ändert das
+              nichts: die Zeile erscheint an derselben Stelle in derselben
+              Zeilengeometrie, sie rutscht beim Scrollen nur nicht mehr weg. */}
+          {draftKind !== null && (
+            <NewEntryRow
+              key={draftKind}
+              kind={draftKind}
+              projectPath={project.path}
+              onDiscard={() => setDraftKind(null)}
+              onCreated={(name) => {
+                setDraftKind(null);
+                onRefresh();
+                // Nur Dateien: `onSelectFile` ist laut seinem Vertrag der
+                // Auswahlpfad des späteren Editors und erwartet eine Datei.
+                // Der Pfad ist relativ zur Wurzel — genau die Konvention, in
+                // der `flattenTree` seine Pfade baut (Tiefe 0: der bloße Name).
+                if (draftKind === "file") onSelectFile(name);
+              }}
+            />
+          )}
+          {/* Der leere Baum wird VOR dem leeren Filterergebnis geprüft: ein
+              Projekt ohne Baum liefert auch auf jede Suche nichts, und
+              „Keine Treffer" wäre dort die falsche Auskunft.
+
+              Die Auskünfte und die Liste füllen denselben Rest des Panels,
+              bringen ihren scrollenden Bereich aber getrennt mit: der der
+              Liste ist zugleich ihr Sichtfenster und darf deshalb außer ihr
+              nichts enthalten. */}
+          {project.treeError !== null ? (
+            <TreeNoticeArea>
               <TreeErrorNotice message={project.treeError} />
-            ) : project.tree.length === 0 ? (
+            </TreeNoticeArea>
+          ) : project.tree.length === 0 ? (
+            <TreeNoticeArea>
               <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
                 Kein Dateibaum geladen.
               </p>
-            ) : shownTree.length === 0 ? (
-              // Vom Leer-Platzhalter darüber bewusst unterscheidbar: eine
-              // Suche ohne Treffer darf nie wie ein leeres Projekt aussehen —
-              // dieselbe Sorgfalt wie bei `TreeErrorNotice`, hier aber mit
-              // einem Satz genug, weil nichts kaputt ist. Zitiert wird der
-              // getrimmte Text, also genau der, nach dem `filterTree`
-              // tatsächlich gesucht hat.
+            </TreeNoticeArea>
+          ) : shownTree.length === 0 ? (
+            // Vom Leer-Platzhalter darüber bewusst unterscheidbar: eine Suche
+            // ohne Treffer darf nie wie ein leeres Projekt aussehen —
+            // dieselbe Sorgfalt wie bei `TreeErrorNotice`, hier aber mit einem
+            // Satz genug, weil nichts kaputt ist. Zitiert wird der getrimmte
+            // Text, also genau der, nach dem `filterTree` tatsächlich gesucht
+            // hat.
+            <TreeNoticeArea>
               <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
                 {`Keine Treffer für „${searchQuery?.trim() ?? ""}“.`}
               </p>
-            ) : (
-              shownTree.map((node) => (
-                <TreeRow
-                  key={node.name}
-                  node={node}
-                  path={node.name}
-                  depth={0}
-                  collapsed={collapsed}
-                  forceOpen={filteredTree !== null}
-                  selected={selectedFile}
-                  dirtyFile={dirtyFile}
-                  gitDecorations={project.gitDecorations}
-                  onToggleFolder={toggleFolder}
-                  onSelectFile={onSelectFile}
-                />
-              ))
-            )}
-          </div>
+            </TreeNoticeArea>
+          ) : (
+            <TreeList
+              rows={rows}
+              selected={selectedFile}
+              dirtyFile={dirtyFile}
+              gitDecorations={project.gitDecorations}
+              onToggleFolder={toggleFolder}
+              onSelectFile={onSelectFile}
+            />
+          )}
         </>
       )}
     </aside>
+  );
+}
+
+// Der Platz im Panel, den sonst die Liste einnimmt — für die drei Fälle, in
+// denen es keine gibt (Lesefehler, leeres Projekt, Suche ohne Treffer).
+// Scrollt, weil ein Rechtefehler aus Rust mit langen Pfaden auch mal höher
+// baut als das Panel.
+function TreeNoticeArea({ children }: { children: ReactNode }) {
+  return <div className="min-h-0 flex-1 overflow-y-auto pb-2">{children}</div>;
+}
+
+// Die virtualisierte Baumliste: sie besitzt das Sichtfenster (ihren eigenen
+// Scroll-Container), rechnet daraus den gemounteten Ausschnitt aus und trägt
+// deshalb auch die Pfeiltasten-Navigation, die über dessen Grenze hinausführt.
+//
+// Eigene Komponente und nicht Teil von `ExplorerPanel`: der React Compiler
+// kann um `useVirtualizer` herum nichts memoisieren (die API gibt Funktionen
+// zurück) und lässt deshalb die ganze Komponente aus, in der sie steht. Steht
+// sie hier, ist das genau diese Liste — die ohnehin bei jedem Scrollschritt
+// neu rendert — statt zusätzlich der Kopfzeile mit ihren sechs Knöpfen.
+function TreeList({
+  rows,
+  selected,
+  dirtyFile,
+  gitDecorations,
+  onToggleFolder,
+  onSelectFile,
+}: {
+  rows: readonly FlatRow[];
+  selected: string;
+  dirtyFile: string | null;
+  gitDecorations: GitDecorations;
+  onToggleFolder: (path: string) => void;
+  onSelectFile: (path: string) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Der React Compiler überspringt diese Komponente — um eine API herum, die
+  // Funktionen zurückgibt, kann er nicht memoisieren, ohne stehengebliebene
+  // Oberfläche zu riskieren. Das ist hinnehmbar und zugleich der Grund, warum
+  // die Liste überhaupt eine eigene Komponente ist (s. o.): sie
+  // rendert beim Scrollen ohnehin neu, und was daran hängt, sind die zwei bis
+  // drei Dutzend gemounteten Zeilen — nicht mehr der ganze Baum.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: ROW_OVERSCAN,
+    // Der Baum wird bei jedem Filter- und Klappschritt neu ausgerollt; ohne
+    // einen vom Index unabhängigen Schlüssel behielte der Virtualizer Messwerte
+    // für „Zeile 7", die dann eine ganz andere Datei meint.
+    getItemKey: (index) => rows[index]?.path ?? index,
+  });
+  const items = virtualizer.getVirtualItems();
+
+  // Die Zeile, die den Fokus bekommen soll, sobald sie gemountet ist — s.
+  // `moveRowFocus`. `null` heißt: kein offener Wunsch.
+  const [pendingFocusRow, setPendingFocusRow] = useState<number | null>(null);
+
+  // Pfeiltasten in der Baumliste. Sie sind erst mit der Virtualisierung nötig
+  // geworden: vorher stand jede Zeile als eigener Tabstopp im Dokument, ein
+  // langer Baum war also (mühsam, aber lückenlos) durchtabbar. Gemountet ist
+  // jetzt nur noch das Sichtfenster, und damit endete der Tab-Weg schlicht an
+  // dessen Rand. Auf/Ab holt die Nachbarzeile zuerst ins Sichtfenster und setzt
+  // den Fokus dann dorthin — die Tastatur erreicht damit wieder jede Zeile,
+  // unabhängig davon, was gerade im DOM steht.
+  //
+  // Bewusst NUR Auf/Ab und bewusst OHNE Roving-Tabindex: alles Weitere (ein
+  // einzelner Tabstopp für die ganze Liste, Links/Rechts zum Auf- und
+  // Zuklappen, role="tree") wäre der Umbau des Bedienmodells und nicht mehr
+  // das Ausgleichen dessen, was die Virtualisierung weggenommen hat.
+  const moveRowFocus = (
+    index: number,
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ) => {
+    const step =
+      event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    const target = index + step;
+    // An den Enden bleibt der Fokus stehen, statt aus der Liste zu fallen.
+    if (target < 0 || target >= rows.length) return;
+    // Ohne das scrollte der Container zusätzlich von sich aus — die Zeile wäre
+    // fokussiert und der Blick trotzdem woanders.
+    event.preventDefault();
+    virtualizer.scrollToIndex(target);
+    setPendingFocusRow(target);
+  };
+
+  // Fokussiert wird erst, wenn die Zielzeile wirklich im DOM steht, und das ist
+  // beim Sprung über die Fenstergrenze ein Render später der Fall: der
+  // Virtualizer erfährt seine neue Position über das Scroll-Ereignis. Deshalb
+  // hängt der Effekt außer am Wunsch selbst am gemounteten Ausschnitt — ändert
+  // der sich, versucht er es erneut, und der Wunsch wird erst gelöscht, wenn er
+  // erfüllt ist.
+  useEffect(() => {
+    if (pendingFocusRow === null) return;
+    const row = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-row-index="${String(pendingFocusRow)}"]`,
+    );
+    if (!row) return;
+    row.focus();
+    setPendingFocusRow(null);
+  }, [pendingFocusRow, items]);
+
+  return (
+    // Der Scroll-Container IST das Sichtfenster, an dem der Virtualizer misst —
+    // deshalb liegt der ref genau auf dem Element, das `overflow-y-auto` trägt.
+    // `data-virtual-viewport` ist die Marke, an der src/test/setup.ts ihm eine
+    // Höhe unterschiebt: jsdom rechnet kein Layout, und ein 0px hohes
+    // Sichtfenster enthält keine einzige sichtbare Zeile.
+    <div
+      ref={scrollRef}
+      data-virtual-viewport
+      className="min-h-0 flex-1 overflow-y-auto pb-2"
+    >
+      {/* Der Platzhalter trägt die Höhe ALLER Zeilen, nicht nur der
+          gemounteten: daran hängt die Bildlaufleiste, und die soll die wahre
+          Länge des Baums zeigen. Die Zeilen liegen absolut darin — deshalb
+          `relative`. */}
+      <div
+        style={{ height: virtualizer.getTotalSize() }}
+        className="relative w-full"
+      >
+        {items.map((item) => {
+          const row = rows[item.index];
+          if (row === undefined) return null;
+          return (
+            <TreeRow
+              key={row.path}
+              row={row}
+              index={item.index}
+              offset={item.start}
+              selected={selected}
+              dirtyFile={dirtyFile}
+              gitDecorations={gitDecorations}
+              onToggleFolder={onToggleFolder}
+              onSelectFile={onSelectFile}
+              onKeyDown={moveRowFocus}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -397,7 +580,10 @@ function NewEntryRow({
   };
 
   return (
-    <div>
+    // `shrink-0` seit die Zeile über dem Baumbereich und nicht mehr in ihm
+    // steht: als Geschwister des Bereichs, der den ganzen Rest füllt, würde
+    // sie sonst zusammengedrückt, sobald das Panel niedrig wird.
+    <div className="shrink-0">
       <div
         style={{ paddingLeft: 10 }}
         className="flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-(length:--pc-chrome-fontSize)"
@@ -598,10 +784,78 @@ function NewFolderIcon() {
   );
 }
 
+// Zeilenhöhe in Pixeln. Sie ist die Voraussetzung dafür, dass sich das
+// Sichtfenster ohne Messung ausrechnen lässt, und muss deshalb mit
+// --pc-list-rowHeight (theme.css: 1.375rem = 22px) übereinstimmen — die Zeilen
+// selbst tragen weiter das Token, nicht diese Zahl. Wird das Token je
+// verstellt, gehört diese Konstante mitverstellt; ein Auseinanderlaufen
+// verschiebt die Zeilen gegen ihre berechneten Positionen.
+//
+// Fest und nicht gemessen ist hier richtig: der App-Zoom läuft über Tauris
+// nativen Webview-Zoom (s. `useAppZoom`), der CSS-Pixel unangetastet lässt.
+const ROW_HEIGHT = 22;
+
+// Zeilen über dem Sichtfenster hinaus, oben wie unten. Bei 22px Zeilenhöhe
+// sind das gut zwei Zentimeter Vorrat in jede Richtung — genug, dass schnelles
+// Scrollen keine leere Fläche zeigt, und immer noch nichts gegen 5000 Zeilen.
+const ROW_OVERSCAN = 10;
+
+/** Eine ausgerollte Baumzeile: der Knoten plus alles, was sich beim
+ * Ausrollen ohnehin schon ergeben hat und die Zeile sonst neu herleiten
+ * müsste. */
+interface FlatRow {
+  node: TreeNode;
+  /** Projekt-relativer Pfad in der Konvention des ganzen Explorers (Tiefe 0:
+   * der bloße Name, darunter `${eltern}/${name}`) — dieselben Schlüssel, unter
+   * denen `collapsed`, `gitDecorations` und `selectedFile` geführt werden. */
+  path: string;
+  depth: number;
+  isFolder: boolean;
+  isOpen: boolean;
+}
+
+/** Rollt den Baum zu der Zeilenfolge aus, die gerade sichtbar ist: ein
+ * eingeklappter Ordner steht drin, seine Kinder nicht. Genau die Reihenfolge,
+ * die der frühere rekursive Aufbau im DOM erzeugt hat — sie ist jetzt nur
+ * abzählbar, damit sich ein Sichtfenster darauf beziehen kann.
+ *
+ * `forceOpen` ist der Suchfall: während gefiltert wird, muss JEDER gezeigte
+ * Ordner offen sein, sonst bliebe unsichtbar, was die Suche gerade gefunden
+ * hat. Es überstimmt `collapsed`, ohne es anzufassen — der handgeklappte
+ * Zustand kommt beim Schließen der Suche unverändert zurück. */
+function flattenTree(
+  nodes: readonly TreeNode[],
+  collapsed: ReadonlySet<string>,
+  forceOpen: boolean,
+): FlatRow[] {
+  const rows: FlatRow[] = [];
+
+  const walk = (
+    level: readonly TreeNode[],
+    parentPath: string,
+    depth: number,
+  ) => {
+    for (const node of level) {
+      const path = parentPath === "" ? node.name : `${parentPath}/${node.name}`;
+      const isFolder = node.children !== undefined;
+      const isOpen = isFolder && (forceOpen || !collapsed.has(path));
+      rows.push({ node, path, depth, isFolder, isOpen });
+      if (isOpen && node.children) walk(node.children, path, depth + 1);
+    }
+  };
+
+  walk(nodes, "", 0);
+  return rows;
+}
+
 // Sammelt JEDEN Ordnerpfad des Baums in genau der Pfad-Konvention, die
-// `TreeRow` beim Rendern erzeugt (Tiefe 0: der bloße Name, darunter
+// `flattenTree` beim Ausrollen erzeugt (Tiefe 0: der bloße Name, darunter
 // `${eltern}/${name}`) — sonst träfe „Alle Ordner einklappen" Pfade, die es
 // im `collapsed`-Set gar nicht gibt.
+//
+// Bewusst ein eigener Gang über den UNGEFILTERTEN `project.tree` statt über
+// die ausgerollten Zeilen: einzuklappen ist auch, was gerade gar nicht
+// sichtbar ist.
 function collectFolderPaths(
   nodes: readonly TreeNode[],
   parentPath: string,
@@ -819,42 +1073,45 @@ function WarningIcon() {
 }
 
 interface TreeRowProps {
-  node: TreeNode;
-  path: string;
-  depth: number;
-  collapsed: ReadonlySet<string>;
-  /** Während gefiltert wird, muss JEDER gezeigte Ordner offen sein — sonst
-   * bliebe genau das unsichtbar, was die Suche herausgefiltert hat. Überstimmt
-   * `collapsed`, ohne es anzufassen: der handgeklappte Zustand kommt beim
-   * Schließen der Suche unverändert zurück. */
-  forceOpen: boolean;
+  row: FlatRow;
+  /** Platz der Zeile in der ausgerollten Liste. Steht als `data-row-index` in
+   * der Zeile, weil der Pfeiltasten-Fokus sie darüber wiederfindet, sobald sie
+   * gemountet ist (s. `moveRowFocus`). */
+  index: number;
+  /** Abstand der Zeilenoberkante vom Listenanfang in Pixeln — die Zeilen
+   * liegen absolut übereinander, nicht im Fluss. */
+  offset: number;
   selected: string;
   /** Siehe `ExplorerPanel` — hier nur durchgereicht und pro Zeile verglichen. */
   dirtyFile: string | null;
   /** Fertig aggregierte Git-Deko pro Baumpfad — Ordner tragen hier schon den
    * bedeutendsten Status ihres Unterbaums (`gitDecorationsFromStatuses`), diese
    * Zeile schlägt also nur noch nach. Die Schlüssel sind exakt die Pfade, die
-   * `TreeRow` selbst baut (Tiefe 0: der bloße Name, darunter
-   * `${eltern}/${name}`), deshalb ohne jede Umrechnung. */
+   * `flattenTree` baut (Tiefe 0: der bloße Name, darunter `${eltern}/${name}`),
+   * deshalb ohne jede Umrechnung. */
   gitDecorations: GitDecorations;
   onToggleFolder: (path: string) => void;
   onSelectFile: (path: string) => void;
+  onKeyDown: (
+    index: number,
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ) => void;
 }
 
+// Reine Darstellung einer einzelnen ausgerollten Zeile — seit der
+// Virtualisierung rekursiert hier nichts mehr, welche Zeilen es gibt,
+// entscheidet `flattenTree`.
 function TreeRow({
-  node,
-  path,
-  depth,
-  collapsed,
-  forceOpen,
+  row: { node, path, depth, isFolder, isOpen },
+  index,
+  offset,
   selected,
   dirtyFile,
   gitDecorations,
   onToggleFolder,
   onSelectFile,
+  onKeyDown,
 }: TreeRowProps) {
-  const isFolder = node.children !== undefined;
-  const isOpen = isFolder && (forceOpen || !collapsed.has(path));
   const isSelected = !isFolder && selected === path;
   // Nur Dateien: geöffnet und geändert werden kann im Editor genau eine, und
   // Ordner tragen hier bewusst keine hochgereichte Sammel-Aussage wie bei der
@@ -878,22 +1135,31 @@ function TreeRow({
   const decorationColor = isSelected ? undefined : decoration;
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => (isFolder ? onToggleFolder(path) : onSelectFile(path))}
-        style={{ paddingLeft: 10 + depth * 12 }}
-        // Fokusring hier INNEN (negativer Offset) statt über CHROME_FOCUS_RING:
-        // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
-        // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
-        // auch VS Codes eigene Lösung für Listenzeilen.
-        className={`relative flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
-          isSelected
-            ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
-            : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
-        }`}
-      >
-        {/* Einrückungs-Führungslinien: pro übersprungener Ebene eine Haarlinie
+    <button
+      type="button"
+      data-row-index={index}
+      onClick={() => (isFolder ? onToggleFolder(path) : onSelectFile(path))}
+      onKeyDown={(event) => onKeyDown(index, event)}
+      // Absolut statt im Fluss: die Zeile sitzt auf ihrem ausgerechneten Platz
+      // im Platzhalter voller Höhe. `translateY` und nicht `top`, weil es die
+      // Zeile beim Scrollen ohne Layout-Durchgang verschiebt. Die
+      // Einrückungs-Linien weiter unten hängen daran, dass DIESES Element
+      // absolut positioniert ist — sie beziehen sich auf die Zeile selbst.
+      style={{
+        paddingLeft: 10 + depth * 12,
+        transform: `translateY(${String(offset)}px)`,
+      }}
+      // Fokusring hier INNEN (negativer Offset) statt über CHROME_FOCUS_RING:
+      // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
+      // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
+      // auch VS Codes eigene Lösung für Listenzeilen.
+      className={`absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
+        isSelected
+          ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
+          : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
+      }`}
+    >
+      {/* Einrückungs-Führungslinien: pro übersprungener Ebene eine Haarlinie
             über die volle Zeilenhöhe. Weil die Zeilen lückenlos aufeinander
             folgen, ergeben die Segmente eine durchgehende Linie über den ganzen
             ausgeklappten Teilbaum — dieselbe Bauweise wie in VS Code, und sie
@@ -909,59 +1175,38 @@ function TreeRow({
             hält fest, dass Letzterer im Light-Theme fast verschwindet, sobald
             unter ihm nicht die erwartete Nachbarfläche liegt. Genau dieser Fall
             ist hier — die Linie steht auf dem Panelgrund selbst. */}
-        {Array.from({ length: depth }, (_, level) => (
-          <span
-            key={level}
-            aria-hidden="true"
-            style={{ left: 15 + level * 12 }}
-            className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
-          />
-        ))}
-        {isFolder ? (
-          <Chevron open={isOpen} />
-        ) : (
-          <span className="w-2.5 shrink-0" />
-        )}
-        {isFolder ? (
-          <FolderIcon open={isOpen} />
-        ) : (
-          <FileIcon kind={node.kind} />
-        )}
+      {Array.from({ length: depth }, (_, level) => (
         <span
-          className={
-            decorationColor === undefined
-              ? "truncate"
-              : `truncate ${GIT_TEXT_COLOR[decorationColor]}`
-          }
-        >
-          {node.name}
-        </span>
-        {isDirty && <DirtyMark />}
-        {decoration !== undefined && (
-          <GitDecorationMark
-            status={decoration}
-            isFolder={isFolder}
-            colored={decorationColor !== undefined}
-          />
-        )}
-      </button>
-      {isOpen &&
-        node.children?.map((child) => (
-          <TreeRow
-            key={child.name}
-            node={child}
-            path={`${path}/${child.name}`}
-            depth={depth + 1}
-            collapsed={collapsed}
-            forceOpen={forceOpen}
-            selected={selected}
-            dirtyFile={dirtyFile}
-            gitDecorations={gitDecorations}
-            onToggleFolder={onToggleFolder}
-            onSelectFile={onSelectFile}
-          />
-        ))}
-    </>
+          key={level}
+          aria-hidden="true"
+          style={{ left: 15 + level * 12 }}
+          className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
+        />
+      ))}
+      {isFolder ? (
+        <Chevron open={isOpen} />
+      ) : (
+        <span className="w-2.5 shrink-0" />
+      )}
+      {isFolder ? <FolderIcon open={isOpen} /> : <FileIcon kind={node.kind} />}
+      <span
+        className={
+          decorationColor === undefined
+            ? "truncate"
+            : `truncate ${GIT_TEXT_COLOR[decorationColor]}`
+        }
+      >
+        {node.name}
+      </span>
+      {isDirty && <DirtyMark />}
+      {decoration !== undefined && (
+        <GitDecorationMark
+          status={decoration}
+          isFolder={isFolder}
+          colored={decorationColor !== undefined}
+        />
+      )}
+    </button>
   );
 }
 

@@ -40,7 +40,11 @@
      kein aufgebohrtes Large: 16px ist die Überschrift INNERHALB der Arbeits-
      fläche, das hier steht unter dem 72px-Emblem und ist dessen Beschriftung. */
   --pc-chrome-fontSizeDisplay: 1.375rem;
-  --pc-list-rowHeight: 1.375rem; /* 22px — Explorer-Baumzeile */
+  /* 22px — Explorer-Baumzeile. Wer diesen Wert ändert, muss ROW_HEIGHT in
+     components/ExplorerPanel.tsx mitziehen: die Baumliste ist virtualisiert und
+     rechnet die Position jeder Zeile aus dieser Zahl statt sie zu messen —
+     laufen die beiden auseinander, sitzt jede Zeile neben ihrem Platz. */
+  --pc-list-rowHeight: 1.375rem;
   --pc-paneControl-size: 1.125rem; /* 18px — Pane-Header-Button-Klickfläche */
   --pc-paneControl-radius: 0.25rem; /* 4px */
 

@@ -81,6 +81,55 @@ vi.mock("@xterm/addon-fit", () => ({
   },
 }));
 
+// Der WebGL-Renderer gehört zu derselben gemockten Außengrenze wie xterm
+// selbst — in jsdom gibt es keinen GL-Kontext, und mit der Terminal-Attrappe
+// hier gäbe es auch keinen Kern, an den er sich hängen könnte. Ohne diese
+// Attrappe liefe schlicht JEDER Test dieser Datei über den Fallback-Pfad in
+// `usePtyTerminal.ts`, und die beiden Fälle wären nicht mehr auseinander-
+// zuhalten. Die Sonde pro Instanz macht genau das prüfbar: geladen (unten
+// „Terminal-Renderer") vs. fehlgeschlagen (`webgl.failOnActivate`).
+interface WebglAddonProbe {
+  activated: boolean;
+  disposed: boolean;
+  /** Der über `onContextLoss` hinterlegte Handler — mit ihm lässt sich der
+   * Kontextverlust auslösen, ohne echtes WebGL. */
+  contextLoss: (() => void) | null;
+}
+
+const webgl = vi.hoisted(() => ({
+  addons: [] as WebglAddonProbe[],
+  /** Simuliert „kein WebGL2 verfügbar": das echte Addon wirft in genau diesem
+   * Fall aus `activate()` heraus (`WebGL2 not supported`). */
+  failOnActivate: false,
+}));
+
+vi.mock("@xterm/addon-webgl", () => ({
+  WebglAddon: class {
+    private readonly probe: WebglAddonProbe = (() => {
+      const probe: WebglAddonProbe = {
+        activated: false,
+        disposed: false,
+        contextLoss: null,
+      };
+      webgl.addons.push(probe);
+      return probe;
+    })();
+    // Feld statt Methode: `onContextLoss` ist im echten Addon ein IEvent,
+    // also eine aufrufbare Eigenschaft.
+    readonly onContextLoss = (handler: () => void): { dispose: () => void } => {
+      this.probe.contextLoss = handler;
+      return { dispose: () => undefined };
+    };
+    activate(): void {
+      if (webgl.failOnActivate) throw new Error("WebGL2 not supported null");
+      this.probe.activated = true;
+    }
+    dispose(): void {
+      this.probe.disposed = true;
+    }
+  },
+}));
+
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 120;
@@ -195,6 +244,8 @@ const CONFLICT_ERROR = () =>
 // umgebenden `describe`.
 beforeEach(() => {
   xterm.instances.length = 0;
+  webgl.addons.length = 0;
+  webgl.failOnActivate = false;
 });
 
 describe("App", () => {
@@ -1754,5 +1805,81 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         ?.state;
       expect(state?.template).toBe("split");
     });
+  });
+});
+
+// Der beschleunigte Renderer. Geprüft wird nicht, DASS WebGL zeichnet (dafür
+// gibt es unter jsdom keinen Kontext), sondern dass die beiden Pfade in
+// `usePtyTerminal.ts` überhaupt noch unterscheidbar sind: das Addon wird pro
+// Pane geladen — und wenn es das nicht kann, bleibt die Pane trotzdem eine
+// vollwertige Pane. Ohne den Erfolgsfall hier würde ein stillschweigend
+// dauerhaft fallendes Addon von keinem einzigen Test dieser Datei bemerkt.
+describe("Terminal-Renderer (WebGL)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Leerer, aber ERFOLGREICHER Baum-Read (wie oben schon bei den
+    // Explorer-Tests): der Default-Mock liefert `undefined` und lässt den
+    // Lade-Pfad in seine eigene Fehlerbehandlung samt console.error laufen —
+    // in genau den Tests, die hier console.warn beobachten wollen, wäre das
+    // vermeidbares Rauschen.
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_tree" || cmd === "explorer_git_status"
+        ? Promise.resolve([])
+        : Promise.resolve(),
+    );
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+  });
+
+  it("lädt für jede Pane genau ein WebGL-Addon und hängt sich an dessen Kontextverlust", async () => {
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(webgl.addons).toHaveLength(1);
+    expect(webgl.addons[0]?.activated).toBe(true);
+    // Die Registrierung ist der eigentliche Prüfgegenstand: ohne sie stünde
+    // die Pane nach einem GPU-Reset schwarz da, statt auf das DOM zurück-
+    // zufallen.
+    expect(webgl.addons[0]?.contextLoss).toBeTypeOf("function");
+  });
+
+  it("verwirft den WebGL-Renderer bei Kontextverlust, statt schwarz stehen zu bleiben", async () => {
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    webgl.addons[0]?.contextLoss?.();
+
+    // dispose() des Addons ist genau der dokumentierte Weg zurück zum
+    // Standard-Renderer — das Terminal selbst bleibt unangetastet.
+    expect(webgl.addons[0]?.disposed).toBe(true);
+    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+  });
+
+  it("startet die Pane auch ohne verfügbaren WebGL-Kontext vollständig", async () => {
+    webgl.failOnActivate = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    render(<App />);
+
+    clickPicker();
+
+    // Der Fallback ist erst dann einer, wenn die Pane danach wirklich alles
+    // kann: Ausgabefläche steht, PTY läuft.
+    expect(
+      await screen.findByLabelText("Terminal storefront"),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/storefront" }),
+      );
+    });
+    // Lautlos wäre falsch: „es ruckelt" ließe sich später sonst nicht von
+    // einem echten Fehler unterscheiden.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("WebGL-Renderer nicht verfügbar");
+    warn.mockRestore();
   });
 });

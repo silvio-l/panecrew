@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
 import { matchesShortcut, SHORTCUTS, zoomAction } from "../shortcuts/registry";
@@ -77,6 +78,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
+    loadAcceleratedRenderer(terminal);
     // Erst messen, dann spawnen: pty_spawn nimmt cols/rows entgegen, und die
     // Shell druckt ihren ersten Prompt bereits in dieser Breite.
     fitAddon.fit();
@@ -399,6 +401,43 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     hasSelection,
     insertDroppedPaths,
   };
+}
+
+// Hardware-beschleunigtes Rendern statt xterms DOM-Default. Der DOM-Renderer
+// baut jede Zelle als eigenen Knoten auf; bei bis zu vier Panes, die
+// gleichzeitig Ausgabe schreiben (ein Build, ein `pnpm install`, ein Token für
+// Token streamender CLI-Agent), ist genau das der Grund, aus dem VS Code sein
+// integriertes Terminal auf @xterm/addon-webgl umgestellt hat.
+//
+// Der Aufruf gehört zwingend HINTER terminal.open(): `WebglAddon.activate()`
+// liest `terminal.element` und verschiebt sich, solange das fehlt, selbst per
+// `onWillOpen` hinter das spätere open() (im ausgelieferten Addon-Code
+// nachgelesen, nicht angenommen). Ein WebGL-Fehler flöge dann aus xterms
+// Emitter heraus — am try unten vorbei, also ungefangen.
+//
+// Kein eigenes dispose im Effekt-Cleanup: `terminal.dispose()` räumt seine
+// geladenen Addons über den AddonManager mit ab, und die Disposable, die das
+// Addon zum Zurücksetzen auf den Standard-Renderer registriert, prüft vorher
+// selbst, ob der Terminal-Kern schon entsorgt ist (ebenfalls im Addon-Code
+// nachgelesen). Ein zusätzlicher Aufruf hier wäre doppelt, nicht sicherer.
+function loadAcceleratedRenderer(terminal: Terminal): void {
+  try {
+    const webgl = new WebglAddon();
+    // Verliert die Grafikkarte den Kontext (GPU-Reset, Treiberwechsel,
+    // aufgewachter Rechner), zeichnet das Addon nichts mehr. Sein eigenes
+    // dispose() setzt den Standard-Renderer wieder ein: die Pane wird
+    // langsamer, bleibt aber sichtbar und bedienbar, statt schwarz zu stehen.
+    webgl.onContextLoss(() => {
+      webgl.dispose();
+    });
+    terminal.loadAddon(webgl);
+  } catch (error) {
+    // Kein WebGL2 (abgeschaltete Beschleunigung, alter Treiber, Headless):
+    // xterm rendert dann weiter über das DOM — langsamer, aber vollständig
+    // funktionsfähig. Gemeldet wird es trotzdem, sonst ist ein späteres „es
+    // ruckelt" nicht mehr von einem echten Fehler zu unterscheiden.
+    console.warn("PaneCrew: WebGL-Renderer nicht verfügbar", error);
+  }
 }
 
 // Kopieren über navigator.clipboard.writeText (kaum eingeschränkt). Das Lesen
