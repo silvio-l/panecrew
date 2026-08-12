@@ -8,7 +8,7 @@ use crate::shell_integration;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::ipc::Channel;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
 
 #[derive(Default)]
@@ -26,7 +26,7 @@ pub fn pty_spawn(
     cwd: String,
     cols: u16,
     rows: u16,
-    on_output: Channel<Vec<u8>>,
+    on_output: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let shell = pty_manager::default_shell();
     let integration = integration_dir
@@ -47,7 +47,7 @@ pub fn pty_spawn(
             rows,
         },
         move |bytes| {
-            let _ = on_output.send(bytes.to_vec());
+            let _ = on_output.send(InvokeResponseBody::Raw(bytes.to_vec()));
         },
     )
     .map_err(|e| e.to_string())

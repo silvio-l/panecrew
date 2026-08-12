@@ -13,7 +13,7 @@
  * jedem Aufruf zurück und ersetzt den angefangenen Codepoint durch U+FFFD.
  * Genau diese Ausgabe erzeugen die TUIs, für die PaneCrew gebaut ist.
  */
-export function createChunkDecoder(): (bytes: number[]) => string {
+export function createChunkDecoder(): (bytes: ArrayBuffer | number[]) => string {
   const decoder = new TextDecoder("utf-8");
   return (bytes) => decoder.decode(new Uint8Array(bytes), { stream: true });
 }

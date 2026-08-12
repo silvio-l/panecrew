@@ -20,7 +20,7 @@ import {
 
 // Bindet ein echtes xterm.js-Terminal an eine PTY-Session im Rust-Backend.
 // Der IPC-Vertrag (pty_spawn/pty_write/pty_resize/pty_kill, Output als
-// Channel<number[]>) ist eingefroren, siehe
+// Channel<ArrayBuffer> über Tauris Raw-Byte-Transport) ist eingefroren, siehe
 // .scratch/panecrew-v0.1/issues/02-ipc-contract.md — hier wird exakt dagegen
 // gebaut, nichts erfunden.
 //
@@ -33,6 +33,21 @@ import {
 
 /** Bytes, die wir selbst erzeugen (Shift+Enter). */
 const LINE_FEED = 0x0a;
+
+/**
+ * Obergrenze für ungeflushten `pendingOutput`, in UTF-16-Codeeinheiten. Ohne
+ * sie wächst der String bei einer ausgabestarken Hintergrundaktion (Build,
+ * `pnpm install`) in einer minimierten/verdeckten Pane unbegrenzt weiter, bis
+ * `requestAnimationFrame` wieder feuert — was in genau diesem Zustand gar
+ * nicht passiert.
+ */
+const MAX_PENDING_OUTPUT_LENGTH = 1_000_000;
+/**
+ * setTimeout-Fallback neben requestAnimationFrame: rAF pausiert in einem
+ * verdeckten/minimierten Fenster vollständig, setTimeout feuert (ggf.
+ * gedrosselt) weiter und erzwingt so trotzdem einen Flush.
+ */
+const FLUSH_FALLBACK_MS = 16;
 
 export interface PtyTerminal {
   /** Container, in den xterm.js sein DOM hängt. */
@@ -135,28 +150,54 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
 
     // Genau EIN Decoder pro Pane (Begründung in ptyIo.ts).
     const decodeChunk = createChunkDecoder();
-    // Rust liest die PTY in festen 4096-Byte-Häppchen und schickt jeden davon
-    // sofort als eigene Channel-Nachricht (pty_manager.rs) — ohne Bündelung
-    // hier riefe ein output-lastiger Befehl (verbose Build, `pnpm install`)
-    // `terminal.write()` hunderte Male pro Sekunde auf, jedes davon ein
-    // eigener IPC-Deserialisierungs- plus Render-Durchlauf. decodeChunk muss
-    // trotzdem in Ankunftsreihenfolge pro Nachricht laufen (er trägt den
-    // UTF-8-Stream-Zustand über Chunk-Grenzen hinweg) — gebündelt wird nur
-    // das bereits dekodierte Textstück, ein Frame lang gesammelt und dann in
-    // einem einzigen write() geschrieben.
+    // Rust bündelt PTY-Reads bereits selbst (größen-/zeitgebunden, siehe
+    // pty_manager.rs) — ohne Bündelung hier riefe ein output-lastiger Befehl
+    // (verbose Build, `pnpm install`) trotzdem `terminal.write()` oft pro
+    // Sekunde auf. decodeChunk muss in Ankunftsreihenfolge pro Nachricht
+    // laufen (er trägt den UTF-8-Stream-Zustand über Chunk-Grenzen hinweg) —
+    // gebündelt wird nur das bereits dekodierte Textstück, ein Frame lang
+    // gesammelt und dann in einem einzigen write() geschrieben.
     let pendingOutput = "";
-    let flushHandle = 0;
+    let flushRaf = 0;
+    let flushTimeout = 0;
+    const cancelScheduledFlush = () => {
+      if (flushRaf) {
+        cancelAnimationFrame(flushRaf);
+        flushRaf = 0;
+      }
+      if (flushTimeout) {
+        clearTimeout(flushTimeout);
+        flushTimeout = 0;
+      }
+    };
     const flushOutput = () => {
-      flushHandle = 0;
+      cancelScheduledFlush();
       if (disposed || !pendingOutput) return;
       terminal.write(pendingOutput);
       pendingOutput = "";
     };
-    const onOutput = new Channel<number[]>();
+    // Zwei parallele Fallbacks statt einem: requestAnimationFrame feuert
+    // nicht mehr, sobald das Fenster verdeckt/minimiert ist — genau der Fall
+    // (Build/`pnpm install` im Hintergrund), in dem die Obergrenze unten
+    // sonst gebraucht würde, aber nie zum Zug käme. setTimeout feuert (ggf.
+    // gedrosselt) trotzdem weiter.
+    const scheduleFlush = () => {
+      if (flushRaf || flushTimeout) return;
+      flushRaf = requestAnimationFrame(flushOutput);
+      flushTimeout = window.setTimeout(flushOutput, FLUSH_FALLBACK_MS);
+    };
+    const onOutput = new Channel<ArrayBuffer>();
     onOutput.onmessage = (bytes) => {
       if (disposed) return;
       pendingOutput += decodeChunk(bytes);
-      flushHandle ||= requestAnimationFrame(flushOutput);
+      // Obergrenze statt unbegrenztem Wachstum: erzwingt einen sofortigen
+      // Flush, falls beide Scheduler oben (verdecktes Fenster + noch nicht
+      // abgelaufener setTimeout) gerade nicht greifen.
+      if (pendingOutput.length >= MAX_PENDING_OUTPUT_LENGTH) {
+        flushOutput();
+        return;
+      }
+      scheduleFlush();
     };
 
     queueMicrotask(() => {
@@ -358,7 +399,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     return () => {
       cancelled = true;
       disposed = true;
-      if (flushHandle) cancelAnimationFrame(flushHandle);
+      cancelScheduledFlush();
       insertRef.current = null;
       resizeObserver.disconnect();
       directories.dispose();

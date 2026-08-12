@@ -1,8 +1,18 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
+
+/// Batch bound for coalescing PTY reads into IPC messages: whichever is hit
+/// first flushes. A token-streaming CLI agent produces many small reads —
+/// without this, each one became its own Tauri channel message (full IPC
+/// overhead per read). 4096 mirrors the reader's own buffer size; 8ms keeps
+/// latency for a human typing/watching output imperceptible.
+const OUTPUT_BATCH_MAX_BYTES: usize = 4096;
+const OUTPUT_BATCH_MAX_DELAY: Duration = Duration::from_millis(8);
 
 pub struct SpawnOptions {
     pub cmd: String,
@@ -74,6 +84,20 @@ where
     let mut reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
 
+    // Two threads, not one: `reader.read` is a blocking OS call with no
+    // timeout, so a single thread can't also watch a clock to enforce the
+    // time half of the batch bound. The reader thread stays a tight
+    // read-and-forward loop; the batching below owns the size/time tradeoff
+    // via `recv_timeout` on the channel between them.
+    //
+    // Bounded, not `mpsc::channel`: an unbounded queue would let the reader
+    // drain the PTY as fast as the OS delivers it regardless of whether the
+    // batching thread (and IPC beyond it) keeps up, which trades away the
+    // backpressure a slow consumer used to apply — the writing process would
+    // no longer throttle against a full PTY buffer, it would just pile up
+    // here instead. A small bound makes `tx.send` block once the batching
+    // side falls behind, restoring that.
+    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(32);
     thread::spawn(move || {
         // Raw bytes only: a chunk boundary can land mid-UTF-8-codepoint or
         // mid-ANSI-escape, so decoding happens in xterm.js on the frontend,
@@ -82,8 +106,48 @@ where
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => on_output(&buf[..n]),
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
                 Err(_) => break,
+            }
+        }
+    });
+
+    thread::spawn(move || {
+        let mut pending: Vec<u8> = Vec::with_capacity(OUTPUT_BATCH_MAX_BYTES);
+        let mut deadline: Option<Instant> = None;
+        loop {
+            let timeout = deadline.map_or(Duration::from_secs(3600), |d| {
+                d.saturating_duration_since(Instant::now())
+            });
+            match rx.recv_timeout(timeout) {
+                Ok(chunk) => {
+                    if pending.is_empty() {
+                        deadline = Some(Instant::now() + OUTPUT_BATCH_MAX_DELAY);
+                    }
+                    pending.extend_from_slice(&chunk);
+                    if pending.len() >= OUTPUT_BATCH_MAX_BYTES {
+                        on_output(&pending);
+                        pending.clear();
+                        deadline = None;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if !pending.is_empty() {
+                        on_output(&pending);
+                        pending.clear();
+                    }
+                    deadline = None;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if !pending.is_empty() {
+                        on_output(&pending);
+                    }
+                    break;
+                }
             }
         }
     });
@@ -269,6 +333,58 @@ mod tests {
         assert!(
             saw_new_size,
             "expected `stty size` to report the resized dimensions"
+        );
+    }
+
+    // Discriminating property: many writes spaced further apart than a
+    // single OS read cycle but closer than `OUTPUT_BATCH_MAX_DELAY` must
+    // still land in far fewer `on_output` calls than writes — proving the
+    // batching thread coalesces by time, not just by accident. `cat` echoes
+    // each line back almost immediately, and canonical-mode PTYs also echo
+    // the raw input itself, so 30 writes 2ms apart produce ~60 echoed lines
+    // in total. Verified red against the pre-fix single-thread reader (56
+    // `on_output` calls for those ~60 lines, essentially one per line) before
+    // writing the assertion below.
+    #[test]
+    fn spawn_batches_closely_spaced_reads_into_fewer_ipc_sends() {
+        let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let call_count_clone = call_count.clone();
+        let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let output_clone = output.clone();
+
+        let handle = spawn(
+            SpawnOptions {
+                cmd: "cat".into(),
+                args: vec![],
+                cwd: std::env::temp_dir(),
+                env: vec![],
+                cols: 80,
+                rows: 24,
+            },
+            move |bytes| {
+                call_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                output_clone.lock().unwrap().extend_from_slice(bytes);
+            },
+        )
+        .expect("spawn should succeed");
+
+        const WRITE_COUNT: usize = 30;
+        for i in 0..WRITE_COUNT {
+            handle
+                .write(format!("{i}\n").as_bytes())
+                .expect("write should succeed");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        let saw_last_echo = saw(&output, "29");
+
+        handle.kill().expect("kill should succeed");
+        assert!(saw_last_echo, "expected all writes to be echoed back");
+        let calls = call_count.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            calls < WRITE_COUNT,
+            "expected batching to coalesce ~{} echoed lines from {WRITE_COUNT} writes into far fewer than {WRITE_COUNT} on_output calls, got {calls}",
+            WRITE_COUNT * 2
         );
     }
 
