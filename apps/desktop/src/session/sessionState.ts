@@ -17,16 +17,25 @@ interface PersistedSlot {
 export interface SessionState {
   template: string;
   slots: (PersistedSlot | null)[];
+  /** Eingeklappte Ordner je Projektpfad (nicht je Pane/Slot) — dieselbe
+   * Schlüsselung wie der Live-Zustand: `ExplorerPanel` hängt an
+   * `project.path`, nicht an einer `paneId`, dasselbe Projekt in zwei Panes
+   * teilt sich also ohnehin einen Baum. `session_store.rs` überspringt den
+   * Schlüssel beim Schreiben, wenn die Map leer ist — hier deshalb optional,
+   * nicht als garantiert vorhandenes Feld. */
+  collapsed_folders?: Record<string, string[]>;
 }
 
-/** Baut den zu persistierenden Zustand aus dem laufenden Grid plus der
- * `paneId`-geschlüsselten Auswahl im Explorer (Ticket 06). Eine Pane ohne
+/** Baut den zu persistierenden Zustand aus dem laufenden Grid, der
+ * `paneId`-geschlüsselten Dateiauswahl im Explorer (Ticket 06) und dem
+ * projektpfad-geschlüsselten Einklapp-Zustand des Baums. Eine Pane ohne
  * offene Datei liefert `last_selected_file: null`, nicht ein fehlendes
  * Feld — auf beides antwortet `session_store.rs`s `Option<String>` gleich,
  * `null` ist hier einfach das explizitere JSON. */
 export function buildSessionState(
   grid: GridState,
   selectedFile: Record<string, string>,
+  collapsedFolders: Record<string, string[]>,
 ): SessionState {
   return {
     template: grid.template,
@@ -38,6 +47,7 @@ export function buildSessionState(
             last_selected_file: selectedFile[slot.paneId] ?? null,
           },
     ),
+    collapsed_folders: collapsedFolders,
   };
 }
 

@@ -9,6 +9,7 @@
 //! slot silently (CLAUDE.md, ticket 06) rather than surfacing an error or
 //! failing the whole restore.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -30,6 +31,16 @@ pub struct PersistedSlot {
 pub struct SessionState {
     pub template: String,
     pub slots: Vec<Option<PersistedSlot>>,
+    /// Which folders are collapsed in the explorer tree, keyed by absolute
+    /// project path rather than by slot: the live explorer state is itself
+    /// bound to `project.path` (`ExplorerPanel` remounts on that key, not on
+    /// a pane/slot id — the same project open in two panes shares one live
+    /// tree). Keying this per-slot instead would silently drop one of the
+    /// two collapse states whenever that happened. Absent entry means
+    /// "nothing collapsed yet for this project" — the frontend then falls
+    /// back to its own all-collapsed default.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub collapsed_folders: HashMap<String, Vec<String>>,
 }
 
 fn session_path(dir: &Path) -> PathBuf {
@@ -50,6 +61,18 @@ pub fn read_session(dir: &Path) -> Option<SessionState> {
             }
         }
     }
+    // Prune entries for projects no longer occupying any surviving slot —
+    // otherwise a closed pane's collapse state accumulates in the file
+    // forever, growing it for no restorable benefit.
+    let live_paths: std::collections::HashSet<&str> = state
+        .slots
+        .iter()
+        .flatten()
+        .map(|slot| slot.project_path.as_str())
+        .collect();
+    state
+        .collapsed_folders
+        .retain(|project_path, _| live_paths.contains(project_path.as_str()));
     Some(state)
 }
 
@@ -158,6 +181,10 @@ mod tests {
                 slot(&project_a.to_string_lossy(), Some("src/App.tsx")),
                 slot(&project_b.to_string_lossy(), None),
             ],
+            collapsed_folders: HashMap::from([(
+                project_a.to_string_lossy().into_owned(),
+                vec!["src".to_string(), "src/core".to_string()],
+            )]),
         };
 
         write_session(&fixture.0, &state).expect("should write");
@@ -167,12 +194,37 @@ mod tests {
     }
 
     #[test]
+    fn prunes_collapsed_folder_entries_for_projects_no_longer_in_any_slot() {
+        let fixture = Fixture::new("prune-collapsed");
+        let project = fixture.0.join("kept-project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let kept_path = project.to_string_lossy().into_owned();
+        let state = SessionState {
+            template: "single".to_string(),
+            slots: vec![slot(&kept_path, None)],
+            collapsed_folders: HashMap::from([
+                (kept_path.clone(), vec!["src".to_string()]),
+                ("/no/longer/open".to_string(), vec!["old".to_string()]),
+            ]),
+        };
+        write_session(&fixture.0, &state).expect("should write");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+
+        assert_eq!(
+            read_back.collapsed_folders,
+            HashMap::from([(kept_path, vec!["src".to_string()])]),
+        );
+    }
+
+    #[test]
     fn drops_a_slot_whose_project_folder_no_longer_exists_instead_of_erroring() {
         let fixture = Fixture::new("missing-folder");
         let gone = fixture.0.join("gone-project").to_string_lossy().into_owned();
         let state = SessionState {
             template: "quad".to_string(),
             slots: vec![slot(&gone, Some("README.md")), None],
+            collapsed_folders: HashMap::new(),
         };
         write_session(&fixture.0, &state).expect("should write");
 
@@ -192,6 +244,7 @@ mod tests {
             &SessionState {
                 template: "single".to_string(),
                 slots: vec![slot(&path_string, None)],
+                collapsed_folders: HashMap::new(),
             },
         )
         .expect("first write");
@@ -201,6 +254,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
+                collapsed_folders: HashMap::new(),
             },
         )
         .expect("second write");
@@ -219,6 +273,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
+                collapsed_folders: HashMap::new(),
             },
         )
         .expect("should write");
@@ -241,6 +296,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
+                collapsed_folders: HashMap::new(),
             },
         )
         .expect("should create the directory and write");

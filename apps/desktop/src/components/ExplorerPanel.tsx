@@ -47,6 +47,8 @@ export function ExplorerPanel({
   width,
   selectedFile,
   dirtyFile,
+  initialCollapsed,
+  onCollapsedChange,
   onSelectFile,
   onCollapse,
   onRefresh,
@@ -58,6 +60,17 @@ export function ExplorerPanel({
    * trägt — projekt-relativ, also in derselben Pfad-Konvention wie
    * `selectedFile`. `null`, wenn nichts offen oder alles geschrieben ist. */
   dirtyFile: string | null;
+  /** Aus `session.json` wiederhergestellter Einklapp-Zustand für GENAU
+   * dieses Projekt (App hält die Zuordnung projektpfad-geschlüsselt) —
+   * `undefined`, wenn noch nichts gespeichert ist, dann gilt der
+   * Alles-eingeklappt-Default. Nur als Initialwert gelesen (s. `useState`
+   * unten): App reicht bei einem Projektwechsel ohnehin einen neuen `key`
+   * durch, ein späteres Ändern dieser Prop soll den Baum NICHT von außen
+   * zurücksetzen. */
+  initialCollapsed?: readonly string[];
+  /** Feuert bei jeder Änderung des Einklapp-Zustands — App spiegelt das in
+   * `collapsedFolders` und damit in den nächsten `session.json`-Schreibvorgang. */
+  onCollapsedChange: (collapsed: readonly string[]) => void;
   onSelectFile: (path: string) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
@@ -65,14 +78,22 @@ export function ExplorerPanel({
    * dass es ihn gibt. */
   onRefresh: () => void;
 }) {
-  // Startzustand: alles eingeklappt, nur die Wurzelkinder sichtbar (2026-08-12
-  // Nutzerentscheidung — vorher stand hier ein leeres Set, also ALLES
-  // aufgeklappt, was bei größeren Projekten sofort einen Bildschirm voller
-  // Zeilen ergab). Dieselbe Menge, die `collapseAll` unten erzeugt, nur als
-  // Initialwert statt als Reaktion auf einen Klick.
+  // Startzustand ohne gespeicherten Stand: alles eingeklappt, nur die
+  // Wurzelkinder sichtbar (2026-08-12 Nutzerentscheidung — vorher stand hier
+  // ein leeres Set, also ALLES aufgeklappt, was bei größeren Projekten sofort
+  // einen Bildschirm voller Zeilen ergab). Dieselbe Menge, die `collapseAll`
+  // unten erzeugt, nur als Initialwert statt als Reaktion auf einen Klick.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => new Set(collectFolderPaths(project.tree, "")),
+    () => new Set(initialCollapsed ?? collectFolderPaths(project.tree, "")),
   );
+  // Meldet jede Änderung nach oben — auch die erste, direkt nach dem Mount:
+  // ein neu geöffnetes Projekt ohne gespeicherten Stand soll seinen
+  // errechneten Alles-eingeklappt-Default sofort in `session.json` landen,
+  // nicht erst nach dem ersten manuellen Klick.
+  useEffect(() => {
+    onCollapsedChange(Array.from(collapsed));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed]);
   // Zweiter, bewusst eigener Einklapp-Zustand statt eines Eintrags in
   // `collapsed`: Der Projektknoten hat gar keine Zeile im Baum — der beginnt
   // schon bei seinen Kindern — und damit auch keinen Pfad, unter dem ihn das

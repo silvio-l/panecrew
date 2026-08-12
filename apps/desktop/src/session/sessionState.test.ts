@@ -4,11 +4,12 @@ import { buildSessionState, restoredTemplate, type SessionState } from "./sessio
 
 describe("buildSessionState", () => {
   it("baut leere Slots aus einem leeren Grid", () => {
-    const state = buildSessionState(INITIAL_GRID_STATE, {});
+    const state = buildSessionState(INITIAL_GRID_STATE, {}, {});
 
     expect(state).toEqual({
       template: "quad",
       slots: [null, null, null, null],
+      collapsed_folders: {},
     });
   });
 
@@ -20,7 +21,7 @@ describe("buildSessionState", () => {
       "pane-1",
     );
 
-    const state = buildSessionState(grid, {});
+    const state = buildSessionState(grid, {}, {});
 
     expect(state.slots[2]).toEqual({
       project_path: "/repo/storefront",
@@ -36,7 +37,7 @@ describe("buildSessionState", () => {
       "pane-1",
     );
 
-    const state = buildSessionState(grid, { "pane-1": "src/App.tsx" });
+    const state = buildSessionState(grid, { "pane-1": "src/App.tsx" }, {});
 
     expect(state.slots[0]).toEqual({
       project_path: "/repo/storefront",
@@ -45,9 +46,11 @@ describe("buildSessionState", () => {
   });
 
   it("ignoriert eine Auswahl, die zu keiner belegten Pane gehört", () => {
-    const state = buildSessionState(INITIAL_GRID_STATE, {
-      "verwaiste-pane": "irgendwas.txt",
-    });
+    const state = buildSessionState(
+      INITIAL_GRID_STATE,
+      { "verwaiste-pane": "irgendwas.txt" },
+      {},
+    );
 
     expect(state.slots).toEqual([null, null, null, null]);
   });
@@ -55,7 +58,17 @@ describe("buildSessionState", () => {
   it("spiegelt einen Template-Wechsel", () => {
     const grid = switchTemplate(INITIAL_GRID_STATE, "split");
 
-    expect(buildSessionState(grid, {}).template).toBe("split");
+    expect(buildSessionState(grid, {}, {}).template).toBe("split");
+  });
+
+  it("trägt den Einklapp-Zustand projektpfad-geschlüsselt ein", () => {
+    const state = buildSessionState(INITIAL_GRID_STATE, {}, {
+      "/repo/storefront": ["src", "src/core"],
+    });
+
+    expect(state.collapsed_folders).toEqual({
+      "/repo/storefront": ["src", "src/core"],
+    });
   });
 });
 

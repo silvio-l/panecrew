@@ -41,6 +41,7 @@ const renderPanel = (
         width={224}
         selectedFile=""
         dirtyFile={null}
+        onCollapsedChange={() => undefined}
         onSelectFile={() => undefined}
         onCollapse={() => undefined}
         onRefresh={() => undefined}

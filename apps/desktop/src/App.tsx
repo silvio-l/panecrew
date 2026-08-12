@@ -100,6 +100,13 @@ function App() {
   const project =
     focusedPath !== null ? (projectRecords[focusedPath] ?? null) : null;
   const [selectedFile, setSelectedFile] = useState<Record<string, string>>({});
+  // Eingeklappte Ordner je Projektpfad (nicht je Pane) — dieselbe
+  // Schlüsselung wie `session.json`s `collapsed_folders` und wie der
+  // Live-Zustand selbst: `ExplorerPanel` hängt an `project.path`
+  // (`key={project.path}` unten), nicht an einer `paneId`. Ein fehlender
+  // Eintrag heißt "noch nichts gespeichert" — `ExplorerPanel` fällt dann auf
+  // ihren eigenen Alles-eingeklappt-Default zurück.
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, string[]>>({});
   // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
@@ -176,6 +183,10 @@ function App() {
       const session = await loadSession();
       if (!isCancelled() && session) {
         switchTemplate(restoredTemplate(session));
+        // Projektpfad-geschlüsselt wie im Live-Zustand — anders als
+        // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
+        // gespeicherte Zustand passt unverändert auf `collapsedFolders`.
+        setCollapsedFolders(session.collapsed_folders ?? {});
         // Parallel statt sequenziell: jeder Slot schreibt über
         // `assignProject`/`setSelectedFile`s Updater-Form einen eigenen,
         // unabhängigen Teil des States, Reihenfolge der Auflösung spielt also
@@ -228,8 +239,8 @@ function App() {
   // überschreibt, bevor sie überhaupt angewendet ist.
   useEffect(() => {
     if (!hydrated) return;
-    void saveSession(buildSessionState(gridState, selectedFile));
-  }, [hydrated, gridState, selectedFile]);
+    void saveSession(buildSessionState(gridState, selectedFile, collapsedFolders));
+  }, [hydrated, gridState, selectedFile, collapsedFolders]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -430,6 +441,13 @@ function App() {
                 width={explorerWidth}
                 selectedFile={selectedFile[focusedPaneId ?? ""] ?? ""}
                 dirtyFile={dirtyFile}
+                initialCollapsed={collapsedFolders[project.path]}
+                onCollapsedChange={(paths) =>
+                  setCollapsedFolders((current) => ({
+                    ...current,
+                    [project.path]: [...paths],
+                  }))
+                }
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
                 onRefresh={refreshExplorer}
