@@ -31,16 +31,27 @@ pub struct PersistedSlot {
 pub struct SessionState {
     pub template: String,
     pub slots: Vec<Option<PersistedSlot>>,
-    /// Which folders are collapsed in the explorer tree, keyed by absolute
-    /// project path rather than by slot: the live explorer state is itself
-    /// bound to `project.path` (`ExplorerPanel` remounts on that key, not on
-    /// a pane/slot id — the same project open in two panes shares one live
-    /// tree). Keying this per-slot instead would silently drop one of the
-    /// two collapse states whenever that happened. Absent entry means
-    /// "nothing collapsed yet for this project" — the frontend then falls
-    /// back to its own all-collapsed default.
+    /// Which folders the user has *expanded* in the explorer tree, keyed by
+    /// absolute project path rather than by slot: the live explorer state is
+    /// itself bound to `project.path` (`ExplorerPanel` remounts on that key,
+    /// not on a pane/slot id — the same project open in two panes shares one
+    /// live tree). Keying this per-slot instead would silently drop one of the
+    /// two states whenever that happened. Absent entry means "nothing expanded
+    /// yet for this project" — the frontend then falls back to its own
+    /// all-collapsed default.
+    ///
+    /// Deliberately the expanded set, not the collapsed one (2026-08-12): the
+    /// frontend default became "everything collapsed" earlier the same day,
+    /// which made the collapsed set equal to *every folder in the project* —
+    /// measured at 135 KB and ~1900 paths for four open projects, rewritten in
+    /// full on every selection change. Storing the deviation from the default
+    /// instead keeps this a handful of paths. The field was renamed rather
+    /// than reinterpreted in place, because reading an existing file's old
+    /// `collapsed_folders` list as this one would silently restore "everything
+    /// expanded" — precisely the behaviour that was just removed. An old file
+    /// simply has no entry here and starts at the default.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub collapsed_folders: HashMap<String, Vec<String>>,
+    pub expanded_folders: HashMap<String, Vec<String>>,
 }
 
 fn session_path(dir: &Path) -> PathBuf {
@@ -62,8 +73,8 @@ pub fn read_session(dir: &Path) -> Option<SessionState> {
         }
     }
     // Prune entries for projects no longer occupying any surviving slot —
-    // otherwise a closed pane's collapse state accumulates in the file
-    // forever, growing it for no restorable benefit.
+    // otherwise a closed pane's expand state accumulates in the file forever,
+    // growing it for no restorable benefit.
     let live_paths: std::collections::HashSet<&str> = state
         .slots
         .iter()
@@ -71,7 +82,7 @@ pub fn read_session(dir: &Path) -> Option<SessionState> {
         .map(|slot| slot.project_path.as_str())
         .collect();
     state
-        .collapsed_folders
+        .expanded_folders
         .retain(|project_path, _| live_paths.contains(project_path.as_str()));
     Some(state)
 }
@@ -181,7 +192,7 @@ mod tests {
                 slot(&project_a.to_string_lossy(), Some("src/App.tsx")),
                 slot(&project_b.to_string_lossy(), None),
             ],
-            collapsed_folders: HashMap::from([(
+            expanded_folders: HashMap::from([(
                 project_a.to_string_lossy().into_owned(),
                 vec!["src".to_string(), "src/core".to_string()],
             )]),
@@ -194,15 +205,15 @@ mod tests {
     }
 
     #[test]
-    fn prunes_collapsed_folder_entries_for_projects_no_longer_in_any_slot() {
-        let fixture = Fixture::new("prune-collapsed");
+    fn prunes_expanded_folder_entries_for_projects_no_longer_in_any_slot() {
+        let fixture = Fixture::new("prune-expanded");
         let project = fixture.0.join("kept-project");
         std::fs::create_dir_all(&project).expect("fixture dir");
         let kept_path = project.to_string_lossy().into_owned();
         let state = SessionState {
             template: "single".to_string(),
             slots: vec![slot(&kept_path, None)],
-            collapsed_folders: HashMap::from([
+            expanded_folders: HashMap::from([
                 (kept_path.clone(), vec!["src".to_string()]),
                 ("/no/longer/open".to_string(), vec!["old".to_string()]),
             ]),
@@ -212,9 +223,38 @@ mod tests {
         let read_back = read_session(&fixture.0).expect("should read back");
 
         assert_eq!(
-            read_back.collapsed_folders,
+            read_back.expanded_folders,
             HashMap::from([(kept_path, vec!["src".to_string()])]),
         );
+    }
+
+    /// The pre-2026-08-12 field held the *collapsed* folders — the exact
+    /// inverse. Reading it into `expanded_folders` would restore "everything
+    /// expanded" for every project the user had ever opened, silently undoing
+    /// the all-collapsed default. It must be ignored outright, leaving the
+    /// project at that default, and must not fail the parse either (an
+    /// unreadable session would drop the user back at the picker).
+    #[test]
+    fn ignores_the_old_inverted_collapsed_folders_field_instead_of_reusing_it() {
+        let fixture = Fixture::new("legacy-collapsed");
+        let project = fixture.0.join("legacy-project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let project_path = project.to_string_lossy().into_owned();
+        // Written as raw JSON on purpose: the old shape no longer has a Rust
+        // type here to serialize from — that is the whole point of the rename.
+        let escaped = project_path.replace('\\', "\\\\");
+        std::fs::write(
+            session_path(&fixture.0),
+            format!(
+                r#"{{"template":"single","slots":[{{"project_path":"{escaped}"}}],"collapsed_folders":{{"{escaped}":["src","src/core"]}}}}"#
+            ),
+        )
+        .expect("fixture write");
+
+        let read_back = read_session(&fixture.0).expect("should still parse");
+
+        assert_eq!(read_back.slots, vec![slot(&project_path, None)]);
+        assert!(read_back.expanded_folders.is_empty());
     }
 
     #[test]
@@ -224,7 +264,7 @@ mod tests {
         let state = SessionState {
             template: "quad".to_string(),
             slots: vec![slot(&gone, Some("README.md")), None],
-            collapsed_folders: HashMap::new(),
+            expanded_folders: HashMap::new(),
         };
         write_session(&fixture.0, &state).expect("should write");
 
@@ -244,7 +284,7 @@ mod tests {
             &SessionState {
                 template: "single".to_string(),
                 slots: vec![slot(&path_string, None)],
-                collapsed_folders: HashMap::new(),
+                expanded_folders: HashMap::new(),
             },
         )
         .expect("first write");
@@ -254,7 +294,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
-                collapsed_folders: HashMap::new(),
+                expanded_folders: HashMap::new(),
             },
         )
         .expect("second write");
@@ -273,7 +313,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
-                collapsed_folders: HashMap::new(),
+                expanded_folders: HashMap::new(),
             },
         )
         .expect("should write");
@@ -296,7 +336,7 @@ mod tests {
             &SessionState {
                 template: "quad".to_string(),
                 slots: vec![None, None, None, None],
-                collapsed_folders: HashMap::new(),
+                expanded_folders: HashMap::new(),
             },
         )
         .expect("should create the directory and write");

@@ -23,25 +23,34 @@ interface PersistedSlot {
 export interface SessionState {
   template: string;
   slots: (PersistedSlot | null)[];
-  /** Eingeklappte Ordner je Projektpfad (nicht je Pane/Slot) — dieselbe
+  /** AUFgeklappte Ordner je Projektpfad (nicht je Pane/Slot) — dieselbe
    * Schlüsselung wie der Live-Zustand: `ExplorerPanel` hängt an
    * `project.path`, nicht an einer `paneId`, dasselbe Projekt in zwei Panes
    * teilt sich also ohnehin einen Baum. `session_store.rs` überspringt den
    * Schlüssel beim Schreiben, wenn die Map leer ist — hier deshalb optional,
-   * nicht als garantiert vorhandenes Feld. */
-  collapsed_folders?: Record<string, string[]>;
+   * nicht als garantiert vorhandenes Feld.
+   *
+   * Bewusst die aufgeklappten statt der eingeklappten Ordner (2026-08-12):
+   * seit „alles eingeklappt" der Default ist, wäre die eingeklappte Menge
+   * gleich JEDEM Ordner des Projekts — gemessen 135 KB und ~1900 Pfade bei
+   * vier offenen Projekten, und das bei jedem Dateiklick neu geschrieben.
+   * Gespeichert wird deshalb die Abweichung vom Default, nicht der Default
+   * selbst. Der Feldname wurde dabei geändert und nicht bloß umgedeutet:
+   * `collapsed_folders` aus einer älteren Datei hier zu lesen hieße „alles
+   * aufgeklappt" wiederherzustellen, also genau das abgeschaffte Verhalten. */
+  expanded_folders?: Record<string, string[]>;
 }
 
 /** Baut den zu persistierenden Zustand aus dem laufenden Grid, der
  * `paneId`-geschlüsselten Dateiauswahl im Explorer (Ticket 06) und dem
- * projektpfad-geschlüsselten Einklapp-Zustand des Baums. Eine Pane ohne
+ * projektpfad-geschlüsselten Aufklapp-Zustand des Baums. Eine Pane ohne
  * offene Datei liefert `last_selected_file: null`, nicht ein fehlendes
  * Feld — auf beides antwortet `session_store.rs`s `Option<String>` gleich,
  * `null` ist hier einfach das explizitere JSON. */
 export function buildSessionState(
   grid: GridState,
   selectedFile: Record<string, string>,
-  collapsedFolders: Record<string, string[]>,
+  expandedFolders: Record<string, string[]>,
 ): SessionState {
   return {
     template: grid.template,
@@ -53,7 +62,7 @@ export function buildSessionState(
             last_selected_file: selectedFile[slot.paneId] ?? null,
           },
     ),
-    collapsed_folders: collapsedFolders,
+    expanded_folders: expandedFolders,
   };
 }
 

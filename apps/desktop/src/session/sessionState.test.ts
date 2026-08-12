@@ -9,7 +9,7 @@ describe("buildSessionState", () => {
     expect(state).toEqual({
       template: "quad",
       slots: [null, null, null, null],
-      collapsed_folders: {},
+      expanded_folders: {},
     });
   });
 
@@ -61,12 +61,12 @@ describe("buildSessionState", () => {
     expect(buildSessionState(grid, {}, {}).template).toBe("split");
   });
 
-  it("trägt den Einklapp-Zustand projektpfad-geschlüsselt ein", () => {
+  it("trägt die aufgeklappten Ordner projektpfad-geschlüsselt ein", () => {
     const state = buildSessionState(INITIAL_GRID_STATE, {}, {
       "/repo/storefront": ["src", "src/core"],
     });
 
-    expect(state.collapsed_folders).toEqual({
+    expect(state.expanded_folders).toEqual({
       "/repo/storefront": ["src", "src/core"],
     });
   });

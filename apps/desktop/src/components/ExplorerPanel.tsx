@@ -47,8 +47,8 @@ export function ExplorerPanel({
   width,
   selectedFile,
   dirtyFile,
-  initialCollapsed,
-  onCollapsedChange,
+  initialExpanded,
+  onExpandedChange,
   onSelectFile,
   onCollapse,
   onRefresh,
@@ -60,17 +60,20 @@ export function ExplorerPanel({
    * trägt — projekt-relativ, also in derselben Pfad-Konvention wie
    * `selectedFile`. `null`, wenn nichts offen oder alles geschrieben ist. */
   dirtyFile: string | null;
-  /** Aus `session.json` wiederhergestellter Einklapp-Zustand für GENAU
+  /** Aus `session.json` wiederhergestellte AUFgeklappte Ordner für GENAU
    * dieses Projekt (App hält die Zuordnung projektpfad-geschlüsselt) —
-   * `undefined`, wenn noch nichts gespeichert ist, dann gilt der
-   * Alles-eingeklappt-Default. Nur als Initialwert gelesen (s. `useState`
-   * unten): App reicht bei einem Projektwechsel ohnehin einen neuen `key`
-   * durch, ein späteres Ändern dieser Prop soll den Baum NICHT von außen
-   * zurücksetzen. */
-  initialCollapsed?: readonly string[];
-  /** Feuert bei jeder Änderung des Einklapp-Zustands — App spiegelt das in
-   * `collapsedFolders` und damit in den nächsten `session.json`-Schreibvorgang. */
-  onCollapsedChange: (collapsed: readonly string[]) => void;
+   * `undefined` oder leer heißt schlicht: nichts weicht vom
+   * Alles-eingeklappt-Default ab. Gespeichert wird die Abweichung und nicht
+   * der Zustand selbst, weil „alles eingeklappt" als Default die eingeklappte
+   * Menge zu jedem Ordner des Projekts aufgebläht hatte (session_store.rs
+   * trägt die Messung). Nur als Initialwert gelesen (s. `useState` unten):
+   * App reicht bei einem Projektwechsel ohnehin einen neuen `key` durch, ein
+   * späteres Ändern dieser Prop soll den Baum NICHT von außen zurücksetzen. */
+  initialExpanded?: readonly string[];
+  /** Feuert bei jeder Änderung des Klapp-Zustands, mit den AUFgeklappten
+   * Ordnern — App spiegelt das in `expandedFolders` und damit in den nächsten
+   * `session.json`-Schreibvorgang. */
+  onExpandedChange: (expanded: readonly string[]) => void;
   onSelectFile: (path: string) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
@@ -78,22 +81,33 @@ export function ExplorerPanel({
    * dass es ihn gibt. */
   onRefresh: () => void;
 }) {
-  // Startzustand ohne gespeicherten Stand: alles eingeklappt, nur die
-  // Wurzelkinder sichtbar (2026-08-12 Nutzerentscheidung — vorher stand hier
-  // ein leeres Set, also ALLES aufgeklappt, was bei größeren Projekten sofort
-  // einen Bildschirm voller Zeilen ergab). Dieselbe Menge, die `collapseAll`
-  // unten erzeugt, nur als Initialwert statt als Reaktion auf einen Klick.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => new Set(initialCollapsed ?? collectFolderPaths(project.tree, "")),
+  // Jeder Ordnerpfad des Baums — die Bezugsmenge, gegen die sich „eingeklappt"
+  // und „aufgeklappt" ineinander umrechnen lassen. Ändert sich nur, wenn der
+  // Baum neu von der Platte gelesen wurde.
+  const allFolderPaths = useMemo(
+    () => collectFolderPaths(project.tree, ""),
+    [project.tree],
   );
-  // Meldet jede Änderung nach oben — auch die erste, direkt nach dem Mount:
-  // ein neu geöffnetes Projekt ohne gespeicherten Stand soll seinen
-  // errechneten Alles-eingeklappt-Default sofort in `session.json` landen,
-  // nicht erst nach dem ersten manuellen Klick.
+  // Startzustand: alles eingeklappt, nur die Wurzelkinder sichtbar (2026-08-12
+  // Nutzerentscheidung — vorher stand hier ein leeres Set, also ALLES
+  // aufgeklappt, was bei größeren Projekten sofort einen Bildschirm voller
+  // Zeilen ergab), abzüglich dessen, was die Sitzung als aufgeklappt gemerkt
+  // hat. Ein gemerkter Pfad, den es nicht mehr gibt, fällt dabei von allein
+  // weg — er kommt in der Differenz gar nicht erst vor.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => {
+    const expanded = new Set(initialExpanded ?? []);
+    return new Set(
+      collectFolderPaths(project.tree, "").filter((path) => !expanded.has(path)),
+    );
+  });
+  // Meldet jede Änderung nach oben — als AUFgeklappte Ordner, siehe Prop-Doku.
+  // Auch die erste direkt nach dem Mount: ein Projekt, dessen gemerkte Ordner
+  // inzwischen verschwunden sind, soll die bereinigte Menge sofort in
+  // `session.json` haben, nicht erst nach dem ersten manuellen Klick.
   useEffect(() => {
-    onCollapsedChange(Array.from(collapsed));
+    onExpandedChange(allFolderPaths.filter((path) => !collapsed.has(path)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collapsed]);
+  }, [collapsed, allFolderPaths]);
   // Zweiter, bewusst eigener Einklapp-Zustand statt eines Eintrags in
   // `collapsed`: Der Projektknoten hat gar keine Zeile im Baum — der beginnt
   // schon bei seinen Kindern — und damit auch keinen Pfad, unter dem ihn das
@@ -180,7 +194,7 @@ export function ExplorerPanel({
   // hat. Ein Chevron-Klick wäre dagegen nur die unsichtbare Nebenwirkung
   // eines Klicks, der in dem Moment aussieht, als täte er nichts.
   const collapseAll = () => {
-    setCollapsed(new Set(collectFolderPaths(project.tree, "")));
+    setCollapsed(new Set(allFolderPaths));
   };
 
   // Die sichtbare Zeilenfolge des Baums — genau das, was der rekursive Aufbau
