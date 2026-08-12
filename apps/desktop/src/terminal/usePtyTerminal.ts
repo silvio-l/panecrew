@@ -133,10 +133,28 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
 
     // Genau EIN Decoder pro Pane (Begründung in ptyIo.ts).
     const decodeChunk = createChunkDecoder();
+    // Rust liest die PTY in festen 4096-Byte-Häppchen und schickt jeden davon
+    // sofort als eigene Channel-Nachricht (pty_manager.rs) — ohne Bündelung
+    // hier riefe ein output-lastiger Befehl (verbose Build, `pnpm install`)
+    // `terminal.write()` hunderte Male pro Sekunde auf, jedes davon ein
+    // eigener IPC-Deserialisierungs- plus Render-Durchlauf. decodeChunk muss
+    // trotzdem in Ankunftsreihenfolge pro Nachricht laufen (er trägt den
+    // UTF-8-Stream-Zustand über Chunk-Grenzen hinweg) — gebündelt wird nur
+    // das bereits dekodierte Textstück, ein Frame lang gesammelt und dann in
+    // einem einzigen write() geschrieben.
+    let pendingOutput = "";
+    let flushHandle = 0;
+    const flushOutput = () => {
+      flushHandle = 0;
+      if (disposed || !pendingOutput) return;
+      terminal.write(pendingOutput);
+      pendingOutput = "";
+    };
     const onOutput = new Channel<number[]>();
     onOutput.onmessage = (bytes) => {
       if (disposed) return;
-      terminal.write(decodeChunk(bytes));
+      pendingOutput += decodeChunk(bytes);
+      flushHandle ||= requestAnimationFrame(flushOutput);
     };
 
     queueMicrotask(() => {
@@ -338,6 +356,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     return () => {
       cancelled = true;
       disposed = true;
+      if (flushHandle) cancelAnimationFrame(flushHandle);
       insertRef.current = null;
       resizeObserver.disconnect();
       directories.dispose();

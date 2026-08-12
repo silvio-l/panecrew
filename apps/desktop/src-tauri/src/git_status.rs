@@ -9,6 +9,14 @@
 
 use std::process::Command;
 
+/// Same reasoning and cap as `explorer_fs.rs::MAX_ENTRIES`: unlike the tree
+/// read, this had no ceiling at all — a project with a huge untracked/dirty
+/// set (a fresh `node_modules` before `.gitignore` applies, a massive
+/// generated-file diff) could return tens of thousands of entries with
+/// nothing bounding the IPC payload or the frontend's per-file decoration
+/// work downstream.
+const MAX_ENTRIES: usize = 5000;
+
 #[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum GitChangeStatus {
@@ -62,6 +70,9 @@ fn parse_porcelain(output: &[u8]) -> Vec<GitFileStatus> {
     let mut statuses = Vec::new();
 
     while let Some(entry) = tokens.next() {
+        if statuses.len() >= MAX_ENTRIES {
+            break;
+        }
         let Some((xy, rest)) = entry.split_at_checked(2) else {
             continue;
         };
@@ -162,6 +173,18 @@ mod tests {
     fn parses_several_entries_in_one_z_separated_stream() {
         let statuses = parse_porcelain(b" M src/main.rs\0?? src/new.rs\0");
         assert_eq!(statuses.len(), 2);
+    }
+
+    #[test]
+    fn caps_the_result_instead_of_returning_an_unbounded_list() {
+        let mut raw = Vec::new();
+        for index in 0..(MAX_ENTRIES + 10) {
+            raw.extend_from_slice(format!("?? file{index}.txt\0").as_bytes());
+        }
+
+        let statuses = parse_porcelain(&raw);
+
+        assert_eq!(statuses.len(), MAX_ENTRIES);
     }
 
     /// A throwaway git repo under the system temp dir, removed by `drop`.
