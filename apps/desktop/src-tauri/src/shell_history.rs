@@ -14,7 +14,10 @@ use std::path::{Path, PathBuf};
 /// payload over IPC on every app start.
 const MAX_ENTRIES: usize = 1000;
 
-#[tauri::command]
+// `async`: same reasoning as `explorer_fs.rs::explorer_read_tree` — a
+// history file can grow large, and a file read must not run on the thread
+// that dispatches IPC.
+#[tauri::command(async)]
 pub fn shell_history_read() -> Vec<String> {
     let Some(path) = history_path(&crate::pty_manager::default_shell()) else {
         return Vec::new();

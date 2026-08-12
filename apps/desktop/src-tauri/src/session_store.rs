@@ -78,13 +78,17 @@ pub fn write_session(dir: &Path, state: &SessionState) -> Result<(), String> {
         .map_err(|error| format!("Sitzung konnte nicht gespeichert werden: {error}"))
 }
 
-#[tauri::command]
+// `async`: file I/O must not run on the thread that dispatches IPC (see
+// `explorer_fs.rs::explorer_read_tree` for the source-verified reasoning).
+// `session_save` in particular fires on every grid/selection change once
+// hydrated — a hot path, not just a one-off startup read.
+#[tauri::command(async)]
 pub fn session_load(app: AppHandle) -> Option<SessionState> {
     let dir = app.path().app_data_dir().ok()?;
     read_session(&dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
     let dir = app
         .path()

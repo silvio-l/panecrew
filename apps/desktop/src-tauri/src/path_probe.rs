@@ -9,7 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
-#[tauri::command]
+// `async`: same reasoning as `explorer_fs.rs::explorer_read_tree` — a
+// filesystem probe must not run on the thread that dispatches IPC.
+#[tauri::command(async)]
 pub fn path_is_directory(cwd: String, path: String) -> bool {
     // `is_dir` follows symlinks, which is what `cd` does too.
     resolve(Path::new(&cwd), &path).is_some_and(|resolved| resolved.is_dir())
@@ -34,7 +36,8 @@ const MAX_SUBDIRECTORIES: usize = 50;
 /// Read-only and exactly one level deep. An unreadable or missing directory is
 /// not an error worth surfacing — while a path is being typed it is the normal
 /// state, and an empty list is already the honest answer ("nothing to offer").
-#[tauri::command]
+// `async`: same reasoning as `path_is_directory` above.
+#[tauri::command(async)]
 pub fn list_subdirectories(cwd: String, directory: String, prefix: String) -> Vec<String> {
     let base = if directory.is_empty() {
         PathBuf::from(&cwd)
