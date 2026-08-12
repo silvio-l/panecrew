@@ -30,10 +30,21 @@ async function readTree(
   path: string,
 ): Promise<Pick<Project, "tree" | "treeError">> {
   try {
+    const ipcStart = performance.now();
     const raw = await invoke<RawTreeNode[]>("explorer_read_tree", {
       root: path,
     });
-    return { tree: treeNodesFromRaw(raw), treeError: null };
+    const ipcMs = performance.now() - ipcStart;
+    const mapStart = performance.now();
+    const tree = treeNodesFromRaw(raw);
+    const mapMs = performance.now() - mapStart;
+    // Perf-Diagnose (2026-08-12): trennt IPC-Wartezeit (Rust) von der
+    // synchronen Mapping-Zeit (JS-Hauptthread) — nur letztere kann die UI
+    // blockieren, auch wenn `explorer_read_tree` selbst inzwischen async ist.
+    console.debug(
+      `PaneCrew: explorer_read_tree IPC ${ipcMs.toFixed(0)}ms, treeNodesFromRaw ${mapMs.toFixed(0)}ms, ${raw.length} Knoten`,
+    );
+    return { tree, treeError: null };
   } catch (error) {
     console.error("PaneCrew: Dateibaum konnte nicht gelesen werden", error);
     return { tree: [], treeError: String(error) };
@@ -46,10 +57,18 @@ async function readTree(
 // hier bleibt nur der Transport-Fall (IPC selbst schlägt fehl) abzufangen.
 async function readGitDecorations(path: string) {
   try {
+    const ipcStart = performance.now();
     const statuses = await invoke<GitFileStatus[]>("explorer_git_status", {
       root: path,
     });
-    return gitDecorationsFromStatuses(statuses);
+    const ipcMs = performance.now() - ipcStart;
+    const mapStart = performance.now();
+    const decorations = gitDecorationsFromStatuses(statuses);
+    const mapMs = performance.now() - mapStart;
+    console.debug(
+      `PaneCrew: explorer_git_status IPC ${ipcMs.toFixed(0)}ms, gitDecorationsFromStatuses ${mapMs.toFixed(0)}ms, ${statuses.length} Einträge`,
+    );
+    return decorations;
   } catch (error) {
     console.error("PaneCrew: Git-Status konnte nicht gelesen werden", error);
     return gitDecorationsFromStatuses([]);
