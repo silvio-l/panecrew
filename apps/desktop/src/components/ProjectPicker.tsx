@@ -17,10 +17,30 @@ import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 export function ProjectPicker({
   onChoose,
   busy,
+  restoring,
 }: {
   onChoose: () => void;
   busy: boolean;
+  /** Dieser Slot ist Teil der gerade wiederhergestellten Sitzung und wartet
+   * noch auf sein Projekt (Baum + Git-Deko werden gelesen) — kein leerer
+   * Slot im eigentlichen Sinn, nur noch nicht fertig befüllt. Ohne dieses
+   * Signal zeigte der Slot bis dahin einen ganz normalen, klickbaren
+   * "Projekt wählen"-Knopf: ein Klick währenddessen würde mit der laufenden
+   * Wiederherstellung um genau diesen Slot konkurrieren (2026-08-12). */
+  restoring?: boolean;
 }) {
+  if (restoring) {
+    return (
+      <div className="@container flex min-h-0 min-w-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--pc-pane-border) px-4 py-3 text-center text-(--pc-descriptionForeground)">
+          <span className="text-(length:--pc-chrome-fontSize) font-medium">
+            Wird geladen …
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     // Container-Query statt Media-Query: entscheidend ist die Breite DIESES
     // Slots, nicht die des Fensters. Derselbe Slot ist im Vierergrid rund

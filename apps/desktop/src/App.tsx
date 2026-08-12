@@ -54,10 +54,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
-import {
-  CollapsedExplorerStrip,
-  ExplorerPanel,
-} from "./components/ExplorerPanel";
+import { CollapsedExplorerStrip, ExplorerPanel } from "./components/ExplorerPanel";
 import { PaneGrid } from "./components/PaneGrid";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
@@ -91,8 +88,11 @@ function App() {
   // `refresh` sind eigene, stabile Bindungen (in `useProjects.ts` per
   // `useCallback` memoisiert) — das hält sie aus `useEffect`-Dep-Arrays
   // heraus, die sonst bei jeder Cache-Änderung neu feuern würden.
-  const { projects: projectRecords, load: loadProject, refresh: refreshProject } =
-    useProjects();
+  const {
+    projects: projectRecords,
+    load: loadProject,
+    refresh: refreshProject,
+  } = useProjects();
   // `project` ist abgeleitet, kein eigener State: die schwere `Project`-
   // Struktur (Baum, Git-Deko) lebt im pfad-geschlüsselten Cache, hier steht
   // nur noch, welches Projekt die fokussierte Pane gerade zeigt — der
@@ -117,6 +117,13 @@ function App() {
   // ist) sofort über sich selbst geschrieben und die eben geladene Sitzung
   // sofort wieder löschen.
   const [hydrated, setHydrated] = useState(false);
+  // Slot-Indizes, die die wiederhergestellte Sitzung noch befüllen will —
+  // ihr Picker zeigt bis dahin einen Ladehinweis statt eines klickbaren
+  // Knopfs, sonst könnte ein Klick währenddessen mit `restoreSlot` unten um
+  // denselben Slot konkurrieren. Immer leer, sobald `hydrated` kippt.
+  const [restoringSlots, setRestoringSlots] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
@@ -174,6 +181,12 @@ function App() {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
       const paneId = assignProject(slotIndex, project.path);
+      setRestoringSlots((current) => {
+        if (!current.has(slotIndex)) return current;
+        const next = new Set(current);
+        next.delete(slotIndex);
+        return next;
+      });
       if (lastSelectedFile === null) return;
       setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
       paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
@@ -187,6 +200,16 @@ function App() {
         // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
         // gespeicherte Zustand passt unverändert auf `collapsedFolders`.
         setCollapsedFolders(session.collapsed_folders ?? {});
+        // Vor dem ersten `await` in `restoreSlot` gesetzt, damit der erste
+        // Render nach `switchTemplate` (leere Slots im neuen Template) sie
+        // schon als "wird noch befüllt" statt als klickbare Picker zeigt.
+        setRestoringSlots(
+          new Set(
+            session.slots.flatMap((slot, slotIndex) =>
+              slot === null ? [] : [slotIndex],
+            ),
+          ),
+        );
         // Parallel statt sequenziell: jeder Slot schreibt über
         // `assignProject`/`setSelectedFile`s Updater-Form einen eigenen,
         // unabhängigen Teil des States, Reihenfolge der Auflösung spielt also
@@ -218,7 +241,13 @@ function App() {
 
     run().catch((error: unknown) => {
       console.error("PaneCrew: Sitzung konnte nicht wiederhergestellt werden", error);
-      if (!isCancelled()) setHydrated(true);
+      // Ein gescheiterter Restore darf keinen Slot dauerhaft im
+      // Ladezustand einfrieren — ohne echten Fortschritt bliebe er sonst für
+      // immer unklickbar.
+      if (!isCancelled()) {
+        setRestoringSlots(new Set());
+        setHydrated(true);
+      }
     });
 
     return () => {
@@ -490,6 +519,7 @@ function App() {
               paneFileEditors={paneFileEditors}
               guardLeave={guardLeave}
               pickingSlot={pickingSlot}
+              restoringSlots={restoringSlots}
               zoom={zoom}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}

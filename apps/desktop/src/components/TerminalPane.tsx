@@ -53,6 +53,7 @@ export function TerminalPane({
     focus,
     hasSelection,
     insertDroppedPaths,
+    spawning,
   } = usePtyTerminal(paneId, projectPath);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
 
@@ -131,14 +132,34 @@ export function TerminalPane({
           if (open) setSelectionAvailable(hasSelection());
         }}
       >
-        <ContextMenu.Trigger asChild>
-          {/* xterm.js hängt sein DOM hier hinein; das Padding rechnet der
-              FitAddon aus der Container-Box heraus. */}
-          <div
-            ref={containerRef}
-            className="min-h-0 flex-1 overflow-hidden px-3 py-2"
-          />
-        </ContextMenu.Trigger>
+        {/* Eigener position:relative-Rahmen nur für den Ladehinweis unten:
+            der bezieht sich per `absolute inset-0` auf DIESE Box, nicht auf
+            den Terminal-Container selbst — der bleibt unverändert das
+            Flex-Item, das den restlichen Platz der Pane einnimmt. */}
+        <div className="relative min-h-0 flex-1">
+          <ContextMenu.Trigger asChild>
+            {/* xterm.js hängt sein DOM hier hinein; das Padding rechnet der
+                FitAddon aus der Container-Box heraus. */}
+            <div
+              ref={containerRef}
+              className="absolute inset-0 overflow-hidden px-3 py-2"
+            />
+          </ContextMenu.Trigger>
+          {/* Nur Text, kein Spinner — derselbe Grundsatz wie
+              FileEditor.tsx' LoadingNotice: der Normalfall ist ein einzelner
+              Frame, spürbar wird es erst, wenn mehrere Panes beim
+              Sitzungs-Restore gleichzeitig spawnen (2026-08-12).
+              `pointer-events-none`, weil er über der (noch leeren)
+              Terminalfläche schwebt, ohne ihre künftige Bedienbarkeit
+              vorwegzunehmen. Kein `aria-hidden`: für wen den Bildschirm nicht
+              sieht, ist dieser Text das einzige Signal, dass die Pane
+              überhaupt startet. */}
+          {spawning && (
+            <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-3 py-2 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+              Terminal wird gestartet …
+            </p>
+          )}
+        </div>
         <ContextMenu.Portal>
           <ContextMenu.Content
             // Radix gäbe den Fokus sonst an den Trigger-Container zurück, nicht

@@ -29,6 +29,7 @@ export function PaneGrid({
   paneFileEditors,
   guardLeave,
   pickingSlot,
+  restoringSlots,
   zoom,
   onAssignProject,
   onClosePane,
@@ -41,6 +42,10 @@ export function PaneGrid({
    * keiner. Der native Dialog ist ohnehin modal, es kann also nie mehr als
    * einer gleichzeitig sein. */
   pickingSlot: number | null;
+  /** Slot-Indizes, die die wiederhergestellte Sitzung noch befüllen will
+   * (App.tsx, bis `hydrated` kippt) — ihr Picker zeigt einen Ladehinweis
+   * statt eines klickbaren Knopfs. */
+  restoringSlots: ReadonlySet<number>;
   /** Für die Drop-Positionsprüfung (`useWebviewFileDrop.ts`) — physische
    * Drop-Koordinaten sind vom App-Zoom mitskaliert. */
   zoom: number;
@@ -74,6 +79,7 @@ export function PaneGrid({
             key={`empty-slot-${index}`}
             onChoose={() => onAssignProject(index)}
             busy={pickingSlot === index}
+            restoring={restoringSlots.has(index)}
           />
         ),
       )}

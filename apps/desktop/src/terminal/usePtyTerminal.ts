@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
@@ -57,6 +57,10 @@ export interface PtyTerminal {
   clear: () => void;
   focus: () => void;
   hasSelection: () => boolean;
+  /** `true` vom Mount bis `pty_spawn` sich auflöst (Erfolg ODER Fehler) —
+   * der Normalfall ist ein einzelner Frame, spürbar wird es erst, wenn
+   * mehrere Panes beim Sitzungs-Restore gleichzeitig spawnen. */
+  spawning: boolean;
   /** Schreibt abgelegte Pfade in DIESE Pane, als wären sie getippt worden.
    * Der Aufrufer (Ticket 03: `useWebviewFileDrop.ts` auf Grid-Ebene) hat
    * bereits entschieden, dass der Drop hier landet — die Pane weiß nur noch,
@@ -74,10 +78,17 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
   // befüllt ihn beim Mount und leert ihn beim Cleanup wieder, damit ein Drop
   // nach dem Unmount ins Leere läuft statt eine tote Closure zu treffen.
   const insertRef = useRef<((paths: string[]) => void) | null>(null);
+  // Nur für die Ladeanzeige (2026-08-12) — der eigentliche Zustand, ob
+  // schon geschrieben werden darf, bleibt `sessionReady` unten (eine lokale
+  // Effekt-Variable, kein Re-Render nötig). Dieses `useState` existiert
+  // einzig, damit TerminalPane.tsx den Übergang sehen und den Hinweis wieder
+  // ausblenden kann.
+  const [spawning, setSpawning] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    setSpawning(true);
 
     const terminalOptions = readTerminalOptions();
     const terminal = new Terminal({
@@ -211,6 +222,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
       })
         .then(() => {
           sessionReady = true;
+          if (!disposed) setSpawning(false);
           if (cancelled) {
             killPane(paneId);
             return;
@@ -222,6 +234,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
         .catch((error: unknown) => {
           // Kein stiller leerer Kasten: der Fehler landet sichtbar im Puffer.
           if (disposed) return;
+          setSpawning(false);
           terminal.write(
             `\r\n\x1b[31mPTY konnte nicht gestartet werden: ${String(error)}\x1b[0m\r\n`,
           );
@@ -441,6 +454,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     focus,
     hasSelection,
     insertDroppedPaths,
+    spawning,
   };
 }
 
