@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { DropdownMenu } from "radix-ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FileIcon, FolderIcon } from "./explorerIcons";
@@ -245,12 +246,50 @@ export function ExplorerPanel({
         <HeaderAction label="Dateibaum aktualisieren" onClick={onRefresh}>
           <RefreshIcon />
         </HeaderAction>
-        <HeaderAction label="Alle Ordner einklappen" onClick={collapseAll}>
-          <CollapseAllIcon />
-        </HeaderAction>
-        <HeaderAction label="Explorer ausblenden" onClick={onCollapse}>
-          <SidebarIcon />
-        </HeaderAction>
+        {/* "Alle Ordner einklappen" und "Explorer ausblenden" waren bis
+            2026-08-12 zwei eigene, dauerhaft reservierte Icon-Plätze in dieser
+            Zeile — bei der Standardbreite (224px) blieben dem Projektnamen
+            daneben nur rund 8px, er verschwand faktisch hinter den sechs
+            Knöpfen. Beide sind die mit Abstand seltensten Aktionen hier
+            (Panel-Ebene bzw. — seit der Standard-Einklapp-Änderung oben —
+            meist schon erledigt) und wandern deshalb in ein gemeinsames Menü
+            statt in zwei feste Plätze. Das gibt dem Namen einen Icon-Platz
+            zurück, ohne eine der beiden Funktionen zu verlieren. */}
+        <DropdownMenu.Root>
+          <ChromeTooltip label="Weitere Aktionen" align="end">
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Weitere Aktionen"
+                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+              >
+                <MoreIcon />
+              </button>
+            </DropdownMenu.Trigger>
+          </ChromeTooltip>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={4}
+              className="z-30 min-w-44 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg"
+            >
+              <DropdownMenu.Item
+                onSelect={collapseAll}
+                className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
+              >
+                <CollapseAllIcon />
+                Alle Ordner einklappen
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={onCollapse}
+                className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
+              >
+                <SidebarIcon />
+                Explorer ausblenden
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
       {!rootCollapsed && (
         <>
@@ -964,6 +1003,25 @@ function SidebarIcon() {
     >
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
       <path d="M6 2.75v10.5" />
+    </svg>
+  );
+}
+
+// Drei gefüllte Punkte statt der sonst hier üblichen Strichzeichnung — ein
+// Kebab-Menü besteht konventionell aus Flächen, nicht aus Linien, dieselbe
+// Abweichung wie bei den Git-Punkten in `GitDecorationMark`.
+function MoreIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="3.4" r="1.3" />
+      <circle cx="8" cy="8" r="1.3" />
+      <circle cx="8" cy="12.6" r="1.3" />
     </svg>
   );
 }
