@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { PaneTabs } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
 
@@ -20,6 +21,7 @@ export function TerminalPane({
   projectPath,
   projectName,
   focused,
+  tabs,
   dropTargets,
   onClose,
   onFocus,
@@ -31,6 +33,20 @@ export function TerminalPane({
    * zwei der drei Fokussignale: den Akzentrahmen und den aufgehellten
    * Header-Text; das dritte ist das Akzent-Echo im Explorer-Kopf. */
   focused: boolean;
+  /** `null`, solange in dieser Pane keine Datei offen ist — der Header bleibt
+   * dann die reine Namenszeile von vorher. Sobald eine Datei offen ist,
+   * bekommen beide Header (dieser hier UND FileEditor.tsx) denselben
+   * Tab-Umschalter mit denselben Handlern gereicht (PaneGrid.tsx hält
+   * `activeView` als einzige Wahrheit) — 2026-08-12, Nutzerwunsch, zwischen
+   * Terminal und Datei hin- und herschalten zu können, ohne die Datei zu
+   * schließen. */
+  tabs: {
+    activeView: "terminal" | "file";
+    fileName: string;
+    fileDirty: boolean;
+    onSelectTerminal: () => void;
+    onSelectFile: () => void;
+  } | null;
   /** Grid-weite Drag-Drop-Registrierung (`useWebviewFileDrop.ts`) — diese
    * Pane trägt sich hier ein, damit ein Drop auf ihrer Fläche bei ihr
    * landet. */
@@ -111,6 +127,15 @@ export function TerminalPane({
         }`}
       >
         <span className="min-w-0 flex-1 truncate">{projectName}</span>
+        {tabs && (
+          <PaneTabs
+            active={tabs.activeView}
+            fileName={tabs.fileName}
+            fileDirty={tabs.fileDirty}
+            onSelectTerminal={tabs.onSelectTerminal}
+            onSelectFile={tabs.onSelectFile}
+          />
+        )}
         <ChromeTooltip label="Pane schließen" align="end">
           <button
             type="button"

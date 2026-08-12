@@ -218,6 +218,17 @@ const pickerButton = (index: number) => {
 
 const clickPicker = () => fireEvent.click(pickerButton(0));
 
+// Seit PaneTabs.tsx (2026-08-12) trägt der Datei-Tab im Pane-Header denselben
+// ", ungespeichert"-Zusatz wie die Baumzeile in ExplorerPanel.tsx (bewusst
+// identischer Wortlaut, siehe DirtyMark dort) — ein ungescoptes
+// `getByRole("button", { name: /…, ungespeichert/ })` matcht seither BEIDE
+// und wirft "multiple elements". Scoped auf `<aside>` (Rolle "complementary"),
+// den Explorer-Landmark: die Tests hier wollten immer die BAUMZEILE treffen
+// (die einzige, die vor diesem Feature überhaupt "button" hieß — der Tab
+// existierte noch nicht), nicht die neue Pane-Kopfzeile.
+const explorerTreeButton = (name: RegExp | string) =>
+  within(screen.getByRole("complementary")).getByRole("button", { name });
+
 // Die Antwort von `explorer_read_file` in der Form, die `useFileEditor`
 // erwartet — ein bloßes `Promise.resolve()` (der Default-Mock) landet im
 // Fehlerzweig, weil der Hook `text`/`stamp` daraus liest.
@@ -806,7 +817,7 @@ describe("App", () => {
     await typeIntoEditor(EDITED_TEXT);
     expect(saveButton).toBeEnabled();
     expect(
-      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+      explorerTreeButton(/main\.rs,\s*ungespeichert/),
     ).toBeInTheDocument();
 
     fireEvent.click(saveButton);
@@ -827,6 +838,44 @@ describe("App", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("wechselt per Mini-Tab zurück zum Terminal, ohne die offene Datei zu schließen", async () => {
+    await openTreeFile();
+    await typeIntoEditor(EDITED_TEXT);
+
+    // Mit offener Datei zeigt die Pane die Datei-Fläche, das Terminal ist
+    // weiterhin gemountet (die PTY läuft unverändert weiter), nur ausgeblendet.
+    expect(await editorTextbox()).toBeVisible();
+    expect(screen.getByLabelText("Terminal storefront")).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+
+    // Zurück im Terminal — und KEINE Rückfrage: anders als "Datei schließen"
+    // verwirft ein bloßer Ansichtswechsel nichts.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal storefront")).toBeVisible();
+    // `queryByRole` schließt per HTML-`hidden` verborgene Elemente aus dem
+    // Accessibility-Baum bereits aus (liefert `null`) — anders als beim
+    // Terminal oben (dessen `aria-label` unabhängig vom Sichtbarkeitsstatus
+    // greift) gibt es hier also gar kein Element, an dem `toBeVisible()`
+    // prüfen könnte.
+    expect(
+      screen.queryByRole("textbox", { name: "Inhalt von main.rs" }),
+    ).not.toBeInTheDocument();
+
+    // Und zurück zur Datei: derselbe ungespeicherte Text steht noch da — der
+    // Wechsel hat den Puffer nicht neu geladen. Auf die Terminal-Pane
+    // gescoped, sonst träfe die Namensregex auch die gleichnamige Baumzeile
+    // im Explorer daneben.
+    fireEvent.click(
+      within(screen.getByLabelText("Terminal storefront")).getByRole(
+        "button",
+        { name: /main\.rs,\s*ungespeichert/ },
+      ),
+    );
+    expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
+    expect(screen.getByLabelText("Terminal storefront")).not.toBeVisible();
+  });
+
   it("hält den getippten Text sichtbar, wenn das Backend das Schreiben ablehnt", async () => {
     await openTreeFile(undefined, CONFLICT_ERROR);
     await typeIntoEditor(EDITED_TEXT);
@@ -843,7 +892,7 @@ describe("App", () => {
     // Bildschirm verschwinden.
     expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
     expect(
-      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+      explorerTreeButton(/main\.rs,\s*ungespeichert/),
     ).toBeInTheDocument();
   });
 
@@ -948,7 +997,7 @@ describe("App", () => {
     // Und die Baumzeile hebt weiter die Datei hervor, die auch wirklich offen
     // ist — die Auswahl wandert nicht ohne den Editor mit.
     expect(
-      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
+      explorerTreeButton(/main\.rs,\s*ungespeichert/),
     ).toBeInTheDocument();
   });
 
@@ -982,9 +1031,7 @@ describe("App", () => {
   it("lädt die bereits offene Datei bei einem erneuten Klick nicht neu", async () => {
     await dirtyEditorWithSecondFile();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /main\.rs,\s*ungespeichert/ }),
-    );
+    fireEvent.click(explorerTreeButton(/main\.rs,\s*ungespeichert/));
 
     // Kein Wechsel, also keine Rückfrage — aber eben auch kein erneutes Lesen:
     // das überschriebe den getippten Stand wortlos mit dem Platteninhalt.

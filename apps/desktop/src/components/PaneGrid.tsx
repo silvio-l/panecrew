@@ -13,6 +13,8 @@
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
+import { useState } from "react";
+import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState } from "../grid/gridState";
 import {
@@ -106,12 +108,50 @@ function PaneCell({
   onClose: () => void;
   onFocus: () => void;
 }) {
+  // Welche der beiden Flächen gerade sichtbar ist — unabhängig davon, ob eine
+  // Datei offen ist (das entscheidet nur, ob es überhaupt eine zweite Fläche
+  // GIBT). 2026-08-12, Nutzerwunsch: bis dahin gab es keinen Weg zurück zum
+  // Terminal außer dem endgültigen "Datei schließen" — ein Blick daneben ohne
+  // die Datei zu verwerfen, war nicht möglich.
+  //
+  // `openPath` bleibt über Laden/Speichern/Ändern hinweg derselbe String,
+  // solange dieselbe Datei offen ist — verglichen wird deshalb GENAU dieser
+  // Pfad, nicht das ganze `editor.state`. Angepasst wird "während des
+  // Renderns" (React-Muster für "State aus einer Prop/Ableitung
+  // zurücksetzen", https://react.dev/learn/you-might-not-need-an-effect)
+  // statt in einem `useEffect`: ein Effekt würde hier einen unnötigen
+  // Zwischen-Render erzwingen, und dieselbe ESLint-Regel
+  // (`react-hooks/set-state-in-effect`), die anderswo in dieser Codebase
+  // schon Effekte vermeidet, verbietet genau das. Der Vergleich feuert also
+  // nur beim tatsächlichen Öffnen/Wechseln/Schließen einer Datei und
+  // überschreibt keine manuelle Tab-Wahl während des Tippens oder Speicherns.
+  const openPath = editor.state.status === "idle" ? null : editor.state.path;
+  const [activeView, setActiveView] = useState<"terminal" | "file">(
+    "terminal",
+  );
+  const [lastOpenPath, setLastOpenPath] = useState<string | null>(null);
+  if (openPath !== lastOpenPath) {
+    setLastOpenPath(openPath);
+    setActiveView(openPath === null ? "terminal" : "file");
+  }
+
+  const tabs =
+    openPath === null
+      ? null
+      : {
+          activeView,
+          fileName: fileNameFromPath(openPath),
+          fileDirty: editor.wouldLoseWork,
+          onSelectTerminal: () => setActiveView("terminal"),
+          onSelectFile: () => setActiveView("file"),
+        };
+
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
       {/* Wie zuvor in App.tsx: die Pane bleibt gemountet, nur ausgeblendet —
           ein Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen. */}
       <div
-        hidden={editor.state.status !== "idle"}
+        hidden={activeView !== "terminal"}
         className="flex min-h-0 flex-1 flex-col"
       >
         <TerminalPane
@@ -119,19 +159,29 @@ function PaneCell({
           projectPath={projectPath}
           projectName={projectNameFromPath(projectPath)}
           focused={focused}
+          tabs={tabs}
           dropTargets={dropTargets}
           onClose={onClose}
           onFocus={onFocus}
         />
       </div>
-      <FileEditor
-        state={editor.state}
-        dirty={editor.wouldLoseWork}
-        focused={focused}
-        onEdit={editor.editContent}
-        onSave={editor.save}
-        onClose={() => guardLeave(paneId, editor.close)}
-      />
+      {/* Bleibt wie zuvor bedingungslos gerendert (FileEditor liefert bei
+          `status === "idle"` selbst `null`) — nur das zusätzliche `hidden`
+          ist neu: anders als das Terminal-PTY hängt an dieser Fläche kein
+          Lebenszyklus, der einen Unmount verbieten würde, aber ein
+          durchgehendes Mounten hält Scroll-Position und Cursor beim
+          Zurückwechseln unangetastet. */}
+      <div hidden={activeView !== "file"} className="flex min-h-0 flex-1 flex-col">
+        <FileEditor
+          state={editor.state}
+          dirty={editor.wouldLoseWork}
+          focused={focused}
+          onSelectTerminal={() => setActiveView("terminal")}
+          onEdit={editor.editContent}
+          onSave={editor.save}
+          onClose={() => guardLeave(paneId, editor.close)}
+        />
+      </div>
     </div>
   );
 }

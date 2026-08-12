@@ -1,6 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { PaneTabs } from "./PaneTabs";
 import type { FileEditorState } from "../explorer/fileEditorState";
 import { fileNameFromPath } from "../explorer/filePath";
 import { isMacPlatform } from "../shortcuts/platform";
@@ -35,6 +36,7 @@ export function FileEditor({
   state,
   dirty,
   focused,
+  onSelectTerminal,
   onEdit,
   onSave,
   onClose,
@@ -50,6 +52,12 @@ export function FileEditor({
    * Akzentrahmen, auch in unfokussierten Panes (2026-08-12,
    * Nutzerbeobachtung: alle Panes wirken gleichzeitig „aktiv"). */
   focused: boolean;
+  /** Wechselt zurück zur Terminal-Ansicht DERSELBEN Pane, ohne die Datei zu
+   * schließen — PaneGrid.tsx hält `activeView` als einzige Wahrheit, dieselbe
+   * Handler-Identität geht auch an TerminalPane.tsx' Tab-Umschalter. Anders
+   * als `onClose` unten (verwirft die Datei) ist das ein reiner Wechsel der
+   * Ansicht. */
+  onSelectTerminal: () => void;
   onEdit: (content: string) => void;
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
@@ -110,13 +118,20 @@ export function FileEditor({
             : "text-(--pc-paneHeader-foreground)"
         }`}
       >
-        {/* Punkt direkt hinter dem Namen, nicht am rechten Rand: dieselbe
-            Stelle, an der jeder Editor mit Tabs ihn führt — und die einzige,
-            an der er unmissverständlich zu DIESER Datei gehört. Der Name
-            trunkiert, der Punkt nicht. */}
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className="min-w-0 truncate">{name}</span>
-          {dirty && <DirtyMark />}
+        {/* Derselbe Tab-Umschalter wie im Terminal-Header daneben (2026-08-12)
+            — er trägt den Dateinamen samt Ungespeichert-Punkt jetzt selbst,
+            eine zusätzliche Namenszeile daneben wäre dieselbe Information ein
+            zweites Mal. */}
+        <span className="flex min-w-0 flex-1 items-center">
+          <PaneTabs
+            active="file"
+            fileName={name}
+            fileDirty={dirty}
+            onSelectTerminal={onSelectTerminal}
+            // Diese Fläche IST die Datei-Ansicht — ein Klick auf den bereits
+            // aktiven Tab hat nichts zu wechseln.
+            onSelectFile={() => undefined}
+          />
         </span>
         {hasBuffer && (
           <button
@@ -225,28 +240,6 @@ export function FileEditor({
         </>
       )}
     </section>
-  );
-}
-
-// Der Ungespeichert-Punkt. Im Ton der Zeile, in der er steht (`bg-current`),
-// nicht in einer eigenen Farbe — dieselbe Lesart wie in jedem Editor mit Tabs,
-// und die einzige, die hier funktioniert: die Git-Deko nebenan hat ihre beiden
-// Töne bereits mit Bedeutung belegt (geändert/nicht versioniert), ein dritter
-// Farbfleck daneben würde als dritter Git-Zustand gelesen. Ungespeichert ist
-// aber keine Aussage über das Repository, sondern darüber, wo der Text gerade
-// liegt: nur im Speicher.
-//
-// Der sichtbare Punkt ist `aria-hidden`, das Wort steht daneben in `sr-only` —
-// Farbe und Form allein dürfen die Information nicht tragen. Das führende
-// Komma ist wie bei GitDecorationMark in ExplorerPanel.tsx Absicht: der
-// zugängliche Name entsteht durch Aneinanderhängen der Textknoten, und ein
-// bloßes Leerzeichen überlebt das Trimmen nicht.
-function DirtyMark() {
-  return (
-    <span className="flex shrink-0 items-center">
-      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      <span className="sr-only">, ungespeichert</span>
-    </span>
   );
 }
 
