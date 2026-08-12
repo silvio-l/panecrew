@@ -34,6 +34,7 @@ import {
 export function FileEditor({
   state,
   dirty,
+  focused,
   onEdit,
   onSave,
   onClose,
@@ -43,6 +44,12 @@ export function FileEditor({
    * ist eine Aussage der Zustandsmaschine, und zwei Herleitungen desselben
    * Satzes laufen früher oder später auseinander. */
   dirty: boolean;
+  /** Dieselbe Pane-Fokus-Aussage wie in TerminalPane.tsx (`state.focusedPaneId`
+   * im Grid-Store) — diese Fläche ersetzt nur deren Inhalt, nicht deren
+   * Fokus-Semantik. Ohne diesen Prop zeigte JEDE offene Datei unbedingt den
+   * Akzentrahmen, auch in unfokussierten Panes (2026-08-12,
+   * Nutzerbeobachtung: alle Panes wirken gleichzeitig „aktiv"). */
+  focused: boolean;
   onEdit: (content: string) => void;
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
@@ -92,9 +99,17 @@ export function FileEditor({
     <section
       aria-label={`Datei ${name}`}
       onKeyDown={onKeyDown}
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)"
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) ${
+        focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
+      }`}
     >
-      <header className="flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide text-(--pc-paneHeader-activeForeground)">
+      <header
+        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+          focused
+            ? "text-(--pc-paneHeader-activeForeground)"
+            : "text-(--pc-paneHeader-foreground)"
+        }`}
+      >
         {/* Punkt direkt hinter dem Namen, nicht am rechten Rand: dieselbe
             Stelle, an der jeder Editor mit Tabs ihn führt — und die einzige,
             an der er unmissverständlich zu DIESER Datei gehört. Der Name

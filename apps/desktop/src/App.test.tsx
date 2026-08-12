@@ -1725,6 +1725,44 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     ).toHaveValue(FILE_CONTENTS.text);
   });
 
+  it("ein Slot ohne `last_selected_file`-Feld öffnet keine Datei namens \"undefined\"", async () => {
+    // `session_store.rs` überspringt das Feld beim Schreiben ganz, wenn
+    // nichts ausgewählt war (`skip_serializing_if`) — über die IPC-Brücke
+    // kommt so ein Slot-Objekt ohne dieses Feld an, `last_selected_file` ist
+    // dann `undefined`, nicht `null`. Ein zu strenger `=== null`-Check ließ
+    // das früher durch und öffnete buchstäblich eine Datei "undefined"
+    // (2026-08-12, Nutzerbeobachtung: alle Panes zeigen beim Start denselben
+    // Lesefehler).
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          template: "single",
+          slots: [{ project_path: "/Users/dev/projects/storefront" }],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/storefront" }),
+      );
+    });
+    // Kein `last_selected_file` heißt: nichts zu öffnen — nicht "öffne die
+    // Datei 'undefined'".
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "explorer_read_file"),
+    ).toHaveLength(0);
+    expect(
+      screen.queryByText("Datei konnte nicht gelesen werden"),
+    ).not.toBeInTheDocument();
+  });
+
   it("ein CLI-Startprojekt gewinnt gegen Slot 0 der wiederhergestellten Sitzung", async () => {
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {

@@ -176,7 +176,7 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
-      lastSelectedFile: string | null,
+      lastSelectedFile: string | null | undefined,
     ) => {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
@@ -187,7 +187,14 @@ function App() {
         next.delete(slotIndex);
         return next;
       });
-      if (lastSelectedFile === null) return;
+      // `null` heißt "bewusst keine Datei ausgewählt", `undefined` heißt "das
+      // Feld fehlte im JSON" (s. `PersistedSlot`-Kommentar in
+      // sessionState.ts) — für den Restore ist das derselbe Fall. Ein
+      // striktes `=== null` hätte `undefined` durchgelassen und `${lastSelectedFile}`
+      // unten zum buchstäblichen Dateinamen "undefined" gemacht (2026-08-12,
+      // Nutzerbeobachtung: alle Panes zeigen beim Start denselben
+      // Lesefehler).
+      if (!lastSelectedFile) return;
       setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
       paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
     };

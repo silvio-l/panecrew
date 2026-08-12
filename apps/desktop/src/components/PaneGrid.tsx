@@ -127,6 +127,7 @@ function PaneCell({
       <FileEditor
         state={editor.state}
         dirty={editor.wouldLoseWork}
+        focused={focused}
         onEdit={editor.editContent}
         onSave={editor.save}
         onClose={() => guardLeave(paneId, editor.close)}

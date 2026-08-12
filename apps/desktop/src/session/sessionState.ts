@@ -11,7 +11,13 @@ import { DEFAULT_TEMPLATE, GRID_TEMPLATES, type GridState, type TemplateId } fro
 // wie `gridState.ts`s eigenes, ebenfalls modulinternes `Slot`.
 interface PersistedSlot {
   project_path: string;
-  last_selected_file: string | null;
+  /** `session_store.rs`s `Option<String>` überspringt das Feld beim
+   * Schreiben ganz, wenn nichts ausgewählt war (`skip_serializing_if =
+   * "Option::is_none"`) — auf der Rust-Seite macht das keinen Unterschied
+   * (`#[serde(default)]` liest ein fehlendes Feld wieder als `None`), aber
+   * über die IPC-Brücke kommt bei der Frontend-Seite dann `undefined` an,
+   * nicht `null`. Beide müssen hier als "kein Datei-Restore nötig" gelten. */
+  last_selected_file: string | null | undefined;
 }
 
 export interface SessionState {
