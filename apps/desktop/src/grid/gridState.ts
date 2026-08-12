@@ -153,6 +153,16 @@ export function closePane(state: GridState, paneId: string): GridState {
   return { ...state, slots: nextSlots, focusedPaneId: nextFocus };
 }
 
+/** Setzt `focusedPaneId` auf `paneId` — der Zustandsübergang für einen Klick
+ * in eine belegte Pane. Eine unbekannte `paneId` (Pane währenddessen
+ * geschlossen, Klick auf einen leeren Slot) und der Fall, dass sie bereits
+ * fokussiert ist, sind beides No-Ops (identische Referenz, kein Re-Render). */
+export function focusPane(state: GridState, paneId: string): GridState {
+  if (state.focusedPaneId === paneId) return state;
+  if (!state.slots.some((slot) => slot?.paneId === paneId)) return state;
+  return { ...state, focusedPaneId: paneId };
+}
+
 /** Der Projektpfad der fokussierten Pane — das, worauf `ExplorerPanel`
  * bindet. `null`, solange keine Pane fokussiert ist. */
 export function focusedProjectPath(state: GridState): string | null {

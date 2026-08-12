@@ -22,6 +22,7 @@ export function TerminalPane({
   focused,
   dropTargets,
   onClose,
+  onFocus,
 }: {
   paneId: string;
   projectPath: string;
@@ -35,6 +36,10 @@ export function TerminalPane({
    * landet. */
   dropTargets: PaneDropRegistration;
   onClose: () => void;
+  /** Schreibt `paneId` als `focusedPaneId` in den Grid-Store (Fokus-Ring +
+   * Explorer-Pfad hängen daran) — getrennt vom hook-eigenen `focus()` unten,
+   * das nur xterm.js' DOM-Fokus setzt und den Grid-Store nie erreicht. */
+  onFocus: () => void;
 }) {
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
@@ -61,7 +66,17 @@ export function TerminalPane({
       aria-label={`Terminal ${projectName}`}
       aria-current={focused ? "true" : undefined}
       data-pane-id={paneId}
-      onMouseDown={focus}
+      onMouseDown={() => {
+        onFocus();
+        focus();
+      }}
+      // React bubblet Fokus-Events synthetisch auch bei nativ nicht-
+      // bubblenden `focus` (siehe React-Doku zu onFocus/onFocusCapture) —
+      // fängt jeden Weg, wie xterm.js' verstecktes Helper-Textarea den
+      // DOM-Fokus bekommt: Tab-Navigation, Kontextmenü-Interaktion, nicht
+      // nur den Mausklick oben. `onFocus` (Grid-Store) ist No-Op-sicher bei
+      // bereits fokussierter Pane, doppeltes Feuern kostet also nichts.
+      onFocusCapture={onFocus}
       // flex-1: die Pane war im alten 2x2-Grid ein Grid-Item und wurde vom
       // Raster gestreckt. Als einziges Kind eines Spalten-Flex-Containers muss
       // sie die Höhe jetzt selbst einfordern, sonst schrumpft sie auf ihren

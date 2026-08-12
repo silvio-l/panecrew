@@ -3,6 +3,7 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   closePane as closePaneInState,
+  focusPane as focusPaneInState,
   switchTemplate as switchTemplateInState,
   type GridState,
   type TemplateId,
@@ -19,6 +20,11 @@ export interface Grid {
    * wiederhergestellte Dateiauswahl derselben Pane zuzuordnen. */
   assignProject: (slotIndex: number, projectPath: string) => string;
   closePane: (paneId: string) => void;
+  /** Der Zustandsübergang hinter "Klick in eine Pane setzt den Fokus" —
+   * ruft `usePtyTerminal`s eigenen `focus()` (DOM-Fokus für xterm.js) nicht
+   * ab, das bleibt Sache des Aufrufers; hier wird nur `focusedPaneId`
+   * geschrieben, wovon Fokus-Ring und Explorer-Pfad abhängen. */
+  focusPane: (paneId: string) => void;
   /** No-Op (identische `state`-Referenz), wenn `templateSwitchBlockReason`
    * für `target` nicht `null` ist — die Steuerung entscheidet daran selbst,
    * ob sie den Aufruf überhaupt zulässt, hier wird nur noch ausgeführt. */
@@ -52,5 +58,9 @@ export function useGrid(): Grid {
     setState((current) => switchTemplateInState(current, target));
   }, []);
 
-  return { state, assignProject, closePane, switchTemplate };
+  const focusPane = useCallback((paneId: string) => {
+    setState((current) => focusPaneInState(current, paneId));
+  }, []);
+
+  return { state, assignProject, closePane, switchTemplate, focusPane };
 }

@@ -79,7 +79,7 @@ function App() {
   // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
   // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
   // jeden `useEffect`, der eine der beiden Funktionen aufruft, mit sich.
-  const { state: gridState, assignProject, closePane, switchTemplate } =
+  const { state: gridState, assignProject, closePane, switchTemplate, focusPane } =
     useGrid();
   // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
   // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
@@ -462,6 +462,7 @@ function App() {
               zoom={zoom}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
+              onFocusPane={focusPane}
             />
           </main>
         </div>

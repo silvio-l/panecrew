@@ -6,6 +6,7 @@ import {
   activePanes,
   assignProjectToSlot,
   closePane,
+  focusPane,
   focusedProjectPath,
   switchTemplate,
   templateSwitchBlockReason,
@@ -218,5 +219,38 @@ describe("gridState", () => {
     );
     expect(focusedProjectPath(withOne)).toBe("/repo/a");
     expect(focusedProjectPath(INITIAL_GRID_STATE)).toBeNull();
+  });
+
+  it("wechselt den Fokus auf eine andere belegte Pane", () => {
+    const withTwo = assignProjectToSlot(
+      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0"),
+      1,
+      "/repo/b",
+      "pane-1",
+    );
+    expect(withTwo.focusedPaneId).toBe("pane-1");
+    const next = focusPane(withTwo, "pane-0");
+    expect(next.focusedPaneId).toBe("pane-0");
+    expect(focusedProjectPath(next)).toBe("/repo/a");
+  });
+
+  it("ist ein No-Op (identische Referenz), wenn die Pane bereits fokussiert ist", () => {
+    const withOne = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      0,
+      "/repo/a",
+      "pane-0",
+    );
+    expect(focusPane(withOne, "pane-0")).toBe(withOne);
+  });
+
+  it("lässt den State bei unbekannter paneId unverändert", () => {
+    const withOne = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      0,
+      "/repo/a",
+      "pane-0",
+    );
+    expect(focusPane(withOne, "does-not-exist")).toBe(withOne);
   });
 });

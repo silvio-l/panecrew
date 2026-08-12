@@ -32,6 +32,7 @@ export function PaneGrid({
   zoom,
   onAssignProject,
   onClosePane,
+  onFocusPane,
 }: {
   state: GridState;
   paneFileEditors: PaneFileEditors;
@@ -45,6 +46,7 @@ export function PaneGrid({
   zoom: number;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
+  onFocusPane: (paneId: string) => void;
 }) {
   // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort).
   const dropTargets = useWebviewFileDrop(zoom);
@@ -65,6 +67,7 @@ export function PaneGrid({
             guardLeave={guardLeave}
             dropTargets={dropTargets}
             onClose={() => onClosePane(slot.paneId)}
+            onFocus={() => onFocusPane(slot.paneId)}
           />
         ) : (
           <ProjectPicker
@@ -86,6 +89,7 @@ function PaneCell({
   guardLeave,
   dropTargets,
   onClose,
+  onFocus,
 }: {
   paneId: string;
   projectPath: string;
@@ -94,6 +98,7 @@ function PaneCell({
   guardLeave: (paneId: string, run: () => void) => void;
   dropTargets: PaneDropRegistration;
   onClose: () => void;
+  onFocus: () => void;
 }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
@@ -110,6 +115,7 @@ function PaneCell({
           focused={focused}
           dropTargets={dropTargets}
           onClose={onClose}
+          onFocus={onFocus}
         />
       </div>
       <FileEditor
