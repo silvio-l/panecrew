@@ -65,6 +65,8 @@ import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
 import { focusedProjectPath } from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
+import { buildSessionState, restoredTemplate } from "./session/sessionState";
+import { loadSession, saveSession } from "./session/sessionStore";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import "./App.css";
 
@@ -101,6 +103,12 @@ function App() {
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
   const [pickingSlot, setPickingSlot] = useState<number | null>(null);
+  // Sperrt das Auto-Save weiter unten, bis die Wiederherstellung (Sitzung +
+  // CLI-Startprojekt) selbst einmal durchgelaufen ist — ohne die Sperre würde
+  // der allererste Render (leeres Quad, noch bevor `session.json` gelesen
+  // ist) sofort über sich selbst geschrieben und die eben geladene Sitzung
+  // sofort wieder löschen.
+  const [hydrated, setHydrated] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
@@ -133,28 +141,85 @@ function App() {
     void invoke("main_ready");
   }, []);
 
-  // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon gegen
-  // das echte Dateisystem geprüft (existiert, ist ein Verzeichnis), ein
-  // ungültiges/fehlendes Argument liefert hier einfach `null` zurück und
-  // landet ganz normal beim Picker. Landet in Slot 0 des Default-Templates —
-  // `assignProject` erzeugt dafür eine frische `paneId`, ein Eintrag in
-  // `selectedFile` ist für sie also nie vorhanden und muss nicht eigens
-  // zurückgesetzt werden (anders als früher bei einer wiederverwendeten
-  // Konstante).
+  // Einmaliger Start-Ablauf (Ticket 06): erst die persistierte Sitzung
+  // wiederherstellen (Template, Pane-Zuordnungen, letzte Dateiauswahl je
+  // Pane), danach `panecrew <pfad>` darüberlegen — ein CLI-Startprojekt
+  // gewinnt bewusst gegen Slot 0 der Sitzung, exakt das Verhalten von vor
+  // diesem Ticket. Beide Schritte in EINEM Effekt statt zwei unabhängigen:
+  // ein zweiter Effekt könnte parallel starten und Slot 0 der Sitzung mit
+  // dem CLI-Pfad überschreiben, bevor die Sitzung überhaupt geladen ist.
   useEffect(() => {
     let cancelled = false;
-    void invoke<string | null>("get_launch_project")
-      .then((path) => (path ? loadProject(path) : null))
-      .then((next) => {
-        if (!cancelled && next) assignProject(0, next.path);
-      })
-      .catch((error: unknown) => {
-        console.error("PaneCrew: Start-Projekt konnte nicht gelesen werden", error);
-      });
+    // TypeScript narrows a captured `let` to its last-checked literal value
+    // across an `await` — it doesn't know the cleanup closure below can flip
+    // it in between. Reading it back through a function call sidesteps that:
+    // a call result is never narrowed the way a bare variable read is, so
+    // every check downstream sees the real, current value instead of a
+    // stale "always false" one baked in at the first `if`.
+    const isCancelled = () => cancelled;
+
+    const restoreSlot = async (
+      slotIndex: number,
+      projectPath: string,
+      lastSelectedFile: string | null,
+    ) => {
+      const project = await loadProject(projectPath);
+      if (isCancelled()) return;
+      const paneId = assignProject(slotIndex, project.path);
+      if (lastSelectedFile === null) return;
+      setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
+      paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
+    };
+
+    const run = async () => {
+      const session = await loadSession();
+      if (!isCancelled() && session) {
+        switchTemplate(restoredTemplate(session));
+        for (const [slotIndex, slot] of session.slots.entries()) {
+          if (isCancelled() || slot === null) continue;
+          await restoreSlot(slotIndex, slot.project_path, slot.last_selected_file);
+        }
+      }
+
+      // `panecrew <pfad>` überspringt den Picker: Rust hat den Pfad schon
+      // gegen das echte Dateisystem geprüft (existiert, ist ein
+      // Verzeichnis), ein ungültiges/fehlendes Argument liefert hier einfach
+      // `null` zurück. Landet immer in Slot 0, unabhängig davon, was die
+      // Sitzung dort gerade wiederhergestellt hat.
+      const launchPath = await invoke<string | null>("get_launch_project");
+      if (!isCancelled() && launchPath) {
+        const project = await loadProject(launchPath);
+        if (!isCancelled()) assignProject(0, project.path);
+      }
+
+      if (!isCancelled()) setHydrated(true);
+    };
+
+    run().catch((error: unknown) => {
+      console.error("PaneCrew: Sitzung konnte nicht wiederhergestellt werden", error);
+      if (!isCancelled()) setHydrated(true);
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [loadProject, assignProject]);
+    // Absichtlich nur beim Mount: `assignProject`/`switchTemplate`/
+    // `loadProject` sind stabile Bindungen (s. o.), `paneFileEditors` bräuchte
+    // für ein vollständiges Dep-Array eine eigene Memoisierung, die nur
+    // dieser eine Einmal-Effekt fordern würde.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persistiert bei jeder relevanten Zustandsänderung automatisch (Ticket
+  // 06) — Template-Wechsel, Pane-Zuweisung/-Schließen, Explorer-Navigation
+  // lösen alle eine Änderung von `gridState` oder `selectedFile` aus, kein
+  // eigener Speichern-Schritt nötig. Gesperrt bis `hydrated`, damit der
+  // Leerzustand des allerersten Renders nicht die gerade geladene Sitzung
+  // überschreibt, bevor sie überhaupt angewendet ist.
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveSession(buildSessionState(gridState, selectedFile));
+  }, [hydrated, gridState, selectedFile]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein

@@ -13,8 +13,11 @@ export interface Grid {
   /** Weist `projectPath` dem Slot zu und erzeugt dafür eine frische `paneId`
    * — die einzige Stelle, die das tut (siehe `gridState.ts`s Invariante: eine
    * `paneId` ist unveränderlich für eine (Slot, Projekt)-Zuordnung, eine
-   * Neuzuweisung erzeugt immer eine neue). */
-  assignProject: (slotIndex: number, projectPath: string) => void;
+   * Neuzuweisung erzeugt immer eine neue). Gibt die erzeugte `paneId`
+   * synchron zurück (die ID entsteht hier, nicht erst im nächsten Render) —
+   * die Sitzungs-Wiederherstellung (Ticket 06) braucht sie sofort, um die
+   * wiederhergestellte Dateiauswahl derselben Pane zuzuordnen. */
+  assignProject: (slotIndex: number, projectPath: string) => string;
   closePane: (paneId: string) => void;
   /** No-Op (identische `state`-Referenz), wenn `templateSwitchBlockReason`
    * für `target` nicht `null` ist — die Steuerung entscheidet daran selbst,
@@ -36,9 +39,9 @@ export function useGrid(): Grid {
   // `closePane` aufruft (der CLI-Start in App.tsx), sie in sein Dep-Array
   // aufnehmen und bei jedem Grid-Update erneut feuern.
   const assignProject = useCallback((slotIndex: number, projectPath: string) => {
-    setState((current) =>
-      assignProjectToSlot(current, slotIndex, projectPath, crypto.randomUUID()),
-    );
+    const paneId = crypto.randomUUID();
+    setState((current) => assignProjectToSlot(current, slotIndex, projectPath, paneId));
+    return paneId;
   }, []);
 
   const closePane = useCallback((paneId: string) => {

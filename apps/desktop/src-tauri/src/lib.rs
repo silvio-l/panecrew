@@ -7,6 +7,7 @@ pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
+pub mod session_store;
 pub mod shell_history;
 pub mod shell_integration;
 pub mod splash;
@@ -74,6 +75,8 @@ pub fn run() {
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
             launch::get_launch_project,
+            session_store::session_load,
+            session_store::session_save,
             splash::splash_visible,
             splash::splash_finished,
             splash::main_ready,

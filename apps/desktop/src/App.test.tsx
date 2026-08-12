@@ -1587,3 +1587,172 @@ describe("Zoom", () => {
     expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
   });
 });
+
+describe("Sitzungspersistenz (Ticket 06)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  const saveCalls = () =>
+    invokeMock.mock.calls.filter(([cmd]) => cmd === "session_save");
+
+  it("stellt Template und Pane-Zuordnungen aus einer gespeicherten Sitzung wieder her", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          template: "split",
+          slots: [
+            { project_path: "/Users/dev/projects/storefront", last_selected_file: null },
+            null,
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+    // Split hat zwei Slots, einer davon belegt — genau ein leerer Picker
+    // bleibt übrig.
+    expect(
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(1);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/storefront" }),
+      );
+    });
+  });
+
+  it("öffnet die zuletzt ausgewählte Datei der wiederhergestellten Pane erneut", async () => {
+    invokeMock.mockImplementation((cmd, args) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          template: "quad",
+          slots: [
+            {
+              project_path: "/Users/dev/projects/storefront",
+              last_selected_file: "src/App.tsx",
+            },
+            null,
+            null,
+            null,
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      if (
+        cmd === "explorer_read_file" &&
+        (args as { path: string }).path ===
+          "/Users/dev/projects/storefront/src/App.tsx"
+      ) {
+        return Promise.resolve(FILE_CONTENTS);
+      }
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    await screen.findByLabelText("Terminal storefront");
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
+        path: "/Users/dev/projects/storefront/src/App.tsx",
+      });
+    });
+    // `findByDisplayValue` normalisiert Zeilenumbrüche zu Leerzeichen (s.
+    // `editorTextbox` oben) — bei mehrzeiligem Inhalt geht das über die
+    // Rolle, exakt vergleichend mit `toHaveValue`.
+    expect(
+      await screen.findByRole("textbox", { name: "Inhalt von App.tsx" }),
+    ).toHaveValue(FILE_CONTENTS.text);
+  });
+
+  it("ein CLI-Startprojekt gewinnt gegen Slot 0 der wiederhergestellten Sitzung", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          template: "quad",
+          slots: [
+            { project_path: "/Users/dev/projects/storefront", last_selected_file: null },
+            null,
+            null,
+            null,
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") {
+        return Promise.resolve("/Users/dev/projects/admin");
+      }
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Terminal admin")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Terminal storefront")).not.toBeInTheDocument();
+  });
+
+  it("fehlt eine gespeicherte Sitzung, bleibt es beim leeren Quad-Picker", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "session_load" ? Promise.resolve(null) : Promise.resolve(),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("session_load");
+    });
+    expect(
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
+  });
+
+  it("speichert die Sitzung automatisch nach einer Ordnerauswahl, ohne einen expliziten Speichern-Schritt", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") return Promise.resolve(null);
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      if (cmd === "explorer_read_tree") return Promise.resolve([]);
+      return Promise.resolve();
+    });
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+
+    render(<App />);
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    await waitFor(() => {
+      const [, payload] = saveCalls().at(-1) ?? [];
+      const state = (payload as { state?: { slots: unknown[] } } | undefined)
+        ?.state;
+      expect(state?.slots[0]).toEqual({
+        project_path: "/Users/dev/projects/storefront",
+        last_selected_file: null,
+      });
+    });
+  });
+
+  it("speichert die Sitzung nach einem Template-Wechsel", async () => {
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "session_load" || cmd === "get_launch_project"
+        ? Promise.resolve(null)
+        : Promise.resolve(),
+    );
+
+    render(<App />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("session_load");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Geteilt" }));
+
+    await waitFor(() => {
+      const [, payload] = saveCalls().at(-1) ?? [];
+      const state = (payload as { state?: { template: string } } | undefined)
+        ?.state;
+      expect(state?.template).toBe("split");
+    });
+  });
+});
