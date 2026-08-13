@@ -300,6 +300,16 @@ body {
   border-bottom-right-radius: 6px;
 }
 
+/* Amber-Fassung der Sucher-Ecken für das Drop-Ziel-HUD der Terminal-Pane
+   (TerminalPane.tsx): volle Kantenlänge wie die Slot-Sucher, aber sofort im
+   Akzent statt erst beim Hover — das HUD existiert überhaupt nur, solange ein
+   Datei-Drag über der Pane schwebt, sein Erscheinen IST der Zustandswechsel
+   (harter Schnitt, die geerbte 150ms-transition greift mangels Vorzustand
+   nie). Amber ist hier Einladung wie bei den leeren Slots, nicht Fokus. */
+.pc-hud-corner--invite {
+  border-color: var(--pc-pane-activeBorder);
+}
+
 /* Das ASCII-Mini-Terminal, zweifarbig: Rahmen leise (gedimmter
    Beschreibungston), Prompt + Cursor in gedimmtem Amber. color-mix statt
    Opacity, damit der Hover-Wechsel eine reine Farbtransition bleibt (die

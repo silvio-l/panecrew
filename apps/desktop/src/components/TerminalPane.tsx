@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,13 @@ import { usePtyTerminal } from "../terminal/usePtyTerminal";
 // `paneId`/`projectPath`/`projectName` kommen jetzt vom Grid-Store
 // (`PaneGrid.tsx`) statt aus einer eigenen Erzeugung hier — eine Pane weiß
 // nichts mehr über ihre Slot-Zuordnung, sie bekommt sie gereicht.
+// Wie lange die Kopiert-Bestätigung oben rechts im Terminal steht: lang genug
+// zum Lesen eines Wortes, kurz genug, dass sie nie als Zustand missverstanden
+// wird. Erscheinen und Verschwinden sind harte Schnitte (Design-Kanon:
+// Zustandswechsel bei 0ms) — die Mikroanimation ist die Zeitlichkeit selbst,
+// kein Easing.
+const COPY_FLASH_MS = 1200;
+
 export function TerminalPane({
   paneId,
   tabId,
@@ -24,6 +31,7 @@ export function TerminalPane({
   projectName,
   focused,
   active,
+  dropTarget,
   tabs,
   dropTargets,
   onClose,
@@ -50,6 +58,12 @@ export function TerminalPane({
    * eintragen — sonst gewinnt beim Registrieren zufällig der zuletzt
    * gemountete, auch wenn er gerade unsichtbar ist. */
   active: boolean;
+  /** Ob ein Datei-Drag gerade über der Pane schwebt (`useWebviewFileDrop.ts`
+   * trifft mit derselben Mathematik wie den späteren Drop) — schaltet das
+   * Drop-Ziel-HUD über der Terminalfläche ein. Pane-weit, nicht tab-weit:
+   * sichtbar wird es nur im aktiven Tab, die inaktiven liegen unter
+   * `visibility: hidden` (PaneGrid.tsx). */
+  dropTarget: boolean;
   /** Tab-Leiste dieser Pane (PaneTabs.tsx) — TerminalPane.tsx UND
    * FileEditor.tsx binden hier dasselbe Objekt ein (PaneGrid.tsx hält den
    * Tab-Zustand als einzige Wahrheit), 2026-08-12/Ticket 18. */
@@ -84,6 +98,26 @@ export function TerminalPane({
     spawning,
   } = usePtyTerminal(tabId, projectPath, selectTerminalTabByNumber);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
+  // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
+  // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
+  // ohne dieses Readout bleibt "hat das jetzt geklappt?" eine Vertrauensfrage.
+  const [copiedFlash, setCopiedFlash] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  const copyWithFeedback = () => {
+    copySelection();
+    setCopiedFlash(true);
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(
+      () => setCopiedFlash(false),
+      COPY_FLASH_MS,
+    );
+  };
 
   useEffect(() => {
     if (!active) return;
@@ -168,7 +202,13 @@ export function TerminalPane({
         >
           {focused ? "❯" : ""}
         </span>
-        <span className="min-w-0 shrink truncate">{projectName}</span>
+        {/* Terminalschrift statt Chrome-Schrift (2026-08-13, TUI-Runde): mit
+            dem ❯ davor liest sich der Kopf als Prompt-Zeile — dieselbe
+            Register-Entscheidung wie im Explorer-Kopf, beide Namen benennen
+            dasselbe Projekt und müssen im selben Ton sprechen. */}
+        <span className="min-w-0 shrink truncate font-(family-name:--pc-terminal-fontFamily)">
+          {projectName}
+        </span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
         <ChromeTooltip label={t("terminalPane.closePane")} align="end">
@@ -230,8 +270,77 @@ export function TerminalPane({
               }}
             >
               {t("terminalPane.starting")}
+              {/* Statischer Amber-Block im Ton des echten Terminal-Cursors
+                  (--pc-terminal-cursor, bewusst NICHT der Chrome-Akzent):
+                  der Platzhalter zeigt die Zelle, in der gleich der Prompt
+                  steht, inklusive des Cursors, der dort stehen wird. Kein
+                  Blinken — der echte xterm-Cursor blinkt auch nicht
+                  (cursorBlink ist nicht gesetzt), und der Platzhalter darf
+                  nicht lebendiger wirken als das Terminal danach. */}
+              <span aria-hidden="true" className="text-(--pc-terminal-cursor)">
+                {" ▊"}
+              </span>
             </p>
           )}
+          {/* Drop-Ziel-HUD: erscheint, sobald ein Datei-Drag über dieser Pane
+              schwebt, und wandert beim Ziehen von Pane zu Pane mit — dieselbe
+              Treffermathematik wie der Drop selbst (useWebviewFileDrop.ts),
+              das HUD verspricht also exakt, was ein Loslassen tut. Amber ist
+              hier Einladung, dieselbe Semantik wie die Sucher-Ecken der
+              leeren Slots (App.css, .pc-hud-corner-Kommentar) — kein zweiter
+              Fokus-Ort: während eines nativen Drags gibt es keinen
+              konkurrierenden Zeiger-Zustand. Harte Schnitte, kein Easing;
+              `aria-hidden`, weil ein nativer Datei-Drag reine Zeigerführung
+              ist. `pointer-events-none` versteht sich: die Fläche gehört
+              weiter dem Terminal. */}
+          {active && dropTarget && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-10"
+            >
+              {/* 4px nach innen gerückt: direkt auf der Kante würden die
+                  Ecken bei fokussierter Pane mit deren Amber-Rahmen zu einer
+                  verdickten Ecke verschmelzen — abgesetzt lesen sie sich als
+                  eigenes Instrument über dem Inhalt. */}
+              <div className="absolute inset-1">
+                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--tl" />
+                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--tr" />
+                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--bl" />
+                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--br" />
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span
+                  className="flex items-center gap-1.5 rounded-(--pc-paneControl-radius) border border-(--pc-pane-activeBorder)/45 bg-(--pc-pane-background)/90 py-1 pl-2 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] uppercase"
+                  // Tracking-Ausgleich wie beim Sprachchip der TitleBar:
+                  // letter-spacing hängt rechts am letzten Glyph, ohne den
+                  // Abzug stünde das Wort nicht mittig in seiner Plakette.
+                  style={{ paddingRight: "calc(0.5rem - 0.25em)" }}
+                >
+                  <span className="text-(--pc-pane-activeBorder)">⇣</span>
+                  <span className="text-(--pc-descriptionForeground)">
+                    {t("terminalPane.dropHint")}
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
+          {/* Dauerhaft gemountete Live-Region (nur ihr Inhalt kommt und
+              geht): eine erst beim Kopieren eingehängte role="status"-Region
+              würde von Screenreadern unzuverlässig angekündigt. */}
+          <div
+            role="status"
+            className="pointer-events-none absolute top-2 right-2 z-10"
+          >
+            {copiedFlash && (
+              <span
+                className="flex items-center gap-1 rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) bg-(--pc-pane-background)/90 py-0.5 pl-1.5 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] uppercase text-(--pc-descriptionForeground)"
+                style={{ paddingRight: "calc(0.375rem - 0.25em)" }}
+              >
+                <span aria-hidden="true">✓</span>
+                {t("terminalPane.copied")}
+              </span>
+            )}
+          </div>
         </div>
         <ContextMenu.Portal>
           <ContextMenu.Content
@@ -244,7 +353,7 @@ export function TerminalPane({
             className="z-30 min-w-40 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg"
           >
             <TerminalMenuItem
-              onSelect={copySelection}
+              onSelect={copyWithFeedback}
               disabled={!selectionAvailable}
             >
               {t("terminalPane.copy")}

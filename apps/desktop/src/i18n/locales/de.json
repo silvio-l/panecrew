@@ -58,8 +58,10 @@
     "closePane": "Pane schließen",
     "starting": "Terminal wird gestartet …",
     "copy": "Kopieren",
+    "copied": "Kopiert",
     "paste": "Einfügen",
-    "clear": "Terminal leeren"
+    "clear": "Terminal leeren",
+    "dropHint": "Pfad einfügen"
   },
   "paneTabs": {
     "selectView": "Ansicht wählen",

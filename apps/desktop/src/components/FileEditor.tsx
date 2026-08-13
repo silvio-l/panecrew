@@ -155,7 +155,12 @@ export function FileEditor({
         >
           {focused ? "❯" : ""}
         </span>
-        <span className="min-w-0 shrink truncate">{projectName}</span>
+        {/* Terminalschrift wie in TerminalPane.tsx' Kopf (TUI-Runde
+            2026-08-13) — beide Köpfe derselben Pane müssen im selben
+            Register sprechen. */}
+        <span className="min-w-0 shrink truncate font-(family-name:--pc-terminal-fontFamily)">
+          {projectName}
+        </span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
         {hasBuffer && (

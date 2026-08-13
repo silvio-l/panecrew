@@ -58,8 +58,10 @@
     "closePane": "Close pane",
     "starting": "Terminal is starting …",
     "copy": "Copy",
+    "copied": "Copied",
     "paste": "Paste",
-    "clear": "Clear terminal"
+    "clear": "Clear terminal",
+    "dropHint": "Insert path"
   },
   "paneTabs": {
     "selectView": "Select view",

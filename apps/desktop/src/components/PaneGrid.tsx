@@ -63,8 +63,10 @@ export function PaneGrid({
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
 }) {
-  // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort).
-  const dropTargets = useWebviewFileDrop(zoom);
+  // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort) —
+  // plus die Pane unter einem gerade schwebenden Datei-Drag, die ihr
+  // Drop-Ziel-HUD einschaltet.
+  const { dropTargets, dragTargetPaneId } = useWebviewFileDrop(zoom);
 
   return (
     // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
@@ -77,6 +79,7 @@ export function PaneGrid({
             key={slot.paneId}
             pane={slot}
             focused={slot.paneId === state.focusedPaneId}
+            dropTarget={slot.paneId === dragTargetPaneId}
             editor={paneFileEditors.editorFor(slot.paneId)}
             guardLeave={guardLeave}
             dropTargets={dropTargets}
@@ -104,6 +107,7 @@ export function PaneGrid({
 function PaneCell({
   pane,
   focused,
+  dropTarget,
   editor,
   guardLeave,
   dropTargets,
@@ -116,6 +120,9 @@ function PaneCell({
 }: {
   pane: Pane;
   focused: boolean;
+  /** Ob ein Datei-Drag gerade über DIESER Pane schwebt (`useWebviewFileDrop`)
+   * — der aktive Terminal-Tab zeigt dann sein Drop-Ziel-HUD. */
+  dropTarget: boolean;
   editor: ReturnType<PaneFileEditors["editorFor"]>;
   guardLeave: (paneId: string, run: () => void) => void;
   dropTargets: PaneDropRegistration;
@@ -197,6 +204,7 @@ function PaneCell({
               // registriert) — nur jetzt korrekt an den AKTIVEN von N Tabs
               // gebunden statt zufällig an den zuletzt gemounteten.
               active={isActiveTab}
+              dropTarget={dropTarget}
               tabs={tabs}
               dropTargets={dropTargets}
               onClose={onClose}
