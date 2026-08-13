@@ -18,8 +18,15 @@
 // des früheren generischen Ordner-Icons. Beim Überfahren wechseln Winkel und
 // Emblem in den Amber-Akzent: ein leerer Slot kann nie fokussiert sein, die
 // Fokus-Exklusivität des Akzents (Direction Contract) bleibt also unberührt —
-// hier ist Amber Einladung, nicht Zustand. Statisch, kein Glow, keine
-// kinetische Typografie: das Emblem steht, es tippt nicht.
+// hier ist Amber Einladung, nicht Zustand.
+//
+// Der Cursor im ASCII-Mini-Terminal blinkt IMMER auf jedem leeren Slot für
+// sich (Nutzer-Korrektur 2026-08-13: "die Animation... soll auf das Pane
+// bezogen sein und nicht bei einem leeren Grid, sondern auf jeden einzelnen
+// Slot" — hebt die frühere, engere "nur beim echten Kaltstart"-Regel wieder
+// auf, s. AsciiEmblem-Kommentar unten). Kein Glow, keine kinetische
+// Typografie: das Emblem tippt nicht, es blinkt nur — der eine erlaubte
+// Bewegungstyp dieser App für ein stehendes ASCII-Zeichen.
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
@@ -30,7 +37,6 @@ export function ProjectPicker({
   restoring,
   slotNumber,
   focusModeActive,
-  gridEmpty,
 }: {
   onChoose: () => void;
   busy: boolean;
@@ -52,13 +58,6 @@ export function ProjectPicker({
    * statt `display: none` — dieselbe Begründung wie bei `PaneCell`: der
    * Slot bleibt Teil der Grid-Spurberechnung, kollabiert also nicht. */
   focusModeActive: boolean;
-  /** Ob AUSNAHMSLOS jeder Slot des Grids gerade leer ist (PaneGrid.tsx) —
-   * steuert den ambienten Cursor-Blink im ASCII-Emblem unten. Nur auf dem
-   * echten Kaltstart-Bildschirm blinkt der Cursor von selbst; sobald
-   * irgendwo eine Pane läuft, bleibt jeder übrige leere Slot still (eigener
-   * Kopfkommentar oben: bis zu vier gleichzeitig, keiner darf um
-   * Aufmerksamkeit rufen). */
-  gridEmpty: boolean;
 }) {
   const { t } = useTranslation();
   const cellStyle: CSSProperties | undefined = focusModeActive
@@ -73,9 +72,9 @@ export function ProjectPicker({
           {/* Dasselbe Emblem wie im leeren Slot: der Restore-Zustand ist
               derselbe Ort eine Sekunde früher — ohne das Emblem blitzte beim
               Befüllen erst ein karger, dann der gebaute Slot auf. Kein
-              ambienter Blink hier: der Slot ist bereits auf ein Projekt
-              festgelegt, kein offenes Angebot mehr. */}
-          <AsciiEmblem ambient={false} />
+              Blink hier: der Slot ist bereits auf ein Projekt festgelegt,
+              kein offenes Angebot mehr. */}
+          <AsciiEmblem blinking={false} />
           <span className="text-(length:--pc-chrome-fontSize) font-medium">
             {t("common.loading")}
           </span>
@@ -102,7 +101,7 @@ export function ProjectPicker({
       >
         <HudCorners />
         <SlotReadout number={slotNumber} />
-        <AsciiEmblem ambient={gridEmpty} />
+        <AsciiEmblem blinking />
         <span className="text-(length:--pc-chrome-fontSize) font-medium">
           {t("projectPicker.choose")}
         </span>
@@ -161,24 +160,27 @@ function SlotReadout({ number }: { number: number }) {
 // zieht beides an (App.css, .pc-slotframe:hover). Keine Buchstaben, deshalb
 // kein i18n-Fall; als reine Zeichnung für Screenreader unsichtbar.
 //
-// Der Cursor-Block ist ein eigener Span (App.css, .pc-hud-emblem__cursor),
-// damit CSS ihn unabhängig vom umgebenden Prompt-Ton hart blinken lassen
-// kann — 2026-08-13, Nutzer-Wunsch "ein bisschen animier das gerne auch",
-// dasselbe pc-clock-blink-Timing wie der TitleBar-Uhr-Doppelpunkt, keine
-// neue Bewegungssprache. `ambient` (nur wahr, wenn PaneGrid meldet, dass
-// WIRKLICH jeder Slot leer ist) lässt ihn von selbst blinken, statt nur bei
-// Hover/Fokus — das ist genau der Kaltstart-Bildschirm, den der Nutzer
-// meinte, und der einzige Moment, in dem kein zweiter leerer Slot daneben um
-// dieselbe Aufmerksamkeit konkurrieren könnte.
-function AsciiEmblem({ ambient }: { ambient: boolean }) {
+// Chevron und Cursor-Block sind zwei EIGENE Spans (App.css,
+// .pc-hud-emblem__prompt-glyph / .pc-hud-emblem__cursor), nicht bloß der
+// Cursor allein — damit CSS beide unabhängig voneinander hart blinken lassen
+// kann, GEGENPHASIG (App.css: der Cursor bekommt einen 500ms-Delay-Versatz
+// zum Chevron auf demselben pc-clock-blink-Keyframe). Ergebnis: während der
+// Cursor unsichtbar ist, steht der Chevron voll da, und umgekehrt — ein
+// kleiner "Herzschlag" statt eines einzelnen Blinkens, ohne neue
+// Bewegungssprache (dieselbe Kurve/Dauer wie der TitleBar-Uhr-Doppelpunkt,
+// nur zweifach versetzt eingesetzt). `blinking` ist auf jedem echten leeren
+// Slot für sich wahr (Nutzer-Korrektur 2026-08-13: "auf jeden einzelnen
+// Slot", nicht nur beim Kaltstart mit leerem Gesamtgrid) — `false` nur im
+// `restoring`-Zweig, wo der Slot schon auf ein Projekt festgelegt ist.
+function AsciiEmblem({ blinking }: { blinking: boolean }) {
   return (
     <pre
       aria-hidden="true"
-      className={`pc-hud-emblem font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-[1.15]${ambient ? " pc-hud-emblem--ambient" : ""}`}
+      className={`pc-hud-emblem font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-[1.15]${blinking ? " pc-hud-emblem--blinking" : ""}`}
     >
       {"╭─────────╮\n│ "}
       <span className="pc-hud-emblem__prompt">
-        {"❯ "}
+        <span className="pc-hud-emblem__prompt-glyph">{"❯"}</span>{" "}
         <span className="pc-hud-emblem__cursor">{"█"}</span>
       </span>
       {"     │\n│         │\n╰─────────╯"}

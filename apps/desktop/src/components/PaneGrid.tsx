@@ -88,14 +88,6 @@ export function PaneGrid({
    * maximierten Zelle. */
   rotation: FocusRotation;
 }) {
-  // Nur wenn WIRKLICH jeder Slot leer ist (Kaltstart, kein Projekt gewählt)
-  // bekommt das ASCII-Mini-Terminal seinen ambienten Cursor-Blink — die
-  // eigentliche erste Sicht auf die App. Sobald mindestens eine Pane läuft,
-  // bleibt jeder verbleibende leere Slot statisch (ProjectPicker.tsx-
-  // Kopfkommentar: bis zu vier davon gleichzeitig, keiner darf um
-  // Aufmerksamkeit rufen — das gilt neben laufenden Panes, nicht auf dem
-  // leeren Bildschirm selbst).
-  const gridEmpty = state.slots.every((slot) => slot === null);
   return (
     // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
     // — Spuren und Spannen aller sieben Geometrien stehen in App.css
@@ -144,7 +136,6 @@ export function PaneGrid({
             restoring={restoringSlots.has(index)}
             slotNumber={index + 1}
             focusModeActive={state.maximizedPaneId !== null}
-            gridEmpty={gridEmpty}
           />
         ),
       )}

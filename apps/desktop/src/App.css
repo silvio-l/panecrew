@@ -358,23 +358,32 @@ body {
   }
 }
 
-/* Cursorblock des ASCII-Mini-Terminals (ProjectPicker.tsx, AsciiEmblem):
- * derselbe pc-clock-blink-Takt wie oben, zwei Auslöser statt einem.
+/* Chevron + Cursorblock des ASCII-Mini-Terminals (ProjectPicker.tsx,
+ * AsciiEmblem): derselbe pc-clock-blink-Takt wie oben, gegenphasig auf zwei
+ * Elemente verteilt — solange der Cursor unsichtbar ist, steht der Chevron
+ * voll da, und umgekehrt (500ms-Delay-Versatz = exakt die halbe
+ * Zyklusdauer). Liest sich als kleiner "Herzschlag" statt als einzelnes
+ * Blinken, ohne dass eine dritte Bewegungssprache dazukäme.
  *
- * 1. Hover/Fokus: der angefasste Slot "erwacht" wie Ecken/Emblem-Farbe.
- * 2. `.pc-hud-emblem--ambient` (nur gesetzt, wenn PaneGrid meldet, dass
- *    WIRKLICH jeder Slot leer ist, nie während `restoring`): der
- *    Kaltstart-Bildschirm blinkt von selbst, ohne Hover — genau der erste
- *    Eindruck, um den es 2026-08-13 ging. Sobald irgendwo eine Pane läuft,
- *    bleibt jeder übrige leere Slot still (ProjectPicker.tsx-Kopfkommentar:
- *    bis zu vier gleichzeitig, keiner darf um Aufmerksamkeit rufen — das
- *    gilt neben laufenden Panes, nicht auf dem leeren Bildschirm selbst).
+ * `.pc-hud-emblem--blinking` ist auf JEDEM echten leeren Slot für sich
+ * gesetzt (Nutzer-Korrektur 2026-08-13: "die Animation... soll auf das Pane
+ * bezogen sein... auf jeden einzelnen Slot" — hebt die frühere, engere
+ * "nur beim Kaltstart mit leerem Gesamtgrid"-Fassung wieder auf), `false`
+ * nur im `restoring`-Zweig. Hover/Fokus lässt zusätzlich JEDEN Slot
+ * (auch `restoring`) kurz "erwachen", wie Ecken/Emblem-Farbe.
  */
 @media (prefers-reduced-motion: no-preference) {
   .pc-slotframe:hover .pc-hud-emblem__cursor,
   .pc-slotframe:focus-visible .pc-hud-emblem__cursor,
-  .pc-hud-emblem--ambient .pc-hud-emblem__cursor {
+  .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
     animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+  }
+
+  .pc-slotframe:hover .pc-hud-emblem__prompt-glyph,
+  .pc-slotframe:focus-visible .pc-hud-emblem__prompt-glyph,
+  .pc-hud-emblem--blinking .pc-hud-emblem__prompt-glyph {
+    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+    animation-delay: 500ms;
   }
 }
 
