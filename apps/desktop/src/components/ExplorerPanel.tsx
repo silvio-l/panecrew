@@ -20,16 +20,21 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { FileIcon, FolderIcon } from "./explorerIcons";
 import { HudReadout } from "./HudReadout";
 import { isPathOrDescendant, remapRenamedPath } from "../explorer/filePath";
+import { searchProjectTree } from "../explorer/searchTree";
 import { vscodeIsInstalled } from "../explorer/vscodeDetection";
 import { isMacPlatform } from "../shortcuts/platform";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
-import { filterTree } from "../types/treeFilter";
 
 // Dieselbe Dauer wie TerminalPane.tsx' Kopier-Bestätigung (Ticket 24 nennt
 // deren Kontextmenü ausdrücklich als Vorbild) — ein zweiter, abweichender
 // Wert für dieselbe Geste hätte keine erkennbare Begründung.
 const COPY_FLASH_MS = 1200;
+
+// Verzögerung zwischen dem letzten Tastendruck in der Explorer-Suche und dem
+// tatsächlichen Backend-Walk (`explorer_search_names`) — eine Anfrage pro
+// Anschlag wäre auf einem großen Baum unnötige Last für Zwischenzustände.
+const SEARCH_DEBOUNCE_MS = 200;
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
 // nur der Dateibaum, kein Icon-Rail, kein Overlay. Die STRUKTUR (Chevron-
@@ -78,6 +83,7 @@ export function ExplorerPanel({
   onSelectFile,
   onCollapse,
   onRefresh,
+  onLoadChildren,
   onStartPathDrag,
   draggingPath,
   onConsumeDragClick,
@@ -108,9 +114,16 @@ export function ExplorerPanel({
   onSelectFile: (path: string) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
-   * (`explorer_read_tree`) liegt bei App, nicht hier — der Explorer weiß nur,
-   * dass es ihn gibt. */
+   * (`explorer_read_dir` für die Wurzel, dann jeder zuvor beladene Ordner
+   * erneut) liegt bei App/`useProjects.ts`, nicht hier — der Explorer weiß
+   * nur, dass es ihn gibt. */
   onRefresh: () => void;
+  /** Lädt die Kinder EINES noch unbeladenen Ordners nach (Lazy-Expand,
+   * `explorer_read_dir`) — der eigentliche Lese-Aufruf liegt in
+   * `useProjects.ts`s `loadChildren`, hier nur durchgereicht, aus demselben
+   * Grund wie bei `onRefresh`. Wirft bei einem Lesefehler (Ordner z. B.
+   * gerade gelöscht) — der Aufrufer entscheidet, wie er darauf reagiert. */
+  onLoadChildren: (relPath: string) => Promise<void>;
   /** Beginnt das Ziehen einer Zeile in eine Pane (Ticket 25). Bekommt den
    * ABSOLUTEN Pfad — die Umrechnung passiert hier, wo `project.path` bekannt
    * ist, genau wie bei `dirtyFile`: der Baum selbst spricht durchgehend
@@ -137,33 +150,68 @@ export function ExplorerPanel({
   onEntryDeleted: (relPath: string) => void;
 }) {
   const { t } = useTranslation();
-  // Jeder Ordnerpfad des Baums — die Bezugsmenge, gegen die sich „eingeklappt"
-  // und „aufgeklappt" ineinander umrechnen lassen. Ändert sich nur, wenn der
-  // Baum neu von der Platte gelesen wurde.
-  const allFolderPaths = useMemo(
-    () => collectFolderPaths(project.tree, ""),
-    [project.tree],
+  // AUFgeklappte Ordner sind seit dem Umbau auf Lazy-Loading (2026-08-13) die
+  // Quelle der Wahrheit, nicht mehr ein „eingeklappt"-Set gegen die Menge
+  // ALLER Ordnerpfade gerechnet: Lazy-Loading kennt „alle Ordner des
+  // Projekts" gar nicht mehr (das war genau das Problem am alten,
+  // eager-rekursiven `explorer_read_tree` — ein früh-alphabetischer Ordner
+  // mit sehr vielen Einträgen konnte per gemeinsamem Budget alle
+  // nachfolgenden Geschwister aus dem Baum verdrängen, siehe whispaste,
+  // 2026-08-13). Startzustand ist deshalb direkt die aus der Sitzung
+  // wiederhergestellte Menge — ein gemerkter Pfad, den es nicht mehr gibt,
+  // fällt beim `flattenTree`-Ausrollen unten von selbst weg, er trifft dort
+  // schlicht auf keinen Knoten.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(initialExpanded ?? []),
   );
-  // Startzustand: alles eingeklappt, nur die Wurzelkinder sichtbar (2026-08-12
-  // Nutzerentscheidung — vorher stand hier ein leeres Set, also ALLES
-  // aufgeklappt, was bei größeren Projekten sofort einen Bildschirm voller
-  // Zeilen ergab), abzüglich dessen, was die Sitzung als aufgeklappt gemerkt
-  // hat. Ein gemerkter Pfad, den es nicht mehr gibt, fällt dabei von allein
-  // weg — er kommt in der Differenz gar nicht erst vor.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => {
-    const expanded = new Set(initialExpanded ?? []);
-    return new Set(
-      collectFolderPaths(project.tree, "").filter((path) => !expanded.has(path)),
-    );
-  });
-  // Meldet jede Änderung nach oben — als AUFgeklappte Ordner, siehe Prop-Doku.
-  // Auch die erste direkt nach dem Mount: ein Projekt, dessen gemerkte Ordner
-  // inzwischen verschwunden sind, soll die bereinigte Menge sofort in
-  // `session.json` haben, nicht erst nach dem ersten manuellen Klick.
+  // Meldet jede Änderung nach oben, siehe Prop-Doku von `onExpandedChange`.
   useEffect(() => {
-    onExpandedChange(allFolderPaths.filter((path) => !collapsed.has(path)));
+    onExpandedChange([...expanded]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collapsed, allFolderPaths]);
+  }, [expanded]);
+  // Lädt die aus der Sitzung wiederhergestellten Ordner tatsächlich nach —
+  // `expanded` allein macht eine Zeile nur SICHTBAR, ihre Kinder müssen dafür
+  // erst aus `explorer_read_dir` kommen (s. `TreeNode.children`-Doku). Nach
+  // Vorbild des Referenz-Editors' `resolveTo`: streng von der Wurzel zu den
+  // Blättern hin aufgelöst (`sort` nach Tiefe), weil `withChildrenAt`
+  // (`types/project.ts`) einen Zielpfad nur findet, wenn jeder Elternordner
+  // auf dem Weg dorthin bereits geladen ist — ein paralleler Fire-and-Forget
+  // über alle Pfade würde jeden Treffer verlieren, dessen Eltern noch nicht
+  // an der Reihe waren.
+  //
+  // Nur beim Einhängen: `initialExpanded` ist laut seiner eigenen Doku nur
+  // ein Startwert, kein Prop, das den Baum später von außen zurücksetzen
+  // soll (derselbe Grund, aus dem `collapsed`/`expanded` selbst keinen
+  // `useEffect` auf `initialExpanded` hat).
+  useEffect(() => {
+    if (!initialExpanded || initialExpanded.length === 0) return;
+    let cancelled = false;
+    // TypeScript narrows a captured `let` to its last-checked literal value
+    // across an `await` — it doesn't know the cleanup closure below can flip
+    // it in between. Reading it back through a function call sidesteps that,
+    // same pattern as App.tsx's session-restore effect.
+    const isCancelled = () => cancelled;
+    const chain = [...initialExpanded].sort(
+      (a, b) => a.split("/").length - b.split("/").length,
+    );
+    void (async () => {
+      for (const path of chain) {
+        if (isCancelled()) return;
+        try {
+          await onLoadChildren(path);
+        } catch (error) {
+          console.error(
+            "PaneCrew: gespeicherter Ordner konnte nicht nachgeladen werden",
+            error,
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Zweiter, bewusst eigener Einklapp-Zustand statt eines Eintrags in
   // `collapsed`: Der Projektknoten hat gar keine Zeile im Baum — der beginnt
   // schon bei seinen Kindern — und damit auch keinen Pfad, unter dem ihn das
@@ -180,28 +228,75 @@ export function ExplorerPanel({
   // Ein einzelner Zustand statt „offen"-Flag plus Text, weil Schließen und
   // Verwerfen hier dasselbe sind: Escape wie zweiter Klick auf den Knopf
   // lassen keinen Text zurück, der beim nächsten Öffnen wieder auftauchen
-  // dürfte. Panel-lokal wie `collapsed`/`rootCollapsed` und aus demselben
+  // dürfte. Panel-lokal wie `expanded`/`rootCollapsed` und aus demselben
   // Grund — die Suche gehört zu DIESEM Baum und soll den key-Remount beim
   // Projektwechsel nicht überleben.
   //
-  // Gefiltert wird ausschließlich clientseitig über den bereits geladenen
-  // Baum (`filterTree`), kein neuer Backend-Aufruf; die globale Suche in der
+  // Seit dem Umbau auf Lazy-Loading (2026-08-13) ein eigener Backend-Walk
+  // (`explorer_search_names`, s. `searchTree.ts`) statt der früheren rein
+  // clientseitigen Filterung über den bereits geladenen Baum
+  // (`types/treeFilter.ts`, entfallen): ein noch nie aufgeklappter Ordner
+  // hätte sonst nie durchsucht werden können. Die globale Suche in der
   // Titelzeile ist eine andere Sache und bleibt davon unberührt.
   const [search, setSearch] = useState<string | null>(null);
 
-  // Ohne lesbaren Baum gibt es nichts zu filtern: dann gilt die Suche als
+  // Ohne lesbaren Baum gibt es nichts zu suchen: dann gilt die Suche als
   // geschlossen, egal was der Zustand sagt (derselbe Fall deaktiviert unten
   // den Knopf). Der getippte Text bleibt dabei erhalten statt weggeworfen zu
   // werden — schlägt ein späteres Aktualisieren an, kommt die Suche zurück,
   // wie sie war.
   const searchQuery = project.treeError === null ? search : null;
-  // `null` heißt hier zweierlei — Feld zu ODER Feld leer (das entscheidet
-  // `filterTree` selbst) — und beides bedeutet dasselbe: der Baum wird
-  // unverändert gezeigt, mit dem normalen Ein-/Ausklapp-Verhalten.
+  const trimmedSearchQuery = searchQuery?.trim() ?? "";
+
+  // Ergebnis des zuletzt ABGESCHLOSSENEN Suchlaufs, zusammen mit der Anfrage,
+  // die es beantwortet — nur wenn beide übereinstimmen, ist es aktuell (s.
+  // `filteredTree` unten). Bleibt beim Weitertippen bewusst stehen (kein
+  // Zurücksetzen auf `null`), damit ein neuer Tastendruck nicht kurz den
+  // ganzen Baum aufblitzen lässt, bevor die nächste Antwort da ist.
+  const [searchResult, setSearchResult] = useState<{
+    query: string;
+    nodes: TreeNode[];
+    truncated: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (trimmedSearchQuery === "") return;
+    let cancelled = false;
+    // Entkoppelt vom Tippen: eine Anfrage pro Tastenanschlag wäre auf einem
+    // großen Baum unnötige Backend-Last für Zwischenzustände, die ohnehin
+    // sofort durch die nächste Anfrage ersetzt werden.
+    const timer = window.setTimeout(() => {
+      void searchProjectTree(project.path, trimmedSearchQuery)
+        .then(({ nodes, truncated }) => {
+          // Verwirft eine spät eintreffende Antwort auf eine Anfrage, die
+          // nicht mehr die aktuelle ist — sonst könnte eine frühere, langsame
+          // Anfrage eine neuere, schnellere überschreiben.
+          if (cancelled) return;
+          setSearchResult({ query: trimmedSearchQuery, nodes, truncated });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          console.error("PaneCrew: Suche fehlgeschlagen", error);
+          setSearchResult({ query: trimmedSearchQuery, nodes: [], truncated: false });
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [project.path, trimmedSearchQuery]);
+
+  // `null` heißt hier zweierlei — Feld zu ODER Feld leer — und beides
+  // bedeutet dasselbe: der Baum wird unverändert gezeigt, mit dem normalen
+  // Ein-/Ausklapp-Verhalten. Während eine neuere Anfrage noch unterwegs ist,
+  // bleibt das vorherige Ergebnis stehen (s. `searchResult`-Doku oben) statt
+  // kurz auf „keine Treffer" umzuspringen.
   const filteredTree = useMemo(
-    () => (searchQuery === null ? null : filterTree(project.tree, searchQuery)),
-    [project.tree, searchQuery],
+    () => (trimmedSearchQuery === "" ? null : (searchResult?.nodes ?? [])),
+    [trimmedSearchQuery, searchResult],
   );
+  const searchPending =
+    trimmedSearchQuery !== "" && searchResult?.query !== trimmedSearchQuery;
   const shownTree = filteredTree ?? project.tree;
 
   const toggleSearch = () => {
@@ -227,18 +322,36 @@ export function ExplorerPanel({
     setRootCollapsed(false);
   };
 
-  const toggleFolder = (path: string) => {
+  const toggleFolder = (row: FlatRow) => {
     // Während gefiltert wird, ist jeder gezeigte Ordner aufgeklappt — ein
     // Klick könnte das Set also nur unsichtbar verändern und beim Schließen
     // der Suche als überraschend anders geklappter Baum zurückkommen. Deshalb
     // hier folgenlos: der handgeklappte Zustand überlebt die Suche unberührt.
     if (filteredTree !== null) return;
-    setCollapsed((prev) => {
+    const { path, node } = row;
+    const opening = !expanded.has(path);
+    setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (opening) next.add(path);
+      else next.delete(path);
       return next;
     });
+    // Nur beim ÖFFNEN eines noch unbeladenen Ordners nachladen — ein Klick,
+    // der wieder zuklappt, oder einer auf einen bereits beladenen Ordner
+    // (Kinder stehen im Cache, s. `useProjects.ts`) braucht keinen
+    // Backend-Aufruf.
+    if (opening && node.children === undefined) {
+      void onLoadChildren(path).catch((error: unknown) => {
+        console.error("PaneCrew: Ordner konnte nicht geladen werden", error);
+        // Klappt wieder zu, statt dauerhaft in der Lade-Zeile hängen zu
+        // bleiben — ein erneuter Klick versucht es einfach noch einmal.
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
+      });
+    }
   };
 
   // Ersetzt das Set statt es zu ergänzen: nach „alles einklappen" gibt es
@@ -249,20 +362,31 @@ export function ExplorerPanel({
   // ausdrücklicher Befehl auf den ganzen Baum, den der Nutzer selbst erteilt
   // hat. Ein Chevron-Klick wäre dagegen nur die unsichtbare Nebenwirkung
   // eines Klicks, der in dem Moment aussieht, als täte er nichts.
+  //
+  // Verwirft bereits geladene Kinder NICHT: „einklappen" ist rein die
+  // Sichtbarkeit der Zeilen, kein Cache-Invalidieren — ein erneutes Aufklappen
+  // desselben Ordners zeigt ihn ohne neuen Backend-Aufruf sofort wieder.
   const collapseAll = () => {
-    setCollapsed(new Set(allFolderPaths));
+    setExpanded(new Set());
   };
 
   // Die sichtbare Zeilenfolge des Baums — genau das, was der rekursive Aufbau
   // vorher implizit erzeugt hat, hier nur als Liste ausgeschrieben, damit sich
   // ein Sichtfenster darauf ausrechnen lässt.
   const rows = useMemo(
-    () => flattenTree(shownTree, collapsed, filteredTree !== null),
-    [shownTree, collapsed, filteredTree],
+    () => flattenTree(shownTree, expanded, filteredTree !== null),
+    [shownTree, expanded, filteredTree],
   );
-  // Bezugsgröße des Fußzeilen-Readouts: ALLE Einträge des ungefilterten
-  // Baums, unabhängig von Klapp- und Suchzustand — genau dadurch sagt
-  // „12/384" etwas aus (wie viel vom Projekt gerade sichtbar ist).
+  // Bezugsgröße des Fußzeilen-Readouts: jeder Knoten, den der Explorer
+  // BISHER kennt (Wurzel plus jeder Ordner, der schon einmal per
+  // `explorer_read_dir` beladen wurde), unabhängig von Klapp- und
+  // Suchzustand. Seit dem Umbau auf Lazy-Loading (2026-08-13) ist das NICHT
+  // mehr die wahre Projektgröße — die kennt der Explorer erst, wenn alles
+  // aufgeklappt war — sondern der ehrliche Stand dessen, was tatsächlich
+  // gelesen wurde. Das ist eine bewusste Abkehr vom früheren Vertrag „12/384
+  // heißt: 384 Einträge existieren im Projekt" hin zu „384 Einträge sind dem
+  // Explorer gerade bekannt" — dieselbe Auskunft, die z. B. der Referenz-Editor für seine
+  // eigene Baumansicht gibt.
   const totalEntries = useMemo(() => countNodes(project.tree), [project.tree]);
 
   // Ob VS Code überhaupt installiert ist, ändert sich nicht innerhalb einer brandlint-ok: funktionale Erkennung des real installierten Editors
@@ -315,13 +439,13 @@ export function ExplorerPanel({
     copyFlashTimer.current = window.setTimeout(() => setCopyFlash(null), COPY_FLASH_MS);
   };
 
-  // Verschiebt jeden Klapp-Zustand-Eintrag, der GENAU `oldPath` war oder
+  // Verschiebt jeden Aufklapp-Zustand-Eintrag, der GENAU `oldPath` war oder
   // darunter lag, auf die entsprechende Adresse unter `newPath` — sonst
-  // erschiene ein umbenannter, vorher eingeklappter Ordner nach dem
-  // Aktualisieren plötzlich aufgeklappt (er stünde unter seinem neuen Namen
-  // nicht mehr im `collapsed`-Set).
-  const remapCollapsedOnRename = (oldPath: string, newPath: string) => {
-    setCollapsed((prev) => {
+  // erschiene ein umbenannter, vorher aufgeklappter Ordner nach dem
+  // Aktualisieren plötzlich eingeklappt (er stünde unter seinem neuen Namen
+  // nicht mehr im `expanded`-Set).
+  const remapExpandedOnRename = (oldPath: string, newPath: string) => {
+    setExpanded((prev) => {
       const next = new Set<string>();
       for (const entry of prev) next.add(remapRenamedPath(entry, oldPath, newPath));
       return next;
@@ -340,7 +464,7 @@ export function ExplorerPanel({
     } catch (cause) {
       return typeof cause === "string" ? cause : String(cause);
     }
-    remapCollapsedOnRename(relPath, newRelPath);
+    remapExpandedOnRename(relPath, newRelPath);
     setRenamingPath(null);
     onRefresh();
     onEntryRenamed(relPath, newRelPath);
@@ -353,7 +477,7 @@ export function ExplorerPanel({
     setPendingDelete(null);
     void invoke("explorer_delete", { path: `${project.path}/${path}` })
       .then(() => {
-        setCollapsed((prev) => {
+        setExpanded((prev) => {
           const next = new Set(prev);
           for (const entry of prev) {
             if (isPathOrDescendant(entry, path)) next.delete(entry);
@@ -590,16 +714,17 @@ export function ExplorerPanel({
                 {t("explorer.noTreeLoaded")}
               </p>
             </TreeNoticeArea>
-          ) : shownTree.length === 0 ? (
+          ) : shownTree.length === 0 && !searchPending ? (
             // Vom Leer-Platzhalter darüber bewusst unterscheidbar: eine Suche
             // ohne Treffer darf nie wie ein leeres Projekt aussehen —
             // dieselbe Sorgfalt wie bei `TreeErrorNotice`, hier aber mit einem
-            // Satz genug, weil nichts kaputt ist. Zitiert wird der getrimmte
-            // Text, also genau der, nach dem `filterTree` tatsächlich gesucht
-            // hat.
+            // Satz genug, weil nichts kaputt ist. `searchPending` hält diesen
+            // Zweig zurück, solange die Antwort auf die AKTUELLE Anfrage noch
+            // unterwegs ist — sonst blitzte „Keine Treffer" bei jedem
+            // Tastendruck kurz auf, bevor die eigentliche Antwort ankommt.
             <TreeNoticeArea>
               <p className="px-3 py-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
-                {t("explorer.noSearchResults", { query: searchQuery?.trim() ?? "" })}
+                {t("explorer.noSearchResults", { query: trimmedSearchQuery })}
               </p>
             </TreeNoticeArea>
           ) : (
@@ -625,6 +750,18 @@ export function ExplorerPanel({
                 setContextTargetPath(open ? path : null)
               }
             />
+          )}
+          {/* Backend-Suche kappt bewusst nur die TREFFERLISTE
+              (`MAX_SEARCH_MATCHES`, `explorer_fs.rs`), nie unbeteiligte
+              Geschwister wie der alte `MAX_ENTRIES`-Bug — trotzdem offen
+              kommuniziert statt still, sonst sähe eine lange Trefferliste wie
+              eine vollständige aus. Nur bei der AKTUELLEN, abgeschlossenen
+              Suche (nicht `searchPending`), sonst stünde die Meldung noch für
+              die vorherige Anfrage. */}
+          {filteredTree !== null && !searchPending && searchResult?.truncated === true && (
+            <p className="shrink-0 border-t border-(--pc-explorer-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
+              {t("explorer.searchTruncated")}
+            </p>
           )}
           {/* Nur unter einem echten Baum: unter Fehler- und Leerzuständen
               gäbe es nichts zu zählen, und ein Readout „0/0" sähe wie ein
@@ -764,7 +901,10 @@ function TreeList({
   selected: string;
   dirtyFile: string | null;
   gitDecorations: GitDecorations;
-  onToggleFolder: (path: string) => void;
+  /** Bekommt die GANZE Zeile, nicht nur ihren Pfad: `toggleFolder` in
+   * `ExplorerPanel` braucht `row.node.children`, um zu entscheiden, ob ein
+   * Aufklappen einen Lazy-Load auslösen muss. */
+  onToggleFolder: (row: FlatRow) => void;
   onSelectFile: (path: string) => void;
   /** Wie in `ExplorerPanel`, nur schon auf den Baumpfad der Zeile verkürzt —
    * die Umrechnung auf den absoluten Pfad liegt eine Ebene höher. */
@@ -1239,7 +1379,10 @@ interface FlatRow {
   node: TreeNode;
   /** Projekt-relativer Pfad in der Konvention des ganzen Explorers (Tiefe 0:
    * der bloße Name, darunter `${eltern}/${name}`) — dieselben Schlüssel, unter
-   * denen `collapsed`, `gitDecorations` und `selectedFile` geführt werden. */
+   * denen `expanded`, `gitDecorations` und `selectedFile` geführt werden.
+   * Ausnahme: die synthetische Lade-Zeile (`isLoadingPlaceholder`) trägt
+   * keinen echten Baumpfad, nur einen für React/den Virtualizer eindeutigen
+   * Schlüssel — sie steht für keinen tatsächlichen Eintrag. */
   path: string;
   depth: number;
   isFolder: boolean;
@@ -1254,6 +1397,10 @@ interface FlatRow {
   /** Letztes Kind seiner Ebene → der eigene Konnektor ist ein └ (Vertikale
    * endet auf halber Zeilenhöhe) statt eines ├. */
   isLast: boolean;
+  /** Steht für einen Ordner, der offen ist, dessen Kinder aber noch nicht aus
+   * `explorer_read_dir` zurück sind (`node.children === undefined`) — die
+   * einzige Zeile, die `TreeRow` nicht als echten Eintrag rendert. */
+  isLoadingPlaceholder?: boolean;
 }
 
 /** Rollt den Baum zu der Zeilenfolge aus, die gerade sichtbar ist: ein
@@ -1263,11 +1410,11 @@ interface FlatRow {
  *
  * `forceOpen` ist der Suchfall: während gefiltert wird, muss JEDER gezeigte
  * Ordner offen sein, sonst bliebe unsichtbar, was die Suche gerade gefunden
- * hat. Es überstimmt `collapsed`, ohne es anzufassen — der handgeklappte
+ * hat. Es überstimmt `expanded`, ohne es anzufassen — der handgeklappte
  * Zustand kommt beim Schließen der Suche unverändert zurück. */
 function flattenTree(
   nodes: readonly TreeNode[],
-  collapsed: ReadonlySet<string>,
+  expanded: ReadonlySet<string>,
   forceOpen: boolean,
 ): FlatRow[] {
   const rows: FlatRow[] = [];
@@ -1280,41 +1427,42 @@ function flattenTree(
   ) => {
     level.forEach((node, index) => {
       const path = parentPath === "" ? node.name : `${parentPath}/${node.name}`;
-      const isFolder = node.children !== undefined;
-      const isOpen = isFolder && (forceOpen || !collapsed.has(path));
+      const isFolder = node.isDirectory;
+      const isOpen = isFolder && (forceOpen || expanded.has(path));
       const isLast = index === level.length - 1;
       rows.push({ node, path, depth, isFolder, isOpen, ancestorGuides, isLast });
+      if (!isOpen) return;
       // Die Kinder erben die Astlage aller Ebenen darüber plus die dieser
       // Zeile: läuft hier unten noch ein Geschwister nach, führt die
       // Vertikale durch den ganzen Teilbaum — sonst endet sie mit dieser
       // Zeile. Dasselbe Array wird pro Ebene GETEILT (kein Kopieren pro
       // Zeile): erzeugt wird es genau einmal pro aufgeklapptem Ordner.
-      if (isOpen && node.children)
-        walk(node.children, path, depth + 1, [...ancestorGuides, !isLast]);
+      const childAncestorGuides = [...ancestorGuides, !isLast];
+      if (node.children === undefined) {
+        // Offen, aber noch unbeladen (`explorer_read_dir` ist unterwegs, s.
+        // `toggleFolder`) — eine einzelne synthetische Zeile statt echter
+        // Kinder, die es noch gar nicht gibt.
+        rows.push({
+          node,
+          // "//" statt eines echten Pfadsegments: eine leere Segmentfolge
+          // kann kein tatsächlicher Baumpfad sein (kein Eintrag heißt ""),
+          // der Schlüssel kollidiert also nie mit einer echten Zeile.
+          path: `${path}//loading`,
+          depth: depth + 1,
+          isFolder: false,
+          isOpen: false,
+          ancestorGuides: childAncestorGuides,
+          isLast: true,
+          isLoadingPlaceholder: true,
+        });
+        return;
+      }
+      walk(node.children, path, depth + 1, childAncestorGuides);
     });
   };
 
   walk(nodes, "", 0, []);
   return rows;
-}
-
-// Sammelt JEDEN Ordnerpfad des Baums in genau der Pfad-Konvention, die
-// `flattenTree` beim Ausrollen erzeugt (Tiefe 0: der bloße Name, darunter
-// `${eltern}/${name}`) — sonst träfe „Alle Ordner einklappen" Pfade, die es
-// im `collapsed`-Set gar nicht gibt.
-//
-// Bewusst ein eigener Gang über den UNGEFILTERTEN `project.tree` statt über
-// die ausgerollten Zeilen: einzuklappen ist auch, was gerade gar nicht
-// sichtbar ist.
-function collectFolderPaths(
-  nodes: readonly TreeNode[],
-  parentPath: string,
-): string[] {
-  return nodes.flatMap((node) => {
-    if (node.children === undefined) return [];
-    const path = parentPath === "" ? node.name : `${parentPath}/${node.name}`;
-    return [path, ...collectFolderPaths(node.children, path)];
-  });
 }
 
 // Die Kopfzeilen-Knöpfe unterscheiden sich nur in Beschriftung, Glyph und
@@ -1575,7 +1723,7 @@ interface TreeRowProps {
    * `flattenTree` baut (Tiefe 0: der bloße Name, darunter `${eltern}/${name}`),
    * deshalb ohne jede Umrechnung. */
   gitDecorations: GitDecorations;
-  onToggleFolder: (path: string) => void;
+  onToggleFolder: (row: FlatRow) => void;
   onSelectFile: (path: string) => void;
   onStartPathDrag: (
     event: ReactPointerEvent<HTMLElement>,
@@ -1657,6 +1805,29 @@ function TreeRow({
   // steht nur auf Ordnerzeilen — und die erreichen diesen Zustand nie.
   const decorationColor = isSelected ? undefined : decoration;
 
+  // Die Lade-Zeile eines noch unbeladenen, aber offenen Ordners — statisch,
+  // kein rotierendes/pulsierendes Symbol (Direction Contract: kein
+  // Kinetik-Text irgendwo im Chrome). Kein Knopf, kein Kontextmenü, kein
+  // Ziehgriff: sie steht für keinen tatsächlichen Eintrag, es gibt nichts zu
+  // bedienen, solange sie da ist — verschwindet von selbst, sobald
+  // `explorer_read_dir` zurück ist und `flattenTree` an ihrer Stelle die
+  // echten Kinder ausrollt.
+  if (row.isLoadingPlaceholder) {
+    return (
+      <div
+        style={{
+          paddingLeft: 10 + depth * 12,
+          transform: `translateY(${String(offset)}px)`,
+        }}
+        className="absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)"
+      >
+        <TreeRowGuides ancestorGuides={ancestorGuides} depth={depth} isLast={isLast} />
+        <span aria-hidden="true" className="w-2.5 shrink-0" />
+        <span className="truncate">{t("common.loading")}</span>
+      </div>
+    );
+  }
+
   // Die umbenannte Zeile ist ein eigener, kleinerer Zweig statt eines
   // Zustands INNERHALB des Knopfs unten: ein `<input>` in einem `<button>`
   // ist ungültiges HTML (Button darf kein weiteres interaktives Element
@@ -1707,7 +1878,7 @@ function TreeRow({
             // Klick zur Zeile zurück, auch wenn über einer Pane losgelassen wurde
             // (`useExplorerPathDrag.ts`).
             if (onConsumeDragClick()) return;
-            if (isFolder) onToggleFolder(path);
+            if (isFolder) onToggleFolder(row);
             else onSelectFile(path);
           }}
           onPointerDown={(event) => onStartPathDrag(event, path)}

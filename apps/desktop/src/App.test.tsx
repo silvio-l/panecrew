@@ -363,7 +363,7 @@ describe("App", () => {
     // auslösen und die eigene Fehleranzeige zeigen statt des Leer-Zustands,
     // den dieser Test eigentlich prüfen will.
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -392,7 +392,7 @@ describe("App", () => {
   it("zeigt eine eigene Fehlermeldung, wenn der Dateibaum nicht gelesen werden kann", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
+      cmd === "explorer_read_dir"
         ? Promise.reject(new Error("Permission denied (os error 13)"))
         : Promise.resolve(),
     );
@@ -434,8 +434,8 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
-        root: "/Users/dev/projects/storefront",
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_dir", {
+        path: "/Users/dev/projects/storefront",
       });
     });
     expect(invokeMock).toHaveBeenCalledWith("explorer_git_status", {
@@ -450,7 +450,7 @@ describe("App", () => {
     // die Datei jetzt zusätzlich. Ohne das liefe der Öffnen-Pfad in den
     // Default-Mock und die Fläche zeigte hier einen Fehler.
     invokeMock.mockImplementation((cmd) => {
-      if (cmd === "explorer_read_tree") return Promise.resolve([]);
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
       if (cmd === "explorer_read_file") {
         return Promise.resolve({ ...FILE_CONTENTS, text: "" });
       }
@@ -472,15 +472,15 @@ describe("App", () => {
         path: "/Users/dev/projects/storefront/notes.md",
       });
     });
-    expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
-      root: "/Users/dev/projects/storefront",
+    expect(invokeMock).toHaveBeenCalledWith("explorer_read_dir", {
+      path: "/Users/dev/projects/storefront",
     });
   });
 
   it("legt über den 'Neuer Ordner'-Knopf einen Ordner an", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -503,7 +503,7 @@ describe("App", () => {
   it("lehnt beim Anlegen einen Namen mit Pfadtrennzeichen ab, ohne das Backend aufzurufen", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -526,7 +526,7 @@ describe("App", () => {
   it("verwirft die Anlege-Zeile bei Escape, ohne das Backend aufzurufen", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -548,17 +548,30 @@ describe("App", () => {
 
   it("filtert den Baum über die Kopfzeilen-Suche und zeigt nur den Pfad zu Treffern", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
-        ? Promise.resolve([
+    // Die Suche läuft seit dem Umbau auf Lazy-Loading (2026-08-13) über einen
+    // eigenen Voll-Baum-Walk (`explorer_search_names`), nicht mehr über
+    // clientseitiges Filtern des bereits geladenen Baums.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([
+          { name: "src", is_dir: true },
+          { name: "README.md", is_dir: false },
+        ]);
+      }
+      if (cmd === "explorer_search_names") {
+        return Promise.resolve({
+          nodes: [
             {
               name: "src",
-              children: [{ name: "App.tsx" }, { name: "main.tsx" }],
+              is_dir: true,
+              children: [{ name: "main.tsx", is_dir: false }],
             },
-            { name: "README.md" },
-          ])
-        : Promise.resolve(),
-    );
+          ],
+          truncated: false,
+        });
+      }
+      return Promise.resolve();
+    });
     render(<App />);
 
     clickPicker();
@@ -576,11 +589,15 @@ describe("App", () => {
 
   it("meldet eine eigene 'keine Treffer'-Auskunft statt des Leer-Platzhalters", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
-        ? Promise.resolve([{ name: "README.md" }])
-        : Promise.resolve(),
-    );
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "README.md", is_dir: false }]);
+      }
+      if (cmd === "explorer_search_names") {
+        return Promise.resolve({ nodes: [], truncated: false });
+      }
+      return Promise.resolve();
+    });
     render(<App />);
 
     clickPicker();
@@ -602,11 +619,21 @@ describe("App", () => {
 
   it("stellt bei Escape den vollständigen, unveränderten Baum wieder her", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
-        ? Promise.resolve([{ name: "App.tsx" }, { name: "main.tsx" }])
-        : Promise.resolve(),
-    );
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([
+          { name: "App.tsx", is_dir: false },
+          { name: "main.tsx", is_dir: false },
+        ]);
+      }
+      if (cmd === "explorer_search_names") {
+        return Promise.resolve({
+          nodes: [{ name: "main.tsx", is_dir: false }],
+          truncated: false,
+        });
+      }
+      return Promise.resolve();
+    });
     render(<App />);
 
     clickPicker();
@@ -630,7 +657,7 @@ describe("App", () => {
   it("deaktiviert die Suche, solange der Dateibaum nicht gelesen werden konnte", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
+      cmd === "explorer_read_dir"
         ? Promise.reject(new Error("Permission denied"))
         : Promise.resolve(),
     );
@@ -648,8 +675,8 @@ describe("App", () => {
   it("markiert eine geänderte Datei im zugänglichen Namen ihrer Baumzeile", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) => {
-      if (cmd === "explorer_read_tree") {
-        return Promise.resolve([{ name: "App.tsx", kind: "tsx" }]);
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "App.tsx", is_dir: false }]);
       }
       if (cmd === "explorer_git_status") {
         return Promise.resolve([{ path: "App.tsx", status: "modified" }]);
@@ -669,10 +696,10 @@ describe("App", () => {
   it("lädt nach der Ordnerauswahl den echten Dateibaum und zeigt ihn im Explorer", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree"
+      cmd === "explorer_read_dir"
         ? Promise.resolve([
-            { name: "src", children: [{ name: "main.rs" }] },
-            { name: "README.md" },
+            { name: "src", is_dir: true },
+            { name: "README.md", is_dir: false },
           ])
         : Promise.resolve(),
     );
@@ -681,8 +708,8 @@ describe("App", () => {
     clickPicker();
     await screen.findByLabelText("Terminal storefront");
 
-    expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
-      root: "/Users/dev/projects/storefront",
+    expect(invokeMock).toHaveBeenCalledWith("explorer_read_dir", {
+      path: "/Users/dev/projects/storefront",
     });
     expect(screen.getByText("src")).toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
@@ -699,14 +726,21 @@ describe("App", () => {
     writeFile: () => Promise<unknown> = () => Promise.resolve(SAVED_STAMP),
   ) => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "explorer_read_tree") {
-        // Zwei Dateien, weil der Verlassen-Guard aus Ticket 05 ein ZIEL
-        // braucht: „Wechsel auf eine andere Datei" ist ohne zweite Zeile im
-        // Baum nicht auslösbar.
+    invokeMock.mockImplementation((cmd, args) => {
+      if (cmd === "explorer_read_dir") {
+        const path = (args as { path: string }).path;
+        // Lazy-Loading fragt pro aufgeklapptem Ordner einzeln nach — die
+        // Wurzel liefert nur "src" als (noch unbeladenen) Ordner, "main.rs"
+        // kommt erst über den zweiten Aufruf, wenn "src" aufgeklappt wird.
+        // Zwei Dateien an der Wurzel, weil der Verlassen-Guard aus Ticket 05
+        // ein ZIEL braucht: „Wechsel auf eine andere Datei" ist ohne zweite
+        // Zeile im Baum nicht auslösbar.
+        if (path === "/Users/dev/projects/storefront/src") {
+          return Promise.resolve([{ name: "main.rs", is_dir: false }]);
+        }
         return Promise.resolve([
-          { name: "src", children: [{ name: "main.rs" }] },
-          { name: "README.md" },
+          { name: "src", is_dir: true },
+          { name: "README.md", is_dir: false },
         ]);
       }
       if (cmd === "explorer_read_file") return readFile();
@@ -835,8 +869,8 @@ describe("App", () => {
     // Und danach Baum plus Git-Deko neu lesen: aus einer unveränderten
     // versionierten Datei wird durch genau dieses Schreiben ein „M".
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("explorer_read_tree", {
-        root: "/Users/dev/projects/storefront",
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_dir", {
+        path: "/Users/dev/projects/storefront",
       });
     });
     expect(invokeMock).toHaveBeenCalledWith("explorer_git_status", {
@@ -1245,7 +1279,7 @@ describe("Grid / Mehrfach-Pane", () => {
   it("löst für einen gezielten Slot genau einen pty_spawn mit dessen cwd aus", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1266,7 +1300,7 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1288,7 +1322,7 @@ describe("Grid / Mehrfach-Pane", () => {
   it("erlaubt denselben Ordner in zwei Slots, ohne zu deduplizieren", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1480,7 +1514,7 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1503,8 +1537,8 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
     invokeMock.mockImplementation((cmd) => {
-      if (cmd === "explorer_read_tree") {
-        return Promise.resolve([{ name: "README.md" }]);
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "README.md", is_dir: false }]);
       }
       if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
       return Promise.resolve();
@@ -1537,8 +1571,8 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
     invokeMock.mockImplementation((cmd) => {
-      if (cmd === "explorer_read_tree") {
-        return Promise.resolve([{ name: "README.md" }]);
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "README.md", is_dir: false }]);
       }
       if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
       return Promise.resolve();
@@ -1594,7 +1628,7 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/a")
       .mockResolvedValueOnce("/Users/dev/projects/b");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1627,7 +1661,7 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/b")
       .mockResolvedValueOnce("/Users/dev/projects/c");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -1664,7 +1698,7 @@ describe("Grid / Mehrfach-Pane", () => {
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" ? Promise.resolve([]) : Promise.resolve(),
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
     render(<App />);
 
@@ -2097,7 +2131,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") return Promise.resolve(null);
       if (cmd === "get_launch_project") return Promise.resolve(null);
-      if (cmd === "explorer_read_tree") return Promise.resolve([]);
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
       return Promise.resolve();
     });
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
@@ -2159,7 +2193,7 @@ describe("Terminal-Renderer (WebGL)", () => {
     // in genau den Tests, die hier console.warn beobachten wollen, wäre das
     // vermeidbares Rauschen.
     invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_tree" || cmd === "explorer_git_status"
+      cmd === "explorer_read_dir" || cmd === "explorer_git_status"
         ? Promise.resolve([])
         : Promise.resolve(),
     );

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fileKindFromName, treeNodesFromRaw } from "./project";
+import {
+  collectLoadedFolderPaths,
+  fileKindFromName,
+  treeNodesFromRawEntries,
+  withChildrenAt,
+} from "./project";
+import type { TreeNode } from "./project";
 
 describe("fileKindFromName", () => {
   it.each([
@@ -37,30 +43,109 @@ describe("fileKindFromName", () => {
   });
 });
 
-describe("treeNodesFromRaw", () => {
-  it("maps a file node to a kind, no children field", () => {
-    const [node] = treeNodesFromRaw([{ name: "index.ts" }]);
+describe("treeNodesFromRawEntries", () => {
+  it("maps a file entry to a kind, isDirectory false, no children field", () => {
+    const [node] = treeNodesFromRawEntries([{ name: "index.ts", is_dir: false }]);
 
-    expect(node).toEqual({ name: "index.ts", kind: "ts" });
+    expect(node).toEqual({ name: "index.ts", isDirectory: false, kind: "ts" });
   });
 
-  it("maps a directory node to children, no kind field, recursively", () => {
-    const [node] = treeNodesFromRaw([
-      { name: "src", children: [{ name: "main.rs" }] },
-    ]);
+  it("maps a directory entry to isDirectory true, no kind, and no children — unbeladen bis explorer_read_dir erneut aufgerufen wird", () => {
+    const [node] = treeNodesFromRawEntries([{ name: "src", is_dir: true }]);
 
-    expect(node).toEqual({
-      name: "src",
-      children: [{ name: "main.rs", kind: "rs" }],
-    });
+    expect(node).toEqual({ name: "src", isDirectory: true });
   });
 
   it("preserves the order the backend already sorted", () => {
-    const nodes = treeNodesFromRaw([
-      { name: "src", children: [] },
-      { name: "Cargo.toml" },
+    const nodes = treeNodesFromRawEntries([
+      { name: "src", is_dir: true },
+      { name: "Cargo.toml", is_dir: false },
     ]);
 
     expect(nodes.map((node) => node.name)).toEqual(["src", "Cargo.toml"]);
+  });
+});
+
+describe("withChildrenAt", () => {
+  const FILE: TreeNode = { name: "main.rs", isDirectory: false, kind: "rs" };
+
+  it("sets children on a top-level, still-unloaded directory", () => {
+    const tree: TreeNode[] = [{ name: "src", isDirectory: true }];
+
+    const result = withChildrenAt(tree, "src", [FILE]);
+
+    expect(result).toEqual([{ name: "src", isDirectory: true, children: [FILE] }]);
+  });
+
+  it("sets children on a nested directory, leaving loaded siblings untouched", () => {
+    const tree: TreeNode[] = [
+      {
+        name: "src",
+        isDirectory: true,
+        children: [
+          { name: "explorer", isDirectory: true },
+          FILE,
+        ],
+      },
+    ];
+
+    const result = withChildrenAt(tree, "src/explorer", [
+      { name: "filePath.ts", isDirectory: false, kind: "ts" },
+    ]);
+
+    expect(result).toEqual([
+      {
+        name: "src",
+        isDirectory: true,
+        children: [
+          {
+            name: "explorer",
+            isDirectory: true,
+            children: [{ name: "filePath.ts", isDirectory: false, kind: "ts" }],
+          },
+          FILE,
+        ],
+      },
+    ]);
+  });
+
+  it("leaves the tree unchanged when a parent on the path is not loaded yet", () => {
+    const tree: TreeNode[] = [{ name: "src", isDirectory: true }];
+
+    const result = withChildrenAt(tree, "src/explorer", [FILE]);
+
+    expect(result).toEqual(tree);
+  });
+
+  it("does not mutate the original tree (immutable update)", () => {
+    const original: TreeNode[] = [{ name: "src", isDirectory: true }];
+
+    withChildrenAt(original, "src", [FILE]);
+
+    expect(original).toEqual([{ name: "src", isDirectory: true }]);
+  });
+});
+
+describe("collectLoadedFolderPaths", () => {
+  it("returns nothing for a directory whose children are not loaded", () => {
+    const tree: TreeNode[] = [{ name: "src", isDirectory: true }];
+
+    expect(collectLoadedFolderPaths(tree, "")).toEqual([]);
+  });
+
+  it("collects a loaded directory and recurses into its loaded children only", () => {
+    const tree: TreeNode[] = [
+      {
+        name: "src",
+        isDirectory: true,
+        children: [
+          { name: "explorer", isDirectory: true, children: [] },
+          { name: "components", isDirectory: true },
+          { name: "main.ts", isDirectory: false, kind: "ts" },
+        ],
+      },
+    ];
+
+    expect(collectLoadedFolderPaths(tree, "")).toEqual(["src", "src/explorer"]);
   });
 });

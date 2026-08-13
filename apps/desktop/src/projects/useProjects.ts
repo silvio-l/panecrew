@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildProject } from "./loadProject";
-import type { Project } from "../types/project";
+import { buildProject, readDirEntries } from "./loadProject";
+import { collectLoadedFolderPaths, withChildrenAt, type Project } from "../types/project";
 
 export interface ProjectsCache {
   /** Aktueller Cache-Stand, absoluter Pfad → `Project`. Reaktiv: ein
@@ -14,9 +14,22 @@ export interface ProjectsCache {
    * nicht doppelt gelesen. Liefert das fertige Projekt für Aufrufer, die
    * direkt darauf reagieren müssen (Ordner-Dialog, CLI-Start). */
   load: (path: string) => Promise<Project>;
-  /** Baut den Cache-Eintrag für `path` unbedingt neu auf (Baum + Git-Deko),
-   * z. B. nach einem Speichern oder auf den Refresh-Knopf. */
+  /** Baut den Cache-Eintrag für `path` unbedingt neu auf (Wurzel + Git-Deko),
+   * z. B. nach einem Speichern oder auf den Refresh-Knopf. Lädt danach auch
+   * jeden Ordner neu, der vor dem Refresh schon aufgeklappt war (via
+   * `collectLoadedFolderPaths`) — sonst stünde ein sichtbar aufgeklappter
+   * Ordner nach dem Refresh plötzlich wieder unbeladen da. */
   refresh: (path: string) => Promise<Project>;
+  /** Lädt die Kinder EINES Ordners nach (Lazy-Expand) und merged sie
+   * unveränderlich in den gecachten Baum von `path`. Lebt hier und nicht in
+   * `ExplorerPanel`, weil dieses Panel bei jedem Projektwechsel neu gemountet
+   * wird (eigener `key={project.path}` in `App.tsx`) — ein dort lokaler
+   * Zustand würde bei jedem Pane-Wechsel jeden zuvor aufgeklappten Ordner
+   * erneut nachladen, genau die Zähigkeit, die die Virtualisierung
+   * (2026-08-12) gerade behoben hat. Gleichzeitige Aufrufe für denselben
+   * Ordner teilen sich denselben In-Flight-Request, aus demselben Grund wie
+   * bei `load`. */
+  loadChildren: (path: string, relPath: string) => Promise<void>;
 }
 
 /**
@@ -41,13 +54,40 @@ export function useProjects(): ProjectsCache {
   // nächsten `load()` für denselben Pfad deduplizieren, aber selbst nie ein
   // Rendering auslösen.
   const inFlightRef = useRef<Map<string, Promise<Project>>>(new Map());
+  // Dieselbe Deduplizierung für `loadChildren`, geschlüsselt über Projekt-
+  // UND Ordnerpfad — zwei schnelle Klicks auf denselben Chevron (oder ein
+  // Klick, während die Sitzungs-Wiederherstellung denselben Ordner bereits
+  // nachlädt) teilen sich einen Request statt ihn zu verdoppeln.
+  const childrenInFlightRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const runLoad = useCallback((path: string): Promise<Project> => {
-    const promise = buildProject(path).then((project) => {
+    // Vor dem Neuaufbau gemerkt: welche Ordner waren bereits aufgeklappt
+    // beladen? Nur bei `refresh` nicht-leer (bei einem frischen `load` gibt
+    // es noch keinen Cache-Eintrag) — nach dem Neulesen der Wurzel werden
+    // genau diese Ordner gezielt nachgeladen, sonst stünden sie danach
+    // wieder unbeladen da, obwohl sie sichtbar aufgeklappt sind.
+    const previouslyLoaded = collectLoadedFolderPaths(
+      projectsRef.current[path]?.tree ?? [],
+      "",
+    );
+    const promise = (async () => {
+      let project = await buildProject(path);
       setProjects((current) => ({ ...current, [path]: project }));
+      for (const relPath of previouslyLoaded) {
+        try {
+          const children = await readDirEntries(`${path}/${relPath}`);
+          project = { ...project, tree: withChildrenAt(project.tree, relPath, children) };
+          setProjects((current) => ({ ...current, [path]: project }));
+        } catch (error) {
+          // Ein Ordner, der zwischen dem alten und dem neuen Baum verschwunden
+          // ist (gelöscht, umbenannt), bleibt einfach unbeladen zurück, statt
+          // den ganzen Refresh scheitern zu lassen.
+          console.error("PaneCrew: Ordner konnte nach Aktualisieren nicht neu geladen werden", error);
+        }
+      }
       inFlightRef.current.delete(path);
       return project;
-    });
+    })();
     inFlightRef.current.set(path, promise);
     return promise;
   }, []);
@@ -61,5 +101,27 @@ export function useProjects(): ProjectsCache {
     [runLoad],
   );
 
-  return { projects, load, refresh: runLoad };
+  const loadChildren = useCallback((path: string, relPath: string): Promise<void> => {
+    // NUL-Byte statt eines druckbaren Trenners: das käme in echten Pfaden vor
+    // und könnte zwei verschiedene (Projekt, Ordner)-Paare auf denselben
+    // Schlüssel abbilden.
+    const key = path + "\0" + relPath;
+    const inFlight = childrenInFlightRef.current.get(key);
+    if (inFlight) return inFlight;
+    const promise = readDirEntries(`${path}/${relPath}`)
+      .then((children) => {
+        setProjects((current) => {
+          const project = current[path];
+          if (!project) return current;
+          return { ...current, [path]: { ...project, tree: withChildrenAt(project.tree, relPath, children) } };
+        });
+      })
+      .finally(() => {
+        childrenInFlightRef.current.delete(key);
+      });
+    childrenInFlightRef.current.set(key, promise);
+    return promise;
+  }, []);
+
+  return { projects, load, refresh: runLoad, loadChildren };
 }

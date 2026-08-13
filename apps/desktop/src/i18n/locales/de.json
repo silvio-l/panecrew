@@ -22,6 +22,7 @@
     "showExplorer": "Explorer einblenden",
     "noTreeLoaded": "Kein Dateibaum geladen.",
     "noSearchResults": "Keine Treffer für „{{query}}“.",
+    "searchTruncated": "Weitere Treffer vorhanden — Suche eingrenzen.",
     "newFileNamePlaceholder": "Neuer Dateiname",
     "newFolderNamePlaceholder": "Neuer Ordnername",
     "nameContainsPathError": "Name darf keinen Pfad enthalten.",

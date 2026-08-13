@@ -62,6 +62,7 @@ const renderPanel = (
         onSelectFile={() => undefined}
         onCollapse={() => undefined}
         onRefresh={() => undefined}
+        onLoadChildren={() => Promise.resolve()}
         onStartPathDrag={() => undefined}
         draggingPath={null}
         onConsumeDragClick={() => false}
@@ -79,6 +80,7 @@ const mountedRows = () =>
 const flatTree = (count: number): TreeNode[] =>
   Array.from({ length: count }, (_, index) => ({
     name: `datei-${String(index).padStart(4, "0")}.ts`,
+    isDirectory: false as const,
     kind: "ts" as const,
   }));
 
@@ -117,8 +119,15 @@ describe("ExplorerPanel", () => {
 
   it("startet mit eingeklappten Ordnern und klappt sie erst per Klick auf", () => {
     renderPanel([
-      { name: "src", children: [{ name: "main.rs" }, { name: "lib.rs" }] },
-      { name: "README.md", kind: "md" },
+      {
+        name: "src",
+        isDirectory: true,
+        children: [
+          { name: "main.rs", isDirectory: false },
+          { name: "lib.rs", isDirectory: false },
+        ],
+      },
+      { name: "README.md", isDirectory: false, kind: "md" },
     ]);
     // Standard seit 2026-08-12: alle Ordner starten eingeklappt, nur die
     // Wurzelkinder sind sichtbar — vorher war das Set beim ersten Mount leer,
@@ -146,8 +155,13 @@ describe("ExplorerPanel", () => {
       [
         {
           name: "src",
+          isDirectory: true,
           children: [
-            { name: "core", children: [{ name: "main.rs", kind: "rs" }] },
+            {
+              name: "core",
+              isDirectory: true,
+              children: [{ name: "main.rs", isDirectory: false, kind: "rs" }],
+            },
           ],
         },
       ],
@@ -174,8 +188,15 @@ describe("ExplorerPanel", () => {
 
   it("zählt im Fußzeilen-Readout sichtbare gegen vorhandene Einträge", () => {
     renderPanel([
-      { name: "src", children: [{ name: "main.rs" }, { name: "lib.rs" }] },
-      { name: "README.md", kind: "md" },
+      {
+        name: "src",
+        isDirectory: true,
+        children: [
+          { name: "main.rs", isDirectory: false },
+          { name: "lib.rs", isDirectory: false },
+        ],
+      },
+      { name: "README.md", isDirectory: false, kind: "md" },
     ]);
     // 4 Knoten insgesamt, sichtbar anfangs nur die 2 Wurzelkinder (Ordner
     // starten eingeklappt). Geprüft wird der Screenreader-Satz statt des
@@ -255,7 +276,7 @@ describe("ExplorerPanel", () => {
   });
 
   it("öffnet per Rechtsklick das Kontextmenü und committet eine Umbenennung über explorer_rename", async () => {
-    renderPanel([{ name: "readme.md" }]);
+    renderPanel([{ name: "readme.md", isDirectory: false }]);
 
     const row = mountedRows()[0];
     if (!row) throw new Error("Baumzeile nicht gefunden");

@@ -7,9 +7,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { gitDecorationsFromStatuses, type GitFileStatus } from "../types/gitStatus";
 import {
   projectNameFromPath,
-  treeNodesFromRaw,
+  treeNodesFromRawEntries,
   type Project,
-  type RawTreeNode,
+  type RawDirEntry,
+  type TreeNode,
 } from "../types/project";
 
 // Ein gescheiterter Baum-Read scheitert bewusst nicht den ganzen
@@ -26,24 +27,39 @@ export async function buildProject(path: string): Promise<Project> {
   return { path, name, ...tree, gitDecorations };
 }
 
+/** Liest EINE Verzeichnisebene (`explorer_read_dir`) und bildet sie auf
+ * `TreeNode[]` ab — der gemeinsame Lese-Schritt hinter dem ersten Baumaufbau
+ * (Wurzel), dem Nachladen eines aufgeklappten Ordners und dem gezielten
+ * Neuladen einzelner Ordner nach einem Refresh (`useProjects.ts`). Wirft bei
+ * einem Lesefehler, statt ihn zu verschlucken: die drei Aufrufer behandeln
+ * einen fehlgeschlagenen Lesevorgang jeweils unterschiedlich (Projektaufbau
+ * scheitert nicht am Baum, ein einzelner Ordner-Nachlade-Fehler klappt nur
+ * diesen Ordner wieder zu).
+ */
+export async function readDirEntries(absolutePath: string): Promise<TreeNode[]> {
+  const ipcStart = performance.now();
+  const raw = await invoke<RawDirEntry[]>("explorer_read_dir", {
+    path: absolutePath,
+  });
+  const ipcMs = performance.now() - ipcStart;
+  const mapStart = performance.now();
+  const tree = treeNodesFromRawEntries(raw);
+  const mapMs = performance.now() - mapStart;
+  // Perf-Diagnose (2026-08-12, seit 2026-08-13 auch für Nachlade-Aufrufe):
+  // trennt IPC-Wartezeit (Rust) von der synchronen Mapping-Zeit
+  // (JS-Hauptthread) — nur letztere kann die UI blockieren, auch wenn
+  // `explorer_read_dir` selbst async läuft.
+  console.debug(
+    `PaneCrew: explorer_read_dir IPC ${ipcMs.toFixed(0)}ms, treeNodesFromRawEntries ${mapMs.toFixed(0)}ms, ${raw.length} Knoten`,
+  );
+  return tree;
+}
+
 async function readTree(
   path: string,
 ): Promise<Pick<Project, "tree" | "treeError">> {
   try {
-    const ipcStart = performance.now();
-    const raw = await invoke<RawTreeNode[]>("explorer_read_tree", {
-      root: path,
-    });
-    const ipcMs = performance.now() - ipcStart;
-    const mapStart = performance.now();
-    const tree = treeNodesFromRaw(raw);
-    const mapMs = performance.now() - mapStart;
-    // Perf-Diagnose (2026-08-12): trennt IPC-Wartezeit (Rust) von der
-    // synchronen Mapping-Zeit (JS-Hauptthread) — nur letztere kann die UI
-    // blockieren, auch wenn `explorer_read_tree` selbst inzwischen async ist.
-    console.debug(
-      `PaneCrew: explorer_read_tree IPC ${ipcMs.toFixed(0)}ms, treeNodesFromRaw ${mapMs.toFixed(0)}ms, ${raw.length} Knoten`,
-    );
+    const tree = await readDirEntries(path);
     return { tree, treeError: null };
   } catch (error) {
     console.error("PaneCrew: Dateibaum konnte nicht gelesen werden", error);

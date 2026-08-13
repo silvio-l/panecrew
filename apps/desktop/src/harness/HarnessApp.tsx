@@ -94,6 +94,7 @@ export function HarnessApp({
                 onSelectFile={() => undefined}
                 onCollapse={() => undefined}
                 onRefresh={() => undefined}
+                onLoadChildren={() => Promise.resolve()}
                 onStartPathDrag={() => undefined}
                 draggingPath={null}
                 onConsumeDragClick={() => false}

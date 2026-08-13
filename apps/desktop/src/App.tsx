@@ -114,6 +114,7 @@ function App() {
     projects: projectRecords,
     load: loadProject,
     refresh: refreshProject,
+    loadChildren: loadExplorerChildren,
   } = useProjects();
   // `project` ist abgeleitet, kein eigener State: die schwere `Project`-
   // Struktur (Baum, Git-Deko) lebt im pfad-geschlüsselten Cache, hier steht
@@ -680,6 +681,7 @@ function App() {
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
                 onRefresh={refreshExplorer}
+                onLoadChildren={(relPath) => loadExplorerChildren(project.path, relPath)}
                 onStartPathDrag={explorerDrag.startDrag}
                 draggingPath={explorerDrag.draggingPath}
                 onConsumeDragClick={explorerDrag.consumeDragClick}

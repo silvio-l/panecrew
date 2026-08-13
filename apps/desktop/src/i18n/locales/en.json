@@ -22,6 +22,7 @@
     "showExplorer": "Show explorer",
     "noTreeLoaded": "No file tree loaded.",
     "noSearchResults": "No matches for “{{query}}”.",
+    "searchTruncated": "More matches available — narrow your search.",
     "newFileNamePlaceholder": "New file name",
     "newFolderNamePlaceholder": "New folder name",
     "nameContainsPathError": "Name must not contain a path.",

@@ -10,19 +10,22 @@ export function mockProjectPath(projectName: string): string {
 const MOCK_TREE: TreeNode[] = [
   {
     name: "src",
+    isDirectory: true,
     children: [
-      { name: "main.ts", kind: "ts" },
-      { name: "App.tsx", kind: "tsx" },
+      { name: "main.ts", isDirectory: false, kind: "ts" },
+      { name: "App.tsx", isDirectory: false, kind: "tsx" },
     ],
   },
-  { name: "README.md", kind: "md" },
-  { name: "package.json", kind: "json" },
+  { name: "README.md", isDirectory: false, kind: "md" },
+  { name: "package.json", isDirectory: false, kind: "json" },
 ];
 
 /** Statisches `Project` für einen simulierten Storyboard-Projektnamen — feste
  * Baumstruktur, kein Ladefehler, keine Git-Deko: genug, damit `ExplorerPanel`
- * etwas Sichtbares zeigt, ohne `explorer_read_tree`/`explorer_git_status`
- * zu rufen. */
+ * etwas Sichtbares zeigt, ohne `explorer_read_dir`/`explorer_git_status`
+ * zu rufen. Bereits vollständig „geladen" (jeder Ordner trägt `children`) —
+ * der Harness treibt kein Lazy-Loading, es gibt ohnehin keine echte Platte
+ * dahinter. */
 export function mockProject(projectName: string): Project {
   return {
     path: mockProjectPath(projectName),
