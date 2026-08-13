@@ -224,6 +224,42 @@ body {
 }
 
 /*
+ * Auftritt einer frisch GEMOUNTETEN Zelle — der Slot↔Pane-Wechsel: Projekt
+ * zugewiesen (Picker weicht der Pane) und Pane geschlossen (der Picker kehrt
+ * zurück), dazu einmalig der App-Start selbst. Dieselbe Bewegungssprache wie
+ * `pc-overlay-in` oben (reine Deckkraft + minimale Skalierung, kein Glow),
+ * nur mit dem Apple-Auslauf der Grid-Übergänge (grid/useGridTransitions.ts).
+ *
+ * Nur einwärts, wie bei ConfirmDialog begründet: die weichende Fläche ist im
+ * Moment des Wechsels bereits unmountet (bei der geschlossenen Pane samt
+ * absichtlich beendeter PTY) — sie künstlich für eine Aus-Animation am Leben
+ * zu halten, würde genau die Baumstruktur verkomplizieren, an der die
+ * PTY-Unmount-Garantie hängt.
+ *
+ * Ein Template-Wechsel triggert das hier NIE: Zellen werden dabei per
+ * paneId-Key verschoben statt neu gemountet (Kopfkommentar oben), und ihre
+ * Relativreihenfolge bleibt bei jeder Kompaktierung stabil — React hängt
+ * also auch keinen DOM-Knoten um, was die Animation neu starten würde. Deren
+ * Bewegung übernimmt stattdessen der FLIP-Hook.
+ */
+@keyframes pc-cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pc-workspace > * {
+    animation: pc-cell-in 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+/*
  * HUD-Sprache der leeren Slots (components/ProjectPicker.tsx, 2026-08-13,
  * Nutzer-Direktive „technoide HUD-Details + ASCII-Deko"): vier Sucher-Ecken
  * rahmen den Slot, je ein L aus zwei 1px-Kanten in der Pane-Hairline-Farbe.

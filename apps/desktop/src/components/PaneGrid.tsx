@@ -13,10 +13,11 @@
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState, Pane } from "../grid/gridState";
+import { useGridTransitions } from "../grid/useGridTransitions";
 import type { FocusRotation } from "../grid/useFocusRotation";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
@@ -88,6 +89,18 @@ export function PaneGrid({
    * maximierten Zelle. */
   rotation: FocusRotation;
 }) {
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  // Weiche Übergänge für Template-Wechsel und Fokus-Modus (FLIP, s.
+  // useGridTransitions.ts) — reine WAAPI-Animationen auf den bestehenden
+  // Zellen, die Unmount-Invariante dieses Baums (Kopfkommentar) bleibt
+  // unberührt. Die Schlüssel entsprechen exakt den React-Keys unten, denn
+  // DOM-Reihenfolge = Slot-Reihenfolge (dieselbe Invariante).
+  useGridTransitions(
+    workspaceRef,
+    state.slots.map((slot, index) => slot?.paneId ?? `empty-slot-${index}`),
+    state.template,
+    state.maximizedPaneId,
+  );
   return (
     // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
     // — Spuren und Spannen aller sieben Geometrien stehen in App.css
@@ -96,7 +109,7 @@ export function PaneGrid({
     // `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
     // Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
     // (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig.
-    <div className={`pc-workspace pc-layout--${state.template}`}>
+    <div ref={workspaceRef} className={`pc-workspace pc-layout--${state.template}`}>
       {state.slots.map((slot, index) =>
         slot ? (
           <PaneCell
