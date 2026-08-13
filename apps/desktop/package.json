@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:harness": "vite --open /harness.html",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

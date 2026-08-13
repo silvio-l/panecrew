@@ -70,9 +70,9 @@ export function parseStoryboard(data: unknown): Storyboard {
 }
 
 /** Fasst Fokus- und Tipp-Events zu einer nach `atMs` sortierten Zeitachse
- * zusammen — stabil sortiert (Array.prototype.toSorted), damit zwei
- * gleichzeitige Events immer in derselben, aus der Storyboard-Datei
- * ableitbaren Reihenfolge feuern (Determinismus, Ticket-02-Akzeptanz). */
+ * zusammen — stabil sortiert, damit zwei gleichzeitige Events immer in
+ * derselben, aus der Storyboard-Datei ableitbaren Reihenfolge feuern
+ * (Determinismus, Ticket-02-Akzeptanz). */
 export function timelineEvents(storyboard: Storyboard): readonly TimelineEvent[] {
   const events: TimelineEvent[] = [
     ...storyboard.focusEvents.map(
