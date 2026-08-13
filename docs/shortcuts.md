@@ -12,6 +12,7 @@ aus `apps/desktop`, Ausgabe nach `docs/shortcuts.md` umleiten und committen.
 | Gesamte Oberfläche vergrößern | ⇧⌘+ | Ctrl+Shift++ |
 | Gesamte Oberfläche verkleinern | ⇧⌘- | Ctrl+Shift+- |
 | Oberflächen-Zoom zurücksetzen | ⇧⌘0 | Ctrl+Shift+0 |
+| Neues PaneCrew-Fenster öffnen | ⌘N | Ctrl+N |
 
 ## Aktive Pane
 
@@ -25,6 +26,7 @@ Kürzel mit. Es gilt jeweils das der Fläche, die gerade den Tastaturfokus hat.
 | Schrift der aktiven Terminal-Pane verkleinern | ⌘- | Ctrl+- |
 | Schriftgröße der aktiven Terminal-Pane zurücksetzen | ⌘0 | Ctrl+0 |
 | Geöffnete Datei speichern | ⌘S | Ctrl+S |
+| Fokus-Modus umschalten (Pane maximieren/verlassen) | ⌘↵ | Ctrl+↵ |
 | Terminal-Tab 1 der aktiven Pane anzeigen | ⌘1 | Ctrl+1 |
 | Terminal-Tab 2 der aktiven Pane anzeigen | ⌘2 | Ctrl+2 |
 | Terminal-Tab 3 der aktiven Pane anzeigen | ⌘3 | Ctrl+3 |

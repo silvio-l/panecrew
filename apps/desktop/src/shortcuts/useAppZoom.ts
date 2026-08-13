@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { isMacPlatform } from "./platform";
-import { matchesShortcut, SHORTCUTS } from "./registry";
+import { matchesShortcut, SHORTCUTS, zoomAction } from "./registry";
 import { DEFAULT_ZOOM, nextZoomLevel } from "./zoom";
 
 // App-weiter Zoom über Tauris nativen Webview-Zoom. Nicht CSS `zoom` oder eine
@@ -20,8 +20,15 @@ export function useAppZoom(): number {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isMac = isMacPlatform();
+      // `zoomAction(def) !== null` grenzt gegen andere "app"-Scope-Kürzel ab
+      // (z. B. das Neues-Fenster-Kürzel) — ohne das würde jedes weitere
+      // App-Kürzel hier fälschlich als Zoom-Aktion gedeutet, s. Kommentar an
+      // NEW_WINDOW_SHORTCUT_ID in registry.ts.
       const shortcut = SHORTCUTS.find(
-        (def) => def.scope === "app" && matchesShortcut(event, def, isMac),
+        (def) =>
+          def.scope === "app" &&
+          zoomAction(def) !== null &&
+          matchesShortcut(event, def, isMac),
       );
       if (!shortcut) return;
       // Ohne dieses preventDefault bliebe der eingebaute Webview-Zoom auf

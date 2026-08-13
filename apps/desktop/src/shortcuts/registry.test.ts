@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatChord, matchesShortcut, SHORTCUTS } from "./registry";
+import { formatChord, matchesShortcut, SHORTCUTS, zoomAction } from "./registry";
 import type { ShortcutDefinition, ShortcutKeyEvent } from "./registry";
 
 const baseEvent: ShortcutKeyEvent = {
@@ -91,6 +91,20 @@ describe("matchesShortcut", () => {
   it("lehnt eine fremde Tastenposition ab", () => {
     const event = { ...baseEvent, code: "KeyA", shiftKey: true, metaKey: true };
     expect(matchesShortcut(event, appZoomIn, true)).toBe(false);
+  });
+
+  it("erkennt Cmd+N als Neues-Fenster-Kürzel", () => {
+    const newWindow = shortcut("app.newWindow");
+    const event = { ...baseEvent, code: "KeyN", shiftKey: false, metaKey: true };
+    expect(matchesShortcut(event, newWindow, true)).toBe(true);
+  });
+});
+
+describe("zoomAction", () => {
+  it("deutet das Neues-Fenster-Kürzel nicht als Zoom-Aktion", () => {
+    // Regressionstest für den Bug, den useAppZoom.ts's zoomAction-Filter
+    // verhindert: ohne ihn würde "N" (weder "+" noch "0") als "-" gelesen.
+    expect(zoomAction(shortcut("app.newWindow"))).toBeNull();
   });
 });
 

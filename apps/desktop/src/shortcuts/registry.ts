@@ -36,7 +36,7 @@ type ZoomGlyph = "+" | "-" | "0";
 type DigitGlyph = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = ZoomGlyph | "S" | DigitGlyph;
+type ShortcutGlyph = ZoomGlyph | "S" | "N" | DigitGlyph | "↵";
 
 export interface ShortcutDefinition {
   readonly id: string;
@@ -57,6 +57,17 @@ const ZERO_CODES = ["Digit0", "Numpad0"] as const;
 /** Id des Speichern-Kürzels — `FileEditor.tsx` schlägt seine Definition damit
  * nach, statt den Akkord ein zweites Mal zu beschreiben. */
 export const SAVE_FILE_SHORTCUT_ID = "pane.saveFile";
+
+/** Id des Fokus-Modus-Kürzels (Ticket 19) — `App.tsx`s Fenster-Capture-
+ * Listener schlägt seine Definition damit nach, aus demselben Grund wie
+ * `SAVE_FILE_SHORTCUT_ID` oben. */
+export const TOGGLE_FOCUS_MODE_SHORTCUT_ID = "pane.toggleFocusMode";
+
+/** Id des Neues-Fenster-Kürzels (Ticket 27) — `useNewWindowShortcut.ts`
+ * schlägt seine Definition damit nach, aus demselben Grund wie
+ * `SAVE_FILE_SHORTCUT_ID` oben. Dasselbe Kürzel wie VS Codes eigenes
+ * "Neues Fenster" (⌘N/Ctrl+N). */
+export const NEW_WINDOW_SHORTCUT_ID = "app.newWindow";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -82,6 +93,19 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     glyph: "0",
     codes: ZERO_CODES,
     shift: true,
+  },
+  {
+    // Einziger Buchstaben-Chord im "app"-Scope neben dem Ziffernblock der
+    // Zoom-Trias — `useAppZoom.ts`s Listener filtert `scope === "app"`
+    // deshalb zusätzlich über `zoomAction(def) !== null`, sonst würde dieses
+    // Kürzel dort fälschlich als Zoom-Aktion interpretiert (Glyph "N" ist
+    // weder "+" noch "0", würde also als "-" fehlgedeutet).
+    id: NEW_WINDOW_SHORTCUT_ID,
+    description: "Neues PaneCrew-Fenster öffnen",
+    scope: "app",
+    glyph: "N",
+    codes: ["KeyN"],
+    shift: false,
   },
   {
     id: "pane.zoomIn",
@@ -117,6 +141,19 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     scope: "pane",
     glyph: "S",
     codes: ["KeyS"],
+    shift: false,
+  },
+  {
+    // Genau EIN Code wie beim Speichern-Kürzel oben — "Enter"/"NumpadEnter"
+    // sitzen auf beiden Layouts an derselben physischen Position, kein
+    // Mehrfach-Code nötig. `App.tsx`s Fenster-Capture-Listener wertet dieses
+    // Kürzel VOR jeder Terminal-Pane aus (`stopPropagation`), damit Cmd+Return
+    // nie zusätzlich als Absenden bei der Shell ankommt.
+    id: TOGGLE_FOCUS_MODE_SHORTCUT_ID,
+    description: "Fokus-Modus umschalten (Pane maximieren/verlassen)",
+    scope: "pane",
+    glyph: "↵",
+    codes: ["Enter", "NumpadEnter"],
     shift: false,
   },
   // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-

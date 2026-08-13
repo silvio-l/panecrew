@@ -85,6 +85,7 @@ import {
   TOGGLE_FOCUS_MODE_SHORTCUT_ID,
 } from "./shortcuts/registry";
 import { useAppZoom } from "./shortcuts/useAppZoom";
+import { useNewWindowShortcut } from "./shortcuts/useNewWindowShortcut";
 import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
 import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
 import "./App.css";
@@ -295,6 +296,7 @@ function App() {
   // nötig.
   const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
   const zoom = useAppZoom();
+  useNewWindowShortcut();
   // Die EINE Drop-Registrierung des Grids. Sie stand bis zum Explorer-Ziehen
   // in `PaneGrid.tsx` — mit einer zweiten Drop-QUELLE, die im Explorer
   // beginnt (einem Geschwister von `PaneGrid`, nicht einem Kind), muss sie

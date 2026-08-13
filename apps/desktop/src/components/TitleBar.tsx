@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import type { SupportedLanguage } from "../i18n";
+import { isMacPlatform } from "../shortcuts/platform";
+import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
 // Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
@@ -68,6 +70,14 @@ const TRAFFIC_LIGHT_INSET = 84;
 
 export function TitleBar({ zoom }: { zoom: number }) {
   const { t } = useTranslation();
+  // Dasselbe "Kürzel-in-Klammern-an-Tooltip-anhängen"-Muster wie
+  // PaneTabs.tsx' Terminal-Tab-Chips — kein neuer Formatierungsweg.
+  const newWindowShortcut = SHORTCUTS.find(
+    (def) => def.id === NEW_WINDOW_SHORTCUT_ID,
+  );
+  const newWindowTooltipLabel = newWindowShortcut
+    ? `${t("titleBar.newWindow")} (${formatChord(newWindowShortcut, isMacPlatform() ? "mac" : "other")})`
+    : t("titleBar.newWindow");
   return (
     <header
       aria-label={t("titleBar.windowTitleBarAria")}
@@ -158,7 +168,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
 
         <DateTimeReadout t={t} />
 
-        <ChromeTooltip label={t("titleBar.newWindow")} align="end">
+        <ChromeTooltip label={newWindowTooltipLabel} align="end">
           <button
             type="button"
             aria-label={t("titleBar.newWindow")}
@@ -231,23 +241,31 @@ function DateTimeReadout({
   }).format(now);
 
   return (
-    <div className="pointer-events-none flex shrink-0 items-baseline gap-1.5 pr-1">
-      {/* Wochentag + Datum bleiben im gedimmten Readout-Register (Nebeninfo)
-          — der Nutzer-Wunsch galt ausdrücklich "der Uhrzeit", nicht dem
-          Datum, das Größen-/Kontrastgefälle spiegelt genau diese Gewichtung. */}
+    <div className="pointer-events-none flex shrink-0 items-baseline gap-2 pr-1">
+      {/* Datum: eigenes Register statt der geteilten .pc-hud-readout-Klasse
+          (die dimmt auf 70% descriptionForeground — für Slot-Nummern richtig,
+          für ein auf einen Blick lesbares Datum zu blass, Nutzer-Feedback
+          2026-08-13 "das Datum kann man ja immer noch nicht gut sehen").
+          Volle descriptionForeground-Deckkraft statt color-mix-Dimmung, aber
+          weiterhin klar zweitrangig zur Uhrzeit über Größe + Schriftschnitt
+          (kein font-semibold, kein --pc-foreground). */}
       <span
         aria-hidden="true"
-        className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.15em]"
+        className="font-(family-name:--pc-terminal-fontFamily) text-[11px] tracking-[0.12em] text-(--pc-descriptionForeground)"
       >
         {weekday} {datePart}
       </span>
+      {/* Messerscharfe 1px-Trennlinie statt Leerraum zwischen Datum und
+          Uhrzeit — derselbe Glass-Rahmenton wie die Kapsel selbst
+          (--pc-glass-border), keine neue Farbe für ein einzelnes Pixel. */}
+      <span aria-hidden="true" className="h-3 w-px shrink-0 self-center bg-(--pc-glass-border)" />
       {/* Die Uhrzeit selbst: größer, voller Vordergrundton statt gedimmt,
           mit blinkendem Doppelpunkt als Terminal-Cursor (2026-08-13,
           Nutzer-Wunsch "präsenter... kontrastreicher... ein bisschen
           Terminal, verspielt"). */}
       <span
         aria-hidden="true"
-        className="font-(family-name:--pc-terminal-fontFamily) text-[13px] font-semibold tracking-[0.04em] text-(--pc-foreground) tabular-nums"
+        className="font-(family-name:--pc-terminal-fontFamily) text-[14px] font-semibold tracking-[0.04em] text-(--pc-foreground) tabular-nums"
       >
         {hour}
         <span className="pc-clock-cursor">:</span>
