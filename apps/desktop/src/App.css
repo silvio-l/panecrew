@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
 @import "./theme.css";
+@import "./components/templateGlyph.css";
 
 /*
  * Tailwinds Preflight setzt für `<button>` nur `-webkit-appearance: button`,
@@ -183,66 +184,15 @@ body {
  *
  * Die Modifier tragen NUR Spuren und Spannen — kein gap, keine Größe, kein
  * flex. Das ist die Bedingung dafür, dass zwei sehr verschiedene Flächen sie
- * teilen: der echte Arbeitsraum (.pc-workspace) und das 16px-Piktogramm in den
- * Knöpfen des Template-Switchers (.pc-minimap, components/TemplateSwitcher.tsx).
- * Das Piktogramm zeigt damit dieselbe Geometrie, die es schaltet, statt sie ein
- * zweites Mal nachzuzeichnen — die Sorte Duplikat, die auseinanderläuft, sobald
- * ein Template dazukommt. Wer hier eine Größe ergänzt, bricht diese Kopplung:
- * Maße gehören in die zwei Basisklassen unten, nicht in die Modifier.
- *
- * minmax(0, 1fr) statt 1fr in jeder Spur: 1fr ist minmax(auto, 1fr), und das
- * auto ist die min-content-Größe des Inhalts. Eine Zelle könnte ihre Spur damit
- * über den gerechten Anteil hinaus aufdrücken — in der Viererreihe genügte dazu
- * eine lange, unumbrechbare Terminalzeile.
- *
- * Sichtbare Reihenfolge = DOM-Reihenfolge = Slot-Reihenfolge, in jedem
- * Template. Deshalb explizite Flächen für die spannenden Zellen und nirgends
- * `order`: eine rein optische Umsortierung fiele beim Tabben auseinander.
+ * teilen: der echte Arbeitsraum (.pc-workspace unten) und das 16px-Piktogramm
+ * in den Knöpfen des Template-Switchers (.pc-minimap,
+ * components/TemplateSwitcher.tsx). Beide Modifier-Sätze selbst — inkl.
+ * .pc-minimap — leben seit 2026-08-13 in components/templateGlyph.css, nicht
+ * hier: settings.css importiert App.css nicht (eigener Tailwind-Durchlauf wie
+ * about.css), das Piktogramm im Grid-Template-Picker der Settings brauchte
+ * dieselbe Geometrie aber ebenfalls. Nur `.pc-workspace` selbst bleibt hier,
+ * weil sie ausschließlich im Hauptfenster vorkommt.
  */
-.pc-layout--single {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.pc-layout--split {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.pc-layout--row-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.pc-layout--row-4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.pc-layout--quad {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-}
-
-/* Zwei oben nebeneinander, die dritte unten über die volle Breite. */
-.pc-layout--two-over-one {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-}
-
-.pc-layout--two-over-one > :nth-child(3) {
-  grid-area: 2 / 1 / 3 / 3;
-}
-
-/* Spiegelbild: die erste über die volle Breite, zwei darunter nebeneinander. */
-.pc-layout--one-over-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-}
-
-.pc-layout--one-over-two > :nth-child(1) {
-  grid-area: 1 / 1 / 2 / 3;
-}
 
 /*
  * Der Arbeitsraum: das eine echte Raster, Kind für Kind eine Pane oder ein
@@ -271,25 +221,6 @@ body {
 .pc-workspace > * {
   min-width: 0;
   min-height: 0;
-}
-
-/*
- * Dasselbe Raster als 16px-Piktogramm im Template-Switcher. Nur Maße, keine
- * Geometrie: die kommt aus demselben .pc-layout--*, das der Arbeitsraum trägt.
- * currentColor, damit die Zellen dem Zustand des Knopfes folgen (aktiv heller)
- * statt eine eigene Farbe zu behaupten.
- */
-.pc-minimap {
-  display: grid;
-  flex: none;
-  width: 1rem;
-  height: 0.8125rem;
-  gap: 1.5px;
-}
-
-.pc-minimap > span {
-  border-radius: 1px;
-  background: currentColor;
 }
 
 /*

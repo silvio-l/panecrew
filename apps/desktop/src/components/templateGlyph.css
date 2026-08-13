@@ -1,0 +1,87 @@
+/*
+ * Geteilte Geometrie für `.pc-layout--*` (der echte Arbeitsraum in App.css UND
+ * `.pc-minimap`, das 16px-Piktogramm in TemplateSwitcher.tsx/SettingsWindow.tsx)
+ * plus die Basis-Maße von `.pc-minimap` selbst — ausgelagert aus App.css
+ * (2026-08-13), weil settings.css das nicht importiert (eigener
+ * Tailwind-Durchlauf wie about.css, s. dessen Kopfkommentar) und das
+ * Piktogramm im Grid-Template-Picker der Settings deshalb komplett unsichtbar
+ * gerendert wurde — im Browser verifiziert (leere Fläche, kein einziges
+ * Rasterfeld), kein rein theoretischer Verdacht.
+ *
+ * Die Modifier tragen NUR Spuren und Spannen — kein gap, keine Größe, kein
+ * flex. Das ist die Bedingung dafür, dass zwei sehr verschiedene Flächen sie
+ * teilen: der echte Arbeitsraum (.pc-workspace, App.css) und dieses
+ * Piktogramm. Maße gehören in die zwei Basisklassen, nicht in die Modifier.
+ *
+ * minmax(0, 1fr) statt 1fr in jeder Spur: 1fr ist minmax(auto, 1fr), und das
+ * auto ist die min-content-Größe des Inhalts. Eine Zelle könnte ihre Spur damit
+ * über den gerechten Anteil hinaus aufdrücken — in der Viererreihe genügte dazu
+ * eine lange, unumbrechbare Terminalzeile.
+ *
+ * Sichtbare Reihenfolge = DOM-Reihenfolge = Slot-Reihenfolge, in jedem
+ * Template. Deshalb explizite Flächen für die spannenden Zellen und nirgends
+ * `order`: eine rein optische Umsortierung fiele beim Tabben auseinander.
+ */
+.pc-layout--single {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pc-layout--split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pc-layout--row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pc-layout--row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pc-layout--quad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+/* Zwei oben nebeneinander, die dritte unten über die volle Breite. */
+.pc-layout--two-over-one {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.pc-layout--two-over-one > :nth-child(3) {
+  grid-area: 2 / 1 / 3 / 3;
+}
+
+/* Spiegelbild: die erste über die volle Breite, zwei darunter nebeneinander. */
+.pc-layout--one-over-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.pc-layout--one-over-two > :nth-child(1) {
+  grid-area: 1 / 1 / 2 / 3;
+}
+
+/*
+ * Das Raster als 16px-Piktogramm im Template-Switcher/-Picker. Nur Maße,
+ * keine Geometrie: die kommt aus denselben `.pc-layout--*`-Regeln oben.
+ * currentColor, damit die Zellen dem Zustand des Knopfes folgen (aktiv heller)
+ * statt eine eigene Farbe zu behaupten.
+ */
+.pc-minimap {
+  display: grid;
+  flex: none;
+  width: 1rem;
+  height: 0.8125rem;
+  gap: 1.5px;
+}
+
+.pc-minimap > span {
+  border-radius: 1px;
+  background: currentColor;
+}

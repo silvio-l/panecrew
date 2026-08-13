@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../theme.css";
+@import "../components/templateGlyph.css";
 
 /* Eigenes Dokument, eigener Tailwind-Durchlauf — wie about.css: das
    Settings-Fenster teilt sich keinen Bundle mit dem Hauptfenster. */
