@@ -32,10 +32,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Nur Apple Silicon -- ein Intel-Build würde auf Apple-Chip-Macs nur
+          # über Rosetta laufen und macOS zeigt dafür aktiv einen "wird
+          # eingestellt"-Hinweis an (verifiziert 2026-08-13, echte
+          # Nightly-DMG-Installation). Kein Intel-Mac-Testgerät vorhanden, und
+          # der Zielnutzerkreis sind Apple-Chip-Macs.
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}

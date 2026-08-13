@@ -26,10 +26,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Nur Apple Silicon -- s. release-nightly.yml für die Begründung
+          # (Rosetta-Einstellungshinweis, kein Intel-Testgerät, Zielnutzer
+          # sind Apple-Chip-Macs).
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
