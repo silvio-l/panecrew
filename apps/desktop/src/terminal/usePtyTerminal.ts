@@ -16,6 +16,7 @@ import { attachInlineSuggestion } from "./inlineSuggestion";
 import { macLineEditingBytes } from "./macLineEditingKeys";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
+import { createResizeGate } from "./resizeGate";
 import { loadShellHistory } from "./shellHistory";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import {
@@ -57,6 +58,13 @@ const MAX_PENDING_OUTPUT_LENGTH = 1_000_000;
  * gedrosselt) weiter und erzwingt so trotzdem einen Flush.
  */
 const FLUSH_FALLBACK_MS = 16;
+/**
+ * Verzögerung, mit der eine spaltenändernde Größenanpassung debounced wird
+ * (resizeGate.ts) — derselbe Wert wie VS Codes eigene xterm.js-Integration
+ * (terminalResizeDebouncer.ts, `DebounceResizeXDelay`), als erprobte
+ * Baseline übernommen, kein eigens hergeleiteter Wert.
+ */
+const COLS_RESIZE_DEBOUNCE_MS = 100;
 
 export interface PtyTerminal {
   /** Container, in den xterm.js sein DOM hängt. */
@@ -338,6 +346,29 @@ export function usePtyTerminal(
     });
     refreshSuggestion = suggestion.refresh;
 
+    // Entscheidet, ob eine vorgeschlagene Größe sofort reflowen darf oder
+    // (Spaltenänderung, genug Scrollback) erst debounced wird — Begründung
+    // und Korruptions-Mechanik in resizeGate.ts. Beide bisherigen fit()-
+    // Aufrufer (Pane-Zoom, ResizeObserver unten) laufen jetzt hier durch,
+    // damit Flush-vor-Reflow und das Debouncing an genau einer Stelle stehen.
+    const resizeGate = createResizeGate(
+      (target) => {
+        flushOutput();
+        terminal.resize(target.cols, target.rows);
+        refreshSuggestion();
+      },
+      {
+        schedule: (run) => {
+          const id = window.setTimeout(run, COLS_RESIZE_DEBOUNCE_MS);
+          return () => window.clearTimeout(id);
+        },
+      },
+      {
+        getCurrentCols: () => terminal.cols,
+        bufferLength: () => terminal.buffer.active.length,
+      },
+    );
+
     const disposables = [
       terminal.onData(writeText),
       terminal.parser.registerOscHandler(7, (data) => {
@@ -369,15 +400,12 @@ export function usePtyTerminal(
       paneZoom = level;
       terminalOptions.fontSize = baseFontSize * level;
       terminal.options.fontSize = terminalOptions.fontSize;
-      // Erst flushen, dann fitten: fit() ruft terminal.resize() SYNCHRON auf
-      // und reflowt den Puffer sofort, während pty_resize (der IPC-Weg zum
-      // Kindprozess) asynchron ist. Noch ungeflushter pendingOutput wurde für
-      // die ALTE Spaltenzahl erzeugt — landete er erst nach dem Reflow im
-      // Puffer, schriebe er in bereits anders umgebrochene Zeilen. Regressions-
-      // nachweis mit echten Ink-Style-Redraw-Bytes: ptyResizeFlush.test.ts.
-      flushOutput();
-      fitAddon.fit();
-      refreshSuggestion();
+      // proposeDimensions() statt fitAddon.fit(): nur MESSEN, das eigentliche
+      // Anwenden (inkl. Flush-vor-Reflow) übernimmt resizeGate — dieselbe
+      // Stelle wie beim ResizeObserver unten, keine zweite Kopie der Fix-Logik
+      // aus ptyResizeFlush.test.ts.
+      const proposed = fitAddon.proposeDimensions();
+      if (proposed) resizeGate.request(proposed);
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -488,12 +516,14 @@ export function usePtyTerminal(
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      // Reihenfolge wie in applyPaneZoom oben und aus demselben Grund: erst
-      // ausstehende Ausgabe in die noch gültige (alte) Geometrie schreiben,
-      // dann reflowen. fit() ruft terminal.resize() und löst damit onResize →
-      // syncSize aus.
-      flushOutput();
-      fitAddon.fit();
+      // Ein Fenster-/Pane-Drag löst diesen Callback Dutzende Male in
+      // schneller Folge aus, nicht einmal — resizeGate entscheidet, ob
+      // (Zeilenänderung, kleiner Puffer) sofort reflowt wird oder
+      // (Spaltenänderung, genug Scrollback) erst nach Ende der Geste, damit
+      // nicht jede Zwischengröße ihr eigenes Korruptions-Zeitfenster gegen
+      // das asynchrone pty_resize aufmacht (resizeGate.ts).
+      const proposed = fitAddon.proposeDimensions();
+      if (proposed) resizeGate.request(proposed);
     });
     resizeObserver.observe(container);
 
@@ -523,6 +553,7 @@ export function usePtyTerminal(
       cancelled = true;
       disposed = true;
       cancelScheduledFlush();
+      resizeGate.cancel();
       insertRef.current = null;
       terminal.textarea?.removeEventListener("copy", handleNativeCopy);
       container.removeEventListener("mouseup", handleSelectionMouseUp);

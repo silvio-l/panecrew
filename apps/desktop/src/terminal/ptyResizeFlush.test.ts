@@ -20,8 +20,12 @@ import fixture from "./ptyResizeFlush.fixture.json";
 // berechnete Bytes in einem bereits umgebrochenen Puffer.
 //
 // Der Fix in usePtyTerminal.ts ist `flushOutput()` unmittelbar vor jedem
-// `fitAddon.fit()` (Zeilen ~332 und ~429) — dieselbe Reihenfolge wie im
-// "fixed"-Fall unten.
+// tatsächlichen `terminal.resize()` — seit resizeGate.ts an genau einer
+// Stelle (dessen `applyResize`-Callback), zuvor an den beiden Call-Sites
+// (Pane-Zoom, ResizeObserver) dupliziert. Dieselbe Reihenfolge wie im
+// "fixed"-Fall unten. resizeGate.ts selbst schließt eine zweite Lücke, die
+// dieser Test nicht abdeckt: wiederholte Spaltenänderungen einer einzigen
+// Drag-Geste, siehe dortiger Kopfkommentar.
 
 const { cols, rows, prefixHex, burstHex } = fixture;
 

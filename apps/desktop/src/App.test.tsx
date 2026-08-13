@@ -69,14 +69,29 @@ vi.mock("@xterm/addon-fit", () => ({
   // eine globale Attrappe.
   FitAddon: class {
     private instance: XtermInstance | null = null;
-    activate(terminal: { __xterm: XtermInstance }): void {
+    // Referenz aufs ganze Mock-Terminal (nicht nur dessen __xterm-Sonde):
+    // proposeDimensions() unten liest cols/rows live von dort, dieselben
+    // Felder, die terminal.resize() weiter unten verändert.
+    private dimensions: { cols: number; rows: number } | null = null;
+    activate(terminal: { __xterm: XtermInstance; cols: number; rows: number }): void {
       this.instance = terminal.__xterm;
+      this.dimensions = terminal;
     }
     dispose(): void {
       /* no-op */
     }
     fit(): void {
       this.instance?.fit();
+    }
+    // Ersetzt seit resizeGate.ts fit() als Mess-Aufruf an den beiden echten
+    // Call-Sites (Pane-Zoom, ResizeObserver) — pingt dieselbe fit-Sonde wie
+    // zuvor fit() selbst, damit bestehende Tests (die sie als Nachweis "eine
+    // Größenmessung fand statt" lesen) unverändert gültig bleiben.
+    proposeDimensions(): { cols: number; rows: number } | undefined {
+      this.instance?.fit();
+      return this.dimensions
+        ? { cols: this.dimensions.cols, rows: this.dimensions.rows }
+        : undefined;
     }
   },
 }));
@@ -147,6 +162,16 @@ vi.mock("@xterm/xterm", () => ({
       return instance;
     })();
     options = this.__xterm.options;
+    // Leerer Puffer: resizeGate.ts fällt damit in jedem Test immer auf den
+    // "sofort anwenden"-Zweig (kleiner Puffer, siehe dortige Schwelle) —
+    // ohne das bräuchte jede spaltenändernde Größenanpassung hier
+    // vi.useFakeTimers(), obwohl kein Test das Debouncing selbst prüft
+    // (das deckt resizeGate.test.ts eigenständig ab).
+    buffer = { active: { length: 0 } };
+    resize(cols: number, rows: number): void {
+      this.cols = cols;
+      this.rows = rows;
+    }
     open(): void {
       /* no-op */
     }
