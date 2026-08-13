@@ -13,6 +13,7 @@ const STORYBOARD: Storyboard = parseStoryboard({
     { atMs: 4000, slot: 1 },
   ],
   typedEvents: [{ atMs: 500, slot: 0, text: "pnpm tauri dev" }],
+  templateEvents: [{ atMs: 6000, template: "split" }],
 });
 
 function createHandlers() {
@@ -30,7 +31,10 @@ function createHandlers() {
   const typeInto = vi.fn((tabId: string, text: string) => {
     calls.push(`type(${tabId},"${text}")`);
   });
-  return { assignPane, focusPane, typeInto, calls };
+  const switchTemplate = vi.fn((target: string) => {
+    calls.push(`template(${target})`);
+  });
+  return { assignPane, focusPane, typeInto, switchTemplate, calls };
 }
 
 beforeEach(() => {
@@ -75,18 +79,37 @@ describe("useStoryboardPlayer", () => {
     ]);
   });
 
+  it("spielt ein Template-Event zur richtigen Zeit ab, ohne eine Pane aufzulösen", () => {
+    const handlers = createHandlers();
+    renderHook(() => {
+      useStoryboardPlayer(STORYBOARD, handlers);
+    });
+    handlers.calls.length = 0;
+
+    vi.advanceTimersByTime(6000);
+    expect(handlers.switchTemplate).toHaveBeenCalledWith("split");
+    expect(handlers.calls).toContain("template(split)");
+  });
+
   it("ist deterministisch: zwei Läufe erzeugen dieselbe Aufrufreihenfolge", () => {
     const first = createHandlers();
     renderHook(() => {
       useStoryboardPlayer(STORYBOARD, first);
     });
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(6000);
+
+    // Frischer Fake-Timer-Takt statt weiter auf derselben globalen Uhr
+    // vorzurücken — sonst laufen die beiden Wiedergaben nicht dieselbe
+    // relative Zeitspanne ab (erste bei absolut 6000, zweite bei absolut
+    // 4000+6000), was allein durchs Timing schon unterschiedliche
+    // Aufrufreihenfolgen erzeugen könnte.
+    vi.useFakeTimers();
 
     const second = createHandlers();
     renderHook(() => {
       useStoryboardPlayer(STORYBOARD, second);
     });
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(6000);
 
     expect(second.calls).toEqual(first.calls);
   });

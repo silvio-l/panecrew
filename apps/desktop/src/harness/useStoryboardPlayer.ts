@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { TemplateId } from "../grid/gridState";
 import { timelineEvents, type Storyboard } from "./storyboard";
 
 export interface StoryboardPlayerHandlers {
@@ -12,6 +13,10 @@ export interface StoryboardPlayerHandlers {
   };
   focusPane: (paneId: string) => void;
   typeInto: (tabId: string, text: string) => void;
+  /** Dieselbe Form wie `Grid.switchTemplate` — braucht anders als
+   * `focusPane`/`typeInto` keine über `assignPane` aufgelöste Pane, ein
+   * Template-Event trägt keinen `slot`. */
+  switchTemplate: (target: TemplateId) => void;
 }
 
 /**
@@ -39,6 +44,10 @@ export function useStoryboardPlayer(
 
     const timers = timelineEvents(storyboard).map((event) =>
       window.setTimeout(() => {
+        if (event.kind === "template") {
+          handlers.switchTemplate(event.template);
+          return;
+        }
         const pane = paneOf.get(event.slot);
         if (!pane) return;
         if (event.kind === "focus") handlers.focusPane(pane.paneId);

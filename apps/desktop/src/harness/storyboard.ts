@@ -2,8 +2,10 @@
 // abspielt: welche Panes mit welchem simulierten Projekt-Namen vorbelegt
 // sind (statisch, keine Zeitachse — die Preconditions der Spec verlangen
 // ohnehin bereits zugewiesene Panes vor jedem Dreh), dazu je eine Zeitachse
-// für Fokuswechsel und für "getippten" Text. `atMs` ist relativ zum Start
-// der Wiedergabe, nicht absolut.
+// für Fokuswechsel, für "getippten" Text und für Grid-Template-Wechsel.
+// `atMs` ist relativ zum Start der Wiedergabe, nicht absolut.
+
+import { GRID_TEMPLATES, type TemplateId } from "../grid/gridState";
 
 interface StoryboardPane {
   slot: number;
@@ -21,15 +23,22 @@ interface StoryboardTypedEvent {
   text: string;
 }
 
+interface StoryboardTemplateEvent {
+  atMs: number;
+  template: TemplateId;
+}
+
 export interface Storyboard {
   panes: readonly StoryboardPane[];
   focusEvents: readonly StoryboardFocusEvent[];
   typedEvents: readonly StoryboardTypedEvent[];
+  templateEvents: readonly StoryboardTemplateEvent[];
 }
 
 export type TimelineEvent =
   | { kind: "focus"; atMs: number; slot: number }
-  | { kind: "typed"; atMs: number; slot: number; text: string };
+  | { kind: "typed"; atMs: number; slot: number; text: string }
+  | { kind: "template"; atMs: number; template: TemplateId };
 
 /** Wirft mit einer konkreten Fehlermeldung, statt eine strukturell falsche
  * Storyboard-Datei erst beim Abspielen (oder gar nicht) auffallen zu lassen
@@ -66,7 +75,22 @@ export function parseStoryboard(data: unknown): Storyboard {
     };
   });
 
-  return { panes, focusEvents, typedEvents };
+  // Optional, anders als die drei Arrays oben: bestehende Storyboards ohne
+  // Template-Wechsel (z. B. ältere Fixtures) bleiben gültig, statt ein
+  // fehlendes Feld als Fehler zu werten.
+  const templateEvents = parseArray(
+    raw.templateEvents ?? [],
+    "templateEvents",
+    (entry, path) => {
+      const event = expectObject(entry, path);
+      return {
+        atMs: expectNonNegativeInt(event.atMs, `${path}.atMs`),
+        template: expectTemplateId(event.template, `${path}.template`),
+      };
+    },
+  );
+
+  return { panes, focusEvents, typedEvents, templateEvents };
 }
 
 /** Fasst Fokus- und Tipp-Events zu einer nach `atMs` sortierten Zeitachse
@@ -84,6 +108,13 @@ export function timelineEvents(storyboard: Storyboard): readonly TimelineEvent[]
         atMs: event.atMs,
         slot: event.slot,
         text: event.text,
+      }),
+    ),
+    ...storyboard.templateEvents.map(
+      (event): TimelineEvent => ({
+        kind: "template",
+        atMs: event.atMs,
+        template: event.template,
       }),
     ),
   ];
@@ -124,4 +155,18 @@ function expectNonEmptyString(value: unknown, path: string): string {
     throw new Error(`Storyboard.${path} muss ein nicht-leerer String sein`);
   }
   return value;
+}
+
+const VALID_TEMPLATE_IDS = GRID_TEMPLATES.map((t) => t.id);
+
+function expectTemplateId(value: unknown, path: string): TemplateId {
+  if (
+    typeof value !== "string" ||
+    !VALID_TEMPLATE_IDS.includes(value as TemplateId)
+  ) {
+    throw new Error(
+      `Storyboard.${path} muss eines von ${VALID_TEMPLATE_IDS.join(", ")} sein`,
+    );
+  }
+  return value as TemplateId;
 }

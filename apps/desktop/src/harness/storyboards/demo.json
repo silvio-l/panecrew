@@ -6,13 +6,14 @@
   "focusEvents": [
     { "atMs": 0, "slot": 0 },
     { "atMs": 4000, "slot": 1 },
-    { "atMs": 8000, "slot": 0 },
-    { "atMs": 12000, "slot": 1 }
+    { "atMs": 9000, "slot": 0 },
+    { "atMs": 13000, "slot": 1 }
   ],
   "typedEvents": [
     { "atMs": 800, "slot": 0, "text": "pnpm tauri dev" },
-    { "atMs": 4800, "slot": 1, "text": "git status" },
-    { "atMs": 8800, "slot": 0, "text": "git log --oneline -5" },
-    { "atMs": 12800, "slot": 1, "text": "pnpm test" }
+    { "atMs": 4800, "slot": 1, "text": "claude" }
+  ],
+  "templateEvents": [
+    { "atMs": 8000, "template": "split" }
   ]
 }

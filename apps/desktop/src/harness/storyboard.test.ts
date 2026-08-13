@@ -12,6 +12,7 @@ const VALID = {
     { atMs: 4000, slot: 1 },
   ],
   typedEvents: [{ atMs: 500, slot: 0, text: "pnpm tauri dev" }],
+  templateEvents: [{ atMs: 6000, template: "split" as const }],
 };
 
 describe("parseStoryboard", () => {
@@ -42,15 +43,37 @@ describe("parseStoryboard", () => {
       }),
     ).toThrow(/text/);
   });
+
+  it("erlaubt ein fehlendes templateEvents-Array (Rückwärtskompatibilität)", () => {
+    const withoutTemplateEvents = {
+      panes: VALID.panes,
+      focusEvents: VALID.focusEvents,
+      typedEvents: VALID.typedEvents,
+    };
+    expect(parseStoryboard(withoutTemplateEvents)).toEqual({
+      ...withoutTemplateEvents,
+      templateEvents: [],
+    });
+  });
+
+  it("wirft bei unbekannter Template-Id", () => {
+    expect(() =>
+      parseStoryboard({
+        ...VALID,
+        templateEvents: [{ atMs: 0, template: "hex-grid" }],
+      }),
+    ).toThrow(/template/);
+  });
 });
 
 describe("timelineEvents", () => {
-  it("fasst Fokus- und Tipp-Events sortiert nach atMs zusammen", () => {
+  it("fasst Fokus-, Tipp- und Template-Events sortiert nach atMs zusammen", () => {
     const storyboard = parseStoryboard(VALID);
     expect(timelineEvents(storyboard)).toEqual([
       { kind: "focus", atMs: 0, slot: 0 },
       { kind: "typed", atMs: 500, slot: 0, text: "pnpm tauri dev" },
       { kind: "focus", atMs: 4000, slot: 1 },
+      { kind: "template", atMs: 6000, template: "split" },
     ]);
   });
 
@@ -61,10 +84,11 @@ describe("timelineEvents", () => {
 });
 
 describe("demo.json", () => {
-  it("ist ein gültiges, abspielbares Beispiel-Storyboard mit 2+ Panes, Fokuswechsel und getipptem Text", () => {
+  it("ist ein gültiges, abspielbares Beispiel-Storyboard mit 2+ Panes, Fokuswechsel, getipptem Text und einem Template-Wechsel", () => {
     const storyboard = parseStoryboard(demoStoryboardJson);
     expect(storyboard.panes.length).toBeGreaterThanOrEqual(2);
     expect(storyboard.focusEvents.length).toBeGreaterThanOrEqual(1);
     expect(storyboard.typedEvents.length).toBeGreaterThanOrEqual(1);
+    expect(storyboard.templateEvents.length).toBeGreaterThanOrEqual(1);
   });
 });

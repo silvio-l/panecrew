@@ -70,6 +70,7 @@ export function HarnessApp({
     typeInto: (tabId, text) => {
       demoBackend.emit(tabId, text);
     },
+    switchTemplate: grid.switchTemplate,
   });
 
   const focusedPath = focusedProjectPath(grid.state);
