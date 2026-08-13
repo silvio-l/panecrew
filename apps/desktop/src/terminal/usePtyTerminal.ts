@@ -89,10 +89,11 @@ export function usePtyTerminal(
   onSelectTerminalTabByNumber: (number: number) => void,
   // Quittiert einen tatsächlich stattgefundenen Kopiervorgang zurück an
   // TerminalPane.tsx' Live-Region. Nur für die Wege nötig, die dort sonst
-  // spurlos blieben: Ctrl+Shift+C unten UND natives Cmd+C, das komplett an
-  // dieser Komponente vorbei über xterms Helper-Textarea läuft (siehe deren
-  // `copy`-Listener weiter unten). Der Kontextmenü-Weg (`copySelection`)
-  // braucht ihn nicht — TerminalPane.tsx ruft ihn dort selbst auf.
+  // spurlos blieben: Ctrl+Shift+C unten, natives Cmd+C (läuft komplett an
+  // dieser Komponente vorbei über xterms Helper-Textarea) und die
+  // automatische Kopie einer fertigen Mausauswahl — alle drei über eigene
+  // Listener weiter unten. Der Kontextmenü-Weg (`copySelection`) braucht ihn
+  // nicht — TerminalPane.tsx ruft ihn dort selbst auf.
   onCopied: () => void,
 ): PtyTerminal {
   const backend = usePtyBackend();
@@ -160,6 +161,19 @@ export function usePtyTerminal(
       if (terminal.hasSelection()) onCopiedRef.current();
     };
     terminal.textarea?.addEventListener("copy", handleNativeCopy);
+
+    // "Select to Copy": eine fertige Mausauswahl landet ohne weiteres Zutun in
+    // der Zwischenablage (Nutzer-Wunsch 2026-08-13) — dieselbe Konvention wie
+    // bei den gängigen macOS- und Linux-Terminal-Emulatoren. An `mouseup` gehängt,
+    // nicht an `terminal.onSelectionChange`: Letzteres feuert bei JEDER
+    // Zwischenposition während des Ziehens, ein Listener dort schriebe die
+    // Zwischenablage dutzende Male pro Sekunde. xterms eigene Auswahlgesten
+    // (Ziehen, Doppel-/Dreifachklick) enden alle in genau einem `mouseup` auf
+    // diesem Container — die Auswahl steht zu diesem Zeitpunkt bereits fest.
+    const handleSelectionMouseUp = () => {
+      if (copySelectionFrom(terminal)) onCopiedRef.current();
+    };
+    container.addEventListener("mouseup", handleSelectionMouseUp);
 
     // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `tabId`
     // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
@@ -511,6 +525,7 @@ export function usePtyTerminal(
       cancelScheduledFlush();
       insertRef.current = null;
       terminal.textarea?.removeEventListener("copy", handleNativeCopy);
+      container.removeEventListener("mouseup", handleSelectionMouseUp);
       resizeObserver.disconnect();
       directories.dispose();
       subdirectories.dispose();

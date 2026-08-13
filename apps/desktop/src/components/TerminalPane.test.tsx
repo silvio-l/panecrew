@@ -119,6 +119,15 @@ describe("TerminalPane", () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
+  it("stiehlt beim Mount keinen Fokus, nur weil der eigene Tab schon aktiv ist", () => {
+    // Sitzungs-Restore mit mehreren Panes: jede mountet mit ihrem jeweils
+    // aktiven Tab bereits `active={true}` — ohne Schutz riefe hier jede
+    // Pane focus() auf, und die zuletzt gemountete gewönne den DOM-Fokus,
+    // unabhängig davon, welche Pane vorher `focusedPaneId` trug.
+    renderPane(false, true);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it("quittiert Kopieren per Tastenkombination genauso wie über das Kontextmenü", () => {
     renderPane(false);
     expect(screen.queryByRole("status")).not.toHaveTextContent("Kopiert");

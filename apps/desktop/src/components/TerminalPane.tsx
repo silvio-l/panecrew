@@ -134,9 +134,16 @@ export function TerminalPane({
   // Tab-Wechsel mountet keinen neuen Terminal-Tab (PaneGrid.tsx hält alle
   // gleichzeitig gemountet, nur ausgeblendet) — ohne diesen Effekt bleibt der
   // DOM-Fokus im vorher aktiven Tab hängen, auch wenn der Wechsel per
-  // Tastatur kam und die Maus das Terminal nie berührt hat.
+  // Tastatur kam und die Maus das Terminal nie berührt hat. Reagiert bewusst
+  // nur auf einen echten false→true-Übergang (per Ref verfolgt), nicht auf
+  // `active` selbst: sonst riefe jede Pane, deren aktiver Tab beim initialen
+  // Mount (Sitzungs-Restore mit mehreren Panes) bereits `active` ist, hier
+  // ebenfalls focus() — die zuletzt gemountete Pane gewönne den DOM-Fokus,
+  // unabhängig davon, welche Pane vorher `focusedPaneId` im Grid-Store trug.
+  const wasActive = useRef(active);
   useEffect(() => {
-    if (active) focus();
+    if (active && !wasActive.current) focus();
+    wasActive.current = active;
   }, [active, focus]);
 
   return (
