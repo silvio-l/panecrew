@@ -17,14 +17,26 @@ const MAIN: &str = "main";
 
 /// Chrome settings mirrored from `tauri.conf.json`'s "main" entry so a
 /// second window looks like the same app, not a plain default-decorated
-/// window — these three only exist in the static config today because
-/// "main" is the sole window Tauri creates at startup; every window this
-/// module opens at runtime has to restate them itself.
+/// window — these only exist in the static config today because "main" is
+/// the sole window Tauri creates at startup; every window this module opens
+/// at runtime has to restate them itself.
 const WIDTH: f64 = 1200.0;
 const HEIGHT: f64 = 800.0;
 const MIN_WIDTH: f64 = 960.0;
 const MIN_HEIGHT: f64 = 600.0;
 const BACKGROUND: &str = "#121314";
+
+/// Traffic-light dot position, same values as `tauri.conf.json`'s
+/// `trafficLightPosition`. Missing this call previously left every
+/// runtime-created window's controls at macOS's own default spot instead of
+/// the one `TitleBar.tsx`'s `TRAFFIC_LIGHT_INSET` (84px) was measured
+/// against — the dots looked "off" AND, since their native hit-test area no
+/// longer lined up with where the capsule draws its own drag region, mouse-
+/// downs meant to drag the window could land on dead space between the two
+/// instead (2026-08-13, user report: "kann das Fenster nicht hin und her
+/// schieben" on secondary windows).
+const TRAFFIC_LIGHT_X: f64 = 21.0;
+const TRAFFIC_LIGHT_Y: f64 = 27.5;
 
 /// Cascading offset between successive new windows — each window lands
 /// visibly offset from its opener instead of stacked exactly on top of it
@@ -83,6 +95,7 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
     .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
     .hidden_title(true);
 
     if let Some(opener) = opener {
@@ -126,6 +139,7 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
     .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
     .hidden_title(true)
     .center()
     .visible(false)
