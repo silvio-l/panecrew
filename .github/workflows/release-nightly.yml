@@ -71,6 +71,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
+      # Notarisierung über den App-Store-Connect-API-Key statt Apple-ID +
+      # App-spezifischem Passwort: Letzteres bräuchte einen interaktiven
+      # 2FA-Login, den eine CI nicht leisten kann. Der API-Key ist
+      # projektübergreifend bereits vorhanden (selbes Team wie das
+      # Signierzertifikat) und vollautomatisierbar.
+      - name: Notarisierungs-API-Key schreiben
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          mkdir -p ~/private_keys
+          KEY_PATH="$HOME/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       # Eigenes Keypaar, eigener `identifier`, eigenes Overlay (Punkt 1): der
       # Nightly-Signing-Key ist häufiger exponiert als der Stable-Key, ein
       # kompromittierter Nightly-Key darf Stable nicht mitgefährden.
@@ -82,9 +98,10 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           projectPath: apps/desktop
           tagName: nightly-latest
