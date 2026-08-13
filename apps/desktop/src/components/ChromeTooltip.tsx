@@ -24,7 +24,10 @@ export function ChromeTooltip({
           side={side}
           align={align}
           sideOffset={4}
-          className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg"
+          // `data-state` bei Tooltip.Content ist "delayed-open"/"instant-open"/
+          // "closed" (nicht "open") — beide Auf-Varianten brauchen deshalb die
+          // Animation einzeln. Siehe App.css für Begründung/Keyframes.
+          className="z-20 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg data-[state=closed]:animate-[pc-overlay-out_150ms_ease-in] data-[state=delayed-open]:animate-[pc-overlay-in_150ms_ease-out] data-[state=instant-open]:animate-[pc-overlay-in_150ms_ease-out]"
         >
           {label}
         </Tooltip.Content>
@@ -49,8 +52,10 @@ export const CHROME_FOCUS_RING =
 // das ein drittes Mal auseinanderlaufen lassen. `min-w-*` bleibt Sache des
 // Aufrufers: die drei Menüs sind unterschiedlich breit, das ist keine
 // Abweichung, die es zu vereinheitlichen gilt.
+// `data-state` ist bei Dropdown-/Kontextmenü "open"/"closed" (anders als beim
+// Tooltip oben) — eine Zeile genügt. Siehe App.css für Begründung/Keyframes.
 export const CHROME_MENU_CONTENT_CLASS =
-  "z-30 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg";
+  "z-30 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg data-[state=open]:animate-[pc-overlay-in_150ms_ease-out] data-[state=closed]:animate-[pc-overlay-out_150ms_ease-in]";
 
 export const CHROME_MENU_ITEM_CLASS =
   "flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground) data-[disabled]:pointer-events-none data-[disabled]:text-(--pc-descriptionForeground) data-[disabled]:opacity-50";

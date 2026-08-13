@@ -2,8 +2,17 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "../i18n";
 import "../App.css";
+import { installNativeContextMenuPolicy } from "../chrome/nativeContextMenuPolicy";
 import { HarnessApp } from "./HarnessApp";
 import { parseStoryboard, type Storyboard } from "./storyboard";
+
+// Derselbe Grund wie in main.tsx/about/main.tsx/settings/main.tsx: der
+// Harness läuft für Promo-Aufnahmen in einem Chrome-Kiosk-Fenster, das die
+// echte App vortäuschen soll (tools/promo-pipeline/capture.py) — ein
+// versehentlicher Rechtsklick auf freie Fläche dürfte dabei nicht Chromes
+// eigenes Kontextmenü ("Neu laden", "Untersuchen" …) einblenden und ins
+// Video geraten lassen.
+installNativeContextMenuPolicy();
 
 // Zweiter Vite-Einstieg neben `main.tsx`/`about/main.tsx` — absichtlich NICHT
 // in vite.config.ts' `build.rollupOptions.input` eingetragen (ADR-0001):

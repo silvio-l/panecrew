@@ -8,6 +8,7 @@ const pane = (paneId: string, tabs: number): Pane => ({
   projectPath: `/Users/dev/projects/${paneId}`,
   terminalTabs: Array.from({ length: tabs }, (_, i) => ({
     tabId: `${paneId}-tab-${String(i)}`,
+    label: null,
   })),
   activeTerminalTabId: `${paneId}-tab-0`,
   showingFile: false,
@@ -17,6 +18,7 @@ const state = (slots: (Pane | null)[]): GridState => ({
   template: "quad",
   slots,
   focusedPaneId: slots.find((slot) => slot !== null)?.paneId ?? null,
+  maximizedPaneId: null,
 });
 
 describe("GridStatusRail", () => {

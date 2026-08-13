@@ -39,6 +39,7 @@ export function PaneGrid({
   onFocusPane,
   onOpenTerminalTab,
   onCloseTerminalTab,
+  onRenameTerminalTab,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
   onEnterFocusMode,
@@ -70,6 +71,9 @@ export function PaneGrid({
   onFocusPane: (paneId: string) => void;
   onOpenTerminalTab: (paneId: string) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
+  /** Kontextmenü-Aktion "Umbenennen" (`PaneTabs.tsx`) — `label: null` löscht
+   * den Namen wieder. */
+  onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — der Klick auf den
@@ -112,6 +116,7 @@ export function PaneGrid({
             onFocus={() => onFocusPane(slot.paneId)}
             onOpenTerminalTab={onOpenTerminalTab}
             onCloseTerminalTab={onCloseTerminalTab}
+            onRenameTerminalTab={onRenameTerminalTab}
             onSwitchToTerminalTab={onSwitchToTerminalTab}
             onSwitchToFileTab={onSwitchToFileTab}
             // Derselbe Header-Knopf ist Ein- und Ausstieg zugleich: eine
@@ -152,6 +157,7 @@ function PaneCell({
   onFocus,
   onOpenTerminalTab,
   onCloseTerminalTab,
+  onRenameTerminalTab,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
   onToggleFocusMode,
@@ -181,6 +187,7 @@ function PaneCell({
   onFocus: () => void;
   onOpenTerminalTab: (paneId: string) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
+  onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
   /** Ein Aufruf deckt beide Richtungen ab — s. `PaneGrid`s Berechnung oben:
@@ -207,6 +214,7 @@ function PaneCell({
     terminalTabs: pane.terminalTabs.map((tab, i) => ({
       tabId: tab.tabId,
       number: i + 1,
+      label: tab.label,
     })),
     activeTerminalTabId: pane.activeTerminalTabId,
     showingFile,
@@ -215,6 +223,7 @@ function PaneCell({
     onSelectTerminalTab: (tabId) => onSwitchToTerminalTab(pane.paneId, tabId),
     onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
     onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
+    onRenameTerminalTab: (tabId, label) => onRenameTerminalTab(pane.paneId, tabId, label),
     onSelectFile: () => onSwitchToFileTab(pane.paneId),
   };
 

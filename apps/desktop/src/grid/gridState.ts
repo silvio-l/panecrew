@@ -40,9 +40,16 @@ export const DEFAULT_TEMPLATE: TemplateId = "quad";
 
 /** Ein Terminal-Tab einer Pane — je eine eigene PTY (Ticket 18). `tabId`
  * kommt wie `paneId` fertig von `useGrid.ts` (`crypto.randomUUID()`), dieses
- * Modul erzeugt keine IDs selbst (Kopfkommentar). */
+ * Modul erzeugt keine IDs selbst (Kopfkommentar).
+ *
+ * `label` ist die Nutzer-Umbenennung (`renameTerminalTab` unten) — `null`
+ * heißt "kein eigener Name", der Chip zeigt dann nur seine Nummer
+ * (`PaneTabs.tsx`). Nicht exportiert (wie das modulinterne `Slot` unten) —
+ * `sessionState.ts`/`App.tsx` lesen `label` strukturell über `Pane`, ohne den
+ * Typnamen selbst zu brauchen. */
 interface TerminalTab {
   tabId: string;
+  label: string | null;
 }
 
 export interface Pane {
@@ -191,7 +198,7 @@ export function assignProjectToSlot(
   nextSlots[slotIndex] = {
     paneId,
     projectPath,
-    terminalTabs: [{ tabId }],
+    terminalTabs: [{ tabId, label: null }],
     activeTerminalTabId: tabId,
     showingFile: false,
   };
@@ -214,7 +221,7 @@ export function openTerminalTab(
   const nextSlots = state.slots.slice();
   nextSlots[index] = {
     ...pane,
-    terminalTabs: [...pane.terminalTabs, { tabId }],
+    terminalTabs: [...pane.terminalTabs, { tabId, label: null }],
     activeTerminalTabId: tabId,
     showingFile: false,
   };
@@ -254,6 +261,32 @@ export function closeTerminalTab(
     terminalTabs: nextTabs,
     activeTerminalTabId: nextActiveTabId,
   };
+  return { ...state, slots: nextSlots };
+}
+
+/** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
+ * "Umbenennen", `PaneTabs.tsx`) — reine Chip-Beschriftung, `tabId`/Nummer
+ * bleiben unberührt, die Cmd/Strg+1..9-Kürzel bleiben also weiter
+ * positionsbasiert gültig (`shortcuts/registry.ts`). `label: null` löscht
+ * den Namen wieder, der Chip zeigt dann nur seine Nummer. No-Op bei
+ * unbekannter `paneId`/`tabId`. */
+export function renameTerminalTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+  label: string | null,
+): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+  const tabIndex = pane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) return state;
+
+  const nextTabs = pane.terminalTabs.slice();
+  nextTabs[tabIndex] = { ...(nextTabs[tabIndex] as TerminalTab), label };
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = { ...pane, terminalTabs: nextTabs };
   return { ...state, slots: nextSlots };
 }
 

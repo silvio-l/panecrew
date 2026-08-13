@@ -52,7 +52,7 @@ describe("gridState", () => {
       {
         paneId: "pane-1",
         projectPath: "/repo/storefront",
-        terminalTabs: [{ tabId: "tab-1" }],
+        terminalTabs: [{ tabId: "tab-1", label: null }],
         activeTerminalTabId: "tab-1",
         showingFile: false,
       },
@@ -304,7 +304,10 @@ describe("gridState", () => {
       );
       const next = openTerminalTab(withOne, "pane-0", "tab-1");
       const pane = next.slots[0] as Pane;
-      expect(pane.terminalTabs).toEqual([{ tabId: "tab-0" }, { tabId: "tab-1" }]);
+      expect(pane.terminalTabs).toEqual([
+        { tabId: "tab-0", label: null },
+        { tabId: "tab-1", label: null },
+      ]);
       expect(pane.activeTerminalTabId).toBe("tab-1");
     });
 
@@ -340,7 +343,7 @@ describe("gridState", () => {
     it("entfernt einen Terminal-Tab, ohne die anderen anzutasten", () => {
       const withTwo = twoTabPane();
       const next = closeTerminalTab(withTwo, "pane-0", "tab-0");
-      expect((next.slots[0] as Pane).terminalTabs).toEqual([{ tabId: "tab-1" }]);
+      expect((next.slots[0] as Pane).terminalTabs).toEqual([{ tabId: "tab-1", label: null }]);
     });
 
     it("übernimmt der Vorgänger, wenn der aktive Tab geschlossen wird", () => {

@@ -9,6 +9,7 @@ import {
   focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
   openTerminalTab as openTerminalTabInState,
+  renameTerminalTab as renameTerminalTabInState,
   switchTemplate as switchTemplateInState,
   switchToFileTab as switchToFileTabInState,
   switchToTerminalTab as switchToTerminalTabInState,
@@ -44,6 +45,9 @@ export interface Grid {
    * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
   openTerminalTab: (paneId: string) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
+  /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
+   * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
+  renameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
   switchToTerminalTab: (paneId: string, tabId: string) => void;
   switchToFileTab: (paneId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — sie nimmt das
@@ -101,6 +105,13 @@ export function useGrid(): Grid {
     setState((current) => closeTerminalTabInState(current, paneId, tabId));
   }, []);
 
+  const renameTerminalTab = useCallback(
+    (paneId: string, tabId: string, label: string | null) => {
+      setState((current) => renameTerminalTabInState(current, paneId, tabId, label));
+    },
+    [],
+  );
+
   const switchToTerminalTab = useCallback((paneId: string, tabId: string) => {
     setState((current) => switchToTerminalTabInState(current, paneId, tabId));
   }, []);
@@ -129,6 +140,7 @@ export function useGrid(): Grid {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
     enterFocusMode,

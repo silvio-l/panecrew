@@ -3,18 +3,17 @@ import { Tooltip } from "radix-ui";
 import { describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 
-// Regressionstest zur Nutzerbeschwerde vom 2026-08-13 (s. Kopfkommentar in
-// PaneTabs.tsx): der Chip war ursprünglich EIN `absolute inset-0`-Knopf, den
-// Hover komplett zum Schließkreuz machte — ein Klick auf die Zahl schloss den
-// Tab, statt ihn auszuwählen. Dieser Test rendert echtes DOM (kein
-// Shallow-Mock) und prüft genau die Klick-Ziele, die den Unterschied machen:
-// Zahl/Punkt wählt aus, das separate Kreuz schließt — nie beides zugleich.
+// Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
+// PaneTabs.tsx, "Schließen per Kontextmenü"): das Schließkreuz ist ersatzlos
+// entfernt, Schließen UND Umbenennen laufen jetzt ausschließlich über das
+// Radix-Kontextmenü des Chips. Dasselbe `fireEvent.contextMenu`-Muster wie
+// TerminalPane.test.tsx' Kopier-Menü-Test.
 const baseProps = (
   overrides: Partial<PaneTabsProps> = {},
 ): PaneTabsProps => ({
   terminalTabs: [
-    { tabId: "tab-1", number: 1 },
-    { tabId: "tab-2", number: 2 },
+    { tabId: "tab-1", number: 1, label: null },
+    { tabId: "tab-2", number: 2, label: null },
   ],
   activeTerminalTabId: "tab-1",
   showingFile: false,
@@ -23,6 +22,7 @@ const baseProps = (
   onSelectTerminalTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
+  onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
   ...overrides,
 });
@@ -33,6 +33,15 @@ const renderTabs = (props: PaneTabsProps) =>
       <PaneTabs {...props} />
     </Tooltip.Provider>,
   );
+
+/** Der `ContextMenu.Trigger` ist der `<span>`, der Zahl-Knopf/Umbenennen-Feld
+ * umschließt — derselbe unmittelbare Elternknoten in beiden Zuständen
+ * (`PaneTabs.tsx`). */
+const chipTrigger = (name: string) => {
+  const el = screen.getByRole("button", { name }).closest("span");
+  if (!el) throw new Error(`Kontextmenü-Trigger für "${name}" nicht gefunden`);
+  return el;
+};
 
 describe("PaneTabs", () => {
   it("wählt den Tab per Klick auf die Zahl aus, ohne ihn zu schließen", () => {
@@ -45,28 +54,55 @@ describe("PaneTabs", () => {
     expect(props.onCloseTerminalTab).not.toHaveBeenCalled();
   });
 
-  it("schließt den Tab nur über das eigene Schließkreuz, ohne ihn auszuwählen", () => {
+  it("schließt den Tab nur über das Kontextmenü, ohne ihn auszuwählen", () => {
     const props = baseProps();
     renderTabs(props);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Terminal 2 schließen" }),
-    );
+    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 schließen" }));
 
     expect(props.onCloseTerminalTab).toHaveBeenCalledWith("tab-2");
     expect(props.onSelectTerminalTab).not.toHaveBeenCalled();
   });
 
-  it("reserviert dem Schließkreuz denselben Randbereich, ob schließbar oder nicht", () => {
-    // Bug vom 2026-08-13 (Advisor-Review): `pr-4` galt nur, solange
-    // `closable` true war — der letzte verbleibende Tab (nicht schließbar)
-    // wurde dadurch schmaler als jeder andere, derselbe Breitensprung, den
-    // dieser Umbau eigentlich beheben sollte. Ein Rendern mit nur einem Tab
-    // muss dieselbe Randklasse tragen wie eines mit mehreren.
-    renderTabs(baseProps({ terminalTabs: [{ tabId: "tab-1", number: 1 }] }));
+  it("bietet für den letzten verbleibenden Tab keinen Schließen-Menüpunkt", () => {
+    renderTabs(baseProps({ terminalTabs: [{ tabId: "tab-1", number: 1, label: null }] }));
 
-    const button = screen.getByRole("button", { name: "Terminal 1" });
-    expect(button.className).toContain("pr-4");
-    expect(button.className).not.toContain("pr-1.5");
+    fireEvent.contextMenu(chipTrigger("Terminal 1"));
+
+    expect(screen.queryByRole("menuitem", { name: "Terminal 1 schließen" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Terminal 1 umbenennen" })).toBeInTheDocument();
+  });
+
+  it("benennt einen Tab über das Kontextmenü um", async () => {
+    const props = baseProps();
+    renderTabs(props);
+
+    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 umbenennen" }));
+
+    // Das Feld hängt erst einen Tick nach dem Klick ein (PaneTabs.tsx'
+    // `onStartRename`-Kommentar: Radix' eigener Schließvorgang muss dem
+    // Umbenennen-Feld erst den Fokus-Trap freigeben) — `findByRole` statt
+    // `getByRole` wartet darauf.
+    const field = await screen.findByRole("textbox", { name: "Name für Terminal 2" });
+    fireEvent.change(field, { target: { value: "build" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect(props.onRenameTerminalTab).toHaveBeenCalledWith("tab-2", "build");
+  });
+
+  it("verwirft die Umbenennung bei Escape, ohne zu committen", async () => {
+    const props = baseProps();
+    renderTabs(props);
+
+    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 umbenennen" }));
+    const field = await screen.findByRole("textbox", { name: "Name für Terminal 2" });
+    fireEvent.change(field, { target: { value: "build" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+
+    expect(props.onRenameTerminalTab).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
   });
 });

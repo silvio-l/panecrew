@@ -79,7 +79,7 @@ export function ConfirmDialog({
         {/* z-40/z-50 über allem anderen Chrome: Tooltip liegt auf z-20,
             Kontextmenü auf z-30. Ein modales Fenster, das unter einem Tooltip
             verschwindet, wäre eine Kette ohne Ende. */}
-        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-(--pc-dialog-overlayBackground)" />
+        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-(--pc-dialog-overlayBackground) animate-[pc-overlay-fade-in_150ms_ease-out]" />
         <AlertDialog.Content
           // Breite in rem, gedeckelt gegen das Fenster: der Satz darin ist
           // zwei Zeilen lang, eine breitere Platte machte daraus eine.
@@ -90,7 +90,7 @@ export function ConfirmDialog({
           // den Fokus beim Öffnen auf den Abbrechen-Knopf, die Platte selbst
           // ist nie das fokussierte Element. Ein Ring um sie herum wäre ein
           // Signal ohne Bedeutung.
-          className="fixed left-1/2 top-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-(--pc-widget-border) bg-(--pc-widget-background) p-5 shadow-lg outline-none"
+          className="fixed left-1/2 top-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-(--pc-widget-border) bg-(--pc-widget-background) p-5 shadow-lg outline-none animate-[pc-overlay-in_150ms_ease-out]"
         >
           <div className="flex items-start gap-3">
             {/* mt-0.5 zieht die 16px-Glyphe auf die optische Grundlinie der

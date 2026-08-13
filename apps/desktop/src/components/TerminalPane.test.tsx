@@ -42,7 +42,7 @@ vi.mock("../terminal/usePtyTerminal", () => ({
 }));
 
 const paneTabs: PaneTabsProps = {
-  terminalTabs: [{ tabId: "tab-1", number: 1 }],
+  terminalTabs: [{ tabId: "tab-1", number: 1, label: null }],
   activeTerminalTabId: "tab-1",
   showingFile: false,
   fileName: null,
@@ -50,6 +50,7 @@ const paneTabs: PaneTabsProps = {
   onSelectTerminalTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
+  onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
 };
 
