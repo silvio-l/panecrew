@@ -36,7 +36,7 @@ type ZoomGlyph = "+" | "-" | "0";
 type DigitGlyph = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = ZoomGlyph | "S" | "N" | DigitGlyph | "↵";
+type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | DigitGlyph | "↵";
 
 export interface ShortcutDefinition {
   readonly id: string;
@@ -68,6 +68,13 @@ export const TOGGLE_FOCUS_MODE_SHORTCUT_ID = "pane.toggleFocusMode";
  * `SAVE_FILE_SHORTCUT_ID` oben. Dasselbe Kürzel wie VS Codes eigenes
  * "Neues Fenster" (⌘N/Ctrl+N). */
 export const NEW_WINDOW_SHORTCUT_ID = "app.newWindow";
+
+/** Id des Terminal-Tab-Schließen-Kürzels — `usePtyTerminal.ts`s Pane-Kürzel-
+ * Zweig schlägt seine Definition damit nach, aus demselben Grund wie
+ * `SAVE_FILE_SHORTCUT_ID` oben. Browser-übliches Cmd/Strg+W, hier ohne
+ * Kollisionsrisiko: PaneCrew ist ein natives Tauri-Fenster, kein Browser-Tab,
+ * den dieselbe Kombination sonst schlösse. */
+export const CLOSE_TERMINAL_TAB_SHORTCUT_ID = "pane.closeTerminalTab";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -154,6 +161,21 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     scope: "pane",
     glyph: "↵",
     codes: ["Enter", "NumpadEnter"],
+    shift: false,
+  },
+  {
+    // Genau EIN Code wie beim Speichern-Kürzel oben. Läuft über denselben
+    // rückfragegesicherten Pfad wie Rechtsklick-Kontextmenü/Mittelklick
+    // (`closeTerminalTabGuarded`, App.tsx) — dieses Kürzel ist nur ein
+    // weiterer WEG dorthin, keine zweite, ungeschützte Schließ-Logik. Der
+    // letzte verbleibende Terminal-Tab bleibt davon ausgenommen (dieselbe
+    // `terminalTabs.length > 1`-Bedingung wie das Kontextmenü, s.
+    // PaneTabs.tsx), eine Pane kann über dieses Kürzel also nie leer werden.
+    id: CLOSE_TERMINAL_TAB_SHORTCUT_ID,
+    description: "Aktiven Terminal-Tab schließen",
+    scope: "pane",
+    glyph: "W",
+    codes: ["KeyW"],
     shift: false,
   },
   // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-

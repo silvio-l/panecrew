@@ -112,6 +112,12 @@ export function TerminalPane({
     const target = tabs.terminalTabs.find((tab) => tab.number === number);
     if (target) tabs.onSelectTerminalTab(target.tabId);
   };
+  // Dieselbe Bedingung wie das Kontextmenü-Kreuz (PaneTabs.tsx' `closable`):
+  // der letzte verbleibende Terminal-Tab lässt sich auch über das Kürzel
+  // nicht schließen, statt eine Pane leer zurückzulassen.
+  const closeActiveTerminalTab = () => {
+    if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+  };
   // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
   // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
   // ohne dieses Readout bleibt "hat das jetzt geklappt?" eine Vertrauensfrage.
@@ -143,7 +149,13 @@ export function TerminalPane({
     hasSelection,
     insertDroppedPaths,
     spawning,
-  } = usePtyTerminal(tabId, projectPath, selectTerminalTabByNumber, notifyCopied);
+  } = usePtyTerminal(
+    tabId,
+    projectPath,
+    selectTerminalTabByNumber,
+    closeActiveTerminalTab,
+    notifyCopied,
+  );
   const [selectionAvailable, setSelectionAvailable] = useState(false);
   const copyWithFeedback = () => {
     copySelection();

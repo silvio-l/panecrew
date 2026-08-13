@@ -98,6 +98,14 @@ describe("matchesShortcut", () => {
     const event = { ...baseEvent, code: "KeyN", shiftKey: false, metaKey: true };
     expect(matchesShortcut(event, newWindow, true)).toBe(true);
   });
+
+  it("erkennt Cmd+W auf dem Mac und Strg+W auf Windows/Linux als Terminal-Tab-Schließen-Kürzel", () => {
+    const closeTab = shortcut("pane.closeTerminalTab");
+    const macEvent = { ...baseEvent, code: "KeyW", shiftKey: false, metaKey: true };
+    const otherEvent = { ...baseEvent, code: "KeyW", shiftKey: false, ctrlKey: true };
+    expect(matchesShortcut(macEvent, closeTab, true)).toBe(true);
+    expect(matchesShortcut(otherEvent, closeTab, false)).toBe(true);
+  });
 });
 
 describe("zoomAction", () => {

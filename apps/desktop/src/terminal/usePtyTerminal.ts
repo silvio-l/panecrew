@@ -5,6 +5,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
 import {
+  CLOSE_TERMINAL_TAB_SHORTCUT_ID,
   matchesShortcut,
   SHORTCUTS,
   terminalTabSelectNumber,
@@ -100,6 +101,9 @@ export function usePtyTerminal(
   // neu laufen, sonst stürbe die PTY bei jedem Tab-Öffnen/-Schließen der
   // Geschwister-Tabs neu.
   onSelectTerminalTabByNumber: (number: number) => void,
+  // Cmd/Strg+W schließt DIESEN Terminal-Tab — genau derselbe Ref-statt-
+  // Effekt-Abhängigkeit-Grund wie bei `onSelectTerminalTabByNumber` darüber.
+  onCloseTerminalTab: () => void,
   // Quittiert einen tatsächlich stattgefundenen Kopiervorgang zurück an
   // TerminalPane.tsx' Live-Region. Nur für die Wege nötig, die dort sonst
   // spurlos blieben: Ctrl+Shift+C unten, natives Cmd+C (läuft komplett an
@@ -122,6 +126,10 @@ export function usePtyTerminal(
   useEffect(() => {
     selectTabRef.current = onSelectTerminalTabByNumber;
   }, [onSelectTerminalTabByNumber]);
+  const closeTabRef = useRef(onCloseTerminalTab);
+  useEffect(() => {
+    closeTabRef.current = onCloseTerminalTab;
+  }, [onCloseTerminalTab]);
   // Selber Grund wie `selectTabRef`: der Haupteffekt hängt nur an
   // [tabId, cwd, backend] und darf nicht bei jedem Render (der Callback ist
   // in TerminalPane.tsx nicht memoisiert) neu laufen.
@@ -473,6 +481,14 @@ export function usePtyTerminal(
       if (tabNumber !== null) {
         event.preventDefault();
         selectTabRef.current(tabNumber);
+        return false;
+      }
+
+      // Cmd/Strg+W: diesen Terminal-Tab schließen (rückfragegesichert, s.
+      // registry.ts' Kommentar an CLOSE_TERMINAL_TAB_SHORTCUT_ID).
+      if (paneShortcut?.id === CLOSE_TERMINAL_TAB_SHORTCUT_ID) {
+        event.preventDefault();
+        closeTabRef.current();
         return false;
       }
 
