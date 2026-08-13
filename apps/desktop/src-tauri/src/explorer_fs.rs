@@ -3,7 +3,7 @@
 //! Stateless, like `path_probe.rs`: no persistent handle to manage, so this
 //! stays a set of plain functions annotated `#[tauri::command]` rather than a
 //! manager/commands split. `kind`/`FileKind` is deliberately absent from
-//! `RawTreeNode` — that's a presentational concern the frontend derives from
+//! `DirEntryNode` — that's a presentational concern the frontend derives from
 //! the filename (see `types/project.ts`), not something Rust needs to know.
 
 use std::io;
@@ -14,46 +14,14 @@ use std::path::Path;
 /// dwarf a project's actual source by orders of magnitude.
 const DENYLIST: &[&str] = &["node_modules", "target", "dist", "build", ".next", "out"];
 
-/// Total nodes one tree read can ever return, across the whole recursion —
-/// not per directory. A pathological tree (a flat folder of a million
-/// generated files, a symlink cycle nobody excluded) must not hang the IPC
-/// round-trip or ship an unusable payload. The cut lands on the tail of one
-/// stable, already-sorted walk, exactly `path_probe.rs`'s `MAX_SUBDIRECTORIES`
-/// pattern, just applied across the whole tree instead of one listing.
-const MAX_ENTRIES: usize = 5000;
-
-#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct RawTreeNode {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub children: Option<Vec<RawTreeNode>>,
-}
-
-// `async`: a recursive directory walk over a real project (measured: ~550ms
-// warm cache, ~830ms cold, against a 17k-file repo) must not run inline on
-// the thread that dispatches IPC — Tauri's non-async commands execute
-// synchronously wherever the webview delivers the request (verified against
-// tauri-macros 2.6.3's `body_blocking` and the `on_message`/
-// `run_invoke_handler` call chain in tauri 2.11.5: no thread hop at all
-// without this attribute), which freezes window rendering/input for the
-// whole call. `(async)` alone is enough here — no signature change, and
-// `tauri::async_runtime::spawn` moves the call off that thread before it
-// ever runs.
-#[tauri::command(async)]
-pub fn explorer_read_tree(root: String) -> Result<Vec<RawTreeNode>, String> {
-    let mut budget = MAX_ENTRIES;
-    walk(Path::new(&root), &mut budget)
-        .map_err(|error| format!("Verzeichnis konnte nicht gelesen werden: {error}"))
-}
-
-/// One directory level, sorted and denylist-filtered exactly like `walk`, but
-/// with no recursion and no shared budget — replaces `explorer_read_tree` as
-/// the primary way the frontend loads the tree (the reference editor's own
-/// lazy-expand model: a folder's children are fetched only when the user
-/// opens it). This
-/// is what makes the explorer's completeness independent of any folder's
-/// name or position: nothing here can starve a sibling directory's listing,
-/// because there is no cap shared across directories to starve.
+/// One directory level, sorted (folders before files, both case-insensitive
+/// — same convention `path_probe.rs` uses for its own directory listing) and
+/// denylist-filtered, with no recursion and no shared budget across calls —
+/// the reference editor's own lazy-expand model: a folder's children are
+/// fetched only when the user opens it. This is what makes the explorer's
+/// completeness independent of any folder's name or position: nothing here
+/// can starve a sibling directory's listing, because there is no cap shared
+/// across directories to starve.
 #[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct DirEntryNode {
     pub name: String,
@@ -105,9 +73,7 @@ pub fn explorer_rename(from: String, to: String) -> Result<(), String> {
     let to_path = Path::new(&to);
 
     let same_entry = std::fs::canonicalize(from_path)
-        .and_then(|from_real| {
-            std::fs::canonicalize(to_path).map(|to_real| from_real == to_real)
-        })
+        .and_then(|from_real| std::fs::canonicalize(to_path).map(|to_real| from_real == to_real))
         .unwrap_or(false);
 
     if !same_entry && to_path.try_exists().unwrap_or(false) {
@@ -174,7 +140,7 @@ fn file_stamp(metadata: &std::fs::Metadata) -> Result<FileStamp, String> {
 /// Reads a file for the mini editor. The size check happens against
 /// `metadata()` first, before any byte of the file is read into memory, so a
 /// huge file is refused up front rather than after loading it.
-// `async`: same reasoning as `explorer_read_tree` — full-file reads must not
+// `async`: same reasoning as `explorer_read_dir` — full-file reads must not
 // run on the thread that dispatches IPC.
 #[tauri::command(async)]
 pub fn explorer_read_file(path: String) -> Result<FileContents, String> {
@@ -190,13 +156,14 @@ pub fn explorer_read_file(path: String) -> Result<FileContents, String> {
         ));
     }
 
-    let bytes =
-        std::fs::read(&path).map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    let bytes = std::fs::read(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
     // `from_utf8`, never the `_lossy` sibling: lossy decoding silently turns
     // invalid bytes into U+FFFD, and writing that back out would corrupt a
     // binary file instead of refusing to open it.
-    let raw = String::from_utf8(bytes)
-        .map_err(|_error| "Datei ist keine UTF-8-Textdatei und kann nicht bearbeitet werden".to_string())?;
+    let raw = String::from_utf8(bytes).map_err(|_error| {
+        "Datei ist keine UTF-8-Textdatei und kann nicht bearbeitet werden".to_string()
+    })?;
     let crlf = raw.contains("\r\n");
     let text = if crlf { raw.replace("\r\n", "\n") } else { raw };
     let stamp = file_stamp(&metadata)?;
@@ -228,7 +195,7 @@ impl Drop for TempFileGuard {
 /// sibling temp file first, `sync_all()`'d before the rename, so a crash
 /// between writing and renaming leaves either the old file or the new one
 /// intact, never a half-written one.
-// `async`: same reasoning as `explorer_read_tree` — the sync-then-rename
+// `async`: same reasoning as `explorer_read_dir` — the sync-then-rename
 // write must not run on the thread that dispatches IPC.
 #[tauri::command(async)]
 pub fn explorer_write_file(
@@ -288,38 +255,11 @@ pub fn explorer_write_file(
     file_stamp(&metadata)
 }
 
-/// `budget` is shared across the whole recursion (decremented, never reset
-/// per directory), so the cap holds for the tree as a whole. Once it hits
-/// zero, remaining siblings and their subtrees are silently dropped instead
-/// of erroring — same "sorted-first truncation" contract as the entries kept.
-fn walk(dir: &Path, budget: &mut usize) -> io::Result<Vec<RawTreeNode>> {
-    let entries = read_dir_entries(dir)?;
-
-    let mut nodes = Vec::new();
-    for entry in entries {
-        if *budget == 0 {
-            break;
-        }
-        *budget -= 1;
-
-        let children = if entry.is_dir {
-            Some(walk(&dir.join(&entry.name), budget)?)
-        } else {
-            None
-        };
-        nodes.push(RawTreeNode {
-            name: entry.name,
-            children,
-        });
-    }
-    Ok(nodes)
-}
-
 /// One directory level, denylist-filtered and sorted folders-before-files
 /// (both case-insensitive — same convention `path_probe.rs` uses for its own
 /// directory listing). No recursion, no budget: the shared primitive behind
-/// both `walk` (whole-tree, budgeted, for `explorer_read_tree`) and
-/// `explorer_read_dir` (one level, unbudgeted, for lazy expansion).
+/// both `explorer_read_dir` (lazy expansion) and `search_walk` (full-tree
+/// name search).
 fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.flatten().collect();
 
@@ -341,15 +281,12 @@ fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
         .collect();
 
     dated.sort_by(|(a, a_is_dir), (b, b_is_dir)| {
-        a_is_dir
-            .cmp(b_is_dir)
-            .reverse()
-            .then_with(|| {
-                a.file_name()
-                    .to_string_lossy()
-                    .to_lowercase()
-                    .cmp(&b.file_name().to_string_lossy().to_lowercase())
-            })
+        a_is_dir.cmp(b_is_dir).reverse().then_with(|| {
+            a.file_name()
+                .to_string_lossy()
+                .to_lowercase()
+                .cmp(&b.file_name().to_string_lossy().to_lowercase())
+        })
     });
 
     Ok(dated
@@ -361,8 +298,7 @@ fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
         .collect())
 }
 
-/// Matches capped at this count, not entries scanned — unlike
-/// `explorer_read_tree`'s old whole-tree `MAX_ENTRIES`, this cap is on
+/// Matches capped at this count, not entries scanned — the cap is on
 /// *relevant* results and is reported back via `SearchResult::truncated`
 /// rather than silently dropping unrelated siblings.
 const MAX_SEARCH_MATCHES: usize = 500;
@@ -457,8 +393,10 @@ mod tests {
     impl Fixture {
         fn new(name: &str, entries: &[&str]) -> Self {
             // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
-            let root = std::env::temp_dir()
-                .join(format!("panecrew-explorer-fs-{}-{name}", std::process::id()));
+            let root = std::env::temp_dir().join(format!(
+                "panecrew-explorer-fs-{}-{name}",
+                std::process::id()
+            ));
             std::fs::remove_dir_all(&root).ok();
             // `entries` may be empty (fixtures that only need a bare root to
             // create things into) — the loop below would then never call
@@ -482,13 +420,6 @@ mod tests {
         }
     }
 
-    fn node(name: &str, children: Option<Vec<RawTreeNode>>) -> RawTreeNode {
-        RawTreeNode {
-            name: name.to_string(),
-            children,
-        }
-    }
-
     #[test]
     fn lists_folders_before_files_both_case_insensitive() {
         let fixture = Fixture::new(
@@ -496,72 +427,26 @@ mod tests {
             &["zeta/", "Alpha/", "readme.md", "Cargo.toml", "beta.rs"],
         );
 
-        let mut budget = usize::MAX;
-        let tree = walk(&fixture.0, &mut budget).expect("readable fixture");
+        let entries =
+            explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
 
         assert_eq!(
-            tree,
+            entries,
             vec![
-                node("Alpha", Some(vec![])),
-                node("zeta", Some(vec![])),
-                node("beta.rs", None),
-                node("Cargo.toml", None),
-                node("readme.md", None),
+                DirEntryNode { name: "Alpha".to_string(), is_dir: true },
+                DirEntryNode { name: "zeta".to_string(), is_dir: true },
+                DirEntryNode { name: "beta.rs".to_string(), is_dir: false },
+                DirEntryNode { name: "Cargo.toml".to_string(), is_dir: false },
+                DirEntryNode { name: "readme.md".to_string(), is_dir: false },
             ]
         );
     }
 
-    #[test]
-    fn excludes_git_and_denylisted_directories_at_any_depth() {
-        let fixture = Fixture::new(
-            "denylist",
-            &[
-                ".git/HEAD",
-                "node_modules/left-pad/index.js",
-                "src/target/debug/build",
-                "src/main.rs",
-            ],
-        );
-
-        let mut budget = usize::MAX;
-        let tree = walk(&fixture.0, &mut budget).expect("readable fixture");
-
-        assert_eq!(
-            tree,
-            vec![node("src", Some(vec![node("main.rs", None)]))]
-        );
-    }
-
-    #[test]
-    fn truncates_beyond_the_cap_instead_of_erroring() {
-        let fixture = Fixture::new("cap", &["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]);
-
-        let mut budget = 3;
-        let tree = walk(&fixture.0, &mut budget).expect("readable fixture");
-
-        assert_eq!(tree.len(), 3);
-        assert_eq!(budget, 0);
-        // The cut is the tail of one stable, sorted list.
-        assert_eq!(tree[0].name, "a.txt");
-        assert_eq!(tree[2].name, "c.txt");
-    }
-
-    #[test]
-    fn caps_across_the_whole_recursion_not_per_directory() {
-        let fixture = Fixture::new(
-            "recursive-cap",
-            &["dir/x.txt", "dir/y.txt", "dir/z.txt", "top.txt"],
-        );
-
-        // Budget covers "dir" itself as one entry, leaving 1 for its children.
-        let mut budget = 2;
-        let tree = walk(&fixture.0, &mut budget).expect("readable fixture");
-
-        assert_eq!(tree, vec![node("dir", Some(vec![node("x.txt", None)]))]);
-        assert_eq!(budget, 0);
-    }
-
-    fn search_node(name: &str, is_dir: bool, children: Option<Vec<SearchTreeNode>>) -> SearchTreeNode {
+    fn search_node(
+        name: &str,
+        is_dir: bool,
+        children: Option<Vec<SearchTreeNode>>,
+    ) -> SearchTreeNode {
         SearchTreeNode {
             name: name.to_string(),
             is_dir,
@@ -587,7 +472,10 @@ mod tests {
             explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
 
         let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
-        assert!(names.contains(&".build"), "huge directory should still be listed");
+        assert!(
+            names.contains(&".build"),
+            "huge directory should still be listed"
+        );
         assert!(
             names.contains(&"zzz.txt"),
             "later sibling must not be starved by the huge directory's size"
@@ -604,8 +492,14 @@ mod tests {
         assert_eq!(
             entries,
             vec![
-                DirEntryNode { name: "dir".to_string(), is_dir: true },
-                DirEntryNode { name: "top.txt".to_string(), is_dir: false },
+                DirEntryNode {
+                    name: "dir".to_string(),
+                    is_dir: true
+                },
+                DirEntryNode {
+                    name: "top.txt".to_string(),
+                    is_dir: false
+                },
             ]
         );
     }
@@ -667,7 +561,11 @@ mod tests {
 
         assert_eq!(
             result.nodes,
-            vec![search_node("src", true, Some(vec![search_node("needle.rs", false, None)]))]
+            vec![search_node(
+                "src",
+                true,
+                Some(vec![search_node("needle.rs", false, None)])
+            )]
         );
     }
 
@@ -684,11 +582,11 @@ mod tests {
     }
 
     #[test]
-    fn errors_on_an_unreadable_root_instead_of_returning_an_empty_tree() {
+    fn errors_on_an_unreadable_root_instead_of_returning_an_empty_listing() {
         // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch path, not a security operation.
         let missing = std::env::temp_dir().join("panecrew-explorer-fs-definitely-missing");
 
-        assert!(explorer_read_tree(missing.to_string_lossy().into_owned()).is_err());
+        assert!(explorer_read_dir(missing.to_string_lossy().into_owned()).is_err());
     }
 
     #[test]
@@ -710,7 +608,10 @@ mod tests {
         let result = explorer_create_file(path.to_string_lossy().into_owned());
 
         assert!(result.is_err());
-        assert_eq!(std::fs::read(&path).expect("file should still exist"), b"original");
+        assert_eq!(
+            std::fs::read(&path).expect("file should still exist"),
+            b"original"
+        );
     }
 
     #[test]
@@ -766,7 +667,10 @@ mod tests {
 
         assert_eq!(contents.text, "Hällo, Wörld\nzweite Zeile");
         assert!(!contents.crlf);
-        assert_eq!(contents.stamp.len, "Hällo, Wörld\nzweite Zeile".len() as u64);
+        assert_eq!(
+            contents.stamp.len,
+            "Hällo, Wörld\nzweite Zeile".len() as u64
+        );
     }
 
     #[test]
@@ -907,7 +811,10 @@ mod tests {
         explorer_write_file(path_string, "#!/bin/sh\necho bye".to_string(), false, stamp)
             .expect("should write");
 
-        let mode = std::fs::metadata(&path).expect("readable").permissions().mode();
+        let mode = std::fs::metadata(&path)
+            .expect("readable")
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o777, 0o755);
     }
 
@@ -941,7 +848,10 @@ mod tests {
             path.to_string_lossy().into_owned(),
             "content".to_string(),
             false,
-            FileStamp { modified_ms: 0, len: 0 },
+            FileStamp {
+                modified_ms: 0,
+                len: 0,
+            },
         );
 
         assert!(result.is_err());
@@ -992,7 +902,10 @@ mod tests {
 
         assert!(result.is_err());
         assert!(from.exists());
-        assert_eq!(std::fs::read_to_string(&to).expect("readable"), "already here");
+        assert_eq!(
+            std::fs::read_to_string(&to).expect("readable"),
+            "already here"
+        );
     }
 
     #[test]
@@ -1009,7 +922,10 @@ mod tests {
             to.to_string_lossy().into_owned(),
         );
 
-        assert!(result.is_ok(), "case-only rename should not be treated as a collision");
+        assert!(
+            result.is_ok(),
+            "case-only rename should not be treated as a collision"
+        );
         assert!(to.exists());
     }
 
