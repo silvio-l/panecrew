@@ -20,8 +20,8 @@ const MAIN: &str = "main";
 /// window — these only exist in the static config today because "main" is
 /// the sole window Tauri creates at startup; every window this module opens
 /// at runtime has to restate them itself.
-const WIDTH: f64 = 1200.0;
-const HEIGHT: f64 = 800.0;
+const WIDTH: f64 = 1440.0;
+const HEIGHT: f64 = 900.0;
 const MIN_WIDTH: f64 = 960.0;
 const MIN_HEIGHT: f64 = 600.0;
 const BACKGROUND: &str = "#121314";
@@ -30,13 +30,27 @@ const BACKGROUND: &str = "#121314";
 /// `trafficLightPosition`. Missing this call previously left every
 /// runtime-created window's controls at macOS's own default spot instead of
 /// the one `TitleBar.tsx`'s `TRAFFIC_LIGHT_INSET` (84px) was measured
-/// against — the dots looked "off" AND, since their native hit-test area no
-/// longer lined up with where the capsule draws its own drag region, mouse-
-/// downs meant to drag the window could land on dead space between the two
-/// instead (2026-08-13, user report: "kann das Fenster nicht hin und her
-/// schieben" on secondary windows).
+/// against — visibly crooked dots (2026-08-13, user report). Confirmed fixed
+/// once rebuilt: the dots themselves now line up pixel-for-pixel with "main".
 const TRAFFIC_LIGHT_X: f64 = 21.0;
 const TRAFFIC_LIGHT_Y: f64 = 27.5;
+
+/// `WebviewBuilder::accept_first_mouse` (verified against the `wry`/
+/// `tauri-runtime` 2.11 source: `accept_first_mouse: bool`, default `false`)
+/// — "whether clicking an inactive window also clicks through to the
+/// webview". This, not the traffic-light position above, was the actual
+/// cause of the unreliable window-dragging report that survived the fix
+/// above: `data-tauri-drag-region`'s pointerdown handler lives IN the
+/// webview, so a click on a background/inactive window normally only
+/// activates it — that first click never reaches the drag-region handler at
+/// all, and only a SECOND click-and-hold (while already active) can start a
+/// drag. That exactly matches the reported pattern ("in den Hintergrund
+/// setzen, wieder nach vorne holen, dann kann man es kurz schieben, beim
+/// nächsten Mal wieder nicht" — every fresh loss of focus reproduces the
+/// same one-click-wasted-on-activation gap). `tauri.conf.json`'s "main"
+/// entry gets the equivalent `acceptFirstMouse: true` alongside this, so
+/// every window — not just runtime-created ones — behaves the same way.
+const ACCEPT_FIRST_MOUSE: bool = true;
 
 /// Cascading offset between successive new windows — each window lands
 /// visibly offset from its opener instead of stacked exactly on top of it
@@ -96,6 +110,7 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     )
     .title_bar_style(tauri::TitleBarStyle::Overlay)
     .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+    .accept_first_mouse(ACCEPT_FIRST_MOUSE)
     .hidden_title(true);
 
     if let Some(opener) = opener {
@@ -140,6 +155,7 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
     )
     .title_bar_style(tauri::TitleBarStyle::Overlay)
     .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+    .accept_first_mouse(ACCEPT_FIRST_MOUSE)
     .hidden_title(true)
     .center()
     .visible(false)
