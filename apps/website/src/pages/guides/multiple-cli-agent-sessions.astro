@@ -1,0 +1,68 @@
+---
+import GuideLayout from "../../layouts/GuideLayout.astro";
+
+const title = "How to Run Multiple CLI Coding Agent Sessions at Once — PaneCrew";
+const description =
+  "Run several CLI coding agents — Claude Code, Codex, Gemini CLI — side by side in one terminal grid, each with its own pane and file explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
+
+const faq = [
+  {
+    q: "Can I run multiple Claude Code sessions at once?", // brandlint-ok: literal confirmed search query (Google autocomplete), answered verbatim per AEO practice
+    a: "Yes — Claude Code itself is a single CLI process per terminal, so running several sessions at once means running several terminal instances side by side. PaneCrew gives you a fixed grid of up to four real terminal panes for exactly that, and the same approach works for Codex, Gemini CLI, or any other CLI coding agent.", // brandlint-ok: functional product claim, real supported tools
+  },
+  {
+    q: "How do I orchestrate multiple coding agent sessions across different projects?",
+    a: "Open one pane per project folder — PaneCrew's file explorer follows whichever pane has focus, so you always see the right project tree without extra tab-switching or manual cd bookkeeping.",
+  },
+  {
+    q: "Do I need a terminal multiplexer like tmux for this?",
+    a: "No — a multiplexer splits one terminal into panes you still navigate with keyboard shortcuts. PaneCrew keeps every pane simultaneously visible in a real window grid, so nothing is ever hidden behind a tab.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faq.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+---
+<GuideLayout title={title} description={description} path="/guides/multiple-cli-agent-sessions/">
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
+  </Fragment>
+
+  <section class="guide wrap">
+    <p class="eyebrow">Guide</p>
+    <h1>How to Run Multiple CLI Coding Agent Sessions at Once</h1>
+    <p class="lede">
+      The most direct way to run multiple CLI coding agent sessions at once is a terminal grid app that keeps every session visible and running in parallel, instead of switching tabs or windows. PaneCrew does this natively: a fixed grid (2×2 today) of real, independent terminal panes, each running its own agent session — Claude Code, Codex, Gemini CLI, or a plain shell — with a file explorer that automatically follows whichever pane currently has focus. <!-- brandlint-ok: functional product claim, real supported tools -->
+    </p>
+
+    <h2>Why tab-switching breaks down with multiple agent sessions</h2>
+    <p>
+      A single terminal window with tabs hides every session but the active one — which is fine
+      for a single task, but not when several coding agents are working on different projects at
+      once. You lose track of which one just finished, which one is waiting on you, and which
+      project's files you're even looking at. A grid of real, simultaneously visible panes avoids
+      that entirely: every session stays on screen, all the time.
+    </p>
+
+    <h2>Frequently asked questions</h2>
+    {faq.map((item) => (
+      <div class="faq-item">
+        <h3>{item.q}</h3>
+        <p>{item.a}</p>
+      </div>
+    ))}
+
+    <div class="cta">
+      <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS and Windows — a grid
+      of real terminal panes with a focus-following file explorer.</p>
+      <a href="/#install">Get PaneCrew</a>
+    </div>
+  </section>
+</GuideLayout>

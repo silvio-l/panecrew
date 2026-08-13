@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1600">
+  <!-- Diese Verlaeufe sind gegen den dunklen Icon-Grund (#1F243C, siehe
+       generate-icons.sh) abgestimmt und bleiben die einzige Fassung, die hier
+       gebraucht wird: jedes Ziel dieser Datei - .icns, .ico, Windows-Store-Set,
+       Favicon - bringt diesen Grund selbst mit. Nur die In-App-Titelzeilen-Marke
+       sitzt im Light-Theme auf heller Flaeche und hat dafuer seit 2026-08-05
+       eine eigene, dort hergeleitete Fassung; sie lebt in
+       src/components/TitleBar.tsx (AppMark), nicht hier - eine zweite
+       Verlaufsdefinition in dieser Datei wuerde nichts rendern und nur
+       auseinanderlaufen. -->
+  <defs>
+    <radialGradient id="pcMarkChevron" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
+      <stop offset="0" stop-color="#FEF2DE"/>
+      <stop offset="0.15" stop-color="#FEF0D8"/>
+      <stop offset="0.35" stop-color="#FFE9C8"/>
+      <stop offset="0.56" stop-color="#FFD394"/>
+      <stop offset="0.67" stop-color="#FFCE8C"/>
+      <stop offset="0.8" stop-color="#FEBE63"/>
+      <stop offset="0.88" stop-color="#FDB14B"/>
+      <stop offset="1" stop-color="#FCAD43"/>
+    </radialGradient>
+    <linearGradient id="pcMarkBlock" gradientUnits="userSpaceOnUse" x1="106" y1="0" x2="569" y2="0">
+      <stop offset="0" stop-color="#FBB84E"/>
+      <stop offset="0.15" stop-color="#FEBE64"/>
+      <stop offset="0.5" stop-color="#FEE0B6"/>
+      <stop offset="0.82" stop-color="#FFF2DE"/>
+      <stop offset="1" stop-color="#FFF5E2"/>
+    </linearGradient>
+    <mask id="pcMarkGapMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1600">
+      <rect width="1600" height="1600" fill="#ffffff"/>
+      <polygon points="569,1208 749,1218 555,1485 368,1485" fill="#000000"/>
+    </mask>
+    <filter id="pcMarkGlow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="70" result="b2"/>
+      <feMerge>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <g mask="url(#pcMarkGapMask)">
+    <g filter="url(#pcMarkGlow)" opacity="0.5" fill="#FFA929">
+      <path d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"/>
+      <path d="M106 1208 L569 1208 L368 1485 L106 1485 Z"/>
+    </g>
+  </g>
+  <path fill="url(#pcMarkChevron)" d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"/>
+  <path fill="url(#pcMarkBlock)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z"/>
+</svg>

@@ -1,0 +1,8 @@
+# PaneCrew
+
+> PaneCrew is a free, open-source (MIT) desktop app for macOS and Windows that runs multiple
+> real, simultaneously visible terminal sessions in one grid, paired with a file explorer that
+> automatically follows whichever pane currently has focus. Tool-agnostic: hosts any CLI coding
+> agent — Claude Code, Codex, Gemini CLI, or a plain shell — equally well. <!-- brandlint-ok: functional list of supported CLI tools, matches README/homepage wording -->
+
+- [Homepage](https://panecrew.dev/): product overview, feature grid, nightly builds

@@ -7,7 +7,7 @@
 const siteUrl = "https://panecrew.dev";
 const title = "PaneCrew — A pane for every agent";
 const description =
-  "PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
+  "Run multiple CLI coding agent sessions — Claude Code, Codex, Gemini CLI — side by side in one terminal grid, with a file explorer that follows your focus. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
 ---
 
 <!doctype html>
@@ -25,6 +25,44 @@ const description =
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content={title}>
 <meta name="twitter:description" content={description}>
+<meta property="og:image" content={`${siteUrl}/og-image.png`}>
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:image" content={`${siteUrl}/og-image.png`}>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/favicon.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "PaneCrew",
+      "url": "https://panecrew.dev",
+      "logo": "https://panecrew.dev/favicon.png"
+    },
+    {
+      "@type": "WebSite",
+      "name": "PaneCrew",
+      "url": "https://panecrew.dev"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "PaneCrew",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "macOS, Windows",
+      "description": "A grid of real, simultaneously visible terminal sessions across different projects, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
+      "url": "https://panecrew.dev",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "license": "https://opensource.org/licenses/MIT"
+    }
+  ]
+}
+</script>
 <style is:global>
   /* ============================================================
      PaneCrew landing prototype 6 — "Charmline"
@@ -318,6 +356,8 @@ const description =
   .badge svg { width: 10px; height: 10px; flex: none; }
   .badge.cy { background: #ddf2f2; border-color: #a8dcdc; color: #17696b; }
   .card p { font-size: 14.5px; color: var(--ink-dim); text-wrap: pretty; }
+  .card .more { display: inline-block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--amber-text); text-decoration: none; }
+  .card .more:hover { text-decoration: underline; }
 
   /* card visuals: small terminal mocks */
   .mock {
@@ -544,6 +584,7 @@ const description =
   <div class="nav-links">
     <a href="#crew">The crew</a>
     <a href="#demo">Live demo</a>
+    <a href="/guides/multiple-cli-agent-sessions/">Guides</a>
     <a href="#oss">Open source</a>
     <a href="#install">Install</a>
   </div>
@@ -655,6 +696,7 @@ const description =
               <span class="badge">real PTY</span>
             </div>
             <p>Up to four real, PTY-backed terminals side by side across different projects — all visible at once. A grid, not a tab switcher.</p>
+            <a class="more" href="/guides/multiple-cli-agent-sessions/">Running multiple agent sessions at once →</a>
           </div>
         </article>
 

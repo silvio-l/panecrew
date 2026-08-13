@@ -1,0 +1,230 @@
+---
+// Shared chrome (nav, footer, brand tokens) for guide/content pages —
+// duplicated from index.astro's "Charmline" tokens rather than extracted
+// out of it, since index.astro is pinned to the approved artifact prototype
+// (../../../.impeccable/direction-contract-website.md) and must stay
+// structurally untouched. Keep colors/nav/footer here in sync by hand if
+// the homepage's own copy of them changes.
+interface Props {
+  title: string;
+  description: string;
+  path: string; // e.g. "/guides/multiple-cli-agent-sessions/"
+}
+const { title, description, path } = Astro.props;
+const siteUrl = "https://panecrew.dev";
+const canonical = `${siteUrl}${path}`;
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta name="description" content={description}>
+<link rel="canonical" href={canonical}>
+<meta property="og:type" content="article">
+<meta property="og:title" content={title}>
+<meta property="og:description" content={description}>
+<meta property="og:url" content={canonical}>
+<meta property="og:image" content={`${siteUrl}/og-image.png`}>
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content={title}>
+<meta name="twitter:description" content={description}>
+<meta name="twitter:image" content={`${siteUrl}/og-image.png`}>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/favicon.png">
+<slot name="head" />
+<style is:global>
+  :root {
+    --indigo-hi: #333c72;
+    --indigo: #262d58;
+    --indigo-deep: #1f2547;
+    --line-dark: rgba(255, 253, 245, 0.12);
+    --term: #12162a;
+    --term-bar: #1b2038;
+    --term-line: rgba(255, 253, 245, 0.09);
+    --cream: #fffdf5;
+    --cream-2: #f8f3e4;
+    --ink: #23283f;
+    --ink-dim: #5b5f75;
+    --amber: #e59656;
+    --amber-deep: #b95f10;
+    --amber-text: #c9741f;
+    --cyan: #29a9ac;
+    --cyan-bright: #5acfd3;
+    --ansi-green: #7ccb6e;
+    --ansi-yellow: #e5c07b;
+    --ansi-blue: #6ea8dc;
+    --display: "Arial Rounded MT Bold", "SF Pro Rounded", ui-rounded, "Segoe UI", system-ui, sans-serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
+    --lift: 0.15s ease;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
+    background-color: var(--indigo);
+    color: var(--cream);
+    font-family: var(--sans); font-size: 16.5px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(229, 150, 86, 0.4); }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+  img, svg { max-width: 100%; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 26px; }
+
+  /* ---------- nav (same markup/rules as the homepage) ---------- */
+  .nav {
+    position: relative; z-index: 20;
+    display: flex; align-items: center; gap: 26px;
+    max-width: 1120px; margin: 0 auto; padding: 20px 26px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo svg { width: 26px; height: 26px; }
+  .logo b { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: -0.01em; }
+  .nav-links { display: flex; gap: 22px; margin-left: 8px; }
+  .nav-links a { text-decoration: none; font-size: 14.5px; color: rgba(255, 253, 245, 0.82); transition: color var(--lift); }
+  .nav-links a:hover { color: var(--cream); }
+  .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .nav-cta {
+    text-decoration: none; font-family: var(--mono); font-size: 13px;
+    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
+    border-radius: 999px; padding: 7px 16px;
+    transition: transform var(--lift), background var(--lift);
+  }
+  .nav-cta:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); }
+  .nav-gh {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px;
+    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
+    border-radius: 999px; color: var(--cream); text-decoration: none;
+    transition: transform var(--lift), background var(--lift), border-color var(--lift);
+  }
+  .nav-gh svg { width: 17px; height: 17px; }
+  .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
+
+  /* ---------- footer (same markup/rules as the homepage) ---------- */
+  .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
+  footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
+  .foot { max-width: 1120px; margin: 0 auto; padding: 0 26px; display: flex; align-items: center; gap: 10px; }
+  .glyph-tile {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 9px; background: var(--indigo-deep);
+  }
+  .glyph-tile svg { width: 21px; height: 21px; }
+  .foot b { font-family: var(--display); font-weight: 700; font-size: 17px; }
+  .foot .cp { color: var(--ink-dim); font-size: 13.5px; }
+  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  .foot-gh {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 999px;
+    border: 1px solid rgba(35, 40, 63, 0.16); color: var(--ink); text-decoration: none;
+    transition: background var(--lift), border-color var(--lift), transform var(--lift);
+  }
+  .foot-gh svg { width: 16px; height: 16px; }
+  .foot-gh:hover { background: rgba(35, 40, 63, 0.06); border-color: rgba(35, 40, 63, 0.26); transform: translateY(-2px); }
+
+  /* ---------- guide/article content (new — homepage has no prose layout) ---------- */
+  .guide { padding: 56px 0 90px; }
+  .guide .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--amber); margin-bottom: 14px;
+  }
+  .guide h1 {
+    font-family: var(--display); font-weight: 700; font-size: clamp(30px, 4vw, 44px);
+    line-height: 1.12; max-width: 780px; margin-bottom: 20px; text-wrap: balance;
+  }
+  .guide .lede {
+    font-size: 18px; color: rgba(255, 253, 245, 0.88); max-width: 680px;
+    margin-bottom: 34px; text-wrap: pretty;
+  }
+  .guide h2 {
+    font-family: var(--display); font-weight: 700; font-size: 24px;
+    margin: 44px 0 14px; color: var(--cream);
+  }
+  .guide p { max-width: 680px; color: rgba(255, 253, 245, 0.82); margin-bottom: 14px; text-wrap: pretty; }
+  .guide .faq-item { max-width: 680px; margin-bottom: 22px; }
+  .guide .faq-item h3 { font-size: 17px; font-weight: 700; color: var(--cream); margin-bottom: 6px; }
+  .guide .faq-item p { margin-bottom: 0; }
+  .guide .cta {
+    margin-top: 46px; padding: 22px 26px; max-width: 680px;
+    background: rgba(255, 253, 245, 0.06); border: 1px solid var(--line-dark); border-radius: 14px;
+  }
+  .guide .cta a {
+    display: inline-block; margin-top: 10px; text-decoration: none;
+    font-family: var(--mono); font-size: 14px; color: var(--indigo-deep);
+    background: var(--amber); border-radius: 999px; padding: 9px 20px;
+    transition: transform var(--lift);
+  }
+  .guide .cta a:hover { transform: translateY(-2px); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="mkChev" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
+      <stop offset="0" stop-color="#FEF2DE"/><stop offset="0.35" stop-color="#FFE9C8"/>
+      <stop offset="0.56" stop-color="#FFD394"/><stop offset="0.8" stop-color="#FEBE63"/>
+      <stop offset="1" stop-color="#FCAD43"/>
+    </radialGradient>
+    <linearGradient id="mkBlock" gradientUnits="userSpaceOnUse" x1="106" y1="0" x2="569" y2="0">
+      <stop offset="0" stop-color="#FBB84E"/><stop offset="0.5" stop-color="#FEE0B6"/>
+      <stop offset="1" stop-color="#FFF5E2"/>
+    </linearGradient>
+    <g id="mkGlyph">
+      <path fill="url(#mkChev)" d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"/>
+      <path fill="url(#mkBlock)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z"/>
+    </g>
+    <path id="mkGithub" fill-rule="evenodd" clip-rule="evenodd" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+  </defs>
+</svg>
+
+<nav class="nav" aria-label="Main">
+  <a class="logo" href="/">
+    <svg viewBox="0 0 1600 1600" aria-hidden="true"><use href="#mkGlyph"/></svg>
+    <b>PaneCrew</b>
+  </a>
+  <div class="nav-links">
+    <a href="/#crew">The crew</a>
+    <a href="/#demo">Live demo</a>
+    <a href="/guides/multiple-cli-agent-sessions/">Guides</a>
+    <a href="/#oss">Open source</a>
+    <a href="/#install">Install</a>
+  </div>
+  <div class="nav-end">
+    <a class="nav-gh" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener" aria-label="PaneCrew on GitHub">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><use href="#mkGithub"/></svg>
+    </a>
+    <a class="nav-cta" href="/#install">get panecrew</a>
+  </div>
+</nav>
+
+<main>
+  <slot />
+</main>
+
+<svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
+  <path fill="#fffdf5" d="M0 52 C 180 18 360 76 560 50 C 760 24 900 72 1100 48 C 1260 30 1360 52 1440 36 L 1440 80 L 0 80 Z"/>
+</svg>
+<footer>
+  <div class="foot">
+    <span class="glyph-tile" aria-hidden="true">
+      <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
+    </span>
+    <b>PaneCrew</b>
+    <span class="cp">© 2026 PaneCrew</span>
+    <a class="foot-gh" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener" aria-label="PaneCrew on GitHub">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><use href="#mkGithub"/></svg>
+    </a>
+  </div>
+</footer>
+</body>
+</html>
