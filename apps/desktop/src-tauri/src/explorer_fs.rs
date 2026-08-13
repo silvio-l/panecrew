@@ -46,6 +46,26 @@ pub fn explorer_read_tree(root: String) -> Result<Vec<RawTreeNode>, String> {
         .map_err(|error| format!("Verzeichnis konnte nicht gelesen werden: {error}"))
 }
 
+/// One directory level, sorted and denylist-filtered exactly like `walk`, but
+/// with no recursion and no shared budget — replaces `explorer_read_tree` as
+/// the primary way the frontend loads the tree (the reference editor's own
+/// lazy-expand model: a folder's children are fetched only when the user
+/// opens it). This
+/// is what makes the explorer's completeness independent of any folder's
+/// name or position: nothing here can starve a sibling directory's listing,
+/// because there is no cap shared across directories to starve.
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct DirEntryNode {
+    pub name: String,
+    pub is_dir: bool,
+}
+
+#[tauri::command(async)]
+pub fn explorer_read_dir(path: String) -> Result<Vec<DirEntryNode>, String> {
+    read_dir_entries(Path::new(&path))
+        .map_err(|error| format!("Verzeichnis konnte nicht gelesen werden: {error}"))
+}
+
 /// Creates an empty file at `path`. Refuses to overwrite an existing one
 /// (`create_new` fails atomically rather than racing a separate existence
 /// check) and does not create a missing parent directory — this command
@@ -273,6 +293,34 @@ pub fn explorer_write_file(
 /// zero, remaining siblings and their subtrees are silently dropped instead
 /// of erroring — same "sorted-first truncation" contract as the entries kept.
 fn walk(dir: &Path, budget: &mut usize) -> io::Result<Vec<RawTreeNode>> {
+    let entries = read_dir_entries(dir)?;
+
+    let mut nodes = Vec::new();
+    for entry in entries {
+        if *budget == 0 {
+            break;
+        }
+        *budget -= 1;
+
+        let children = if entry.is_dir {
+            Some(walk(&dir.join(&entry.name), budget)?)
+        } else {
+            None
+        };
+        nodes.push(RawTreeNode {
+            name: entry.name,
+            children,
+        });
+    }
+    Ok(nodes)
+}
+
+/// One directory level, denylist-filtered and sorted folders-before-files
+/// (both case-insensitive — same convention `path_probe.rs` uses for its own
+/// directory listing). No recursion, no budget: the shared primitive behind
+/// both `walk` (whole-tree, budgeted, for `explorer_read_tree`) and
+/// `explorer_read_dir` (one level, unbudgeted, for lazy expansion).
+fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.flatten().collect();
 
     entries.retain(|entry| {
@@ -281,13 +329,20 @@ fn walk(dir: &Path, budget: &mut usize) -> io::Result<Vec<RawTreeNode>> {
         name != ".git" && !DENYLIST.contains(&name.as_ref())
     });
 
-    // Folders before files, both case-insensitive — same convention
-    // `path_probe.rs` already uses for its own directory listing.
-    entries.sort_by(|a, b| {
-        let a_is_dir = a.path().is_dir();
-        let b_is_dir = b.path().is_dir();
+    // `is_dir()` on the resolved path, not `DirEntry::file_type()` — the
+    // latter doesn't follow symlinks on Unix, which would flip a symlinked
+    // directory into a "file" here.
+    let mut dated: Vec<(std::fs::DirEntry, bool)> = entries
+        .into_iter()
+        .map(|entry| {
+            let is_dir = entry.path().is_dir();
+            (entry, is_dir)
+        })
+        .collect();
+
+    dated.sort_by(|(a, a_is_dir), (b, b_is_dir)| {
         a_is_dir
-            .cmp(&b_is_dir)
+            .cmp(b_is_dir)
             .reverse()
             .then_with(|| {
                 a.file_name()
@@ -297,23 +352,98 @@ fn walk(dir: &Path, budget: &mut usize) -> io::Result<Vec<RawTreeNode>> {
             })
     });
 
-    let mut nodes = Vec::new();
+    Ok(dated
+        .into_iter()
+        .map(|(entry, is_dir)| DirEntryNode {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            is_dir,
+        })
+        .collect())
+}
+
+/// Matches capped at this count, not entries scanned — unlike
+/// `explorer_read_tree`'s old whole-tree `MAX_ENTRIES`, this cap is on
+/// *relevant* results and is reported back via `SearchResult::truncated`
+/// rather than silently dropping unrelated siblings.
+const MAX_SEARCH_MATCHES: usize = 500;
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct SearchTreeNode {
+    pub name: String,
+    pub is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<SearchTreeNode>>,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct SearchResult {
+    pub nodes: Vec<SearchTreeNode>,
+    pub truncated: bool,
+}
+
+/// Full-tree name search independent of the lazy per-directory loading above
+/// — the explorer's search must still find a match nested under a folder the
+/// user never expanded, so this walks the whole tree itself (denylist-
+/// filtered, same as everywhere else) rather than searching only what's
+/// already been loaded into the frontend's cache. Returns a pruned tree: only
+/// the ancestor chain down to each match, not whole sibling subtrees that
+/// don't match — same shape `types/treeFilter.ts`'s client-side `filterTree`
+/// used to produce before this replaced it.
+#[tauri::command(async)]
+pub fn explorer_search_names(root: String, query: String) -> Result<SearchResult, String> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Ok(SearchResult {
+            nodes: Vec::new(),
+            truncated: false,
+        });
+    }
+    let mut matches = 0usize;
+    let mut truncated = false;
+    let nodes = search_walk(Path::new(&root), &needle, &mut matches, &mut truncated)
+        .map_err(|error| format!("Suche fehlgeschlagen: {error}"))?;
+    Ok(SearchResult { nodes, truncated })
+}
+
+fn search_walk(
+    dir: &Path,
+    needle: &str,
+    matches: &mut usize,
+    truncated: &mut bool,
+) -> io::Result<Vec<SearchTreeNode>> {
+    let entries = read_dir_entries(dir)?;
+    let mut result = Vec::new();
+
     for entry in entries {
-        if *budget == 0 {
+        if *matches >= MAX_SEARCH_MATCHES {
+            *truncated = true;
             break;
         }
-        *budget -= 1;
 
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let path = entry.path();
-        let children = if path.is_dir() {
-            Some(walk(&path, budget)?)
-        } else {
-            None
-        };
-        nodes.push(RawTreeNode { name, children });
+        let own_match = entry.name.to_lowercase().contains(needle);
+        if entry.is_dir {
+            let children = search_walk(&dir.join(&entry.name), needle, matches, truncated)?;
+            if own_match || !children.is_empty() {
+                if own_match {
+                    *matches += 1;
+                }
+                result.push(SearchTreeNode {
+                    name: entry.name,
+                    is_dir: true,
+                    children: Some(children),
+                });
+            }
+        } else if own_match {
+            *matches += 1;
+            result.push(SearchTreeNode {
+                name: entry.name,
+                is_dir: false,
+                children: None,
+            });
+        }
     }
-    Ok(nodes)
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -429,6 +559,128 @@ mod tests {
 
         assert_eq!(tree, vec![node("dir", Some(vec![node("x.txt", None)]))]);
         assert_eq!(budget, 0);
+    }
+
+    fn search_node(name: &str, is_dir: bool, children: Option<Vec<SearchTreeNode>>) -> SearchTreeNode {
+        SearchTreeNode {
+            name: name.to_string(),
+            is_dir,
+            children,
+        }
+    }
+
+    #[test]
+    fn read_dir_does_not_let_a_huge_early_alphabetical_sibling_starve_a_later_one() {
+        // The original bug: a `walk()`-style shared budget, consumed depth-first,
+        // let one huge early directory silently drop every alphabetically later
+        // top-level sibling. `explorer_read_dir` has no recursion and no shared
+        // budget at all, so this passes trivially — that's the point of the fix.
+        let fixture = Fixture::new("read-dir-no-starvation", &[]);
+        let huge_dir = fixture.0.join(".build");
+        std::fs::create_dir_all(&huge_dir).expect("fixture dir");
+        for index in 0..5001 {
+            std::fs::write(huge_dir.join(format!("f{index}.txt")), b"x").expect("fixture write");
+        }
+        std::fs::write(fixture.0.join("zzz.txt"), b"x").expect("fixture write");
+
+        let entries =
+            explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
+
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert!(names.contains(&".build"), "huge directory should still be listed");
+        assert!(
+            names.contains(&"zzz.txt"),
+            "later sibling must not be starved by the huge directory's size"
+        );
+    }
+
+    #[test]
+    fn read_dir_lists_one_level_only_without_recursing() {
+        let fixture = Fixture::new("read-dir-one-level", &["dir/inside.txt", "top.txt"]);
+
+        let entries =
+            explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
+
+        assert_eq!(
+            entries,
+            vec![
+                DirEntryNode { name: "dir".to_string(), is_dir: true },
+                DirEntryNode { name: "top.txt".to_string(), is_dir: false },
+            ]
+        );
+    }
+
+    #[test]
+    fn read_dir_excludes_git_and_denylisted_directories() {
+        let fixture = Fixture::new(
+            "read-dir-denylist",
+            &[".git/HEAD", "node_modules/left-pad/index.js", "src/main.rs"],
+        );
+
+        let entries =
+            explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
+
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, vec!["src"]);
+    }
+
+    #[test]
+    fn search_names_finds_a_nested_match_without_expanding_it_first() {
+        let fixture = Fixture::new(
+            "search-nested",
+            &["src/deep/needle.rs", "src/deep/other.rs", "readme.md"],
+        );
+
+        let result = explorer_search_names(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert!(!result.truncated);
+        assert_eq!(
+            result.nodes,
+            vec![search_node(
+                "src",
+                true,
+                Some(vec![search_node(
+                    "deep",
+                    true,
+                    Some(vec![search_node("needle.rs", false, None)])
+                )])
+            )]
+        );
+    }
+
+    #[test]
+    fn search_names_excludes_denylisted_directories() {
+        let fixture = Fixture::new(
+            "search-denylist",
+            &["node_modules/needle/index.js", "src/needle.rs"],
+        );
+
+        let result = explorer_search_names(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert_eq!(
+            result.nodes,
+            vec![search_node("src", true, Some(vec![search_node("needle.rs", false, None)]))]
+        );
+    }
+
+    #[test]
+    fn search_names_returns_empty_for_a_blank_query() {
+        let fixture = Fixture::new("search-blank", &["file.txt"]);
+
+        let result =
+            explorer_search_names(fixture.0.to_string_lossy().into_owned(), "   ".to_string())
+                .expect("search should succeed");
+
+        assert!(result.nodes.is_empty());
+        assert!(!result.truncated);
     }
 
     #[test]
