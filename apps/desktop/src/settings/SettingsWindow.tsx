@@ -42,6 +42,19 @@ function humanizeKeySegment(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// Untere/obere Schranke pro numerischem Setting, rein clientseitig (Ticket
+// 07s Rohtext-Editor kann diese Grenzen weiterhin umgehen — dieselbe Lücke
+// hat der bisherige appearance.zoom-Fall schon immer gehabt, hier nur
+// konsequent auf alle Number-Settings dieses Fensters ausgedehnt statt nur
+// auf eines). Ohne Schranke committete ein geleertes/negatives Feld z. B.
+// eine unbrauchbare Schriftgröße 0px, ohne dass irgendetwas das verhindert.
+const NUMBER_BOUNDS: Record<string, [number, number]> = {
+  "appearance.zoom": [MIN_ZOOM, MAX_ZOOM],
+  "terminal.fontSize": [6, 72],
+  "terminal.activityIdleMs": [100, 60_000],
+  "terminal.activityLineThreshold": [1, 1000],
+};
+
 function labelOf(entry: SettingSchemaEntry, t: (key: string) => string): string {
   const base = i18nBase(entry);
   if (base) return t(`${base}.label`);
@@ -303,7 +316,7 @@ function SettingRow({
           onClick={() => void onResetValue(entry.key)}
           disabled={!isOverridden || pending}
           aria-label={t("settings.resetAria", { label })}
-          className={`flex size-6 shrink-0 items-center justify-center rounded text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-0 ${CHROME_FOCUS_RING}`}
+          className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-0 ${CHROME_FOCUS_RING}`}
         >
           <span aria-hidden="true">↺</span>
         </button>
@@ -366,7 +379,7 @@ function SettingControl({
                 aria-pressed={active}
                 aria-label={optionLabel}
                 onClick={() => void onSetValue(entry.key, template.id)}
-                className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                   active
                     ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
                     : "text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
@@ -480,11 +493,11 @@ function NumberSettingInput({
       setDraft(committed);
       return;
     }
-    // Dieselbe Grenze wie das Tastenkürzel (`nextZoomLevel`/`ZOOM_LEVELS`) —
-    // sonst könnte diese Eingabe einen Zoom setzen, den Shift+Cmd/Strg +/-/0
-    // nie erreichen kann.
-    const clamped =
-      entryKey === "appearance.zoom" ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, parsed)) : parsed;
+    // appearance.zoom nutzt dieselbe Grenze wie das Tastenkürzel
+    // (`nextZoomLevel`/`ZOOM_LEVELS`) — sonst könnte diese Eingabe einen Zoom
+    // setzen, den Shift+Cmd/Strg +/-/0 nie erreichen kann.
+    const bounds = NUMBER_BOUNDS[entryKey];
+    const clamped = bounds ? Math.min(bounds[1], Math.max(bounds[0], parsed)) : parsed;
     void onSetValue(entryKey, clamped);
   };
 

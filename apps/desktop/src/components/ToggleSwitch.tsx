@@ -66,7 +66,7 @@ export function ToggleSwitch({
     >
       <span
         aria-hidden="true"
-        className={`w-8 shrink-0 text-right font-(family-name:--pc-terminal-fontFamily) text-[10px] leading-none tracking-[0.14em] uppercase transition-colors duration-200 ${
+        className={`w-8 shrink-0 text-right font-(family-name:--pc-terminal-fontFamily) text-[10px] leading-none tracking-[0.14em] uppercase transition-colors ${
           checked ? "text-(--pc-pane-activeBorder)" : "text-(--pc-descriptionForeground)"
         }`}
       >
@@ -74,14 +74,17 @@ export function ToggleSwitch({
       </span>
       <span
         aria-hidden="true"
-        className="relative block h-[18px] w-[34px] shrink-0 overflow-hidden rounded-[3px] border border-(--pc-widget-border) bg-(--pc-widget-background) transition-colors duration-200 group-hover:border-(--pc-descriptionForeground)"
+        className="relative block h-[18px] w-[34px] shrink-0 overflow-hidden rounded-[3px] border border-(--pc-widget-border) bg-(--pc-widget-background) transition-colors group-hover:border-(--pc-descriptionForeground)"
       >
         <span
-          // Die Mikroanimation: der Block fährt in 220ms mit stark
+          // Die Mikroanimation: der Block fährt in 200ms mit stark
           // auslaufender Kurve in seine Rasterposition — deutlich länger als
           // die 150ms-Hover-Zeit des Chrome, weil hier eine Strecke
           // zurückgelegt wird und nicht nur eine Farbe kippt (Nutzerfreigabe
-          // 2026-08-13 für längere Mikroanimationen). Zusätzlich lehnt sich
+          // 2026-08-13 für längere Mikroanimationen). Reines Farbkippen
+          // (Label-Text, Feldrahmen beim Hover) bleibt dagegen beim
+          // Standard-150ms-Übergang des restlichen Chrome — nur diese eine
+          // Strecke rechtfertigt die längere Dauer. Zusätzlich lehnt sich
           // der Block beim Hover 1px in seine künftige Richtung: das
           // Bedienziel kündigt an, wohin es schaltet, bevor geklickt wird.
           // Kein Glow, keine kinetische Typografie — der Klartext daneben
