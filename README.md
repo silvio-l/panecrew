@@ -1,7 +1,17 @@
 # PaneCrew
 
-A grid of real, simultaneously visible terminal panes — not a tab-switcher — paired with a single
-file explorer that automatically follows whichever pane currently has focus.
+<p align="center">
+  <img src="apps/desktop/src-tauri/icons/source/panecrew-icon-master-macos-padded.png" width="120" alt="PaneCrew" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/silvio-l/panecrew/actions/workflows/desktop-ci.yml"><img src="https://github.com/silvio-l/panecrew/actions/workflows/desktop-ci.yml/badge.svg" alt="Desktop CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/silvio-l/panecrew" alt="License"></a>
+</p>
+
+<p align="center">A grid of real, simultaneously visible terminal panes, not a tab-switcher.</p>
+
+A single file explorer automatically follows whichever pane currently has focus.
 
 Tool-agnostic by design: hosts any CLI coding agent — Claude Code, Codex, Gemini CLI, or a plain <!-- brandlint-ok: functional list of supported CLI tools, not orientation -->
 shell — equally well. Runs on macOS and Windows.
