@@ -12,16 +12,20 @@ Releases", Punkt 5.
 
 ## Format
 
-```
-## [X.Y.Z] - JJJJ-MM-TT
----
-coverage:
-  - modul-a
-  - modul-b
-diff_hash: <von check.py berechneter sha256-Hex-Digest>
----
-Freitext-Beschreibung der Änderungen seit dem letzten Release dieses Kanals.
-```
+Die Coverage-/Hash-Metadaten fürs Gate stehen in einem HTML-Kommentar direkt
+unter der Versionsüberschrift — beim Rendern (GitHub, jeder Markdown-Viewer)
+unsichtbar, damit sichtbar nur der eigentliche, für Menschen geschriebene
+Eintrag bleibt:
+
+    ## [X.Y.Z] - JJJJ-MM-TT
+    <!--
+    coverage:
+      - modul-a
+      - modul-b
+    diff_hash: <von check.py berechneter sha256-Hex-Digest>
+    -->
+    ### Hinzugefügt / Geändert / Behoben
+    - Kurzer, für Menschen verständlicher Stichpunkt pro Änderung.
 
 - `coverage` muss **jedes** Modul enthalten, das der reale Diff seit dem
   letzten Tag dieses Kanals berührt (Pfad→Modul-Mapping:
@@ -32,88 +36,14 @@ Freitext-Beschreibung der Änderungen seit dem letzten Release dieses Kanals.
   Diff danach nochmal, muss der Hash neu übernommen werden.
 - Neueste Version steht oben (umgekehrt chronologisch); das Gate liest nur
   den **ersten** `## [...]`-Block der Datei.
+- Der sichtbare Teil ist bewusst kurz, nutzerorientiert und ohne Dateipfade —
+  was sich für jemanden ändert, der die App benutzt, nicht wie es intern
+  gebaut ist.
 
 ## [0.1.0] - 2026-08-13
----
+<!--
 coverage:
-  - .gitignore
-  - .gitleaks.toml
-  - .ossallowlist
-  - CHANGELOG.md
-  - LICENSE
-  - README.md
-  - SECURITY.md
   - about
-  - apps/desktop/.gitignore
-  - apps/desktop/README.md
-  - apps/desktop/about.html
-  - apps/desktop/eslint.config.js
-  - apps/desktop/harness.html
-  - apps/desktop/index.html
-  - apps/desktop/knip.jsonc
-  - apps/desktop/package.json
-  - apps/desktop/public/favicon-32.png
-  - apps/desktop/public/favicon.png
-  - apps/desktop/public/harness-storyboards/.gitkeep
-  - apps/desktop/public/splash.mp4
-  - apps/desktop/scripts/generate-shortcuts-docs.ts
-  - apps/desktop/scripts/install-release-driver.sh
-  - apps/desktop/shell-integration/panecrew.bashrc
-  - apps/desktop/shell-integration/panecrew.zshenv
-  - apps/desktop/shell-integration/panecrew.zshrc
-  - apps/desktop/src-tauri/.gitignore
-  - apps/desktop/src-tauri/Cargo.lock
-  - apps/desktop/src-tauri/build.rs
-  - apps/desktop/src-tauri/examples/gen_cli_docs.rs
-  - apps/desktop/src-tauri/icons/128x128.png
-  - apps/desktop/src-tauri/icons/128x128@2x.png
-  - apps/desktop/src-tauri/icons/32x32.png
-  - apps/desktop/src-tauri/icons/64x64.png
-  - apps/desktop/src-tauri/icons/Square107x107Logo.png
-  - apps/desktop/src-tauri/icons/Square142x142Logo.png
-  - apps/desktop/src-tauri/icons/Square150x150Logo.png
-  - apps/desktop/src-tauri/icons/Square284x284Logo.png
-  - apps/desktop/src-tauri/icons/Square30x30Logo.png
-  - apps/desktop/src-tauri/icons/Square310x310Logo.png
-  - apps/desktop/src-tauri/icons/Square44x44Logo.png
-  - apps/desktop/src-tauri/icons/Square71x71Logo.png
-  - apps/desktop/src-tauri/icons/Square89x89Logo.png
-  - apps/desktop/src-tauri/icons/StoreLogo.png
-  - apps/desktop/src-tauri/icons/icon.icns
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/icons/icon.png
-  - apps/desktop/src-tauri/icons/nightly/128x128.png
-  - apps/desktop/src-tauri/icons/nightly/128x128@2x.png
-  - apps/desktop/src-tauri/icons/nightly/32x32.png
-  - apps/desktop/src-tauri/icons/nightly/icon.icns
-  - apps/desktop/src-tauri/icons/nightly/icon.ico
-  - apps/desktop/src-tauri/icons/source/generate-icons.sh
-  - apps/desktop/src-tauri/icons/source/generate-nightly-badge.sh
-  - apps/desktop/src-tauri/icons/source/panecrew-icon-master-macos-padded.png
-  - apps/desktop/src-tauri/icons/source/panecrew-icon-master.png
-  - apps/desktop/src-tauri/icons/source/panecrew-mark.svg
-  - apps/desktop/src-tauri/tests/updater_e2e.rs
-  - apps/desktop/src/App.test.tsx
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/test/jsdomStorageFix.ts
-  - apps/desktop/src/test/setup.ts
-  - apps/desktop/src/types/gitStatus.test.ts
-  - apps/desktop/src/types/gitStatus.ts
-  - apps/desktop/src/types/project.test.ts
-  - apps/desktop/src/types/project.ts
-  - apps/desktop/src/types/treeFilter.test.ts
-  - apps/desktop/src/types/treeFilter.ts
-  - apps/desktop/src/vite-env.d.ts
-  - apps/desktop/tsconfig.json
-  - apps/desktop/tsconfig.node.json
-  - apps/desktop/vite.config.ts
-  - apps/desktop/vitest.config.ts
-  - apps/website/astro.config.mjs
-  - apps/website/package.json
-  - apps/website/public/CNAME
-  - apps/website/public/robots.txt
-  - apps/website/src/pages/index.astro
-  - apps/website/tsconfig.json
   - chrome
   - ci
   - cli
@@ -121,24 +51,28 @@ coverage:
   - explorer
   - harness
   - i18n
-  - package.json
-  - packages/.gitkeep
-  - pnpm-lock.yaml
-  - pnpm-workspace.yaml
+  - icons
+  - meta
   - pty
   - release-config
   - session
   - splash
+  - testing
   - theme
   - tooling
   - updater
+  - website
 diff_hash: PLACEHOLDER
----
-Erster Release überhaupt (weder Stable noch Nightly existierte vorher) —
-deckt den gesamten bisherigen Projektstand ab: Grid-Mechanik, Fokus-folgende
-Explorer-Anbindung, Session-Persistenz, PTY-Terminal, CLI-Launch-Parameter,
-Tastenkürzel-Registry, Theming-Grundlagen, Demo-Harness/Promo-Pipeline,
-Auto-Updater (tauri-plugin-updater, Stable-/Nightly-Kanal-Overlays,
-In-App-Update-UX) sowie das Release-CI samt diesem Changelog-Gate selbst.
-Erstes tatsächlich getaggtes Release ist der Nightly-Kanal
-(`nightly-latest`); Stable folgt, sobald eine erste stabile Version steht.
+-->
+Erster Release. PaneCrew kann ab jetzt:
+
+- Bis zu vier Projekte gleichzeitig in einem festen Grid öffnen, jedes mit
+  einem echten, unabhängigen Terminal.
+- Einen Datei-Explorer anzeigen, der automatisch dem gerade fokussierten
+  Terminal folgt.
+- Sitzungen (offene Projekte, Layout) über einen App-Neustart hinweg merken.
+- Direkt mit einem Projektpfad starten (`panecrew <pfad>`), ohne über die
+  Projektauswahl zu gehen.
+- Eigene und aus VS-Code importierte Farbthemen anzeigen. <!-- brandlint-ok: benennt die reale Importquelle des Theme-Mappers, keine Werbung -->
+- Sich selbst automatisch aktualisieren, über einen Stable- und einen
+  separat kennzeichneten Nightly-Kanal.
