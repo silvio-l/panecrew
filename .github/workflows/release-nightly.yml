@@ -106,7 +106,14 @@ jobs:
           projectPath: apps/desktop
           tagName: nightly-latest
           releaseName: "PaneCrew Nightly"
-          releaseDraft: true
+          # Anders als Stable (release-stable.yml, bewusst als Draft für ein
+          # manuelles Vier-Augen-Publish) bleibt Nightly ein Draft NIE lange
+          # genug öffentlich sichtbar zu sein -- Draft-Releases liefert GitHub
+          # ohne Auth nicht aus, weder der Updater-Endpoint noch ein direkter
+          # Download-Link auf der Website kämen an die Assets. Nightly ist
+          # bewusst ungegatet (Punkt 2: "kein Release pro Push, nur bei
+          # bewusst gesetzten Tags" -- der Tag-Push selbst ist das Gate).
+          releaseDraft: false
           prerelease: true
           # --config-Pfad relativ zu `projectPath` und Tauris Merge-Verhalten
           # sind gegen einen echten lokalen Build verifiziert (identifier,
