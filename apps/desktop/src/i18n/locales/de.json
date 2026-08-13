@@ -113,6 +113,7 @@
     "closeTerminalTab": "Terminal {{number}} schließen",
     "renameTerminalTab": "Terminal {{number}} umbenennen",
     "renameTerminalTabFieldLabel": "Name für Terminal {{number}}",
+    "backgroundActivityLabel": "Aktiv im Hintergrund",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -170,6 +171,10 @@
     "resetAria": "{{label}} auf Standard zurücksetzen",
     "modifiedBadge": "geändert",
     "loadError": "Einstellungen konnten nicht geladen werden.",
+    "toggle": {
+      "on": "AN",
+      "off": "AUS"
+    },
     "categories": {
       "terminal": "Terminal",
       "explorer": "Explorer",
@@ -197,6 +202,14 @@
         "fontSize": {
           "label": "Schriftgröße",
           "description": "Zeichengröße im Terminal, in Pixel."
+        },
+        "activityIdleMs": {
+          "label": "Aktivitäts-Idle-Zeit",
+          "description": "Wie lange ein Terminal-Tab nach dem letzten Zeilen-Nachschub noch als aktiv gilt, in Millisekunden."
+        },
+        "activityLineThreshold": {
+          "label": "Aktivitäts-Schwelle (Zeilen)",
+          "description": "Mindestzahl neuer Zeilen innerhalb der Idle-Zeit, ab der ein Terminal-Tab als aktiv gilt."
         }
       },
       "explorer": {

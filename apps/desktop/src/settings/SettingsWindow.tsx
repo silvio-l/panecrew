@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
 import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
@@ -281,7 +282,7 @@ function SettingRow({
         <p className="mt-0.5 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
           {description}
         </p>
-        {entry.category === "terminal" && (
+        {entry.key === "terminal.shell" && (
           <p className="mt-0.5 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.05em] text-(--pc-descriptionForeground)">
             {t("settings.terminalRestartHint")}
           </p>
@@ -327,44 +328,19 @@ function SettingControl({
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
   if (entry.type.kind === "boolean") {
-    const checked = value === true;
+    // Form, Farbverhältnis und die Amber-Freigabe für genau diese Stelle sind
+    // im Kopf von ToggleSwitch.tsx hergeleitet — inklusive der Messung, warum
+    // die vorige Pille (Amber-Füllung, Knopf in --pc-foreground) in keinem
+    // der beiden Themes lesbar war.
     return (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
+      <ToggleSwitch
+        checked={value === true}
         disabled={pending}
-        onClick={() => void onSetValue(entry.key, !checked)}
-        // Einziger Ort im Settings-Fenster, an dem der Akzent statt der
-        // neutralen List-Tokens greift (Nutzerentscheidung 2026-08-13,
-        // Erweiterung der Tab-Ausnahme im Direction Contract): eine gefüllte
-        // Pille ist als Form unverwechselbar mit Pane-Fokus-Hairline und
-        // Tab-Unterstrich, die Zweideutigkeit, die die Akzent-Exklusivität
-        // eigentlich verhindern soll, entsteht hier also nicht. Ohne Akzent
-        // war "an" gegen "aus" nur an der 2px-Knopfposition zu erkennen (per
-        // Screenshot-Vergleich verifiziert, nicht nur vermutet) — das war der
-        // eigentliche "Toggle sieht kaputt aus"-Fund.
-        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 disabled:opacity-50 ${
-          checked
-            ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)"
-            : "border-(--pc-widget-border) bg-(--pc-widget-background)"
-        } ${CHROME_FOCUS_RING}`}
-      >
-        <span
-          aria-hidden="true"
-          // translate-x-5 statt der vorigen -4.5: bei w-9/size-3.5 ist 5 (=20px)
-          // die rechnerisch korrekte Distanz für einen zur Linksposition
-          // symmetrischen 2px-Abstand zur rechten Kante, nicht nur eine
-          // Rundungsentscheidung. Knopf bleibt --pc-foreground in BEIDEN
-          // Zuständen (nicht --pc-paneHeader-activeForeground): das ist
-          // dieselbe Amber-Farbe wie die Füllung selbst und der Knopf würde
-          // darauf verschwinden — anders als bei PaneTabs' `/14`-Lasur ist
-          // diese Füllung hier voll opak.
-          className={`absolute top-0.5 size-3.5 rounded-full bg-(--pc-foreground) transition-transform duration-200 ${
-            checked ? "translate-x-5" : "translate-x-0.5"
-          }`}
-        />
-      </button>
+        onChange={(next) => void onSetValue(entry.key, next)}
+        label={labelOf(entry, t)}
+        onText={t("settings.toggle.on")}
+        offText={t("settings.toggle.off")}
+      />
     );
   }
 

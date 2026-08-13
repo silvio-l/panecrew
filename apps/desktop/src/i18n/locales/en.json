@@ -113,6 +113,7 @@
     "closeTerminalTab": "Close terminal {{number}}",
     "renameTerminalTab": "Rename terminal {{number}}",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
+    "backgroundActivityLabel": "Active in background",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -170,6 +171,10 @@
     "resetAria": "Reset {{label}} to default",
     "modifiedBadge": "modified",
     "loadError": "Settings could not be loaded.",
+    "toggle": {
+      "on": "ON",
+      "off": "OFF"
+    },
     "categories": {
       "terminal": "Terminal",
       "explorer": "Explorer",
@@ -197,6 +202,14 @@
         "fontSize": {
           "label": "Font size",
           "description": "Character size in the terminal, in pixels."
+        },
+        "activityIdleMs": {
+          "label": "Activity idle time",
+          "description": "How long a terminal tab still counts as active after the last line advance, in milliseconds."
+        },
+        "activityLineThreshold": {
+          "label": "Activity threshold (lines)",
+          "description": "Minimum number of new lines within the idle time before a terminal tab counts as active."
         }
       },
       "explorer": {
