@@ -328,7 +328,13 @@ export function usePtyTerminal(
       paneZoom = level;
       terminalOptions.fontSize = baseFontSize * level;
       terminal.options.fontSize = terminalOptions.fontSize;
-      // fit() löst über onResize den bestehenden pty_resize-Pfad aus.
+      // Erst flushen, dann fitten: fit() ruft terminal.resize() SYNCHRON auf
+      // und reflowt den Puffer sofort, während pty_resize (der IPC-Weg zum
+      // Kindprozess) asynchron ist. Noch ungeflushter pendingOutput wurde für
+      // die ALTE Spaltenzahl erzeugt — landete er erst nach dem Reflow im
+      // Puffer, schriebe er in bereits anders umgebrochene Zeilen. Regressions-
+      // nachweis mit echten Ink-Style-Redraw-Bytes: ptyResizeFlush.test.ts.
+      flushOutput();
       fitAddon.fit();
       refreshSuggestion();
     };
@@ -427,7 +433,11 @@ export function usePtyTerminal(
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      // fit() ruft terminal.resize() und löst damit onResize → syncSize aus.
+      // Reihenfolge wie in applyPaneZoom oben und aus demselben Grund: erst
+      // ausstehende Ausgabe in die noch gültige (alte) Geometrie schreiben,
+      // dann reflowen. fit() ruft terminal.resize() und löst damit onResize →
+      // syncSize aus.
+      flushOutput();
       fitAddon.fit();
     });
     resizeObserver.observe(container);
