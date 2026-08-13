@@ -38,19 +38,38 @@ const TRAFFIC_LIGHT_Y: f64 = 27.5;
 /// `WebviewBuilder::accept_first_mouse` (verified against the `wry`/
 /// `tauri-runtime` 2.11 source: `accept_first_mouse: bool`, default `false`)
 /// — "whether clicking an inactive window also clicks through to the
-/// webview". This, not the traffic-light position above, was the actual
-/// cause of the unreliable window-dragging report that survived the fix
-/// above: `data-tauri-drag-region`'s pointerdown handler lives IN the
-/// webview, so a click on a background/inactive window normally only
-/// activates it — that first click never reaches the drag-region handler at
-/// all, and only a SECOND click-and-hold (while already active) can start a
-/// drag. That exactly matches the reported pattern ("in den Hintergrund
-/// setzen, wieder nach vorne holen, dann kann man es kurz schieben, beim
-/// nächsten Mal wieder nicht" — every fresh loss of focus reproduces the
-/// same one-click-wasted-on-activation gap). `tauri.conf.json`'s "main"
-/// entry gets the equivalent `acceptFirstMouse: true` alongside this, so
-/// every window — not just runtime-created ones — behaves the same way.
+/// webview", i.e. whether the click that activates a background window is
+/// ALSO delivered to the webview or swallowed by the activation.
+///
+/// **This was NOT the cause of the "secondary windows can't be dragged"
+/// report** (2026-08-13). An earlier revision of this comment claimed it
+/// was, the setting was shipped on that theory, and the user reproduced the
+/// bug unchanged afterwards. The real cause was an ACL/capability-scope
+/// mismatch — see `capabilities/default.json` and the module tests below.
+/// Do not let this constant send you back down that path.
+///
+/// It stays because it is a defensible fix for a *different*, genuine macOS
+/// papercut (the first click on an unfocused window being spent purely on
+/// activation), matching `tauri.conf.json`'s `acceptFirstMouse: true` on
+/// "main" so every window behaves alike — but it is unvalidated, and it was
+/// never the drag bug.
 const ACCEPT_FIRST_MOUSE: bool = true;
+
+/// Label prefix for every window this module creates at runtime. Load-bearing
+/// beyond mere cosmetics: Tauri 2 scopes capabilities to window labels via
+/// `glob::Pattern`, so `capabilities/default.json`'s `windows` array has to
+/// match labels built from this prefix. It listed only the literal `"main"`
+/// until 2026-08-13, which silently denied every `plugin:`/`core:` command to
+/// secondary windows — dragging (`plugin:window|start_dragging`) and the
+/// project folder picker (`dialog:allow-open`) among them. `tests` below
+/// pins the two together.
+const SECONDARY_LABEL_PREFIX: &str = "main-";
+
+/// The single source for secondary-window labels — shared with the tests so a
+/// regression can't be masked by a hardcoded example label.
+fn new_window_label() -> String {
+    format!("{SECONDARY_LABEL_PREFIX}{}", nanoid())
+}
 
 /// Cascading offset between successive new windows — each window lands
 /// visibly offset from its opener instead of stacked exactly on top of it
@@ -72,7 +91,7 @@ impl QuittingFlag {
         self.0.store(true, Ordering::SeqCst);
     }
 
-    fn is_set(&self) -> bool {
+    pub(crate) fn is_set(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
 }
@@ -83,7 +102,7 @@ impl QuittingFlag {
 /// query param (`useWindowIdentity`), it is never driven from here.
 #[tauri::command]
 pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
-    let label = format!("main-{}", nanoid());
+    let label = new_window_label();
 
     let opener = app.get_webview_window(MAIN).or_else(|| {
         app.webview_windows()
@@ -94,7 +113,7 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     let cascade_index = app
         .webview_windows()
         .keys()
-        .filter(|l| l.as_str() == MAIN || l.starts_with("main-"))
+        .filter(|l| l.as_str() == MAIN || l.starts_with(SECONDARY_LABEL_PREFIX))
         .count();
 
     let mut builder = WebviewWindowBuilder::new(
@@ -246,5 +265,138 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     if let Some(mut state) = session_store::read_session(&dir) {
         state.windows.retain(|w| w.label != window.label());
         let _ = session_store::write_session(&dir, &state);
+    }
+}
+
+/// Regression tests for the 2026-08-13 bug "secondary windows can't be dragged
+/// and can't open the project picker".
+///
+/// Root cause: Tauri 2 gates every `plugin:`/`core:` IPC command on the
+/// capabilities whose `windows` globs match the *window label* of the caller
+/// (`tauri-2.11.5/src/webview/mod.rs` → `resolve_access`, matched in
+/// `src/ipc/authority.rs` with `glob::Pattern::matches`). App-defined
+/// `#[tauri::command]`s are exempt while the app ships no ACL manifest of its
+/// own, and `tauri::ipc::Channel` traffic is exempt too — which is exactly why
+/// secondary windows *looked* healthy (PTY panes ran fine, they use a Channel)
+/// while `data-tauri-drag-region`'s `plugin:window|start_dragging` and the
+/// folder picker's `dialog:allow-open` were silently denied.
+///
+/// These tests reimplement that matching against the REAL capability files and
+/// the REAL label generator, so the capability scope and the label scheme
+/// cannot drift apart again unnoticed.
+#[cfg(test)]
+mod tests {
+    use super::{new_window_label, MAIN};
+    use std::collections::BTreeSet;
+
+    /// Every capability the app ships, by the filename Tauri picks them up from.
+    const CAPABILITY_FILES: &[(&str, &str)] = &[
+        ("default.json", include_str!("../capabilities/default.json")),
+        ("about.json", include_str!("../capabilities/about.json")),
+        (
+            "settings.json",
+            include_str!("../capabilities/settings.json"),
+        ),
+    ];
+
+    /// The permission identifiers a window with `label` may actually use —
+    /// the union over every capability whose `windows` globs match it.
+    ///
+    /// Only literal identifiers are collected, not the transitive expansion of
+    /// permission *sets* like `core:default`; the two permissions asserted
+    /// below are both spelled out explicitly in `default.json`, so no
+    /// expansion is needed to catch this regression.
+    fn granted_permissions(label: &str) -> BTreeSet<String> {
+        let mut granted = BTreeSet::new();
+
+        for (file, source) in CAPABILITY_FILES {
+            let capability: serde_json::Value = serde_json::from_str(source)
+                .unwrap_or_else(|error| panic!("{file} is not valid JSON: {error}"));
+
+            // The model below matches on window labels. A capability that
+            // additionally scoped itself to `webviews` would need webview
+            // labels too — assert none does, rather than silently mismodel it.
+            assert!(
+                capability.get("webviews").is_none(),
+                "{file} scopes itself to `webviews`; granted_permissions() only models `windows` \
+                 and would report a wrong result — extend it before adding that field"
+            );
+
+            let windows = capability
+                .get("windows")
+                .and_then(|value| value.as_array())
+                .unwrap_or_else(|| panic!("{file} has no `windows` array"));
+
+            let matches_label = windows.iter().any(|pattern| {
+                let pattern = pattern.as_str().expect("`windows` entries must be strings");
+                glob::Pattern::new(pattern)
+                    .unwrap_or_else(|error| panic!("{file}: invalid glob {pattern:?}: {error}"))
+                    .matches(label)
+            });
+            if !matches_label {
+                continue;
+            }
+
+            let permissions = capability
+                .get("permissions")
+                .and_then(|value| value.as_array())
+                .unwrap_or_else(|| panic!("{file} has no `permissions` array"));
+            for permission in permissions {
+                // Entries are either a bare identifier string or an object
+                // carrying an `identifier` plus scope (`opener:allow-open-path`).
+                let identifier = permission
+                    .as_str()
+                    .or_else(|| permission.get("identifier").and_then(|id| id.as_str()))
+                    .expect("permission entries are strings or objects with an `identifier`");
+                granted.insert(identifier.to_string());
+            }
+        }
+
+        granted
+    }
+
+    /// Commands a PaneCrew window cannot work without. `start_dragging` backs
+    /// every `data-tauri-drag-region` in `TitleBar.tsx`; `dialog:allow-open`
+    /// backs the project folder picker reached from `App.tsx`.
+    const REQUIRED: &[&str] = &["core:window:allow-start-dragging", "dialog:allow-open"];
+
+    #[test]
+    fn main_window_may_drag_itself_and_open_the_folder_picker() {
+        let granted = granted_permissions(MAIN);
+        for permission in REQUIRED {
+            assert!(
+                granted.contains(*permission),
+                "window {MAIN:?} is missing {permission:?}; granted: {granted:?}"
+            );
+        }
+    }
+
+    /// The actual regression: a runtime-created window's label must land in the
+    /// same capability scope as "main". Before the fix, `default.json` listed
+    /// the literal `"main"`, which no `main-<nanoid>` label ever matches.
+    #[test]
+    fn secondary_windows_may_drag_themselves_and_open_the_folder_picker() {
+        let label = new_window_label();
+        let granted = granted_permissions(&label);
+        for permission in REQUIRED {
+            assert!(
+                granted.contains(*permission),
+                "runtime-created window {label:?} is missing {permission:?} — its label matches no \
+                 capability `windows` glob, so Tauri denies the command (granted: {granted:?})"
+            );
+        }
+    }
+
+    /// Labels are generated per call; the scope must hold for all of them, not
+    /// just for whichever one a single test run happened to produce.
+    #[test]
+    fn every_generated_label_lands_in_the_same_scope() {
+        for _ in 0..64 {
+            let label = new_window_label();
+            assert!(
+                granted_permissions(&label).contains("core:window:allow-start-dragging"),
+                "generated label {label:?} fell outside the capability scope"
+            );
+        }
     }
 }

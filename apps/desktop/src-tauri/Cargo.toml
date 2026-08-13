@@ -55,4 +55,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # transitiv zieht (s. Cargo.lock), kein zweiter Build.
 tar = "0.4"
 flate2 = "1.1"
+# Nur für die Capability-Scope-Tests in src/windows.rs: exakt der Matcher, den
+# Tauri selbst auf das `windows`-Array einer Capability anwendet
+# (tauri-2.11.5/src/ipc/authority.rs -> `glob::Pattern::matches`). Kommt
+# ohnehin transitiv über `tauri` herein, also kein zweiter Build.
+glob = "0.3"
 

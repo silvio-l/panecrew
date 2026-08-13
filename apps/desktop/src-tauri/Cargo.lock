@@ -830,6 +830,7 @@ dependencies = [
  "clap",
  "clap-markdown",
  "flate2",
+ "glob",
  "portable-pty",
  "serde",
  "serde_json",
