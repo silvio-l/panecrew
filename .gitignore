@@ -3,6 +3,7 @@
 CLAUDE.md
 CONTEXT.md
 docs/decisions.md
+docs/adr/
 docs/agents/
 .scratch/
 PRODUCT.md
