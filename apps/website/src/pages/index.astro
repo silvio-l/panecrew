@@ -448,6 +448,7 @@ const description =
   .brew .soon {
     color: var(--amber); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
   }
+  .install-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
   /* ---------- wave + cream footer ---------- */
   .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
@@ -945,12 +946,15 @@ const description =
   <!-- ================= INSTALL ================= -->
   <section class="install" id="install">
     <p class="eyebrow">shipping</p>
-    <h2>v0.1 is assembling.</h2>
-    <p>macOS first — notarized direct download and Homebrew. Windows next. Built in the open, dogfooded daily.</p>
-    <span class="brew">
-      <span>$ brew install panecrew</span>
-      <span class="soon">soon</span>
-    </span>
+    <h2>Nightly builds are live.</h2>
+    <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon) and Windows today, Homebrew tap next.</p>
+    <div class="install-ctas">
+      <a class="btn" href="https://github.com/silvio-l/panecrew/releases/tag/nightly-latest" target="_blank" rel="noopener">Download Nightly</a>
+      <span class="brew">
+        <span>$ brew install panecrew</span>
+        <span class="soon">soon</span>
+      </span>
+    </div>
   </section>
 </main>
 
