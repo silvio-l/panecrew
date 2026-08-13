@@ -123,6 +123,10 @@
       "shell": "Shell"
     }
   },
+  "pinHeader": {
+    "groupLabel": "Pane connector",
+    "focusPane": "Focus pane {{number}} — {{projectName}}"
+  },
   "projectPicker": {
     "choose": "Choose project",
     "hint": "PaneCrew starts a real shell in it."
@@ -204,12 +208,12 @@
           "description": "Character size in the terminal, in pixels."
         },
         "activityIdleMs": {
-          "label": "Activity idle time",
-          "description": "How long a terminal tab still counts as active after the last line advance, in milliseconds."
+          "label": "Unread time window",
+          "description": "How long to wait after the last new line before an activity burst counts as its own event. Only controls how easily the persistent unread dot triggers — the dot itself never expires on its own, only by viewing the tab. In milliseconds."
         },
         "activityLineThreshold": {
-          "label": "Activity threshold (lines)",
-          "description": "Minimum number of new lines within the idle time before a terminal tab counts as active."
+          "label": "Unread threshold (lines)",
+          "description": "Minimum number of new lines within the time window before an unviewed terminal tab gets the unread dot."
         }
       },
       "explorer": {

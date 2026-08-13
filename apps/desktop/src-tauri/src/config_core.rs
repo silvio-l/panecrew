@@ -39,16 +39,21 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         serde_json::json!(13),
     ))?;
     // Needs-Attention-Grundlage (terminalActivity.ts, Task #7/#13): ein Tab
-    // gilt als "aktiv", sobald innerhalb von activityIdleMs mindestens
-    // activityLineThreshold neue Zeilen committet wurden, und fällt nach
-    // activityIdleMs ohne weiteren Nachschub wieder zurück. Default-Schwelle
-    // 1 erhält das bisherige Verhalten (jede committete Zeile zählt sofort)
-    // — höhere Werte filtern vereinzelte Zeilen als Rauschen heraus, bevor
-    // ein Tab als "aktiv" markiert wird.
+    // gilt intern als "aktiv", sobald innerhalb von activityIdleMs mindestens
+    // activityLineThreshold neue Zeilen committet wurden — das steuert aber
+    // seit dem Ungelesen-Umbau (terminalActivity.ts, Nutzer-Neuspezifikation
+    // 2026-08-13) KEIN sichtbares Aktiv/Inaktiv mehr, sondern nur noch, wie
+    // empfindlich der PERSISTENTE Ungelesen-Punkt anschlägt (der bleibt dann
+    // bestehen, bis der Tab angesehen wird, unabhängig von activityIdleMs).
+    // Default 15000 (statt vormals 1500) trägt dieser neuen, nicht mehr
+    // selbstheilenden Semantik Rechnung — ein zu kurzes Fenster markierte bei
+    // jedem harmlosen Gelegenheits-Log-Zeilchen sofort "ungelesen" (Fund
+    // 2026-08-13, Nutzer-Bugreport: mehrere echte Hintergrund-Agenten lösten
+    // den Punkt korrekt, aber zu leichtfertig aus).
     registry.register(entry(
         "terminal.activityIdleMs",
         SettingType::Number,
-        serde_json::json!(1500),
+        serde_json::json!(15000),
     ))?;
     registry.register(entry(
         "terminal.activityLineThreshold",

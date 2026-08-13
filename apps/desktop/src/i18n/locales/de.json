@@ -204,12 +204,12 @@
           "description": "Zeichengröße im Terminal, in Pixel."
         },
         "activityIdleMs": {
-          "label": "Aktivitäts-Idle-Zeit",
-          "description": "Wie lange ein Terminal-Tab nach dem letzten Zeilen-Nachschub noch als aktiv gilt, in Millisekunden."
+          "label": "Ungelesen-Zeitfenster",
+          "description": "Wie lange nach dem letzten Zeilen-Nachschub gewartet wird, bevor ein Aktivitäts-Burst als eigenständig zählt. Steuert nur, wie leicht der persistente Ungelesen-Punkt anspringt — der Punkt selbst verfällt nicht von selbst, sondern ausschließlich durchs Ansehen des Tabs. In Millisekunden."
         },
         "activityLineThreshold": {
-          "label": "Aktivitäts-Schwelle (Zeilen)",
-          "description": "Mindestzahl neuer Zeilen innerhalb der Idle-Zeit, ab der ein Terminal-Tab als aktiv gilt."
+          "label": "Ungelesen-Schwelle (Zeilen)",
+          "description": "Mindestzahl neuer Zeilen innerhalb des Zeitfensters, ab der ein nicht angesehener Terminal-Tab den Ungelesen-Punkt bekommt."
         }
       },
       "explorer": {

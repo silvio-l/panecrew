@@ -34,7 +34,13 @@ import type { Terminal } from "@xterm/xterm";
 // Tauri-Invoke/Listen-Aufrufe dort würden terminalActivity.test.ts (ruft
 // reportLineAdvance direkt auf, ohne echtes Backend) beim bloßen Import
 // scheitern lassen, gäbe es sie hier.
-const DEFAULT_IDLE_MS = 1500;
+// 15000 statt vormals 1500 (Fund 2026-08-13, Nutzer-Bugreport): der Punkt
+// unten ist persistent, kein selbstheilendes Signal mehr — ein zu kurzes
+// Fenster markiert schon vereinzeltes Gelegenheits-Log-Rauschen sofort
+// "ungelesen", ohne dass der Nutzer das je bewusst wahrnehmen könnte, bevor
+// es unwiderruflich (bis zum Ansehen) hängen bleibt. Muss synchron mit dem
+// Rust-Default in config_core.rs bleiben.
+const DEFAULT_IDLE_MS = 15000;
 const DEFAULT_LINE_THRESHOLD = 1;
 let idleMs = DEFAULT_IDLE_MS;
 let lineThreshold = DEFAULT_LINE_THRESHOLD;
