@@ -137,6 +137,7 @@ mod tests {
         pty_manager::SpawnOptions {
             cmd: "sh".into(),
             args: vec!["-c".into(), script.into()],
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
             cwd: std::env::temp_dir(),
             env: vec![],
             cols: 80,

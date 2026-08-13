@@ -23,6 +23,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // nosemgrep: rust.lang.security.args-os.args-os -- argv only selects which project folder to open; launch::resolve_launch_project validates it against the real filesystem and falls back to the picker on anything invalid, so a spoofed argv has no security consequence.
     let cli = Cli::parse_args(std::env::args_os());
     let launch_cwd = std::env::current_dir().unwrap_or_default();
     let launch_project = launch::resolve_launch_project(cli.project.as_deref(), &launch_cwd);

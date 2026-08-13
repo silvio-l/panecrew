@@ -191,6 +191,7 @@ mod tests {
 
     impl Fixture {
         fn new(name: &str) -> Self {
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
             let root = std::env::temp_dir().join(format!(
                 "panecrew-session-store-{}-{name}",
                 std::process::id()

@@ -101,6 +101,7 @@ mod tests {
 
     #[test]
     fn materialize_writes_both_shells_wrappers() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-si-{}", std::process::id()));
 
         materialize(&root).expect("materialize should succeed");
@@ -156,6 +157,7 @@ mod tests {
     /// drops the user's hook) only shows up once bash has actually parsed it.
     #[test]
     fn the_bash_wrapper_keeps_the_users_own_prompt_command() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-bash-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
         let home = root.join("home");
@@ -179,6 +181,7 @@ mod tests {
             crate::pty_manager::SpawnOptions {
                 cmd: "bash".into(),
                 args,
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
                 env: vec![("HOME".into(), home.to_string_lossy().into_owned())],
                 cols: 80,
@@ -225,6 +228,7 @@ mod tests {
     /// itself once zsh has actually walked its own startup-file chain.
     #[test]
     fn the_login_flag_makes_zsh_source_the_users_own_zprofile() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-zsh-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
         let home = root.join("home");
@@ -256,6 +260,7 @@ mod tests {
             crate::pty_manager::SpawnOptions {
                 cmd: "zsh".into(),
                 args,
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
                 env,
                 cols: 80,
@@ -288,6 +293,7 @@ mod tests {
     /// tests above.
     #[test]
     fn the_bash_wrapper_sources_the_users_own_login_profile() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-bash-profile-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
         let home = root.join("home");
@@ -313,6 +319,7 @@ mod tests {
             crate::pty_manager::SpawnOptions {
                 cmd: "bash".into(),
                 args,
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
                 env: vec![("HOME".into(), home.to_string_lossy().into_owned())],
                 cols: 80,

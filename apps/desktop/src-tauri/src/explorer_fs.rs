@@ -326,6 +326,7 @@ mod tests {
 
     impl Fixture {
         fn new(name: &str, entries: &[&str]) -> Self {
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
             let root = std::env::temp_dir()
                 .join(format!("panecrew-explorer-fs-{}-{name}", std::process::id()));
             std::fs::remove_dir_all(&root).ok();
@@ -432,6 +433,7 @@ mod tests {
 
     #[test]
     fn errors_on_an_unreadable_root_instead_of_returning_an_empty_tree() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch path, not a security operation.
         let missing = std::env::temp_dir().join("panecrew-explorer-fs-definitely-missing");
 
         assert!(explorer_read_tree(missing.to_string_lossy().into_owned()).is_err());

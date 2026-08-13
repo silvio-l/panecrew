@@ -193,6 +193,7 @@ mod tests {
     impl GitFixture {
         fn new(name: &str) -> Self {
             let root =
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
                 std::env::temp_dir().join(format!("panecrew-git-status-{}-{name}", std::process::id()));
             std::fs::remove_dir_all(&root).ok();
             std::fs::create_dir_all(&root).expect("test fixture dir should be creatable");
@@ -237,6 +238,7 @@ mod tests {
 
     #[test]
     fn a_directory_that_is_not_a_git_repo_reports_no_status() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join("panecrew-git-status-not-a-repo");
         std::fs::create_dir_all(&root).expect("plain dir should be creatable");
 

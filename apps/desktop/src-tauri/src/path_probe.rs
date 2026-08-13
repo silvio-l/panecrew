@@ -141,6 +141,7 @@ mod tests {
 
     impl Fixture {
         fn new(name: &str, entries: &[&str]) -> Self {
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
             let root = std::env::temp_dir()
                 .join(format!("panecrew-subdirs-{}-{name}", std::process::id()));
             std::fs::remove_dir_all(&root).ok();
@@ -239,6 +240,7 @@ mod tests {
 
     #[test]
     fn reports_directories_but_not_files_or_missing_paths() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- just a real, existing directory to probe, not a security operation.
         let dir = std::env::temp_dir();
         let parent = dir.parent().expect("temp dir should have a parent");
         let name = dir

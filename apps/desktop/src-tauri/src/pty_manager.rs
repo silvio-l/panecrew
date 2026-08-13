@@ -231,6 +231,7 @@ mod tests {
             SpawnOptions {
                 cmd: "sh".into(),
                 args,
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
                 env: vec![],
                 cols: 80,
@@ -281,6 +282,7 @@ mod tests {
     // test threads.
     #[test]
     fn spawn_sets_a_color_capable_term_for_the_child() {
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- test-only env mutation, see the safety comment above.
         unsafe {
             std::env::remove_var("TERM");
             std::env::remove_var("COLORTERM");
@@ -356,6 +358,7 @@ mod tests {
             SpawnOptions {
                 cmd: "cat".into(),
                 args: vec![],
+                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
                 env: vec![],
                 cols: 80,

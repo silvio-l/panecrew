@@ -50,6 +50,7 @@ mod tests {
 
     #[test]
     fn an_absolute_existing_directory_resolves_as_is() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- just a real, absolute directory to test path resolution against, not a security operation.
         let dir = std::env::temp_dir();
         assert_eq!(
             resolve_launch_project(Some(&dir), Path::new("/irrelevant")),
@@ -59,6 +60,7 @@ mod tests {
 
     #[test]
     fn a_relative_argument_resolves_against_the_launch_cwd() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let cwd = std::env::temp_dir();
         let name = "panecrew-launch-relative-test";
         let target = cwd.join(name);
@@ -72,6 +74,7 @@ mod tests {
 
     #[test]
     fn a_path_that_is_not_a_directory_resolves_to_nothing() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch path, not a security operation.
         let file = std::env::temp_dir().join("panecrew-launch-not-a-dir-test");
         std::fs::write(&file, b"x").expect("test fixture file should be creatable");
 
