@@ -13,6 +13,7 @@ import {
 import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
+import { macLineEditingBytes } from "./macLineEditingKeys";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { loadShellHistory } from "./shellHistory";
@@ -425,6 +426,20 @@ export function usePtyTerminal(
         }
         if (key === "v") {
           pasteInto(terminal);
+          return false;
+        }
+      }
+
+      // Cmd+←/→/Backspace: nur macOS. Unter Windows/Linux ist Ctrl+←/→
+      // bereits die (von xterm.js selbst bediente) Wortsprung-Konvention,
+      // keine Zeilenanfang/-ende-Bindung — die Politik in
+      // macLineEditingKeys.ts würde dort ohnehin nie ohne Cmd greifen, die
+      // Plattformprüfung hier ist also zusätzliche Klarheit, keine Pflicht.
+      if (isMacPlatform()) {
+        const bytes = macLineEditingBytes(event);
+        if (bytes) {
+          event.preventDefault();
+          writeBytes(bytes);
           return false;
         }
       }
