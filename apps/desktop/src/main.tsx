@@ -4,11 +4,13 @@ import App from "./App";
 import "./i18n";
 import { initThemeApplier } from "./theme/applyTheme";
 import { initTerminalSettingsApplier } from "./theme/applyTerminalSettings";
+import { initTerminalActivitySettingsApplier } from "./terminal/applyActivitySettings";
 import { initLanguageApplier } from "./i18n/applyLanguage";
 import { installNativeContextMenuPolicy } from "./chrome/nativeContextMenuPolicy";
 
 initThemeApplier();
 initTerminalSettingsApplier();
+initTerminalActivitySettingsApplier();
 initLanguageApplier();
 installNativeContextMenuPolicy();
 

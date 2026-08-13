@@ -38,6 +38,23 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Number,
         serde_json::json!(13),
     ))?;
+    // Needs-Attention-Grundlage (terminalActivity.ts, Task #7/#13): ein Tab
+    // gilt als "aktiv", sobald innerhalb von activityIdleMs mindestens
+    // activityLineThreshold neue Zeilen committet wurden, und fällt nach
+    // activityIdleMs ohne weiteren Nachschub wieder zurück. Default-Schwelle
+    // 1 erhält das bisherige Verhalten (jede committete Zeile zählt sofort)
+    // — höhere Werte filtern vereinzelte Zeilen als Rauschen heraus, bevor
+    // ein Tab als "aktiv" markiert wird.
+    registry.register(entry(
+        "terminal.activityIdleMs",
+        SettingType::Number,
+        serde_json::json!(1500),
+    ))?;
+    registry.register(entry(
+        "terminal.activityLineThreshold",
+        SettingType::Number,
+        serde_json::json!(1),
+    ))?;
 
     // Explorer
     registry.register(entry(
@@ -105,6 +122,8 @@ mod tests {
             .collect();
         assert!(keys.contains(&"terminal.shell"));
         assert!(keys.contains(&"terminal.fontSize"));
+        assert!(keys.contains(&"terminal.activityIdleMs"));
+        assert!(keys.contains(&"terminal.activityLineThreshold"));
         assert!(keys.contains(&"explorer.confirmBeforeDelete"));
         assert!(keys.contains(&"appearance.theme"));
         assert!(keys.contains(&"appearance.language"));

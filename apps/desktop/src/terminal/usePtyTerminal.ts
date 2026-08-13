@@ -18,6 +18,11 @@ import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { createResizeGate } from "./resizeGate";
 import { loadShellHistory } from "./shellHistory";
+import {
+  committedLineCount,
+  disposeTerminalActivity,
+  reportLineAdvance,
+} from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import {
   createDirectoryProbe,
@@ -256,8 +261,21 @@ export function usePtyTerminal(
     const flushOutput = () => {
       cancelScheduledFlush();
       if (disposed || !pendingOutput) return;
-      terminal.write(pendingOutput);
+      const text = pendingOutput;
       pendingOutput = "";
+      // Zeilen-Delta für das Aktivitätssignal (terminalActivity.ts) — VOR dem
+      // eigentlichen write() gemessen, ausgewertet erst im Callback: xterm
+      // parst asynchron, der Puffer spiegelt den geschriebenen Text laut
+      // eigener Doku erst nach dessen Abschluss wider (@xterm/xterm.d.ts,
+      // `write()`-Kommentar).
+      const linesBefore = committedLineCount(terminal);
+      terminal.write(text, () => {
+        if (disposed) return;
+        const linesAfter = committedLineCount(terminal);
+        if (linesBefore !== null && linesAfter !== null) {
+          reportLineAdvance(tabId, linesAfter - linesBefore);
+        }
+      });
     };
     // Zwei parallele Fallbacks statt einem: requestAnimationFrame feuert
     // nicht mehr, sobald das Fenster verdeckt/minimiert ist — genau der Fall
@@ -558,6 +576,7 @@ export function usePtyTerminal(
     return () => {
       cancelled = true;
       disposed = true;
+      disposeTerminalActivity(tabId);
       cancelScheduledFlush();
       resizeGate.cancel();
       insertRef.current = null;

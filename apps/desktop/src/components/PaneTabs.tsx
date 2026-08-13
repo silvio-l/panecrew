@@ -10,6 +10,7 @@ import {
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 import { useDetectedToolId } from "../terminal/useDetectedTool";
+import { useTerminalActivity } from "../terminal/terminalActivity";
 import { resolveToolIcon } from "../terminal/toolIcons";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
@@ -147,6 +148,29 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // dokumentierten offiziellen Markenfarben statt vorheriger Annäherungen.
 // Einzige Ausnahme: Codex hat im Quell-Set kein Marken-Glyph (weder das Tool // brandlint-ok: dokumentiert das Fehlen eines Marken-Glyphs für diese Tool-ID
 // Code-Klammern der vorigen Runde — dasselbe gilt unverändert für die Shell.
+//
+// Nachtrag 2026-08-13, noch später (Needs-Attention, Task #13, Nutzer-
+// Entscheidung "1a"): der oben (Zeile 51-64) ersatzlos gestrichene Punkt
+// bekommt hier ein Comeback — aber mit tatsächlich belastbarer Bedeutung
+// statt der damaligen reinen Dekoration. Unterschied zur damaligen
+// Begründung ("keine verlässliche Quelle"): terminalActivity.ts liest keine
+// Prozesslast und keinen Ausgabe-INHALT (bleibt innerhalb der Projekt-
+// Leitlinie gegen heuristisches Output-Parsing), sondern zählt echte, per
+// xterm.js committete Zeilen im PTY-Output selbst — ein Tab, der gerade
+// Zeilen committet, PRODUZIERT nachweislich neue Ausgabe, unabhängig davon,
+// ob die CPU dabei nahe null liegt. Zeigt sich NUR auf einem inaktiven Tab
+// (`!active`) — der aktive Tab ist ohnehin sichtbar, ein Signal "hier tut
+// sich was" wäre dort Rauschen. Bewusst nicht auf Pane-Fokus erweitert (ein
+// Tab in einer unfokussierten Pane bliebe für den Nutzer ebenso unsichtbar):
+// PaneTabs.tsx bekommt aktuell keinen Pane-Fokus-Kontext gereicht, das wäre
+// eine eigene, hier nicht beauftragte Erweiterung. Selber Amber-Akzent wie
+// der aktive Tab kam nicht infrage — der Akzent bedeutet dort bereits "das
+// ist der ausgewählte Tab", eine zweite Bedeutung in derselben Farbe auf
+// einem ANDEREN (inaktiven) Chip wäre nicht mehr unterscheidbar. Stattdessen
+// derselbe `bg-current`-Punkt wie `DirtyMark` (unten), aber blinkend
+// (`pc-clock-blink`, dasselbe HUD-Blink-Idiom wie die TitleBar-Uhr und die
+// leeren ProjectPicker-Slots) — Form UND Bewegung tragen das Signal, keine
+// zweite Akzentfarbe.
 //
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
@@ -299,6 +323,14 @@ function TerminalTabChip({
   const baseLabel = t("paneTabs.terminalTab", { number });
   const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
   const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
+  // Hook unbedingt aufgerufen (Rules of Hooks) — die Aktiv-Tab-Ausnahme greift
+  // erst danach, sonst würde `!active && useTerminalActivity(...)` den Hook
+  // je nach `active` in unterschiedlicher Reihenfolge aufrufen.
+  const isStreaming = useTerminalActivity(tabId);
+  // Nur auf einem inaktiven Tab relevant — der aktive ist ohnehin sichtbar
+  // (Begründung: Kopfkommentar dieser Datei, Nachtrag "Needs-Attention").
+  const needsAttention = !active && isStreaming;
+  const needsAttentionLabel = needsAttention ? t("paneTabs.backgroundActivityLabel") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
   // schlicht keinen Akkord im Tooltip.
@@ -311,7 +343,9 @@ function TerminalTabChip({
   // immer gültige Kennung (Cmd/Strg+1..9 bleibt positionsbasiert), beides
   // andere ist zusätzlicher Kontext. Siehe Kopfkommentar dieser Datei zur
   // "am besten als Tooltip"-Entscheidung.
-  const suffixParts = [label, toolLabel].filter((part): part is string => part !== null);
+  const suffixParts = [label, toolLabel, needsAttentionLabel].filter(
+    (part): part is string => part !== null,
+  );
   const tooltipLabel =
     suffixParts.length === 0 ? chordLabel : `${chordLabel} — ${suffixParts.join(" · ")}`;
   const ariaLabel =
@@ -397,6 +431,12 @@ function TerminalTabChip({
             } ${CHROME_FOCUS_RING}`}
           >
             <span className="flex items-center gap-1">
+              {needsAttention && (
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 animate-[pc-clock-blink_1s_steps(1,end)_infinite] rounded-full bg-current"
+                />
+              )}
               {toolIcon && (
                 <span
                   aria-hidden="true"
