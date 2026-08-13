@@ -222,6 +222,10 @@
             "de": "Deutsch",
             "en": "English"
           }
+        },
+        "zoom": {
+          "label": "Oberflächen-Zoom",
+          "description": "Skaliert die ganze Oberfläche (entspricht Umschalt+Cmd/Strg +/-/0). Betrifft nicht die Terminal-Schriftgröße."
         }
       },
       "grid": {
@@ -231,7 +235,11 @@
           "options": {
             "single": "Einzeln",
             "split": "Geteilt",
-            "quad": "Vierergrid"
+            "two-over-one": "Zwei über eins",
+            "one-over-two": "Eins über zwei",
+            "row-3": "Dreierreihe",
+            "quad": "Vierergrid",
+            "row-4": "Viererreihe"
           }
         }
       }

@@ -107,6 +107,12 @@ export function usePtyTerminal(
   const backend = usePtyBackend();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  // Von zwei Effekten gelesen/geschrieben (Spawn-Effekt unten UND der
+  // Settings-Live-Reload-MutationObserver weiter unten, der eine globale
+  // Schriftgrößenänderung mit dem AKTUELLEN Pane-Zoom-Multiplikator
+  // kombinieren muss) — deshalb ein Ref statt einer lokalen Variable im
+  // Spawn-Effekt, der bei jedem Tab-/Cwd-Wechsel neu läuft.
+  const paneZoomRef = useRef(DEFAULT_ZOOM);
   const selectTabRef = useRef(onSelectTerminalTabByNumber);
   useEffect(() => {
     selectTabRef.current = onSelectTerminalTabByNumber;
@@ -395,9 +401,9 @@ export function usePtyTerminal(
     // Geistertext hängt allerdings an seinen inline gesetzten Maßen, bis er
     // neu rendert — daher der refresh().
     const baseFontSize = terminalOptions.fontSize;
-    let paneZoom = DEFAULT_ZOOM;
+    paneZoomRef.current = DEFAULT_ZOOM;
     const applyPaneZoom = (level: number) => {
-      paneZoom = level;
+      paneZoomRef.current = level;
       terminalOptions.fontSize = baseFontSize * level;
       terminal.options.fontSize = terminalOptions.fontSize;
       // proposeDimensions() statt fitAddon.fit(): nur MESSEN, das eigentliche
@@ -434,7 +440,7 @@ export function usePtyTerminal(
         applyPaneZoom(
           action === "reset"
             ? DEFAULT_ZOOM
-            : nextZoomLevel(paneZoom, action === "in" ? 1 : -1),
+            : nextZoomLevel(paneZoomRef.current, action === "in" ? 1 : -1),
         );
         return false;
       }
@@ -571,24 +577,32 @@ export function usePtyTerminal(
     };
   }, [tabId, cwd, backend]);
 
-  // Ticket 05 (Settings-System, Live-Reload): ein Theme-Wechsel setzt nur
-  // CSS-Custom-Properties neu — eine bereits laufende xterm-Instanz hat ihr
-  // `ITheme` aber oben nur EINMAL, bei Konstruktion, gelesen und würde ohne
-  // dies auf dem alten Theme hängen bleiben, obwohl das restliche Chrome
-  // längst umgeschaltet hat. Eigener, von der konkreten Änderungsquelle
-  // entkoppelter Effekt (MutationObserver statt eines `settings:changed`-
-  // Listeners): funktioniert unabhängig davon, WAS `data-theme` gerade
-  // gesetzt hat, und bleibt über den Wechsel der Terminal-Instanz im Effekt
-  // oben hinweg gültig (deshalb kein `terminal`-Closure-Zugriff, sondern
-  // `terminalRef.current` erst zur Feuerzeit gelesen).
+  // Ticket 05 (Settings-System, Live-Reload): ein Theme- ODER
+  // Schriftgrößen-Wechsel setzt nur CSS-Custom-Properties neu — eine bereits
+  // laufende xterm-Instanz hat `ITheme`/Font aber oben nur EINMAL, bei
+  // Konstruktion, gelesen und würde ohne dies auf dem alten Stand hängen
+  // bleiben, obwohl das restliche Chrome längst umgeschaltet hat. Eigener,
+  // von der konkreten Änderungsquelle entkoppelter Effekt (MutationObserver
+  // statt eines `settings:changed`-Listeners): funktioniert unabhängig
+  // davon, WAS `data-theme`/`style` gerade gesetzt hat, und bleibt über den
+  // Wechsel der Terminal-Instanz im Effekt oben hinweg gültig (deshalb kein
+  // `terminal`-Closure-Zugriff, sondern `terminalRef.current` erst zur
+  // Feuerzeit gelesen). `style` beobachtet `applyTerminalSettings.ts`s
+  // `setProperty("--pc-terminal-fontSize", …)` auf `:root` — der globale
+  // Default wird mit dem AKTUELLEN Pane-Zoom multipliziert, damit ein aktiver
+  // Cmd+/--Zoom durch eine Settings-Änderung nicht verloren geht.
   useEffect(() => {
     const observer = new MutationObserver(() => {
       const terminal = terminalRef.current;
-      if (terminal) terminal.options.theme = readTerminalTheme();
+      if (!terminal) return;
+      terminal.options.theme = readTerminalTheme();
+      const options = readTerminalOptions();
+      terminal.options.fontFamily = options.fontFamily;
+      terminal.options.fontSize = options.fontSize * paneZoomRef.current;
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "style"],
     });
     return () => observer.disconnect();
   }, []);

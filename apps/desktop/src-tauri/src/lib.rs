@@ -74,6 +74,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             about::on_window_event(window, event);
             windows::on_window_event(window, event);
+            settings_window::on_window_event(window, event);
         })
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
@@ -95,6 +96,7 @@ pub fn run() {
             app.manage(ShellIntegrationDir(root));
             windows::restore_persisted_windows(app.handle());
             splash::arm_watchdog(app.handle());
+            settings_window::prewarm(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

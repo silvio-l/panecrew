@@ -76,9 +76,14 @@ describe("SettingsWindow — Extension-Settings (Ticket 09)", () => {
     fireEvent.click(screen.getByText("my-extension"));
 
     const numberInput = await screen.findByDisplayValue("3");
-    expect(numberInput).toHaveAttribute("type", "number");
+    // `type="text"` statt `type="number"`: WKWebView akzeptiert in einem
+    // nativen number-Feld nur "." als Dezimaltrennzeichen, unabhängig von
+    // OS-/App-Sprache — s. Kommentar an `NumberSettingInput` in
+    // SettingsWindow.tsx.
+    expect(numberInput).toHaveAttribute("type", "text");
 
     fireEvent.change(numberInput, { target: { value: "5" } });
+    fireEvent.blur(numberInput);
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("settings_set_value", {
         key: "my-extension.retryCount",

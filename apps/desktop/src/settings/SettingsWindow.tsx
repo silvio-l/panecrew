@@ -17,6 +17,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
+import { TemplateGlyph } from "../components/TemplateSwitcher";
+import { GRID_TEMPLATES } from "../grid/gridState";
+import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
 
 const CORE_CATEGORY_ORDER = ["terminal", "explorer", "appearance", "grid"];
@@ -332,16 +335,33 @@ function SettingControl({
         aria-checked={checked}
         disabled={pending}
         onClick={() => void onSetValue(entry.key, !checked)}
-        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-50 ${
+        // Einziger Ort im Settings-Fenster, an dem der Akzent statt der
+        // neutralen List-Tokens greift (Nutzerentscheidung 2026-08-13,
+        // Erweiterung der Tab-Ausnahme im Direction Contract): eine gefüllte
+        // Pille ist als Form unverwechselbar mit Pane-Fokus-Hairline und
+        // Tab-Unterstrich, die Zweideutigkeit, die die Akzent-Exklusivität
+        // eigentlich verhindern soll, entsteht hier also nicht. Ohne Akzent
+        // war "an" gegen "aus" nur an der 2px-Knopfposition zu erkennen (per
+        // Screenshot-Vergleich verifiziert, nicht nur vermutet) — das war der
+        // eigentliche "Toggle sieht kaputt aus"-Fund.
+        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-200 disabled:opacity-50 ${
           checked
-            ? "border-(--pc-list-activeSelectionBackground) bg-(--pc-list-activeSelectionBackground)"
+            ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)"
             : "border-(--pc-widget-border) bg-(--pc-widget-background)"
         } ${CHROME_FOCUS_RING}`}
       >
         <span
           aria-hidden="true"
-          className={`absolute top-0.5 size-3.5 rounded-full bg-(--pc-foreground) transition-transform ${
-            checked ? "translate-x-4.5" : "translate-x-0.5"
+          // translate-x-5 statt der vorigen -4.5: bei w-9/size-3.5 ist 5 (=20px)
+          // die rechnerisch korrekte Distanz für einen zur Linksposition
+          // symmetrischen 2px-Abstand zur rechten Kante, nicht nur eine
+          // Rundungsentscheidung. Knopf bleibt --pc-foreground in BEIDEN
+          // Zuständen (nicht --pc-paneHeader-activeForeground): das ist
+          // dieselbe Amber-Farbe wie die Füllung selbst und der Knopf würde
+          // darauf verschwinden — anders als bei PaneTabs' `/14`-Lasur ist
+          // diese Füllung hier voll opak.
+          className={`absolute top-0.5 size-3.5 rounded-full bg-(--pc-foreground) transition-transform duration-200 ${
+            checked ? "translate-x-5" : "translate-x-0.5"
           }`}
         />
       </button>
@@ -349,6 +369,41 @@ function SettingControl({
   }
 
   if (entry.type.kind === "enum") {
+    // grid.defaultTemplate zeigt dieselben Piktogramme wie der
+    // TemplateSwitcher oben rechts im Hauptfenster, statt einer Textliste zu
+    // erfinden — Nutzervorgabe: diese Einstellung soll sich an dem
+    // orientieren, was dort bereits existiert, nicht an etwas Eigenem.
+    if (entry.key === "grid.defaultTemplate") {
+      return (
+        <div
+          role="group"
+          className="flex shrink-0 items-center gap-px rounded-md border border-(--pc-widget-border) p-px"
+        >
+          {GRID_TEMPLATES.map((template) => {
+            const active = value === template.id;
+            const optionLabel = t(template.labelKey);
+            return (
+              <button
+                key={template.id}
+                type="button"
+                disabled={pending}
+                aria-pressed={active}
+                aria-label={optionLabel}
+                onClick={() => void onSetValue(entry.key, template.id)}
+                className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                  active
+                    ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
+                    : "text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
+                } ${CHROME_FOCUS_RING}`}
+              >
+                <TemplateGlyph template={template.id} slotCount={template.slotCount} />
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
     return (
       <div
         role="group"
@@ -378,17 +433,99 @@ function SettingControl({
     );
   }
 
-  const inputType = entry.type.kind === "number" ? "number" : "text";
-  const displayValue =
-    typeof value === "string" || typeof value === "number" ? String(value) : "";
+  if (entry.type.kind === "number") {
+    return (
+      <NumberSettingInput
+        entryKey={entry.key}
+        value={value}
+        pending={pending}
+        onSetValue={onSetValue}
+      />
+    );
+  }
+
+  const displayValue = typeof value === "string" ? value : "";
   return (
     <input
-      type={inputType}
+      type="text"
       disabled={pending}
       value={displayValue}
-      onChange={(event) => {
-        const raw = event.target.value;
-        void onSetValue(entry.key, inputType === "number" ? Number(raw) : raw);
+      onChange={(event) => void onSetValue(entry.key, event.target.value)}
+      className="w-40 shrink-0 rounded-sm border border-(--pc-widget-border) bg-(--pc-widget-background) px-2 py-1 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-foreground) outline-none focus:border-(--pc-focusBorder) disabled:opacity-50"
+    />
+  );
+}
+
+/**
+ * Eigene, unkontrollierte Eingabe statt `type="number"` mit direktem
+ * Pro-Tastenanschlag-Commit: WKWebView akzeptiert in einem `type="number"`-
+ * Feld nur "." als Dezimaltrennzeichen, unabhängig von OS-/App-Sprache — ein
+ * deutschsprachiger Nutzer, der "1,2" für 120% Zoom tippt, verliert das
+ * Komma schon auf Zeichenebene (Nutzer-Fund, nicht nur eine Annahme). Der
+ * Commit passiert erst bei Blur/Enter, nicht bei jedem Tastendruck: ein
+ * Zwischenzustand wie "1," ist keine gültige Zahl, ein sofortiges
+ * `onSetValue` würde entweder NaN durchreichen oder (bei serverseitiger
+ * Ablehnung) das kontrollierte Feld mit dem Nutzer um jeden Tastendruck
+ * ringen lassen.
+ */
+function NumberSettingInput({
+  entryKey,
+  value,
+  pending,
+  onSetValue,
+}: {
+  entryKey: string;
+  value: unknown;
+  pending: boolean;
+  onSetValue: (key: string, value: unknown) => Promise<void>;
+}) {
+  const committed = typeof value === "number" ? String(value) : "";
+  const [draft, setDraft] = useState(committed);
+  const [focused, setFocused] = useState(false);
+  // Externe Änderungen (Reset-Button, Settings-Sync aus einem anderen
+  // Fenster) sollen den Entwurf überschreiben, aber nicht während der Nutzer
+  // gerade tippt — daher Anpassung während des Renders (React-Doku-Muster
+  // "Adjusting state when a prop changes") statt in einem Effect, der
+  // `setDraft` erst nach dem Commit synchron nachschieben würde.
+  const [prevCommitted, setPrevCommitted] = useState(committed);
+  if (!focused && committed !== prevCommitted) {
+    setPrevCommitted(committed);
+    setDraft(committed);
+  }
+
+  const commit = () => {
+    const raw = draft.trim();
+    // Number("") ist 0, nicht NaN — ohne den expliziten Leerstring-Check
+    // würde ein geleertes Feld beim Blur eine 0 committen, bei
+    // `appearance.zoom` z. B. ein unbrauchbares, aber gültig persistiertes
+    // Nullfenster.
+    const parsed = raw === "" ? NaN : Number(raw.replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      setDraft(committed);
+      return;
+    }
+    // Dieselbe Grenze wie das Tastenkürzel (`nextZoomLevel`/`ZOOM_LEVELS`) —
+    // sonst könnte diese Eingabe einen Zoom setzen, den Shift+Cmd/Strg +/-/0
+    // nie erreichen kann.
+    const clamped =
+      entryKey === "appearance.zoom" ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, parsed)) : parsed;
+    void onSetValue(entryKey, clamped);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      disabled={pending}
+      value={draft}
+      onFocus={() => setFocused(true)}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
       }}
       className="w-40 shrink-0 rounded-sm border border-(--pc-widget-border) bg-(--pc-widget-background) px-2 py-1 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-foreground) outline-none focus:border-(--pc-focusBorder) disabled:opacity-50"
     />

@@ -222,6 +222,10 @@
             "de": "Deutsch",
             "en": "English"
           }
+        },
+        "zoom": {
+          "label": "UI zoom",
+          "description": "Scales the whole interface (same as Shift+Cmd/Ctrl +/-/0). Does not affect terminal font size."
         }
       },
       "grid": {
@@ -231,7 +235,11 @@
           "options": {
             "single": "Single",
             "split": "Split",
-            "quad": "Quad"
+            "two-over-one": "Two over one",
+            "one-over-two": "One over two",
+            "row-3": "Three-row",
+            "quad": "Quad",
+            "row-4": "Four-row"
           }
         }
       }

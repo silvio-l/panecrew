@@ -11,6 +11,8 @@
 const ZOOM_LEVELS = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.5, 1.7, 2] as const;
 
 export const DEFAULT_ZOOM = 1;
+export const MIN_ZOOM: number = Math.min(...ZOOM_LEVELS);
+export const MAX_ZOOM: number = Math.max(...ZOOM_LEVELS);
 
 /**
  * Die nächste Stufe in Richtung `direction` (+1 größer, -1 kleiner). An den

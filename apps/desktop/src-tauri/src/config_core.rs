@@ -57,11 +57,31 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Enum(vec!["de".into(), "en".into()]),
         serde_json::json!("de"),
     ))?;
+    // UI-Zoom (Shift+Cmd/Strg +/-/0, `useAppZoom.ts`) — bislang reiner
+    // Laufzeit-State ohne jede Persistenz, jeder Neustart fiel auf 1 zurück.
+    // Bewusst von `terminal.fontSize` getrennt: Zoom skaliert die ganze
+    // Oberfläche über den nativen Webview-Zoom, die Terminal-Schriftgröße nur
+    // den Zellraster-Text in den Panes.
+    registry.register(entry(
+        "appearance.zoom",
+        SettingType::Number,
+        serde_json::json!(1.0),
+    ))?;
 
-    // Grid
+    // Grid — dieselben sieben Werte wie `TemplateId` in gridState.ts
+    // (Frontend-seitige Quelle der Wahrheit); ein Test unten hält beide
+    // Listen in Sync.
     registry.register(entry(
         "grid.defaultTemplate",
-        SettingType::Enum(vec!["single".into(), "split".into(), "quad".into()]),
+        SettingType::Enum(vec![
+            "single".into(),
+            "split".into(),
+            "two-over-one".into(),
+            "one-over-two".into(),
+            "row-3".into(),
+            "quad".into(),
+            "row-4".into(),
+        ]),
         serde_json::json!("quad"),
     ))?;
 
@@ -108,6 +128,19 @@ mod tests {
     }
 
     #[test]
+    fn appearance_zoom_defaults_to_1_and_is_a_plain_number() {
+        let mut registry = ConfigRegistry::new();
+        register_core_settings(&mut registry).unwrap();
+
+        let entry = registry
+            .find("appearance.zoom")
+            .expect("should be registered");
+
+        assert_eq!(entry.default, serde_json::json!(1.0));
+        assert_eq!(entry.setting_type, SettingType::Number);
+    }
+
+    #[test]
     fn appearance_theme_defaults_to_system_with_the_three_documented_options() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
@@ -133,5 +166,33 @@ mod tests {
             .expect("should be registered");
 
         assert_eq!(entry.default, serde_json::json!("quad"));
+    }
+
+    #[test]
+    fn grid_default_template_covers_all_seven_templateid_values() {
+        // Muss exakt der `TemplateId`-Union in gridState.ts entsprechen — sonst
+        // kann diese Einstellung Layouts wählen, die der Hauptfenster-Switcher
+        // gar nicht anbietet (oder umgekehrt). Bewusst als eigener Test von
+        // `grid_default_template_defaults_to_quad_matching_gridstate_ts`
+        // getrennt: der eine prüft den Default, dieser die Vollständigkeit.
+        let mut registry = ConfigRegistry::new();
+        register_core_settings(&mut registry).unwrap();
+
+        let entry = registry
+            .find("grid.defaultTemplate")
+            .expect("should be registered");
+
+        assert_eq!(
+            entry.setting_type,
+            SettingType::Enum(vec![
+                "single".into(),
+                "split".into(),
+                "two-over-one".into(),
+                "one-over-two".into(),
+                "row-3".into(),
+                "quad".into(),
+                "row-4".into(),
+            ])
+        );
     }
 }

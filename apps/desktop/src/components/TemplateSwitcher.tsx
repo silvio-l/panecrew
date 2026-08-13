@@ -108,7 +108,11 @@ export function TemplateSwitcher({
 // die der Knopf schaltet. Die Zellenzahl kommt aus derselben Tabelle wie die
 // Slot-Zahl des Stores, die Anordnung aus derselben Klasse wie der
 // Arbeitsraum; nachgezeichnet wird hier nichts.
-function TemplateGlyph({
+// Exportiert, damit SettingsWindow.tsx dasselbe Piktogramm für
+// `grid.defaultTemplate` zeigen kann statt einer Textliste — die Einstellung
+// soll optisch nichts Eigenes erfinden, sondern genau das Bild verwenden, das
+// dieser Switcher oben rechts im Hauptfenster ohnehin schon zeigt.
+export function TemplateGlyph({
   template,
   slotCount,
 }: {
