@@ -39,6 +39,40 @@ const DEFAULT_LINE_THRESHOLD = 1;
 let idleMs = DEFAULT_IDLE_MS;
 let lineThreshold = DEFAULT_LINE_THRESHOLD;
 
+// Ungelesen-Zustand (Umbau 2026-08-13, Nutzer-Neuspezifikation): `active`
+// oben ist bewusst TRANSIENT (fällt nach `idleMs` Stille von selbst zurück)
+// — genau das ist für ein "bis du den Tab öffnest, bleibt es markiert"-Signal
+// die falsche Grundlage, ein Agent-Lauf mit Sprechpausen über `idleMs` hinaus
+// würde das Badge sonst zwischendurch fälschlich verlieren. `unread` ist
+// deshalb ein ZWEITER, unabhängig gepflegter Zustand pro Tab: gesetzt bei
+// jedem frischen Aktivitäts-Burst auf einem Tab, der gerade NICHT der eine
+// angesehene Tab ist (s. `viewedTabId` unten), gelöscht ausschließlich durch
+// `markTabViewed` — nie durch Zeitablauf.
+//
+// GENAU EIN global angesehener Tab (`viewedTabId`) statt eines Pane-lokalen
+// Zustands: Nutzer-Zitat zur Neuspezifikation, "es gibt ja immer nur ein
+// aktives Tab, das hat nichts mit dem Grid oder dem Pane zu tun" — wörtlich
+// nur wahr, wenn "angesehen" GRID-WEIT eindeutig ist (sonst gäbe es bis zu
+// vier gleichzeitig "ausgewählte" Tabs, einen pro Pane). Der Aufrufer
+// (PaneTabs.tsx' `TerminalTabChip`) meldet genau den einen Tab, der sowohl
+// innerhalb seiner Pane ausgewählt ALS AUCH dessen Pane grid-fokussiert ist —
+// dieselbe Kombination, die dort schon den Hintergrund-Pane-Fund behoben hat
+// (Kopfkommentar dort, Korrektur "Hintergrund-Pane-Fund"). Modul-global statt
+// Pane-lokal gehalten, weil genau EIN Tab app-weit gemeint ist, nicht einer
+// pro Pane.
+let viewedTabId: string | null = null;
+
+// Start-Ruhefenster ab Entstehung eines Eintrags (Pane-Mount/Tab-Öffnen):
+// jede frisch gespawnte Shell druckt sofort ihren eigenen Prompt — das ist
+// echter PTY-Durchsatz und würde ohne dieses Fenster JEDEN Hintergrund-Tab
+// beim App-Start (Sitzungs-Restore mit mehreren Panes) sofort als ungelesen
+// markieren, obwohl der Nutzer schlicht noch keine Gelegenheit hatte,
+// überhaupt etwas zu verpassen. `getOrCreateEntry` läuft bereits beim ersten
+// Hook-Mount (über `subscribe`), also deutlich vor dem ersten echten
+// PTY-Output — 1s deckt selbst eine langsame Shell-Init komfortabel ab, ohne
+// echte spätere Aktivität zu verschlucken.
+const UNREAD_BOOT_GRACE_MS = 1000;
+
 export function setActivityIdleMs(value: number): void {
   if (Number.isFinite(value) && value > 0) idleMs = value;
 }
@@ -60,6 +94,10 @@ interface ActivityEntry {
   pendingLines: number;
   windowTimer: number;
   listeners: Set<() => void>;
+  /** Persistenter Ungelesen-Zustand, s. Kommentar an `viewedTabId` oben. */
+  unread: boolean;
+  /** Erzeugungszeitpunkt dieses Eintrags — Grundlage für `UNREAD_BOOT_GRACE_MS`. */
+  createdAt: number;
 }
 
 const entries = new Map<string, ActivityEntry>();
@@ -67,7 +105,14 @@ const entries = new Map<string, ActivityEntry>();
 function getOrCreateEntry(tabId: string): ActivityEntry {
   let entry = entries.get(tabId);
   if (!entry) {
-    entry = { active: false, pendingLines: 0, windowTimer: 0, listeners: new Set() };
+    entry = {
+      active: false,
+      pendingLines: 0,
+      windowTimer: 0,
+      listeners: new Set(),
+      unread: false,
+      createdAt: Date.now(),
+    };
     entries.set(tabId, entry);
   }
   return entry;
@@ -118,6 +163,12 @@ export function reportLineAdvance(
       entry.active = false;
       notify(entry);
     }, idleMs);
+    // Ungelesen nur auf einem frischen Burst-Beginn setzen (nicht bei jeder
+    // Zeile), und nur außerhalb des Start-Ruhefensters, auf jedem Tab außer
+    // dem einen gerade angesehenen — s. Kommentar an `viewedTabId` oben.
+    if (tabId !== viewedTabId && Date.now() - entry.createdAt >= UNREAD_BOOT_GRACE_MS) {
+      entry.unread = true;
+    }
     notify(entry);
   } else {
     // Schwelle noch nicht erreicht: der Zähler verfällt, wenn innerhalb des
@@ -140,8 +191,38 @@ export function disposeTerminalActivity(tabId: string): void {
   entries.delete(tabId);
 }
 
+/** Nur für Tests: räumt sämtliche Einträge UND `viewedTabId` zurück — Letzteres
+ * hängt an keinem einzelnen Tab-Eintrag und würde sonst unbemerkt aus einem
+ * Test in den nächsten derselben Datei durchsickern (dasselbe Leck-Risiko,
+ * gegen das `setActivityIdleMs`/`setActivityLineThreshold` ihr eigenes
+ * Zurücksetzen in `afterEach` brauchen). */
+export function resetTerminalActivityForTests(): void {
+  for (const tabId of entries.keys()) disposeTerminalActivity(tabId);
+  viewedTabId = null;
+}
+
 export function isTerminalActive(tabId: string): boolean {
   return entries.get(tabId)?.active ?? false;
+}
+
+/** Meldet, dass der Nutzer `tabId` gerade tatsächlich ansieht (PaneTabs.tsx'
+ * `TerminalTabChip`, ausgewählt UND eigene Pane grid-fokussiert) — der
+ * einzige Weg, `unread` zu löschen (kein Zeitablauf, s. Kommentar an
+ * `viewedTabId` oben). Setzt `viewedTabId` auch dann, wenn für diesen Tab
+ * noch gar kein Eintrag existiert (z. B. ein Tab ohne jede PTY-Ausgabe
+ * bislang) — spätere `reportLineAdvance`-Aufrufe für ihn müssen ihn trotzdem
+ * korrekt als "der angesehene" erkennen. */
+export function markTabViewed(tabId: string): void {
+  viewedTabId = tabId;
+  const entry = entries.get(tabId);
+  if (entry?.unread) {
+    entry.unread = false;
+    notify(entry);
+  }
+}
+
+export function isTabUnread(tabId: string): boolean {
+  return entries.get(tabId)?.unread ?? false;
 }
 
 function subscribe(tabId: string, listener: () => void): () => void {
@@ -152,16 +233,18 @@ function subscribe(tabId: string, listener: () => void): () => void {
   };
 }
 
-/** Push-getriebenes Gegenstück zu `useDetectedToolId` — liefert, ob der
- * Terminal-Tab `tabId` gerade laufend neue Zeilen empfängt. Für einen noch
- * nie gemeldeten oder bereits geschlossenen Tab `false`. Reiner
- * Erkennungsbaustein ohne eigene UI — der Verwendungsort (Chip-Badge o. ä.)
- * ist eine eigene Design-Entscheidung eines späteren Tickets. */
-export function useTerminalActivity(tabId: string): boolean {
+/** Push-getriebener React-Hook — liefert `unread` (Kommentar an
+ * `viewedTabId` oben) für `tabId`. `entry.active` selbst (s.
+ * `isTerminalActive`) treibt inzwischen keine eigene UI mehr, bleibt aber
+ * intern die Burst-Erkennung, auf der `unread` aufsetzt (s.
+ * `reportLineAdvance`) — kein eigener Hook mehr dafür, seit PaneTabs.tsx'
+ * Umbau (Kopfkommentar dort) das transiente Blink-Badge durch dieses
+ * persistente Signal ersetzt hat. */
+export function useTerminalUnread(tabId: string): boolean {
   const subscribeForTab = useCallback(
     (listener: () => void) => subscribe(tabId, listener),
     [tabId],
   );
-  const getSnapshot = useCallback(() => isTerminalActive(tabId), [tabId]);
+  const getSnapshot = useCallback(() => isTabUnread(tabId), [tabId]);
   return useSyncExternalStore(subscribeForTab, getSnapshot);
 }

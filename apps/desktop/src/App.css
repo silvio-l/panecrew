@@ -88,6 +88,44 @@ body,
   }
 }
 
+/*
+ * Ungelesen-Aufblitzen (Needs-Attention, Umbau 2026-08-13, Nutzer-Vorgabe:
+ * "das Tab gerät farblich in den Vordergrund und geht dann langsam wieder
+ * aus... bis bloß noch dieser typische rote Punkt bleibt"): EINMALIGER
+ * Hintergrund-Wasch über den ganzen Chip beim false→true-Übergang von
+ * `unread` (terminalActivity.ts) — kein infiniter Loop wie pc-hud-scan/-ack
+ * weiter unten, deren Hüllkurven-Form (kurzer Anstieg über den 10%-Zwischen-
+ * stopp, langer linearer Abfall zurück auf 100%) hier aber Vorbild ist,
+ * bewusst OHNE eigene Ostufen-Timing-Funktion je Stopp — ein einzelner
+ * Zwischenstopp bei 10% erzeugt den kurzen Anstieg/langen Abfall bereits rein
+ * aus der linearen Interpolation zwischen den drei Stopps.
+ *
+ * Trägt denselben Akzent wie der aktive Tab (--pc-pane-activeBorder) statt
+ * einer zweiten Farbe — unterscheidet sich davon rein über die DAUER (unter
+ * 1,5s, dann vollständig weg) statt über den Farbton: dieselbe Logik, mit der
+ * die harten HUD-Instrument-Events von der 150ms-Weich-Regel abgegrenzt
+ * werden (Motion-Regel oben). Nur `background-color`, bewusst KEIN
+ * `border-color`: der Chip zeichnet seine eigene, pixelgenau austarierte
+ * Randbox bereits selbst (PaneTabs.tsx, Korrektur "die Linien liegen nicht
+ * ganz sauber") — eine zweite, überlagerte Randbox an denselben gerundeten
+ * Ecken wäre exakt der Kandidat für das dort bereits gefundene Randlinien-
+ * Artefakt (`border-accent-on-rounded`).
+ *
+ * Einmalig statt endlos: ein React-`key`-Neumount pro Übergang startet die
+ * `animation` jedes Mal neu (dieselbe Technik wie am Tool-Icon-Badge, s.
+ * Kopfkommentar PaneTabs.tsx) statt einer `transition`-Klasse, die bei einem
+ * reinen Zustandswechsel ohne Neumount gar nicht erst feuert.
+ */
+@keyframes pc-attention-flash {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  10% {
+    background-color: color-mix(in srgb, var(--pc-pane-activeBorder) 34%, transparent);
+  }
+}
+
 body {
   overflow: hidden;
   background: var(--pc-app-background);

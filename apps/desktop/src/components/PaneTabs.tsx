@@ -10,7 +10,7 @@ import {
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 import { useDetectedToolId } from "../terminal/useDetectedTool";
-import { useTerminalActivity } from "../terminal/terminalActivity";
+import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
 import { resolveToolIcon } from "../terminal/toolIcons";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
@@ -185,6 +185,35 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // Akzent-Box unten) — nur die Badge-Bedingung bezieht `paneFocused` mit ein,
 // sonst verschwände "welcher Tab ist hier ausgewählt" sobald man den
 // Pane-Fokus verlässt.
+//
+// Umbau 2026-08-13, noch später (Nutzer-Neuspezifikation nach Abnahme des
+// Hintergrund-Pane-Fixes): das bis dahin blinkende `bg-current`-Badge
+// ("aktiv im Hintergrund", reine Streaming-Anzeige, s. Korrektur oben) wird
+// hier durch ein zweistufiges Signal ersetzt, wörtliches Nutzer-Zitat: "das
+// Tab gerät farblich in den Vordergrund und geht dann langsam wieder aus...
+// und dann bleibt halt bloß noch dieser typische rote Punkt... und zwar so
+// lange, bis man den Tab aufgemacht hat". Zwei GETRENNTE Zustände in
+// terminalActivity.ts (dortiger Kopfkommentar zu `viewedTabId`/`unread`,
+// nicht hier wiederholt):
+//
+// 1. `unread` (persistent, KEIN Zeitablauf) treibt den kleinen Punkt — jetzt
+//    statisch statt blinkend, in `--pc-icon-red` statt `bg-current`. Dieselbe
+//    Farbe wie ConfirmDialog.tsx' Gefahren-Icon und ExplorerPanel.tsx' Alarm-
+//    Rahmen (beide bereits "hier ist etwas, das Aufmerksamkeit braucht"),
+//    bewusst NICHT `--pc-terminal-ansiRed`: die dortige Datei trennt eigens
+//    einen Chrome-Rot-Ton vom Terminal-Inhalts-Rot, genau die Trennung, die
+//    ein Notiz-Punkt in der Tab-Leiste (Chrome, kein Terminal-Inhalt)
+//    braucht, um nicht als ANSI-Fehlerfarbe gelesen zu werden.
+// 2. Der false→true-Übergang von `unread` löst zusätzlich EINMALIG den
+//    `pc-attention-flash`-Wasch über den ganzen Chip aus (App.css, dortiger
+//    Kommentar zur Hüllkurve/Farbwahl) — per `key`-Neumount erkannt
+//    (`flashKey` unten), derselbe Mechanismus wie am Tool-Icon-Badge.
+//
+// `markTabViewed` (terminalActivity.ts) läuft aus einem Effekt, sobald
+// `active && paneFocused` wahr wird — dieselbe Kombination, die den
+// Hintergrund-Pane-Fund behoben hat, jetzt zusätzlich als "der Nutzer hat
+// diesen Tab gerade tatsächlich geöffnet"-Signal wiederverwendet, statt eine
+// zweite, abweichende Definition von "angesehen" einzuführen.
 //
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
@@ -365,17 +394,32 @@ function TerminalTabChip({
   const baseLabel = t("paneTabs.terminalTab", { number });
   const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
   const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
-  // Hook unbedingt aufgerufen (Rules of Hooks) — die Aktiv-Tab-Ausnahme greift
-  // erst danach, sonst würde `!active && useTerminalActivity(...)` den Hook
-  // je nach `active` in unterschiedlicher Reihenfolge aufrufen.
-  const isStreaming = useTerminalActivity(tabId);
-  // Unterdrückt nur für den Tab, den der Nutzer GERADE ansieht: ausgewählt
-  // UND die eigene Pane hat den Grid-Fokus (Begründung: Kopfkommentar dieser
-  // Datei, Korrektur "Hintergrund-Pane-Fund"). Jeder andere strömende Tab —
-  // in einer fremden Pane oder nur ein weiterer Tab derselben Pane — zeigt
-  // das Badge.
-  const needsAttention = isStreaming && !(active && paneFocused);
-  const needsAttentionLabel = needsAttention ? t("paneTabs.backgroundActivityLabel") : null;
+  // Persistent statt transient (Kopfkommentar dieser Datei, Umbau-Absatz;
+  // terminalActivity.ts' Kommentar an `viewedTabId`/`unread`) — bleibt
+  // gesetzt über Sprechpausen hinweg, bis `markTabViewed` unten feuert.
+  const isUnread = useTerminalUnread(tabId);
+  const isViewed = active && paneFocused;
+  // `markTabViewed` meldet "der Nutzer sieht diesen Tab gerade tatsächlich"
+  // an terminalActivity.ts, sobald Auswahl UND Pane-Fokus zusammenfallen —
+  // dieselbe Kombination wie zuvor die reine Badge-Unterdrückung, jetzt
+  // zusätzlich der einzige Weg, `unread` wieder zu löschen.
+  useEffect(() => {
+    if (isViewed) markTabViewed(tabId);
+  }, [isViewed, tabId]);
+  // Löst den einmaligen Aufblitz-Effekt (App.css' `pc-attention-flash`) exakt
+  // am false→true-Übergang von `isUnread` aus, nicht bei jedem Re-Render
+  // während `isUnread` bereits `true` ist — ein `key`-Neumount pro Übergang
+  // startet die `animation` jedes Mal frisch (dasselbe Muster wie das
+  // Tool-Icon-Badge, s. `pc-overlay-in` oben im Kopfkommentar).
+  const wasUnreadRef = useRef(isUnread);
+  const [flashKey, setFlashKey] = useState(0);
+  useEffect(() => {
+    if (isUnread && !wasUnreadRef.current) {
+      setFlashKey((key) => key + 1);
+    }
+    wasUnreadRef.current = isUnread;
+  }, [isUnread]);
+  const needsAttentionLabel = isUnread ? t("paneTabs.unreadActivityLabel") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
   // schlicht keinen Akkord im Tooltip.
@@ -469,17 +513,24 @@ function TerminalTabChip({
             // ohne Kontur las sich ein inaktiver Tab gar nicht mehr als
             // Tab, nur noch als schwebender Text. Erst bei Hover hellt
             // Rand UND Füllung auf.
-            className={`flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
+            className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
               active
                 ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)"
                 : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
             } ${CHROME_FOCUS_RING}`}
           >
+            {flashKey > 0 && (
+              <span
+                key={flashKey}
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 -z-10 animate-[pc-attention-flash_1400ms_ease-out] rounded-t-(--pc-paneControl-radius)"
+              />
+            )}
             <span className="flex items-center gap-1">
-              {needsAttention && (
+              {isUnread && (
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 animate-[pc-clock-blink_1s_steps(1,end)_infinite] rounded-full bg-current"
+                  className="size-1.5 shrink-0 rounded-full bg-(--pc-icon-red)"
                 />
               )}
               {toolIcon && (

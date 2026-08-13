@@ -113,7 +113,7 @@
     "closeTerminalTab": "Close terminal {{number}}",
     "renameTerminalTab": "Rename terminal {{number}}",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
-    "backgroundActivityLabel": "Active in background",
+    "unreadActivityLabel": "Unread activity",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",

@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
-import { disposeTerminalActivity, reportLineAdvance } from "../terminal/terminalActivity";
+import { reportLineAdvance, resetTerminalActivityForTests } from "../terminal/terminalActivity";
 import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 
 // Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
@@ -129,32 +129,84 @@ describe("PaneTabs", () => {
     expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
   });
 
-  describe("Needs-Attention-Badge", () => {
-    // Regressionstest zum Hintergrund-Pane-Fund (Kopfkommentar von
-    // PaneTabs.tsx, Korrektur "Hintergrund-Pane-Fund"): der ausgewählte Tab
-    // einer unfokussierten Pane muss das Badge zeigen können — nur der Tab,
-    // den der Nutzer GERADE ansieht (ausgewählt UND Pane hat den Grid-Fokus),
-    // darf es unterdrücken.
+  describe("Needs-Attention: Ungelesen-Punkt", () => {
+    // Umbau 2026-08-13 (Nutzer-Neuspezifikation, s. Kopfkommentar von
+    // PaneTabs.tsx, Umbau-Absatz): persistent statt transient — reportet erst
+    // NACH dem Start-Ruhefenster (terminalActivity.ts' UNREAD_BOOT_GRACE_MS),
+    // deshalb hier `vi.useFakeTimers()` + `vi.advanceTimersByTime`, wie schon
+    // in terminalActivity.test.ts. `resetTerminalActivityForTests` statt
+    // einzelner `disposeTerminalActivity`-Aufrufe: löscht zusätzlich
+    // `viewedTabId` (terminalActivity.ts), das an keinem einzelnen Tab-
+    // Eintrag hängt und sonst aus früheren Tests dieser Datei durchsickern
+    // würde — jeder vorherige Test in dieser Datei rendert mit dem
+    // `baseProps`-Default (`activeTerminalTabId: "tab-1", paneFocused: true`)
+    // und setzt darüber unbemerkt `viewedTabId = "tab-1"`.
+    beforeEach(() => {
+      resetTerminalActivityForTests();
+      vi.useFakeTimers();
+    });
     afterEach(() => {
-      disposeTerminalActivity("tab-1");
-      disposeTerminalActivity("tab-2");
+      vi.useRealTimers();
+      resetTerminalActivityForTests();
     });
 
-    it("zeigt das Badge für den ausgewählten Tab einer unfokussierten Pane", () => {
-      reportLineAdvance("tab-2", 1);
+    it("zeigt den Punkt für einen Hintergrund-Tab einer unfokussierten Pane, erst nach dem Start-Ruhefenster", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }));
 
+      act(() => {
+        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1);
+      });
+
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Aktiv im Hintergrund" }),
+        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
       ).toBeInTheDocument();
     });
 
-    it("unterdrückt das Badge nur für den Tab, den der Nutzer in der fokussierten Pane gerade ansieht", () => {
-      reportLineAdvance("tab-2", 1);
+    it("unterdrückt den Punkt nur für den Tab, den der Nutzer in der fokussierten Pane gerade ansieht", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: true }));
 
+      act(() => {
+        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1);
+      });
+
       expect(
-        screen.queryByRole("button", { name: "Terminal 2: Aktiv im Hintergrund" }),
+        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+    });
+
+    it("löscht den Punkt erst, wenn der Tab tatsächlich geöffnet wird — nicht durch Zeitablauf", () => {
+      const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
+      const { rerender } = renderTabs(props);
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+      ).toBeInTheDocument();
+
+      // Beliebig langes Verstreichen von Zeit — weit über jedes Idle-Fenster
+      // hinaus — löscht den Punkt NICHT, nur tatsächliches Öffnen darf das
+      // (Nutzer-Zitat: "so lange, bis man den Tab aufgemacht hat").
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+      ).toBeInTheDocument();
+
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTerminalTabId="tab-2" />
+        </Tooltip.Provider>,
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
     });

@@ -11,8 +11,11 @@ import {
 import {
   committedLineCount,
   disposeTerminalActivity,
+  isTabUnread,
   isTerminalActive,
+  markTabViewed,
   reportLineAdvance,
+  resetTerminalActivityForTests,
   setActivityIdleMs,
   setActivityLineThreshold,
 } from "./terminalActivity";
@@ -171,5 +174,83 @@ describe("reportLineAdvance / isTerminalActive", () => {
     expect(isTerminalActive("tab-a")).toBe(true);
     vi.advanceTimersByTime(1);
     expect(isTerminalActive("tab-a")).toBe(false);
+  });
+});
+
+// unread/markTabViewed/viewedTabId: Umbau 2026-08-13 (Nutzer-Neuspezifikation,
+// s. Kopfkommentar dieser Datei zu `viewedTabId`) — persistenter Zustand,
+// unabhängig von `active`/`idleMs` oben, s. dortige Tests.
+describe("unread / markTabViewed", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    resetTerminalActivityForTests();
+  });
+
+  it("wird erst unread, nachdem sowohl das Idle- als auch das Start-Ruhefenster abgelaufen sind", () => {
+    // Frischer Eintrag, sofort aktiv — aber noch innerhalb des Start-
+    // Ruhefensters (jede frisch gespawnte Shell druckt sofort ihren Prompt,
+    // s. Kommentar an UNREAD_BOOT_GRACE_MS).
+    reportLineAdvance("tab-a", 1);
+    expect(isTabUnread("tab-a")).toBe(false);
+
+    vi.advanceTimersByTime(1500);
+    expect(isTerminalActive("tab-a")).toBe(false);
+    expect(isTabUnread("tab-a")).toBe(false);
+
+    // Neuer Burst, jetzt außerhalb des Start-Ruhefensters.
+    reportLineAdvance("tab-a", 1);
+    expect(isTabUnread("tab-a")).toBe(true);
+  });
+
+  it("verfällt NICHT durch Zeitablauf, anders als active", () => {
+    reportLineAdvance("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    reportLineAdvance("tab-a", 1);
+    expect(isTabUnread("tab-a")).toBe(true);
+
+    vi.advanceTimersByTime(60_000);
+    expect(isTerminalActive("tab-a")).toBe(false);
+    expect(isTabUnread("tab-a")).toBe(true);
+  });
+
+  it("markiert unread nicht auf dem aktuell angesehenen Tab, wohl aber auf jedem anderen", () => {
+    reportLineAdvance("tab-a", 1);
+    reportLineAdvance("tab-b", 1);
+    vi.advanceTimersByTime(1500);
+    markTabViewed("tab-a");
+
+    reportLineAdvance("tab-a", 1);
+    reportLineAdvance("tab-b", 1);
+
+    expect(isTabUnread("tab-a")).toBe(false);
+    expect(isTabUnread("tab-b")).toBe(true);
+  });
+
+  it("markTabViewed löscht ein bereits gesetztes unread sofort", () => {
+    reportLineAdvance("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    reportLineAdvance("tab-a", 1);
+    expect(isTabUnread("tab-a")).toBe(true);
+
+    markTabViewed("tab-a");
+    expect(isTabUnread("tab-a")).toBe(false);
+  });
+
+  it("resetTerminalActivityForTests setzt auch viewedTabId zurück", () => {
+    reportLineAdvance("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    markTabViewed("tab-a");
+    resetTerminalActivityForTests();
+
+    reportLineAdvance("tab-a", 1); // frischer Eintrag nach dem Reset
+    vi.advanceTimersByTime(1500); // Idle- UND Start-Ruhefenster vorbei
+    reportLineAdvance("tab-a", 1);
+    // Ohne Rücksetzen bliebe "tab-a" weiterhin der angesehene Tab und
+    // unterdrückte unread dauerhaft — genau das Leck-Risiko, gegen das
+    // dieser Test wacht.
+    expect(isTabUnread("tab-a")).toBe(true);
   });
 });
