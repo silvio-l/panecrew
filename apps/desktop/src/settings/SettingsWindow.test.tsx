@@ -45,6 +45,23 @@ beforeEach(() => {
   });
 });
 
+describe("SettingsWindow — Reveal-Gate (Perf-Fix)", () => {
+  // Regressionsschutz, gleiches Muster wie About.test.tsx: das Fenster startet
+  // unsichtbar (`visible(false)` in settings_window.rs) und deckt sich erst
+  // auf, wenn das Frontend `settings_visible` ruft — VOR dem Laden von
+  // Schema/Werten, da Kategoriebaum + "Lade..."-Text schon beim Mount stehen.
+  // KEIN requestAnimationFrame: ein unsichtbares WKWebView bekommt auf macOS
+  // keine reguläre rAF-Taktung mehr (siehe About.tsx).
+  it("ruft settings_visible beim Mount auf, ohne auf requestAnimationFrame zu warten", async () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+
+    render(<SettingsWindow />);
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("settings_visible"));
+    expect(rafSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("SettingsWindow — Extension-Settings (Ticket 09)", () => {
   it("zeigt die Extension-Kategorie unter ihrer eigenen ID im Kategoriebaum", async () => {
     render(<SettingsWindow />);

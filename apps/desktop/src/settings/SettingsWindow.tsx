@@ -58,6 +58,19 @@ export function SettingsWindow() {
   const [query, setQuery] = useState("");
   const [rawMode, setRawMode] = useState(false);
 
+  useEffect(() => {
+    // Fenster startet unsichtbar (`settings_window.rs`, `.visible(false)`)
+    // und deckt sich erst hier selbst auf — Kategoriebaum + Suchfeld + der
+    // "Lade..."-Text stehen schon beim Mount, bevor Schema/Werte überhaupt
+    // ankommen, also wird nicht auf `useSettings()`s `loading` gewartet.
+    // KEIN requestAnimationFrame: dieselbe Falle wie in About.tsx dokumentiert
+    // — ein noch unsichtbares WKWebView bekommt auf macOS keine regulären
+    // Frame-Callbacks mehr, das hätte hier bis zu ~1s zusätzliche Verzögerung
+    // bedeutet. Rust hat für den Fall, dass dieser Aufruf nie ankommt, ohnehin
+    // eine eigene Zeitschranke (REVEAL_WATCHDOG).
+    void invoke("settings_visible");
+  }, []);
+
   // Core-Kategorien in fester, kuratierter Reihenfolge; jede weitere
   // Kategorie im Schema kommt von einer Extension (`source` ist deren
   // Extension-ID, nicht "core") — ihre Reihenfolge ist alphabetisch, da es
