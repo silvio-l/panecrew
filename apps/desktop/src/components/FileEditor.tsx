@@ -139,7 +139,7 @@ export function FileEditor({
             // Explorer-Kopfzeile): dieser Knopf ist die einzige sichtbare
             // Antwort auf „wie schreibe ich das zurück", und die darf auch
             // dann auffindbar sein, wenn gerade nichts zu speichern ist.
-            className={`flex h-5 shrink-0 items-center rounded-(--pc-paneControl-radius) px-1.5 transition-[color,background-color] ${
+            className={`flex h-5 shrink-0 items-center rounded-(--pc-paneControl-radius) px-1.5 ${
               canSave
                 ? "text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground)"
                 : "text-(--pc-paneHeader-foreground)"
@@ -164,7 +164,7 @@ export function FileEditor({
             // Fläche gerade verdeckt. Derselbe Grundsatz wie im Über-Fenster:
             // bei einem Zustand, der etwas anderes ersetzt, ist der sichtbare
             // Ausgang Pflicht, nicht Zierde.
-            className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-[color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <CloseIcon />
           </button>
@@ -275,7 +275,7 @@ function SaveErrorNotice({
         // erzwungen wird nur beim Konflikt (der Hook holt dafür den aktuellen
         // Platten-Stamp frisch), sonst ist es eine schlichte Wiederholung.
         onClick={() => onSave({ force: conflict })}
-        className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-pane-border) px-2.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+        className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-pane-border) px-2.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
       >
         {conflict ? t("fileEditor.overwriteAnyway") : t("fileEditor.retry")}
       </button>
@@ -354,7 +354,7 @@ function LoadErrorNotice({
               );
             });
           }}
-          className={`flex h-8 shrink-0 items-center gap-2 rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+          className={`flex h-8 shrink-0 items-center gap-2 rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
           <ExternalIcon />
           {t("fileEditor.openExternally")}

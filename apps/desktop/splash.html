@@ -127,11 +127,14 @@
         color: #bfbfbf;
       }
 
-      /* Früh und dann stehend: die Leiste kommt kurz nach dem ersten Frame und
-         bleibt die restlichen ~1,7 s, damit die Version wirklich lesbar ist. */
+      /* Früh und dann stehend: die Leiste kommt mit dem Wiedergabestart und
+         bleibt die restlichen ~1,7 s, damit die Version wirklich lesbar ist.
+         Kein Fade mehr (stand hier bis 2026-08-13 mit 350ms ease-out):
+         Text erscheint laut Ästhetik-Regel sofort und statisch — harte
+         Zustandswechsel, keine weichen Übergänge (docs/decisions.md →
+         „Synthwave-Terminal-Ästhetik"). */
       .playing .colophon {
         opacity: 1;
-        transition: opacity 350ms ease-out 200ms;
       }
     </style>
   </head>

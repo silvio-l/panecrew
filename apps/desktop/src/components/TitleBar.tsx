@@ -20,10 +20,10 @@ import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 // Material: der Weichzeichner allein trägt hier keine Tiefe — eine nahezu
 // monochrome Dunkeloberfläche bleibt verwaschen dieselbe Fläche. Die Kapsel
 // liest sich über ihre Kante (hellerer Ton als der Grund, 1px-Lichtkante oben,
-// versetzter Schlagschatten). Sichtbar arbeitet der backdrop-filter an genau
-// einer Stelle, und die ist die Kernmechanik der App: der Fokus-Glow der
-// aktiven Pane reicht unter die Unterkante der Kapsel und schimmert gedämpft
-// durch sie hindurch.
+// versetzter Schlagschatten). Der backdrop-filter arbeitet, sobald Inhalt
+// unter die Kapsel scrollt oder ein Overlay sie unterläuft. (Bis 2026-08-13
+// nannte dieser Kommentar den Fokus-Glow der aktiven Pane als sichtbaren
+// Beleg — der Glow ist seit 2026-08-05 entfernt, der Satz hatte überlebt.)
 //
 // data-tauri-drag-region wirkt nur auf dem Element selbst (keine Vererbung an
 // Kinder): Dekoratives wird pointer-events-none, damit jeder Mousedown auf
@@ -133,7 +133,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
             type="button"
             aria-label={t("titleBar.language")}
             onClick={() => setLanguage(nextLanguage)}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             {i18n.language}
           </button>
@@ -143,7 +143,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
           <button
             type="button"
             aria-label={t("titleBar.settings")}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <GearIcon />
           </button>

@@ -233,7 +233,7 @@ export function ExplorerPanel({
           type="button"
           aria-expanded={!rootCollapsed}
           onClick={() => setRootCollapsed((prev) => !prev)}
-          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pl-2 pr-1 text-left transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pl-2 pr-1 text-left hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
           <Chevron open={!rootCollapsed} />
           {/* Das Akzent-Echo der fokussierten Pane. Liest deren eigenes Token
@@ -298,7 +298,7 @@ export function ExplorerPanel({
               <button
                 type="button"
                 aria-label={t("explorer.moreActions")}
-                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
               >
                 <MoreIcon />
               </button>
@@ -997,7 +997,7 @@ function HeaderAction({
         aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
-        className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-[opacity,color,background-color] focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
+        className={`flex size-6 shrink-0 items-center justify-center rounded-md focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
       >
         {children}
       </button>
@@ -1020,7 +1020,7 @@ export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
           type="button"
           aria-label={t("explorer.showExplorer")}
           onClick={onExpand}
-          className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
           <SidebarIcon />
         </button>
@@ -1442,7 +1442,7 @@ function Chevron({ open }: { open: boolean }) {
       height="10"
       viewBox="0 0 10 10"
       aria-hidden="true"
-      className={`shrink-0 text-(--pc-descriptionForeground) transition-transform duration-100 ${open ? "rotate-90" : ""}`}
+      className={`shrink-0 text-(--pc-descriptionForeground) ${open ? "rotate-90" : ""}`}
     >
       <path
         d="M3.5 1.8 6.7 5 3.5 8.2"

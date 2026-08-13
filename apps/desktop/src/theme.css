@@ -176,8 +176,8 @@
    * monochromen Dunkeloberfläche trägt nicht der Weichzeichner die Tiefe
    * (#121314 verwaschen bleibt #121314), sondern die Materialkante — heller
    * Ton, 1px-Lichtkante oben, echter versetzter Schlagschatten darunter. Der
-   * backdrop-filter arbeitet trotzdem sichtbar an genau einer Stelle: der
-   * Fokus-Glow der aktiven Pane strahlt unter die Unterkante der Titelkapsel.
+   * backdrop-filter arbeitet, sobald Inhalt die Kapsel unterläuft. (Der hier
+   * bis 2026-08-13 als Beleg genannte Fokus-Glow ist seit 2026-08-05 weg.)
    *
    * Die Zahlen sind an echten macOS-26-Fenstern ausgemessen, nicht geschätzt —
    * Safari 26 und Finder liefern identische Werte, Messreihen und Herleitung in

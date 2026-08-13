@@ -549,7 +549,7 @@ function App() {
                 onPointerDown={startExplorerResize}
                 onDoubleClick={() => setExplorerCollapsed(true)}
                 onKeyDown={nudgeExplorerWidth}
-                className={`relative z-10 -ml-[3px] w-[5px] shrink-0 cursor-col-resize transition-colors duration-150 focus-visible:bg-(--pc-focusBorder) focus-visible:outline-none ${
+                className={`relative z-10 -ml-[3px] w-[5px] shrink-0 cursor-col-resize focus-visible:bg-(--pc-focusBorder) focus-visible:outline-none ${
                   resizingExplorer
                     ? "bg-(--pc-focusBorder)"
                     : "bg-transparent hover:bg-(--pc-focusBorder)/45"

@@ -81,7 +81,7 @@ export function TemplateSwitcher({
                 // Contract allein dem Fokus der Pane. Ein zweiter Ort in
                 // derselben Farbe machte aus "welche Pane ist live" eine
                 // Suchaufgabe.
-                className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-40 ${
+                className={`flex size-6 shrink-0 items-center justify-center rounded disabled:pointer-events-none disabled:opacity-40 ${
                   active
                     ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
                     : "text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"

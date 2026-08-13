@@ -186,7 +186,7 @@ export function About() {
           type="button"
           aria-label={t("about.close")}
           onClick={() => void getCurrentWindow().close()}
-          className="absolute left-3 top-3 z-10 flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
+          className="absolute left-3 top-3 z-10 flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
         >
           <CloseIcon />
         </button>
@@ -224,7 +224,7 @@ export function About() {
               onClick={runCheck}
               disabled={update.phase === "checking"}
               aria-busy={update.phase === "checking"}
-              className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
+              className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
             >
               {t("about.checkForUpdates")}
             </button>
@@ -357,7 +357,7 @@ function QuietButton({
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      className="rounded-sm text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) underline decoration-current/35 underline-offset-3 transition-colors hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-(--pc-focusBorder)"
+      className="rounded-sm text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) underline decoration-current/35 underline-offset-3 hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-(--pc-focusBorder)"
     >
       {children}
     </button>
@@ -384,10 +384,14 @@ function CloseIcon() {
   );
 }
 
-// Die Marke in Anzeigegröße, 1:1 aus icons/source/panecrew-mark.svg — hier
-// samt Streulicht. Die Titelleisten-Fassung in TitleBar.tsx lässt es bewusst
-// weg, weil dessen stdDeviation bei 16px im Subpixelbereich landet und die
-// Gehrungsfuge verschmiert; bei 72px sind daraus 1,4 bzw. 3,2 px echtes Glühen.
+// Die Marke in Anzeigegröße, Geometrie und Verläufe 1:1 aus
+// icons/source/panecrew-mark.svg — OHNE dessen Streulicht. Bis 2026-08-13
+// stand es hier (bei 72px wären es 1,4 bzw. 3,2 px echtes Glühen); die
+// Synthwave-Terminal-Ästhetik verbietet Halo-Effekte im App-Chrome
+// grundsätzlich (docs/decisions.md), damit gilt im Chrome überall dieselbe
+// Regel wie in TitleBar.tsx: flache, deckende Verläufe, keine Leuchtschicht.
+// Der Master selbst behält sein Streulicht — er ist das Plattform-Icon auf
+// eigenem Indigo-Grund, kein Chrome-Element.
 function BrandMark() {
   return (
     <svg width="72" height="72" viewBox="0 0 1600 1600" aria-hidden="true">
@@ -422,39 +426,7 @@ function BrandMark() {
           <stop offset="0.82" stopColor="#FFF2DE" />
           <stop offset="1" stopColor="#FFF5E2" />
         </linearGradient>
-        <mask
-          id="pcMarkGapMask"
-          maskUnits="userSpaceOnUse"
-          x="0"
-          y="0"
-          width="1600"
-          height="1600"
-        >
-          <rect width="1600" height="1600" fill="#ffffff" />
-          <polygon points="569,1208 749,1218 555,1485 368,1485" fill="#000000" />
-        </mask>
-        <filter
-          id="pcMarkGlow"
-          x="-20%"
-          y="-20%"
-          width="140%"
-          height="140%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="b1" />
-          <feGaussianBlur in="SourceGraphic" stdDeviation="70" result="b2" />
-          <feMerge>
-            <feMergeNode in="b2" />
-            <feMergeNode in="b1" />
-          </feMerge>
-        </filter>
       </defs>
-      <g mask="url(#pcMarkGapMask)">
-        <g filter="url(#pcMarkGlow)" opacity="0.5" fill="#FFA929">
-          <path d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z" />
-          <path d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
-        </g>
-      </g>
       <path
         fill="url(#pcMarkChevron)"
         d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"
