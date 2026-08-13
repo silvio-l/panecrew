@@ -90,6 +90,7 @@ pub fn run() {
                     }
                 });
             app.manage(ShellIntegrationDir(root));
+            windows::restore_persisted_windows(app.handle());
             splash::arm_watchdog(app.handle());
             Ok(())
         })
@@ -115,6 +116,8 @@ pub fn run() {
             launch::get_launch_project,
             session_store::session_load,
             session_store::session_save,
+            session_store::session_save_window,
+            session_store::session_remove_window,
             splash::splash_visible,
             splash::splash_finished,
             splash::main_ready,
@@ -128,6 +131,7 @@ pub fn run() {
             settings_commands::settings_read_raw,
             settings_commands::settings_write_raw,
             settings_commands::settings_open_window,
+            settings_window::settings_visible,
             windows::window_open_new,
         ])
         .build(tauri::generate_context!())

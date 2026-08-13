@@ -208,13 +208,22 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
 /// read-modify-write-atomically pattern the rest of this module already
 /// uses, just scoped to one array entry instead of the whole document.
 ///
-/// `expanded_folders`/`explorer_width` are deliberately left exactly as read:
-/// Ticket 27's own acceptance criteria only asks for per-window grid state
-/// (template/panes/focus-mode/split-ratios) — those two fields predate
-/// multi-window and stay window-agnostic globals, not this command's job to
-/// touch.
+/// `expanded_folders`/`explorer_width` are window-agnostic globals that
+/// predate multi-window (Ticket 17) and stay that way — but the frontend's
+/// autosave effect now saves per-window via this command instead of the
+/// whole-array `session_save`, so without a way to carry them here too, both
+/// fields would simply stop being persisted the moment a second window
+/// exists. `Some` overwrites the stored value, `None` leaves it exactly as
+/// read — callers that don't own explorer state (e.g. a save triggered
+/// purely by a grid change) pass `None` for both rather than resending a
+/// value they don't have.
 #[tauri::command(async)]
-pub fn session_save_window(app: AppHandle, window: PersistedWindow) -> Result<(), String> {
+pub fn session_save_window(
+    app: AppHandle,
+    window: PersistedWindow,
+    expanded_folders: Option<HashMap<String, Vec<String>>>,
+    explorer_width: Option<f64>,
+) -> Result<(), String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -223,6 +232,12 @@ pub fn session_save_window(app: AppHandle, window: PersistedWindow) -> Result<()
     match state.windows.iter_mut().find(|w| w.label == window.label) {
         Some(existing) => *existing = window,
         None => state.windows.push(window),
+    }
+    if let Some(expanded_folders) = expanded_folders {
+        state.expanded_folders = expanded_folders;
+    }
+    if let Some(explorer_width) = explorer_width {
+        state.explorer_width = Some(explorer_width);
     }
     write_session(&dir, &state)
 }
@@ -585,6 +600,69 @@ mod tests {
         assert_eq!(read_back.windows[0].template, "split");
     }
 
+    /// `expanded_folders` entries are pruned on read for any project no
+    /// window currently references (see `prunes_expanded_folder_entries_…`
+    /// above) — the seeded window and every save below must keep carrying a
+    /// slot for `kept_path`, or the assertions would be testing pruning
+    /// instead of the globals-merge behavior this test is actually about.
+    #[test]
+    fn session_save_window_overwrites_expanded_folders_and_explorer_width_when_given() {
+        let fixture = Fixture::new("save-window-globals-some");
+        let project = fixture.0.join("kept-project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let kept_path = project.to_string_lossy().into_owned();
+
+        let mut window = empty_quad_window("main");
+        window.slots[0] = terminal_only_pane(&kept_path);
+        let mut initial = SessionState {
+            windows: vec![window.clone()],
+            ..SessionState::default()
+        };
+        initial.expanded_folders.insert(kept_path.clone(), vec!["src".to_string()]);
+        initial.explorer_width = Some(240.0);
+        write_session(&fixture.0, &initial).expect("seed initial state");
+
+        let folders = HashMap::from([(kept_path, vec!["src".to_string(), "docs".to_string()])]);
+        session_save_window_with_globals_for_test(
+            &fixture.0,
+            window,
+            Some(folders.clone()),
+            Some(300.0),
+        )
+        .expect("save with globals");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.expanded_folders, folders);
+        assert_eq!(read_back.explorer_width, Some(300.0));
+    }
+
+    #[test]
+    fn session_save_window_leaves_expanded_folders_and_explorer_width_untouched_when_none() {
+        let fixture = Fixture::new("save-window-globals-none");
+        let project = fixture.0.join("kept-project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let kept_path = project.to_string_lossy().into_owned();
+
+        let mut window = empty_quad_window("main");
+        window.slots[0] = terminal_only_pane(&kept_path);
+        let mut initial = SessionState {
+            windows: vec![window.clone()],
+            ..SessionState::default()
+        };
+        initial.expanded_folders.insert(kept_path.clone(), vec!["src".to_string()]);
+        initial.explorer_width = Some(240.0);
+        write_session(&fixture.0, &initial).expect("seed initial state");
+
+        session_save_window_for_test(&fixture.0, window).expect("save");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(
+            read_back.expanded_folders,
+            HashMap::from([(kept_path, vec!["src".to_string()])]),
+        );
+        assert_eq!(read_back.explorer_width, Some(240.0));
+    }
+
     /// Ticket 27, landmine 3's counterpart: closing one window must remove
     /// only that window's entry, leaving sibling windows' sessions intact.
     #[test]
@@ -615,10 +693,25 @@ mod tests {
     /// these test-only wrappers exercise the exact same merge logic against
     /// a fixture directory directly, without needing a live Tauri app.
     fn session_save_window_for_test(dir: &Path, window: PersistedWindow) -> Result<(), String> {
+        session_save_window_with_globals_for_test(dir, window, None, None)
+    }
+
+    fn session_save_window_with_globals_for_test(
+        dir: &Path,
+        window: PersistedWindow,
+        expanded_folders: Option<HashMap<String, Vec<String>>>,
+        explorer_width: Option<f64>,
+    ) -> Result<(), String> {
         let mut state = read_session(dir).unwrap_or_default();
         match state.windows.iter_mut().find(|w| w.label == window.label) {
             Some(existing) => *existing = window,
             None => state.windows.push(window),
+        }
+        if let Some(expanded_folders) = expanded_folders {
+            state.expanded_folders = expanded_folders;
+        }
+        if let Some(explorer_width) = explorer_width {
+            state.explorer_width = Some(explorer_width);
         }
         write_session(dir, &state)
     }

@@ -84,6 +84,17 @@ fn reveal(app: AppHandle) {
     let _ = main.show();
     let _ = main.set_focus();
 
+    // Ticket 27: Sekundärfenster, die `windows::restore_persisted_windows`
+    // beim Start bereits geöffnet, aber `visible(false)` gelassen hat —
+    // erst hier, zusammen mit "main", sichtbar machen, damit ein langsamer
+    // Kaltstart nicht ein zweites Fenster vor dem Splash aufblitzen lässt.
+    // "main" behält den Fokus, den es gerade eben gesetzt hat.
+    for window in app.webview_windows().values() {
+        if window.label() != "main" && window.label().starts_with("main-") {
+            let _ = window.show();
+        }
+    }
+
     // Der Splash bleibt einen Wimpernschlag über dem aufgedeckten Hauptfenster
     // stehen: dessen erster Frame entsteht auf macOS erst nach `show()`, und der
     // Splash deckt genau diese Lücke ab.

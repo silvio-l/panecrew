@@ -26,9 +26,10 @@ const MIN_WIDTH: f64 = 960.0;
 const MIN_HEIGHT: f64 = 600.0;
 const BACKGROUND: &str = "#121314";
 
-/// Cascading offset between successive new windows, same idea as VS Code's brandlint-ok: funktionaler Verhaltensvergleich, kein Marketing
-/// own "New Window" placement — each window lands visibly offset from its
-/// opener instead of stacked exactly on top of it.
+/// Cascading offset between successive new windows — each window lands
+/// visibly offset from its opener instead of stacked exactly on top of it
+/// (brandlint-ok: funktionaler Verhaltensvergleich, kein Marketing — dieselbe
+/// Idee wie VS Codes eigene "New Window"-Platzierung).
 const CASCADE_STEP: f64 = 32.0;
 
 /// Set once in `RunEvent::ExitRequested` (Ticket 27, landmine 3): Tauri fires
@@ -100,6 +101,65 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
         .build()
         .map(|_| label)
         .map_err(|error| format!("Neues Fenster konnte nicht geöffnet werden: {error}"))
+}
+
+/// Startup restore counterpart to `window_open_new` (Ticket 27): reopens one
+/// PREVIOUSLY persisted secondary window by its existing `label` instead of
+/// generating a fresh one — called once per non-"main" entry in
+/// `session.json`'s `windows` array from `run()`'s `setup()`, before the
+/// splash-reveal wait, so every restored window is already present (even
+/// though still hidden behind its own default-transparent first paint) by
+/// the time "main" is revealed. Unlike `window_open_new`, there is no
+/// "opener" to cascade from — a cold start has no window position to offset
+/// against yet — so restored windows simply center, same as the very first
+/// "main" window Tauri itself creates from `tauri.conf.json`.
+pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), String> {
+    WebviewWindowBuilder::new(
+        app,
+        label,
+        WebviewUrl::App(format!("index.html?window={label}").into()),
+    )
+    .title("PaneCrew")
+    .inner_size(WIDTH, HEIGHT)
+    .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
+    .background_color(
+        parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
+    )
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .hidden_title(true)
+    .center()
+    .visible(false)
+    .build()
+    .map(|_| ())
+    .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"))
+}
+
+/// `setup()`-time counterpart to `window_open_new` (Ticket 27): without this,
+/// closing the app with two or more windows open and relaunching would only
+/// ever restore "main" — `session_store`'s `windows` array remembers every
+/// window that was open, but nothing before this function ever turned that
+/// memory back into an actual `WebviewWindow`. Called once from `run()`'s
+/// `setup()`, before `splash::arm_watchdog` — every restored window stays
+/// `visible(false)` until `splash::reveal` shows it alongside "main", so a
+/// slow cold start never flashes a second window into view ahead of the
+/// splash gate. A single window failing to restore is survivable (same
+/// "worst case: the picker" stance as a missing/corrupt session file
+/// elsewhere) and never aborts startup.
+pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
+    let Ok(dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let Some(state) = session_store::read_session(&dir) else {
+        return;
+    };
+    for window in &state.windows {
+        if window.label == MAIN {
+            continue;
+        }
+        if let Err(error) = open_restored(app, &window.label) {
+            eprintln!("PaneCrew: {error}");
+        }
+    }
 }
 
 fn parse_hex_color(hex: &str) -> Option<tauri::window::Color> {
