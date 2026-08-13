@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Reiner Timer-Hook für den Rotationsmodus (Ticket 19) — kein Tauri-, kein
 // DOM-Zugriff, dieselbe Trennung wie `gridState.ts` selbst: die Regeln stehen
@@ -131,6 +131,29 @@ export function useFocusRotation({
     setRemainingMs(intervalMs);
   }
 
+  // `occupiedPanesInOrder` und `onRotate` sind bei App.tsx's echter
+  // Verdrahtung bei JEDEM Render frische Referenzen (`.map()` bzw. eine
+  // Inline-Arrow) — und der eigene Tick-Timer unten (`setRemainingMs` alle
+  // 200ms) lässt genau die Komponente, die diesen Hook aufruft, alle 200ms
+  // neu rendern, solange Rotation aktiv ist. Stünden beide direkt in der
+  // Abhängigkeitsliste des Effekts unten, risse das den `rotateTimer` alle
+  // 200ms ab und baute ihn neu auf, bevor er je ein volles Intervall
+  // übersteht — die Rotation tickt dann zwar sichtbar, schaltet aber nie
+  // tatsächlich um (2026-08-13, Nutzer-Report). Deshalb: `onRotate` über eine
+  // "latest ref" entkoppelt (immer der aktuellste Aufruf, nie Teil der
+  // Abhängigkeitsliste), `occupiedPanesInOrder` über eine daraus abgeleitete
+  // PRIMITIVE Signatur (String) — React vergleicht Strings per Wert, nicht
+  // per Referenz, der Effekt reagiert also nur auf echte Inhaltsänderungen
+  // (Tab geöffnet/geschlossen, Pane belegt/frei), nicht auf jede
+  // Neuberechnung derselben Liste.
+  const onRotateRef = useRef(onRotate);
+  useEffect(() => {
+    onRotateRef.current = onRotate;
+  });
+  const occupiedPanesSignature = occupiedPanesInOrder
+    .map((pane) => `${pane.paneId}:${pane.tabIds.join(",")}`)
+    .join("|");
+
   useEffect(() => {
     if (!active || maximizedPaneId === null) return;
     const sequence = flatten(occupiedPanesInOrder);
@@ -147,7 +170,7 @@ export function useFocusRotation({
       );
       const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % sequence.length;
       const next = sequence[nextIndex];
-      if (next !== undefined) onRotate(next);
+      if (next !== undefined) onRotateRef.current(next);
     }, intervalMs);
     const tickTimer = window.setInterval(() => {
       setRemainingMs(Math.max(0, intervalMs - (Date.now() - startedAt)));
@@ -156,7 +179,11 @@ export function useFocusRotation({
       window.clearInterval(rotateTimer);
       window.clearInterval(tickTimer);
     };
-  }, [active, intervalMs, maximizedPaneId, activeTabId, occupiedPanesInOrder, onRotate]);
+    // occupiedPanesInOrder bewusst nicht in der Liste — occupiedPanesSignature
+    // deckt seine tatsächlich relevanten Inhaltsänderungen ab, s. Kommentar
+    // oben.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, intervalMs, maximizedPaneId, activeTabId, occupiedPanesSignature]);
 
   const toggle = useCallback(() => setActive((current) => !current), []);
 

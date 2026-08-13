@@ -323,6 +323,53 @@ describe("useFocusRotation", () => {
     expect(result.current.remainingMs).toBe(8000);
   });
 
+  it("rotiert trotz häufiger Re-Renders mit neuen (aber inhaltlich gleichen) occupiedPanesInOrder/onRotate-Referenzen weiter", () => {
+    // Reproduziert App.tsx's echte Verdrahtung: dort werden
+    // `occupiedPanesInOrder` (per `.map()`) UND `onRotate` (Inline-Arrow) bei
+    // JEDEM Render frisch gebaut — und der eigene 200ms-Tick-Timer dieses
+    // Hooks (remainingMs-Countdown) lässt genau diese Komponente alle 200ms
+    // neu rendern, solange die Rotation aktiv ist. Ohne Stabilisierung
+    // (Bugfix: Ref statt Closure-Abhängigkeit für occupiedPanesInOrder/
+    // onRotate im Rotations-Effekt) reißt das den rotateTimer alle 200ms ab
+    // und baut ihn neu auf, bevor er je ein volles Intervall übersteht — die
+    // Rotation tickt zwar sichtbar, schaltet aber nie tatsächlich um
+    // (Nutzer-Report 2026-08-13: "die autorotation... funktioniert auch noch
+    // nicht wie vorgesehen").
+    const onRotate = vi.fn();
+    const freshPanes = () => [
+      { paneId: "pane-a", tabIds: ["pane-a:tab-1"] },
+      { paneId: "pane-b", tabIds: ["pane-b:tab-1"] },
+    ];
+    const { result, rerender } = renderHook<FocusRotation, Props>(
+      (props) => useFocusRotation(props),
+      {
+        initialProps: {
+          maximizedPaneId: "pane-a",
+          activeTabId: "pane-a:tab-1",
+          occupiedPanesInOrder: freshPanes(),
+          onRotate,
+        },
+      },
+    );
+    act(() => {
+      result.current.toggle();
+    });
+
+    for (let elapsed = 0; elapsed < 8000; elapsed += 200) {
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      rerender({
+        maximizedPaneId: "pane-a",
+        activeTabId: "pane-a:tab-1",
+        occupiedPanesInOrder: freshPanes(),
+        onRotate,
+      });
+    }
+
+    expect(onRotate).toHaveBeenCalledWith({ paneId: "pane-b", tabId: "pane-b:tab-1" });
+  });
+
   it("rotiert nicht mit einer einzelnen Pane mit nur einem Tab", () => {
     const { result, onRotate } = setup({
       occupiedPanesInOrder: [{ paneId: "pane-a", tabIds: ["pane-a:tab-1"] }],
