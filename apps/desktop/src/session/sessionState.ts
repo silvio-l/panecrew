@@ -81,11 +81,17 @@ export interface SessionState {
 /** Baut den zu persistierenden Zustand aus dem laufenden Grid, der
  * `paneId`-geschlüsselten Dateiauswahl im Explorer (Ticket 06), dem
  * projektpfad-geschlüsselten Aufklapp-Zustand des Baums und der
- * Explorer-Breite. Jede Pane bekommt genau einen Terminal-Tab (die App kennt
- * noch keine mehreren PTYs pro Pane, Ticket 18 baut das) — dessen Index ist
- * der aktive Tab, außer eine Datei ist ausgewählt, dann ist der File-Tab
- * aktiv. Solange es nur ein Fenster gibt, landet der gesamte Grid-Zustand in
- * `windows[0]`. */
+ * Explorer-Breite. Jede Pane trägt seit Ticket 18 ihre echten Terminal-Tabs
+ * (`Pane.terminalTabs`) ein — nur `title` bleibt vorerst immer leer, ein
+ * Umbenennen von Tabs ist nicht Teil dieses Tickets. Aktiver Tab ist
+ * `Pane.activeTerminalTabId`, als Index in `terminal_tabs` (das persistierte
+ * Schema kennt keine `tabId`, s. `PersistedActiveTab`), AUSSER eine Datei ist
+ * sowohl ausgewählt als auch als aktive Ansicht gewählt — genau dieselbe
+ * "nur wenn wirklich offen"-Bedingung wie `PaneGrid.tsx`s `showingFile`, hier
+ * unabhängig nachgebildet: dieses Modul kennt keinen Editor-Zustand, nur die
+ * `selectedFile`-Map, die exakt genau dann einen Eintrag für eine Pane trägt,
+ * wenn deren Datei tatsächlich offen ist. Solange es nur ein Fenster gibt,
+ * landet der gesamte Grid-Zustand in `windows[0]`. */
 export function buildSessionState(
   grid: GridState,
   selectedFile: Record<string, string>,
@@ -99,10 +105,16 @@ export function buildSessionState(
         slots: grid.slots.map((slot): PersistedPane | null => {
           if (slot === null) return null;
           const lastSelectedFile = selectedFile[slot.paneId] ?? null;
+          const showingFile = slot.showingFile && lastSelectedFile !== null;
+          const activeTabIndex = slot.terminalTabs.findIndex(
+            (tab) => tab.tabId === slot.activeTerminalTabId,
+          );
           return {
             project_path: slot.projectPath,
-            terminal_tabs: [{}],
-            active_tab: lastSelectedFile === null ? { kind: "terminal", index: 0 } : { kind: "file" },
+            terminal_tabs: slot.terminalTabs.map(() => ({})),
+            active_tab: showingFile
+              ? { kind: "file" }
+              : { kind: "terminal", index: Math.max(activeTabIndex, 0) },
             file_tab: lastSelectedFile === null ? null : { path: lastSelectedFile },
             adapter_id: null,
           };

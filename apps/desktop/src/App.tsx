@@ -79,8 +79,17 @@ function App() {
   // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
   // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
   // jeden `useEffect`, der eine der beiden Funktionen aufruft, mit sich.
-  const { state: gridState, assignProject, closePane, switchTemplate, focusPane } =
-    useGrid();
+  const {
+    state: gridState,
+    assignProject,
+    closePane,
+    switchTemplate,
+    focusPane,
+    openTerminalTab,
+    closeTerminalTab,
+    switchToTerminalTab,
+    switchToFileTab,
+  } = useGrid();
   // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
   // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
   // das explizit, statt eine Pane vorzutäuschen, die es nicht gibt.
@@ -188,20 +197,37 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
+      terminalTabCount: number,
+      activeTab: { kind: "terminal"; index: number } | { kind: "file" },
       lastSelectedFile: string | null,
     ) => {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
-      const paneId = assignProject(slotIndex, project.path);
+      const { paneId, tabId: firstTabId } = assignProject(slotIndex, project.path);
       setRestoringSlots((current) => {
         if (!current.has(slotIndex)) return current;
         const next = new Set(current);
         next.delete(slotIndex);
         return next;
       });
+
+      // `assignProject` legt bereits den ersten Terminal-Tab an — hier kommen
+      // nur die WEITEREN dazu (Ticket 18). Eine leere/fehlende
+      // `terminal_tabs`-Liste in einer fremden `session.json` unterschreitet
+      // damit nie die Invariante "mindestens ein Terminal-Tab": die Schleife
+      // läuft dann einfach keinmal, es bleibt beim einen Default-Tab.
+      const tabIds = [firstTabId];
+      for (let i = 1; i < terminalTabCount; i += 1) {
+        tabIds.push(openTerminalTab(paneId));
+      }
+      if (activeTab.kind === "terminal") {
+        switchToTerminalTab(paneId, tabIds[activeTab.index] ?? firstTabId);
+      }
+
       if (!lastSelectedFile) return;
       setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
       paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
+      if (activeTab.kind === "file") switchToFileTab(paneId);
     };
 
     const run = async () => {
@@ -237,7 +263,13 @@ function App() {
           slots.map((slot, slotIndex) =>
             slot === null || isCancelled()
               ? Promise.resolve()
-              : restoreSlot(slotIndex, slot.project_path, slot.file_tab?.path ?? null),
+              : restoreSlot(
+                  slotIndex,
+                  slot.project_path,
+                  slot.terminal_tabs.length,
+                  slot.active_tab,
+                  slot.file_tab?.path ?? null,
+                ),
           ),
         );
       }
@@ -403,6 +435,7 @@ function App() {
     guardLeave(focusedPaneId, () => {
       setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
       fileEditor.open(absolutePath);
+      switchToFileTab(focusedPaneId);
     });
   };
 
@@ -544,6 +577,10 @@ function App() {
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
               onFocusPane={focusPane}
+              onOpenTerminalTab={openTerminalTab}
+              onCloseTerminalTab={closeTerminalTab}
+              onSwitchToTerminalTab={switchToTerminalTab}
+              onSwitchToFileTab={switchToFileTab}
             />
           </main>
         </div>

@@ -336,7 +336,7 @@ describe("App", () => {
       expect(invokeMock).toHaveBeenCalledWith(
         "pty_spawn",
         expect.objectContaining({
-          paneId: expect.any(String) as unknown,
+          tabId: expect.any(String) as unknown,
           cwd: "/Users/dev/projects/storefront",
           cols: 120,
           rows: 32,
@@ -847,7 +847,7 @@ describe("App", () => {
     expect(await editorTextbox()).toBeVisible();
     expect(screen.getByLabelText("Terminal storefront")).not.toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
 
     // Zurück im Terminal — und KEINE Rückfrage: anders als "Datei schließen"
     // verwirft ein bloßer Ansichtswechsel nichts.
@@ -1051,12 +1051,12 @@ describe("App", () => {
     await screen.findByLabelText("Terminal storefront");
 
     const spawnCall = invokeMock.mock.calls.find(([cmd]) => cmd === "pty_spawn");
-    const paneId = (spawnCall?.[1] as { paneId: string }).paneId;
+    const tabId = (spawnCall?.[1] as { tabId: string }).tabId;
 
     fireEvent.click(screen.getByRole("button", { name: "Pane schließen" }));
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("pty_kill", { paneId });
+      expect(invokeMock).toHaveBeenCalledWith("pty_kill", { tabId });
     });
     // pty_kill ist laut IPC-Vertrag nicht idempotent — genau ein Aufruf.
     expect(
@@ -1082,7 +1082,7 @@ describe("App", () => {
     ).toHaveLength(0);
   });
 
-  // Der wertvollste neue Fall aus Ticket 03: `paneId` kommt jetzt stabil vom
+  // Der wertvollste neue Fall aus Ticket 03: `tabId` kommt jetzt stabil vom
   // Aufrufer statt frisch pro Effekt-Durchlauf (`usePtyTerminal.ts`). Reacts
   // StrictMode führt Mount → Cleanup → Mount trotzdem weiter synchron im
   // selben Tick aus — ohne die Verzögerung vor dem eigentlichen
@@ -1219,10 +1219,10 @@ describe("Grid / Mehrfach-Pane", () => {
       ([cmd]) => cmd === "pty_spawn",
     );
     expect(spawnCalls).toHaveLength(2);
-    const paneIds = spawnCalls.map(
-      ([, args]) => (args as { paneId: string }).paneId,
+    const tabIds = spawnCalls.map(
+      ([, args]) => (args as { tabId: string }).tabId,
     );
-    expect(new Set(paneIds).size).toBe(2);
+    expect(new Set(tabIds).size).toBe(2);
   });
 
   it("erlaubt denselben Ordner in zwei Slots, ohne zu deduplizieren", async () => {
@@ -1249,13 +1249,13 @@ describe("Grid / Mehrfach-Pane", () => {
           (args as { cwd: string }).cwd === "/Users/dev/projects/storefront",
       ),
     ).toBe(true);
-    const paneIds = spawnCalls.map(
-      ([, args]) => (args as { paneId: string }).paneId,
+    const tabIds = spawnCalls.map(
+      ([, args]) => (args as { tabId: string }).tabId,
     );
-    expect(new Set(paneIds).size).toBe(2);
+    expect(new Set(tabIds).size).toBe(2);
   });
 
-  it("schreibt Eingaben nur mit der paneId der Pane, in der getippt wurde", async () => {
+  it("schreibt Eingaben nur mit der tabId der Pane, in der getippt wurde", async () => {
     openMock
       .mockResolvedValueOnce("/Users/dev/projects/storefront")
       .mockResolvedValueOnce("/Users/dev/projects/admin");
@@ -1268,12 +1268,12 @@ describe("Grid / Mehrfach-Pane", () => {
 
     const storefrontId = (
       spawnCallFor("/Users/dev/projects/storefront")?.[1] as {
-        paneId: string;
+        tabId: string;
       }
-    ).paneId;
+    ).tabId;
     const adminId = (
-      spawnCallFor("/Users/dev/projects/admin")?.[1] as { paneId: string }
-    ).paneId;
+      spawnCallFor("/Users/dev/projects/admin")?.[1] as { tabId: string }
+    ).tabId;
 
     // pty_resize läuft nur nach erfolgreich aufgelöstem Spawn (`syncSize` in
     // usePtyTerminal.ts) — ein zuverlässiges Signal, dass beide Sessions
@@ -1290,12 +1290,12 @@ describe("Grid / Mehrfach-Pane", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
         "pty_write",
-        expect.objectContaining({ paneId: storefrontId }),
+        expect.objectContaining({ tabId: storefrontId }),
       );
     });
     expect(invokeMock).not.toHaveBeenCalledWith(
       "pty_write",
-      expect.objectContaining({ paneId: adminId }),
+      expect.objectContaining({ tabId: adminId }),
     );
   });
 
@@ -1312,9 +1312,9 @@ describe("Grid / Mehrfach-Pane", () => {
 
     const storefrontId = (
       spawnCallFor("/Users/dev/projects/storefront")?.[1] as {
-        paneId: string;
+        tabId: string;
       }
-    ).paneId;
+    ).tabId;
 
     fireEvent.click(
       within(screen.getByLabelText("Terminal storefront")).getByRole(
@@ -1325,7 +1325,7 @@ describe("Grid / Mehrfach-Pane", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("pty_kill", {
-        paneId: storefrontId,
+        tabId: storefrontId,
       });
     });
     expect(
@@ -1334,13 +1334,83 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(screen.getByLabelText("Terminal admin")).toBeInTheDocument();
   });
 
+  it("öffnet, wechselt und schließt einen zweiten Terminal-Tab, ohne die laufende PTY des ersten zu killen", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    const storefrontId = (
+      spawnCallFor("/Users/dev/projects/storefront")?.[1] as {
+        tabId: string;
+      }
+    ).tabId;
+
+    // Unscoped statt `within(irgendeine Pane-Referenz)`: sobald ein zweiter
+    // Tab aktiv wird, liegt die Tab-Leiste des ERSTEN Tabs (identischer
+    // Inhalt, per `tabs`-Prop dupliziert in jedem gemounteten Terminal-Tab,
+    // s. PaneGrid.tsx) hinter `visibility: hidden` und fiele aus
+    // Rollen-Queries heraus — eine früh eingefangene Elementreferenz auf
+    // genau diese Kopie würde also nach dem Umschalten ins Leere greifen.
+    // Da hier nur eine Pane existiert, ist genau eine Kopie je Zeitpunkt
+    // sichtbar, unscoped bleibt also eindeutig.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+      ).toHaveLength(2);
+    });
+    const secondTabId = invokeMock.mock.calls
+      .filter(([cmd]) => cmd === "pty_spawn")
+      .map(([, args]) => (args as { tabId: string }).tabId)
+      .find((id) => id !== storefrontId);
+    expect(secondTabId).toBeTruthy();
+    // Ein weiterer Tab spawnt eine zusätzliche PTY, killt aber keine.
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_kill",
+      expect.anything(),
+    );
+
+    // Zurück zu Tab 1: bloßes Umschalten darf nie killen/respawnen — sonst
+    // stürbe die laufende Session des Nutzers lautlos beim Tab-Wechsel.
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_kill",
+      expect.anything(),
+    );
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+    ).toHaveLength(2);
+
+    // Tab 2 schließen: killt NUR dessen eigene PTY, nicht Tab 1.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Terminal 2 schließen" }),
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("pty_kill", {
+        tabId: secondTabId,
+      });
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", {
+      tabId: storefrontId,
+    });
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(1);
+  });
+
   // Neuzuweisung eines BELEGTEN Slots (dritter der drei im Plan genannten
   // Verlassen-Wege, `App.tsx`s `assignProjectToSlot` guardet und vergisst
   // die verdrängte Pane bereits) hat in diesem Schritt noch keinen
   // UI-Auslöser — der echte Pro-Slot-Picker mit einer Neu-zuweisen-Geste ist
   // laut Plan-Tabelle Teil des Opus-Durchgangs (Schritt 8). Der Regressions-
   // test dafür (genau ein `pty_kill` mit der alten, genau ein `pty_spawn`
-  // mit einer neuen `paneId`) gehört dorthin, sobald es einen Knopf gibt,
+  // mit einer neuen `tabId`) gehört dorthin, sobald es einen Knopf gibt,
   // den ein Test drücken kann.
 
   it("folgt mit dem Explorer der zuletzt fokussierten Pane", async () => {

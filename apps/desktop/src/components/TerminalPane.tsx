@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
-import { PaneTabs } from "./PaneTabs";
+import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
 
@@ -19,35 +19,41 @@ import { usePtyTerminal } from "../terminal/usePtyTerminal";
 // nichts mehr über ihre Slot-Zuordnung, sie bekommt sie gereicht.
 export function TerminalPane({
   paneId,
+  tabId,
   projectPath,
   projectName,
   focused,
+  active,
   tabs,
   dropTargets,
   onClose,
   onFocus,
 }: {
+  /** Die Pane, zu der dieser Terminal-Tab gehört — trägt weiterhin
+   * `data-pane-id` (Drop-Routing, `useWebviewFileDrop.ts`) und geht in
+   * `onFocus`/`onClose` (Pane-weite Aktionen, nicht Tab-weite). */
   paneId: string;
+  /** DIESER Terminal-Tab — seit Ticket 18 die PTY-Identität statt `paneId`
+   * (eine Pane kann mehrere `TerminalPane`-Mounts gleichzeitig haben, je
+   * einen pro Terminal-Tab). Geht 1:1 in `usePtyTerminal`. */
+  tabId: string;
   projectPath: string;
   projectName: string;
   /** Genau eine Pane im ganzen Grid ist das (`state.focusedPaneId`). Trägt
    * zwei der drei Fokussignale: den Akzentrahmen und den aufgehellten
    * Header-Text; das dritte ist das Akzent-Echo im Explorer-Kopf. */
   focused: boolean;
-  /** `null`, solange in dieser Pane keine Datei offen ist — der Header bleibt
-   * dann die reine Namenszeile von vorher. Sobald eine Datei offen ist,
-   * bekommen beide Header (dieser hier UND FileEditor.tsx) denselben
-   * Tab-Umschalter mit denselben Handlern gereicht (PaneGrid.tsx hält
-   * `activeView` als einzige Wahrheit) — 2026-08-12, Nutzerwunsch, zwischen
-   * Terminal und Datei hin- und herschalten zu können, ohne die Datei zu
-   * schließen. */
-  tabs: {
-    activeView: "terminal" | "file";
-    fileName: string;
-    fileDirty: boolean;
-    onSelectTerminal: () => void;
-    onSelectFile: () => void;
-  } | null;
+  /** Ob DIESER Terminal-Tab gerade der sichtbare der Pane ist. Getrennt von
+   * `focused` (Pane-Ebene): mehrere `TerminalPane`-Mounts derselben Pane
+   * stehen gleichzeitig im DOM (PaneGrid.tsx blendet die inaktiven nur aus,
+   * s. dortige Begründung), aber nur der aktive darf sich als Drop-Ziel
+   * eintragen — sonst gewinnt beim Registrieren zufällig der zuletzt
+   * gemountete, auch wenn er gerade unsichtbar ist. */
+  active: boolean;
+  /** Tab-Leiste dieser Pane (PaneTabs.tsx) — TerminalPane.tsx UND
+   * FileEditor.tsx binden hier dasselbe Objekt ein (PaneGrid.tsx hält den
+   * Tab-Zustand als einzige Wahrheit), 2026-08-12/Ticket 18. */
+  tabs: PaneTabsProps;
   /** Grid-weite Drag-Drop-Registrierung (`useWebviewFileDrop.ts`) — diese
    * Pane trägt sich hier ein, damit ein Drop auf ihrer Fläche bei ihr
    * landet. */
@@ -72,13 +78,14 @@ export function TerminalPane({
     hasSelection,
     insertDroppedPaths,
     spawning,
-  } = usePtyTerminal(paneId, projectPath);
+  } = usePtyTerminal(tabId, projectPath);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
 
   useEffect(() => {
+    if (!active) return;
     dropTargets.register(paneId, insertDroppedPaths);
     return () => dropTargets.unregister(paneId);
-  }, [paneId, dropTargets, insertDroppedPaths]);
+  }, [active, paneId, dropTargets, insertDroppedPaths]);
 
   return (
     <section
@@ -129,15 +136,7 @@ export function TerminalPane({
         }`}
       >
         <span className="min-w-0 flex-1 truncate">{projectName}</span>
-        {tabs && (
-          <PaneTabs
-            active={tabs.activeView}
-            fileName={tabs.fileName}
-            fileDirty={tabs.fileDirty}
-            onSelectTerminal={tabs.onSelectTerminal}
-            onSelectFile={tabs.onSelectFile}
-          />
-        )}
+        <PaneTabs {...tabs} />
         <ChromeTooltip label={t("terminalPane.closePane")} align="end">
           <button
             type="button"

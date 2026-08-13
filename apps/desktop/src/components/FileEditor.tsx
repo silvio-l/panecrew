@@ -2,7 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
-import { PaneTabs } from "./PaneTabs";
+import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { FileEditorState } from "../explorer/fileEditorState";
 import { fileNameFromPath } from "../explorer/filePath";
 import { isMacPlatform } from "../shortcuts/platform";
@@ -35,30 +35,26 @@ import {
 // mit anderem Inhalt.
 export function FileEditor({
   state,
-  dirty,
   focused,
-  onSelectTerminal,
+  tabs,
   onEdit,
   onSave,
   onClose,
 }: {
   state: FileEditorState;
-  /** `wouldLoseWork` aus dem Hook, nicht hier nachgerechnet: „ungespeichert"
-   * ist eine Aussage der Zustandsmaschine, und zwei Herleitungen desselben
-   * Satzes laufen früher oder später auseinander. */
-  dirty: boolean;
   /** Dieselbe Pane-Fokus-Aussage wie in TerminalPane.tsx (`state.focusedPaneId`
    * im Grid-Store) — diese Fläche ersetzt nur deren Inhalt, nicht deren
    * Fokus-Semantik. Ohne diesen Prop zeigte JEDE offene Datei unbedingt den
    * Akzentrahmen, auch in unfokussierten Panes (2026-08-12,
    * Nutzerbeobachtung: alle Panes wirken gleichzeitig „aktiv"). */
   focused: boolean;
-  /** Wechselt zurück zur Terminal-Ansicht DERSELBEN Pane, ohne die Datei zu
-   * schließen — PaneGrid.tsx hält `activeView` als einzige Wahrheit, dieselbe
-   * Handler-Identität geht auch an TerminalPane.tsx' Tab-Umschalter. Anders
-   * als `onClose` unten (verwirft die Datei) ist das ein reiner Wechsel der
+  /** Tab-Leiste dieser Pane (PaneTabs.tsx) — dasselbe Objekt wie an
+   * TerminalPane.tsx derselben Pane (PaneGrid.tsx hält den Tab-Zustand als
+   * einzige Wahrheit), 2026-08-12/Ticket 18. Enthält u. a. den Wechsel
+   * zurück zu einem Terminal-Tab, ohne die Datei zu schließen — anders als
+   * `onClose` unten (verwirft die Datei) ist das ein reiner Wechsel der
    * Ansicht. */
-  onSelectTerminal: () => void;
+  tabs: PaneTabsProps;
   onEdit: (content: string) => void;
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
@@ -125,15 +121,7 @@ export function FileEditor({
             eine zusätzliche Namenszeile daneben wäre dieselbe Information ein
             zweites Mal. */}
         <span className="flex min-w-0 flex-1 items-center">
-          <PaneTabs
-            active="file"
-            fileName={name}
-            fileDirty={dirty}
-            onSelectTerminal={onSelectTerminal}
-            // Diese Fläche IST die Datei-Ansicht — ein Klick auf den bereits
-            // aktiven Tab hat nichts zu wechseln.
-            onSelectFile={() => undefined}
-          />
+          <PaneTabs {...tabs} />
         </span>
         {hasBuffer && (
           <button

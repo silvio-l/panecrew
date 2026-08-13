@@ -13,15 +13,15 @@
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
-import { useState } from "react";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
-import type { GridState } from "../grid/gridState";
+import type { GridState, Pane } from "../grid/gridState";
 import {
   useWebviewFileDrop,
   type PaneDropRegistration,
 } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
+import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
 import { ProjectPicker } from "./ProjectPicker";
 import { TerminalPane } from "./TerminalPane";
@@ -36,6 +36,10 @@ export function PaneGrid({
   onAssignProject,
   onClosePane,
   onFocusPane,
+  onOpenTerminalTab,
+  onCloseTerminalTab,
+  onSwitchToTerminalTab,
+  onSwitchToFileTab,
 }: {
   state: GridState;
   paneFileEditors: PaneFileEditors;
@@ -54,6 +58,10 @@ export function PaneGrid({
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
+  onOpenTerminalTab: (paneId: string) => void;
+  onCloseTerminalTab: (paneId: string, tabId: string) => void;
+  onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
+  onSwitchToFileTab: (paneId: string) => void;
 }) {
   // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort).
   const dropTargets = useWebviewFileDrop(zoom);
@@ -67,14 +75,17 @@ export function PaneGrid({
         slot ? (
           <PaneCell
             key={slot.paneId}
-            paneId={slot.paneId}
-            projectPath={slot.projectPath}
+            pane={slot}
             focused={slot.paneId === state.focusedPaneId}
             editor={paneFileEditors.editorFor(slot.paneId)}
             guardLeave={guardLeave}
             dropTargets={dropTargets}
             onClose={() => onClosePane(slot.paneId)}
             onFocus={() => onFocusPane(slot.paneId)}
+            onOpenTerminalTab={onOpenTerminalTab}
+            onCloseTerminalTab={onCloseTerminalTab}
+            onSwitchToTerminalTab={onSwitchToTerminalTab}
+            onSwitchToFileTab={onSwitchToFileTab}
           />
         ) : (
           <ProjectPicker
@@ -90,96 +101,120 @@ export function PaneGrid({
 }
 
 function PaneCell({
-  paneId,
-  projectPath,
+  pane,
   focused,
   editor,
   guardLeave,
   dropTargets,
   onClose,
   onFocus,
+  onOpenTerminalTab,
+  onCloseTerminalTab,
+  onSwitchToTerminalTab,
+  onSwitchToFileTab,
 }: {
-  paneId: string;
-  projectPath: string;
+  pane: Pane;
   focused: boolean;
   editor: ReturnType<PaneFileEditors["editorFor"]>;
   guardLeave: (paneId: string, run: () => void) => void;
   dropTargets: PaneDropRegistration;
   onClose: () => void;
   onFocus: () => void;
+  onOpenTerminalTab: (paneId: string) => void;
+  onCloseTerminalTab: (paneId: string, tabId: string) => void;
+  onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
+  onSwitchToFileTab: (paneId: string) => void;
 }) {
-  // Welche der beiden Flächen gerade sichtbar ist — unabhängig davon, ob eine
-  // Datei offen ist (das entscheidet nur, ob es überhaupt eine zweite Fläche
-  // GIBT). 2026-08-12, Nutzerwunsch: bis dahin gab es keinen Weg zurück zum
-  // Terminal außer dem endgültigen "Datei schließen" — ein Blick daneben ohne
-  // die Datei zu verwerfen, war nicht möglich.
-  //
-  // `openPath` bleibt über Laden/Speichern/Ändern hinweg derselbe String,
-  // solange dieselbe Datei offen ist — verglichen wird deshalb GENAU dieser
-  // Pfad, nicht das ganze `editor.state`. Angepasst wird "während des
-  // Renderns" (React-Muster für "State aus einer Prop/Ableitung
-  // zurücksetzen", https://react.dev/learn/you-might-not-need-an-effect)
-  // statt in einem `useEffect`: ein Effekt würde hier einen unnötigen
-  // Zwischen-Render erzwingen, und dieselbe ESLint-Regel
-  // (`react-hooks/set-state-in-effect`), die anderswo in dieser Codebase
-  // schon Effekte vermeidet, verbietet genau das. Der Vergleich feuert also
-  // nur beim tatsächlichen Öffnen/Wechseln/Schließen einer Datei und
-  // überschreibt keine manuelle Tab-Wahl während des Tippens oder Speicherns.
+  // `pane.showingFile` ist reine Nutzer-ABSICHT (gridState.ts kennt keinen
+  // Dateizustand) — ob dazu wirklich eine Fläche existiert, weiß nur der
+  // Editor-Zustand hier. Ohne diesen Abgleich bliebe eine Pane nach einem
+  // wiederhergestellten `active_tab: {kind:"file"}` auf einen inzwischen
+  // ungültigen Pfad tot: FileEditor liefert bei `status === "idle"` `null`,
+  // und kein Terminal-Tab wäre je sichtbar. `showingFile` unten ist deshalb
+  // die für DIESES Rendern gültige, abgeleitete Ansicht — nicht `pane`s
+  // Rohfeld.
   const openPath = editor.state.status === "idle" ? null : editor.state.path;
-  const [activeView, setActiveView] = useState<"terminal" | "file">(
-    "terminal",
-  );
-  const [lastOpenPath, setLastOpenPath] = useState<string | null>(null);
-  if (openPath !== lastOpenPath) {
-    setLastOpenPath(openPath);
-    setActiveView(openPath === null ? "terminal" : "file");
-  }
+  const showingFile = pane.showingFile && openPath !== null;
 
-  const tabs =
-    openPath === null
-      ? null
-      : {
-          activeView,
-          fileName: fileNameFromPath(openPath),
-          fileDirty: editor.wouldLoseWork,
-          onSelectTerminal: () => setActiveView("terminal"),
-          onSelectFile: () => setActiveView("file"),
-        };
+  const tabs: PaneTabsProps = {
+    terminalTabs: pane.terminalTabs.map((tab, i) => ({
+      tabId: tab.tabId,
+      number: i + 1,
+    })),
+    activeTerminalTabId: pane.activeTerminalTabId,
+    showingFile,
+    fileName: openPath === null ? null : fileNameFromPath(openPath),
+    fileDirty: editor.wouldLoseWork,
+    onSelectTerminalTab: (tabId) => onSwitchToTerminalTab(pane.paneId, tabId),
+    onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
+    onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
+    onSelectFile: () => onSwitchToFileTab(pane.paneId),
+  };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col">
-      {/* Wie zuvor in App.tsx: die Pane bleibt gemountet, nur ausgeblendet —
-          ein Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen. */}
+    // `relative`, damit die absolut positionierten Flächen darunter (jeder
+    // Terminal-Tab UND der File-Tab) sich exakt auf DIESE Zelle beziehen,
+    // nicht auf das ganze Grid.
+    <div className="relative flex min-h-0 min-w-0 flex-col">
+      {/* Wie zuvor: jede Fläche bleibt gemountet, nur ausgeblendet — ein
+          Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen.
+          Seit Ticket 18 sind das bis zu N Terminal-Tabs gleichzeitig statt
+          einem, deshalb reicht das frühere `hidden`-Attribut (= `display:
+          none`) nicht mehr: ein inaktiver Tab wäre beim Öffnen 0×0 groß, denn
+          `usePtyTerminal.ts`s `fitAddon.fit()` misst die Containerbox beim
+          Mount, und `display: none` nimmt sie komplett aus dem Layout. Jede
+          Fläche liegt deshalb `absolute inset-0` exakt übereinander und wird
+          nur per inline `visibility: hidden` ausgeblendet (nicht per
+          Tailwind-Klasse, Begründung dort) — das lässt den Platz im Layout,
+          xterm.js misst also auch als inaktiver Tab korrekt, und nimmt
+          Klicks/Drops gleich mit raus, ohne ein zusätzliches
+          `pointer-events: none` zu brauchen. */}
+      {pane.terminalTabs.map((tab) => {
+        const isActiveTab = tab.tabId === pane.activeTerminalTabId;
+        const isVisible = isActiveTab && !showingFile;
+        return (
+          <div
+            key={tab.tabId}
+            className="absolute inset-0 flex min-h-0 flex-col"
+            // Inline statt einer Tailwind-Klasse: `visibility: hidden` allein
+            // reicht (nimmt Klicks/Fokus schon von sich aus raus, ein
+            // zusätzliches `pointer-events: none` wäre doppelt), und inline
+            // gesetzt ist es unabhängig vom geladenen Stylesheet real
+            // vorhanden — u. a. Voraussetzung dafür, dass Testing Librarys
+            // `toBeVisible()` es überhaupt sieht.
+            style={isVisible ? undefined : { visibility: "hidden" }}
+          >
+            <TerminalPane
+              paneId={pane.paneId}
+              tabId={tab.tabId}
+              projectPath={pane.projectPath}
+              projectName={projectNameFromPath(pane.projectPath)}
+              focused={focused}
+              // Unabhängig von `showingFile`: genau EIN Terminal-Tab je Pane
+              // trägt die Drop-Registrierung (`useWebviewFileDrop.ts`),
+              // exakt wie vor Ticket 18 (ein Terminal pro Pane, immer
+              // registriert) — nur jetzt korrekt an den AKTIVEN von N Tabs
+              // gebunden statt zufällig an den zuletzt gemounteten.
+              active={isActiveTab}
+              tabs={tabs}
+              dropTargets={dropTargets}
+              onClose={onClose}
+              onFocus={onFocus}
+            />
+          </div>
+        );
+      })}
       <div
-        hidden={activeView !== "terminal"}
-        className="flex min-h-0 flex-1 flex-col"
+        className="absolute inset-0 flex min-h-0 flex-col"
+        style={showingFile ? undefined : { visibility: "hidden" }}
       >
-        <TerminalPane
-          paneId={paneId}
-          projectPath={projectPath}
-          projectName={projectNameFromPath(projectPath)}
-          focused={focused}
-          tabs={tabs}
-          dropTargets={dropTargets}
-          onClose={onClose}
-          onFocus={onFocus}
-        />
-      </div>
-      {/* Bleibt wie zuvor bedingungslos gerendert (FileEditor liefert bei
-          `status === "idle"` selbst `null`) — nur das zusätzliche `hidden`
-          ist neu: anders als das Terminal-PTY hängt an dieser Fläche kein
-          Lebenszyklus, der einen Unmount verbieten würde, aber ein
-          durchgehendes Mounten hält Scroll-Position und Cursor beim
-          Zurückwechseln unangetastet. */}
-      <div hidden={activeView !== "file"} className="flex min-h-0 flex-1 flex-col">
         <FileEditor
           state={editor.state}
-          dirty={editor.wouldLoseWork}
           focused={focused}
-          onSelectTerminal={() => setActiveView("terminal")}
+          tabs={tabs}
           onEdit={editor.editContent}
           onSave={editor.save}
-          onClose={() => guardLeave(paneId, editor.close)}
+          onClose={() => guardLeave(pane.paneId, editor.close)}
         />
       </div>
     </div>

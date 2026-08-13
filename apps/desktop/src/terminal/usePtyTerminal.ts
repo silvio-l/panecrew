@@ -22,14 +22,17 @@ import {
 // Der IPC-Vertrag (pty_spawn/pty_write/pty_resize/pty_kill, Output als
 // Channel<ArrayBuffer> über Tauris Raw-Byte-Transport) ist eingefroren, siehe
 // .scratch/panecrew-v0.1/issues/02-ipc-contract.md — hier wird exakt dagegen
-// gebaut, nichts erfunden.
+// gebaut, nichts erfunden. Der Vertrag schlüsselt seit Ticket 18 über `tabId`
+// statt `paneId` (dortiger Addendum-Eintrag): eine Pane kann mehrere Terminal-
+// Tabs gleichzeitig haben, jeder mit eigener PTY.
 //
 // Der gesamte imperative Lebenszyklus (Terminal, FitAddon, Channel, Spawn/Kill,
 // Webview-Drag-Drop) liegt in genau einem Effekt; die Komponente darüber bleibt
-// reines Chrome. Ticket 03 mountet denselben Hook mehrfach — `paneId` kommt
-// dafür stabil vom Grid-Store, nicht mehr aus einer eigenen Erzeugung hier
-// (Begründung des StrictMode-Umgangs mit einer stabilen Id: siehe `cancelled`
-// weiter unten).
+// reines Chrome. Ticket 03 mountet denselben Hook mehrfach (eine Pane pro
+// Mount), Ticket 18 erweitert das auf mehrfach PRO Pane (ein Mount je Terminal-
+// Tab) — `tabId` kommt in beiden Fällen stabil vom Grid-Store, nicht mehr aus
+// einer eigenen Erzeugung hier (Begründung des StrictMode-Umgangs mit einer
+// stabilen Id: siehe `cancelled` weiter unten).
 
 /** Bytes, die wir selbst erzeugen (Shift+Enter). */
 const LINE_FEED = 0x0a;
@@ -68,10 +71,10 @@ export interface PtyTerminal {
   insertDroppedPaths: (paths: string[]) => void;
 }
 
-export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
+export function usePtyTerminal(tabId: string, cwd: string): PtyTerminal {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  // Die eigentliche Einfüge-Handlung braucht `writeText` (kennt `paneId` UND
+  // Die eigentliche Einfüge-Handlung braucht `writeText` (kennt `tabId` UND
   // den `sessionReady`-Schutz) und `suggestion.reset()` — beides lebt nur als
   // lokale Variable im Effekt unten. `insertDroppedPaths` (der öffentliche,
   // stabile Teil der Rückgabe) ruft deshalb nur diesen Ref auf; der Effekt
@@ -111,12 +114,12 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     terminal.focus();
     terminalRef.current = terminal;
 
-    // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `paneId`
+    // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `tabId`
     // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
     // Effekt-Durchlauf. Reacts StrictMode führt Mount → Cleanup → Mount aber
     // weiter synchron im selben Tick aus, bevor die Mikrotask-Queue leert —
     // ohne Gegenmaßnahme würden zwei echte `pty_spawn`-Aufrufe für DIESELBE
-    // `paneId` in Flug gehen. Welcher davon dann im Backend übrig bleibt,
+    // `tabId` in Flug gehen. Welcher davon dann im Backend übrig bleibt,
     // entschiede `spawn_and_register`s Insert-Reihenfolge (`pty_commands.rs`)
     // — die richtet sich nach Rust-seitiger Fertigstellung, nicht danach,
     // welcher Aufruf zuerst losgeschickt wurde. Der eigentliche Spawn-Aufruf
@@ -144,7 +147,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
 
     const writeBytes = (bytes: Uint8Array) => {
       if (!sessionReady) return;
-      void invoke("pty_write", { paneId, data: Array.from(bytes) }).catch(
+      void invoke("pty_write", { tabId, data: Array.from(bytes) }).catch(
         reportIpcFailure,
       );
     };
@@ -153,7 +156,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     const syncSize = () => {
       if (!sessionReady) return;
       void invoke("pty_resize", {
-        paneId,
+        tabId,
         cols: terminal.cols,
         rows: terminal.rows,
       }).catch(reportIpcFailure);
@@ -214,7 +217,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
     queueMicrotask(() => {
       if (cancelled) return;
       void invoke("pty_spawn", {
-        paneId,
+        tabId,
         cwd,
         cols: terminal.cols,
         rows: terminal.rows,
@@ -224,7 +227,7 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
           sessionReady = true;
           if (!disposed) setSpawning(false);
           if (cancelled) {
-            killPane(paneId);
+            killTab(tabId);
             return;
           }
           // Zwischen fit() und dem Auflösen des Spawns kann sich der
@@ -435,9 +438,9 @@ export function usePtyTerminal(paneId: string, cwd: string): PtyTerminal {
       // pty_kill ist laut Vertrag nicht idempotent — nur killen, wenn der
       // Spawn tatsächlich durchgelaufen ist. Ist er noch unterwegs, übernimmt
       // der then-Zweig oben das Aufräumen (cancelled === true).
-      if (sessionReady) killPane(paneId);
+      if (sessionReady) killTab(tabId);
     };
-  }, [paneId, cwd]);
+  }, [tabId, cwd]);
 
   const copySelection = useCallback(() => {
     const terminal = terminalRef.current;
@@ -529,8 +532,8 @@ function pasteInto(terminal: Terminal): void {
     .catch(noop);
 }
 
-function killPane(paneId: string): void {
-  void invoke("pty_kill", { paneId }).catch(reportIpcFailure);
+function killTab(tabId: string): void {
+  void invoke("pty_kill", { tabId }).catch(reportIpcFailure);
 }
 
 function reportIpcFailure(error: unknown): void {

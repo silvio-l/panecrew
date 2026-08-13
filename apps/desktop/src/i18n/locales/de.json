@@ -61,7 +61,9 @@
   },
   "paneTabs": {
     "selectView": "Ansicht wählen",
-    "terminal": "Terminal"
+    "terminalTab": "Terminal {{number}}",
+    "openTerminalTab": "Weiteren Terminal-Tab öffnen",
+    "closeTerminalTab": "Terminal {{number}} schließen"
   },
   "projectPicker": {
     "choose": "Projekt wählen",

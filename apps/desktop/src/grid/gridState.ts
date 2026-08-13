@@ -38,9 +38,30 @@ export const GRID_TEMPLATES: readonly GridTemplate[] = [
 
 export const DEFAULT_TEMPLATE: TemplateId = "quad";
 
+/** Ein Terminal-Tab einer Pane — je eine eigene PTY (Ticket 18). `tabId`
+ * kommt wie `paneId` fertig von `useGrid.ts` (`crypto.randomUUID()`), dieses
+ * Modul erzeugt keine IDs selbst (Kopfkommentar). */
+interface TerminalTab {
+  tabId: string;
+}
+
 export interface Pane {
   paneId: string;
   projectPath: string;
+  /** Mindestens ein Eintrag, immer — ein Tab lässt sich nicht schließen,
+   * solange er der letzte ist (`closeTerminalTab` unten), eine Pane ohne
+   * Terminal-Tab wäre ein Zustand, den `activeTerminalTabId` nicht mehr
+   * auflösen könnte. */
+  terminalTabs: readonly TerminalTab[];
+  /** Welcher Terminal-Tab beim Zurückwechseln vom File-Tab aktiv wird —
+   * unabhängig davon, ob gerade `showingFile` gilt. Immer eine `tabId` aus
+   * `terminalTabs`. */
+  activeTerminalTabId: string;
+  /** Ob gerade der File-Tab sichtbar ist statt eines Terminal-Tabs. Ob es
+   * überhaupt einen File-Tab gibt, weiß dieses Modul nicht — das entscheidet
+   * der Aufrufer (`usePaneFileEditors`, außerhalb dieses Schnitts), hier wird
+   * nur die Sichtbarkeits-Absicht gehalten. */
+  showingFile: boolean;
 }
 
 // Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
@@ -132,18 +153,122 @@ export function switchTemplate(state: GridState, target: TemplateId): GridState 
   return { template: target, slots: nextSlots, focusedPaneId: state.focusedPaneId };
 }
 
-/** Schreibt die Zuordnung, setzt `focusedPaneId` auf die neue Pane. Ein
- * ungültiger Index lässt den State unverändert (identische Referenz). */
+/** Schreibt die Zuordnung, setzt `focusedPaneId` auf die neue Pane. Die neue
+ * Pane bekommt genau einen Terminal-Tab (`tabId`), sofort aktiv, kein
+ * File-Tab. Ein ungültiger Index lässt den State unverändert (identische
+ * Referenz). */
 export function assignProjectToSlot(
   state: GridState,
   slotIndex: number,
   projectPath: string,
   paneId: string,
+  tabId: string,
 ): GridState {
   if (slotIndex < 0 || slotIndex >= state.slots.length) return state;
   const nextSlots = state.slots.slice();
-  nextSlots[slotIndex] = { paneId, projectPath };
+  nextSlots[slotIndex] = {
+    paneId,
+    projectPath,
+    terminalTabs: [{ tabId }],
+    activeTerminalTabId: tabId,
+    showingFile: false,
+  };
   return { ...state, slots: nextSlots, focusedPaneId: paneId };
+}
+
+/** Hängt einen weiteren Terminal-Tab an und macht ihn sofort aktiv (verlässt
+ * dabei den File-Tab, falls gerade sichtbar) — der Zustandsübergang hinter
+ * "weiteren Terminal-Tab öffnen". Eine unbekannte `paneId` lässt den State
+ * unverändert. */
+export function openTerminalTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = {
+    ...pane,
+    terminalTabs: [...pane.terminalTabs, { tabId }],
+    activeTerminalTabId: tabId,
+    showingFile: false,
+  };
+  return { ...state, slots: nextSlots };
+}
+
+/** Schließt einen Terminal-Tab (beendet nur dessen PTY, nicht die Pane) —
+ * der letzte verbleibende Terminal-Tab einer Pane lässt sich nicht
+ * schließen (identische Referenz), ebenso eine unbekannte `paneId`/`tabId`.
+ * War der geschlossene Tab aktiv, übernimmt sein Vorgänger in der Liste
+ * (oder, an Position 0, sein Nachfolger). */
+export function closeTerminalTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+  if (pane.terminalTabs.length <= 1) return state;
+
+  const tabIndex = pane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) return state;
+
+  // nextTabs hat mindestens ein Element (Guard oben: terminalTabs.length > 1
+  // vor dem Filtern), der Fallback-Zugriff auf Index 0 ist also nie leer.
+  const nextTabs = pane.terminalTabs.filter((tab) => tab.tabId !== tabId);
+  const fallbackTab = nextTabs[Math.max(tabIndex - 1, 0)] ?? nextTabs[0];
+  const nextActiveTabId =
+    pane.activeTerminalTabId === tabId
+      ? (fallbackTab as TerminalTab).tabId
+      : pane.activeTerminalTabId;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = {
+    ...pane,
+    terminalTabs: nextTabs,
+    activeTerminalTabId: nextActiveTabId,
+  };
+  return { ...state, slots: nextSlots };
+}
+
+/** Wechselt zu einem Terminal-Tab derselben Pane (verlässt dabei den
+ * File-Tab, falls gerade sichtbar). No-Op (identische Referenz) bei
+ * unbekannter `paneId`/`tabId` oder wenn der Tab bereits aktiv ist und kein
+ * File-Tab davor sichtbar war. */
+export function switchToTerminalTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+  if (!pane.terminalTabs.some((tab) => tab.tabId === tabId)) return state;
+  if (pane.activeTerminalTabId === tabId && !pane.showingFile) return state;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = { ...pane, activeTerminalTabId: tabId, showingFile: false };
+  return { ...state, slots: nextSlots };
+}
+
+/** Wechselt zum File-Tab derselben Pane, ohne den aktiven Terminal-Tab zu
+ * verändern (der bleibt der Rückkehrpunkt). Ob es überhaupt einen File-Tab
+ * gibt, entscheidet der Aufrufer — dieses Modul kennt nur die
+ * Sichtbarkeits-Absicht (s. `Pane.showingFile`). No-Op bei unbekannter
+ * `paneId` oder wenn der File-Tab bereits sichtbar ist. */
+export function switchToFileTab(state: GridState, paneId: string): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+  if (pane.showingFile) return state;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = { ...pane, showingFile: true };
+  return { ...state, slots: nextSlots };
 }
 
 /** Leert den Slot der übergebenen Pane. War sie fokussiert, fällt der Fokus

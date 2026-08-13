@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_GRID_STATE, assignProjectToSlot, switchTemplate } from "../grid/gridState";
+import {
+  INITIAL_GRID_STATE,
+  assignProjectToSlot,
+  openTerminalTab,
+  switchTemplate,
+  switchToFileTab,
+  switchToTerminalTab,
+} from "../grid/gridState";
 import { buildSessionState, restoredSlots, restoredTemplate, type SessionState } from "./sessionState";
 
 const EXPLORER_WIDTH = 224;
@@ -28,6 +35,7 @@ describe("buildSessionState", () => {
       2,
       "/repo/storefront",
       "pane-1",
+      "tab-1",
     );
 
     const state = buildSessionState(grid, {}, {}, EXPLORER_WIDTH);
@@ -41,11 +49,28 @@ describe("buildSessionState", () => {
     });
   });
 
-  it("trägt die letzte ausgewählte Datei der Pane als aktiven File-Tab ein", () => {
-    const grid = assignProjectToSlot(
-      INITIAL_GRID_STATE,
-      0,
-      "/repo/storefront",
+  it("trägt mehrere Terminal-Tabs samt dem Index des aktiven ein", () => {
+    const withTwoTabs = openTerminalTab(
+      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/storefront", "pane-1", "tab-1"),
+      "pane-1",
+      "tab-2",
+    );
+    const backToFirst = switchToTerminalTab(withTwoTabs, "pane-1", "tab-1");
+
+    const state = buildSessionState(backToFirst, {}, {}, EXPLORER_WIDTH);
+
+    expect(state.windows[0]?.slots[0]).toEqual({
+      project_path: "/repo/storefront",
+      terminal_tabs: [{}, {}],
+      active_tab: { kind: "terminal", index: 0 },
+      file_tab: null,
+      adapter_id: null,
+    });
+  });
+
+  it("trägt die letzte ausgewählte Datei der Pane als aktiven File-Tab ein, wenn der File-Tab auch aktiv ist", () => {
+    const grid = switchToFileTab(
+      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/storefront", "pane-1", "tab-1"),
       "pane-1",
     );
 
@@ -54,6 +79,27 @@ describe("buildSessionState", () => {
     expect(state.windows[0]?.slots[0]).toMatchObject({
       project_path: "/repo/storefront",
       active_tab: { kind: "file" },
+      file_tab: { path: "src/App.tsx" },
+    });
+  });
+
+  it("bleibt beim Terminal-Tab, wenn eine Datei ausgewählt, aber nicht als aktive Ansicht gewählt ist", () => {
+    // Nicht via switchToFileTab: die Pane zeigt gerade ihr Terminal, obwohl
+    // im Explorer bereits eine Datei markiert ist — genau der Zustand, den
+    // `PaneGrid.tsx`s eigener `showingFile`-Abgleich für den Editor-Zustand
+    // spiegelt (dort: "Datei tatsächlich offen", hier: "als Ansicht aktiv").
+    const grid = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      0,
+      "/repo/storefront",
+      "pane-1",
+      "tab-1",
+    );
+
+    const state = buildSessionState(grid, { "pane-1": "src/App.tsx" }, {}, EXPLORER_WIDTH);
+
+    expect(state.windows[0]?.slots[0]).toMatchObject({
+      active_tab: { kind: "terminal", index: 0 },
       file_tab: { path: "src/App.tsx" },
     });
   });

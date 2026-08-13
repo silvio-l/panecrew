@@ -1,7 +1,8 @@
 //! Thin Tauri-command wrappers over `pty_manager` — see
 //! `.scratch/panecrew-v0.1/issues/02-ipc-contract.md` for the frozen IPC
-//! contract these commands implement. No lifecycle logic lives here; all of
-//! it is in `pty_manager`.
+//! contract these commands implement (Ticket 18 addendum: `pane_id` renamed
+//! to `tab_id` throughout, see the addendum entry there for why). No
+//! lifecycle logic lives here; all of it is in `pty_manager`.
 
 use crate::pty_manager::{self, PtyHandle};
 use crate::shell_integration;
@@ -22,7 +23,7 @@ pub struct ShellIntegrationDir(pub Option<PathBuf>);
 pub fn pty_spawn(
     state: State<PtyState>,
     integration_dir: State<ShellIntegrationDir>,
-    pane_id: String,
+    tab_id: String,
     cwd: String,
     cols: u16,
     rows: u16,
@@ -37,7 +38,7 @@ pub fn pty_spawn(
 
     spawn_and_register(
         &state,
-        pane_id,
+        tab_id,
         pty_manager::SpawnOptions {
             cmd: shell,
             args: integration.args,
@@ -56,13 +57,15 @@ pub fn pty_spawn(
 /// Extracted from `pty_spawn` so it's callable without a Tauri runtime, same
 /// as `pty_manager` itself.
 ///
-/// A repeated `pane_id` (e.g. a frontend retry) must not silently orphan the
+/// A repeated `tab_id` (e.g. a frontend retry) must not silently orphan the
 /// PTY already registered under it — `HashMap::insert`'s displaced value is
 /// killed, not just dropped, since dropping a `PtyHandle` doesn't kill its
-/// child (mirrors `std::process::Child`'s own drop behavior).
+/// child (mirrors `std::process::Child`'s own drop behavior). Since Ticket 18
+/// this key is a tab, not a pane — several `tab_id`s belonging to the same
+/// pane are independent entries and never displace each other.
 fn spawn_and_register<F>(
     state: &PtyState,
-    pane_id: String,
+    tab_id: String,
     opts: pty_manager::SpawnOptions,
     on_output: F,
 ) -> anyhow::Result<()>
@@ -70,47 +73,47 @@ where
     F: Fn(&[u8]) + Send + 'static,
 {
     let handle = pty_manager::spawn(opts, on_output)?;
-    if let Some(previous) = state.0.lock().unwrap().insert(pane_id, handle) {
+    if let Some(previous) = state.0.lock().unwrap().insert(tab_id, handle) {
         previous.kill()?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn pty_write(state: State<PtyState>, pane_id: String, data: Vec<u8>) -> Result<(), String> {
-    with_handle(&state, &pane_id, |handle| handle.write(&data))
+pub fn pty_write(state: State<PtyState>, tab_id: String, data: Vec<u8>) -> Result<(), String> {
+    with_handle(&state, &tab_id, |handle| handle.write(&data))
 }
 
 #[tauri::command]
 pub fn pty_resize(
     state: State<PtyState>,
-    pane_id: String,
+    tab_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    with_handle(&state, &pane_id, |handle| handle.resize(cols, rows))
+    with_handle(&state, &tab_id, |handle| handle.resize(cols, rows))
 }
 
 #[tauri::command]
-pub fn pty_kill(state: State<PtyState>, pane_id: String) -> Result<(), String> {
+pub fn pty_kill(state: State<PtyState>, tab_id: String) -> Result<(), String> {
     let handle = state
         .0
         .lock()
         .unwrap()
-        .remove(&pane_id)
-        .ok_or_else(|| format!("unknown pane_id: {pane_id}"))?;
+        .remove(&tab_id)
+        .ok_or_else(|| format!("unknown tab_id: {tab_id}"))?;
     handle.kill().map_err(|e| e.to_string())
 }
 
 fn with_handle(
     state: &State<PtyState>,
-    pane_id: &str,
+    tab_id: &str,
     f: impl FnOnce(&PtyHandle) -> anyhow::Result<()>,
 ) -> Result<(), String> {
     let map = state.0.lock().unwrap();
     let handle = map
-        .get(pane_id)
-        .ok_or_else(|| format!("unknown pane_id: {pane_id}"))?;
+        .get(tab_id)
+        .ok_or_else(|| format!("unknown tab_id: {tab_id}"))?;
     f(handle).map_err(|e| e.to_string())
 }
 
@@ -154,16 +157,16 @@ mod tests {
     }
 
     #[test]
-    fn spawning_over_an_existing_pane_id_kills_the_previous_child() {
+    fn spawning_over_an_existing_tab_id_kills_the_previous_child() {
         let state = PtyState::default();
 
-        spawn_and_register(&state, "pane-1".into(), sh_opts("sleep 30"), |_| {})
+        spawn_and_register(&state, "tab-1".into(), sh_opts("sleep 30"), |_| {})
             .expect("first spawn should succeed");
         let first_pid = state
             .0
             .lock()
             .unwrap()
-            .get("pane-1")
+            .get("tab-1")
             .and_then(PtyHandle::pid)
             .expect("first child should have a pid");
         assert!(
@@ -171,7 +174,7 @@ mod tests {
             "sanity check: first child should be running before the overwrite"
         );
 
-        spawn_and_register(&state, "pane-1".into(), sh_opts("true"), |_| {})
+        spawn_and_register(&state, "tab-1".into(), sh_opts("true"), |_| {})
             .expect("second spawn should succeed");
 
         let first_child_died = wait_for(|| !is_process_alive(first_pid), Duration::from_secs(5));
@@ -182,7 +185,46 @@ mod tests {
         assert_eq!(
             state.0.lock().unwrap().len(),
             1,
-            "expected exactly one handle left registered under the reused pane_id"
+            "expected exactly one handle left registered under the reused tab_id"
+        );
+    }
+
+    /// The whole point of Ticket 18: two terminal tabs of the SAME pane are
+    /// two independent `tab_id`s in this map, not one `pane_id` fighting over
+    /// a single slot. Neither spawn may displace the other.
+    #[test]
+    fn two_tabs_of_the_same_pane_run_concurrently_without_killing_each_other() {
+        let state = PtyState::default();
+
+        spawn_and_register(&state, "pane-1:tab-1".into(), sh_opts("sleep 30"), |_| {})
+            .expect("first tab's spawn should succeed");
+        spawn_and_register(&state, "pane-1:tab-2".into(), sh_opts("sleep 30"), |_| {})
+            .expect("second tab's spawn should succeed");
+
+        let (first_pid, second_pid) = {
+            let map = state.0.lock().unwrap();
+            (
+                map.get("pane-1:tab-1")
+                    .and_then(PtyHandle::pid)
+                    .expect("first tab should have a pid"),
+                map.get("pane-1:tab-2")
+                    .and_then(PtyHandle::pid)
+                    .expect("second tab should have a pid"),
+            )
+        };
+
+        assert!(
+            is_process_alive(first_pid),
+            "first tab's child should still be running"
+        );
+        assert!(
+            is_process_alive(second_pid),
+            "second tab's child should still be running"
+        );
+        assert_eq!(
+            state.0.lock().unwrap().len(),
+            2,
+            "expected both tabs registered under their own tab_id"
         );
     }
 }

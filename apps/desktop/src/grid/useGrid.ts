@@ -3,8 +3,12 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   closePane as closePaneInState,
+  closeTerminalTab as closeTerminalTabInState,
   focusPane as focusPaneInState,
+  openTerminalTab as openTerminalTabInState,
   switchTemplate as switchTemplateInState,
+  switchToFileTab as switchToFileTabInState,
+  switchToTerminalTab as switchToTerminalTabInState,
   type GridState,
   type TemplateId,
 } from "./gridState";
@@ -12,13 +16,16 @@ import {
 export interface Grid {
   state: GridState;
   /** Weist `projectPath` dem Slot zu und erzeugt dafür eine frische `paneId`
-   * — die einzige Stelle, die das tut (siehe `gridState.ts`s Invariante: eine
-   * `paneId` ist unveränderlich für eine (Slot, Projekt)-Zuordnung, eine
-   * Neuzuweisung erzeugt immer eine neue). Gibt die erzeugte `paneId`
-   * synchron zurück (die ID entsteht hier, nicht erst im nächsten Render) —
-   * die Sitzungs-Wiederherstellung (Ticket 06) braucht sie sofort, um die
-   * wiederhergestellte Dateiauswahl derselben Pane zuzuordnen. */
-  assignProject: (slotIndex: number, projectPath: string) => string;
+   * samt dem `tabId` ihres ersten Terminal-Tabs — die einzige Stelle, die das
+   * tut (siehe `gridState.ts`s Invariante: eine `paneId` ist unveränderlich
+   * für eine (Slot, Projekt)-Zuordnung, eine Neuzuweisung erzeugt immer eine
+   * neue). Gibt beide synchron zurück (sie entstehen hier, nicht erst im
+   * nächsten Render) — die Sitzungs-Wiederherstellung (Ticket 06, seit
+   * Ticket 18 auch für weitere Terminal-Tabs) braucht sie sofort. */
+  assignProject: (
+    slotIndex: number,
+    projectPath: string,
+  ) => { paneId: string; tabId: string };
   closePane: (paneId: string) => void;
   /** Der Zustandsübergang hinter "Klick in eine Pane setzt den Fokus" —
    * ruft `usePtyTerminal`s eigenen `focus()` (DOM-Fokus für xterm.js) nicht
@@ -29,6 +36,13 @@ export interface Grid {
    * für `target` nicht `null` ist — die Steuerung entscheidet daran selbst,
    * ob sie den Aufruf überhaupt zulässt, hier wird nur noch ausgeführt. */
   switchTemplate: (target: TemplateId) => void;
+  /** Öffnet einen weiteren Terminal-Tab in der Pane und erzeugt dafür eine
+   * frische `tabId` — dieselbe Erzeugungs-Verantwortung wie `assignProject`
+   * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
+  openTerminalTab: (paneId: string) => string;
+  closeTerminalTab: (paneId: string, tabId: string) => void;
+  switchToTerminalTab: (paneId: string, tabId: string) => void;
+  switchToFileTab: (paneId: string) => void;
 }
 
 /**
@@ -46,8 +60,11 @@ export function useGrid(): Grid {
   // aufnehmen und bei jedem Grid-Update erneut feuern.
   const assignProject = useCallback((slotIndex: number, projectPath: string) => {
     const paneId = crypto.randomUUID();
-    setState((current) => assignProjectToSlot(current, slotIndex, projectPath, paneId));
-    return paneId;
+    const tabId = crypto.randomUUID();
+    setState((current) =>
+      assignProjectToSlot(current, slotIndex, projectPath, paneId, tabId),
+    );
+    return { paneId, tabId };
   }, []);
 
   const closePane = useCallback((paneId: string) => {
@@ -62,5 +79,33 @@ export function useGrid(): Grid {
     setState((current) => focusPaneInState(current, paneId));
   }, []);
 
-  return { state, assignProject, closePane, switchTemplate, focusPane };
+  const openTerminalTab = useCallback((paneId: string) => {
+    const tabId = crypto.randomUUID();
+    setState((current) => openTerminalTabInState(current, paneId, tabId));
+    return tabId;
+  }, []);
+
+  const closeTerminalTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => closeTerminalTabInState(current, paneId, tabId));
+  }, []);
+
+  const switchToTerminalTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => switchToTerminalTabInState(current, paneId, tabId));
+  }, []);
+
+  const switchToFileTab = useCallback((paneId: string) => {
+    setState((current) => switchToFileTabInState(current, paneId));
+  }, []);
+
+  return {
+    state,
+    assignProject,
+    closePane,
+    switchTemplate,
+    focusPane,
+    openTerminalTab,
+    closeTerminalTab,
+    switchToTerminalTab,
+    switchToFileTab,
+  };
 }
