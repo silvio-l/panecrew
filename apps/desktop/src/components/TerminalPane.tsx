@@ -9,6 +9,7 @@ import {
   CHROME_MENU_SEPARATOR_CLASS,
   ChromeTooltip,
 } from "./ChromeTooltip";
+import { FocusModeButton } from "./FocusModeButton";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
@@ -36,12 +37,15 @@ export function TerminalPane({
   projectPath,
   projectName,
   focused,
+  maximized,
   active,
   dropTarget,
   tabs,
   dropTargets,
   onClose,
   onFocus,
+  onToggleFocusMode,
+  focusModeHud,
 }: {
   /** Die Pane, zu der dieser Terminal-Tab gehört — trägt weiterhin
    * `data-pane-id` (Drop-Routing, `useWebviewFileDrop.ts`) und geht in
@@ -57,6 +61,10 @@ export function TerminalPane({
    * zwei der drei Fokussignale: den Akzentrahmen und den aufgehellten
    * Header-Text; das dritte ist das Akzent-Echo im Explorer-Kopf. */
   focused: boolean;
+  /** Ob GENAU DIESE Pane gerade den Fokus-Modus trägt (Ticket 19) — steuert
+   * nur den Header-Knopf (`FocusModeButton.tsx`), das Ein-/Ausblenden der
+   * ANDEREN Panes entscheidet `PaneGrid.tsx`. */
+  maximized: boolean;
   /** Ob DIESER Terminal-Tab gerade der sichtbare der Pane ist. Getrennt von
    * `focused` (Pane-Ebene): mehrere `TerminalPane`-Mounts derselben Pane
    * stehen gleichzeitig im DOM (PaneGrid.tsx blendet die inaktiven nur aus,
@@ -83,6 +91,17 @@ export function TerminalPane({
    * Explorer-Pfad hängen daran) — getrennt vom hook-eigenen `focus()` unten,
    * das nur xterm.js' DOM-Fokus setzt und den Grid-Store nie erreicht. */
   onFocus: () => void;
+  /** Ticket 19: derselbe Aufruf maximiert diese Pane oder verlässt den
+   * Fokus-Modus, je nach `maximized` — die Entscheidung trifft `PaneGrid.tsx`
+   * zentral (`onToggleFocusMode`-Kommentar dort). */
+  onToggleFocusMode: () => void;
+  /** Fertig gerenderter `<FocusModeHud>` (oder `null`) — `PaneGrid.tsx`
+   * berechnet Slot-Position/Gesamtzahl/Rotationszustand zentral EINMAL pro
+   * Zelle statt sie hier UND in `FileEditor.tsx` doppelt herzuleiten; diese
+   * Pane platziert das Ergebnis nur noch im Header (zwischen Tab-Leiste und
+   * Fokus-Knopf, `FocusModeHud.tsx`s Kopfkommentar begründet die Andockung
+   * dort statt einer freischwebenden Fläche). */
+  focusModeHud: ReactNode;
 }) {
   const { t } = useTranslation();
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
@@ -185,7 +204,7 @@ export function TerminalPane({
       // wechselt — und weil ihn jede Pane trägt, nur eben in zwei Tönen,
       // springt die Breite beim Fokuswechsel nicht (ein Rahmen, der nur bei
       // Fokus da ist, verschöbe das Terminal darin um 1px).
-      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) ${
+      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
@@ -197,11 +216,13 @@ export function TerminalPane({
           unter dem Header mit: gedimmtes Amber (45 %) statt Neutralgrau —
           dritter Baustein desselben Signals, bewusst unter der Deckkraft des
           Rahmens, damit der weiterhin die erste Antwort auf „wo ist der
-          Fokus?" bleibt. Harter Wechsel wie der Rahmen (Zustands-, kein
-          Hover-Signal), daher keine transition-Klasse. FileEditor.tsx' Header
-          spiegelt exakt dieselbe Schaltung. */}
+          Fokus?" bleibt. Nimmt seit dem Widerruf der 0ms-Zustandswechsel-Regel
+          (`.impeccable/direction-contract-desktop.md` → „Zustandswechsel:
+          „hart 0ms" aufgehoben") dieselbe `transition-colors` wie der
+          Pane-Rahmen an. FileEditor.tsx' Header spiegelt exakt dieselbe
+          Schaltung. */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
           focused
             ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
             : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"
@@ -238,6 +259,8 @@ export function TerminalPane({
         </span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
+        {focusModeHud}
+        <FocusModeButton maximized={maximized} onToggle={onToggleFocusMode} />
         <ChromeTooltip label={t("terminalPane.closePane")} align="end">
           <button
             type="button"

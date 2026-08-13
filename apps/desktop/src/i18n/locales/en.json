@@ -95,7 +95,9 @@
     "copied": "Copied",
     "paste": "Paste",
     "clear": "Clear terminal",
-    "dropHint": "Insert path"
+    "dropHint": "Insert path",
+    "enterFocusMode": "Focus mode",
+    "exitFocusMode": "Exit focus mode"
   },
   "paneTabs": {
     "selectView": "Select view",
@@ -155,5 +157,11 @@
     "error": "The update could not be installed.",
     "dismiss": "Dismiss",
     "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
+  },
+  "focusMode": {
+    "positionAria": "Pane {{slot}} of {{total}} in focus mode",
+    "rotationStart": "Start rotation",
+    "rotationStop": "Stop rotation",
+    "intervalAria": "Rotation interval {{seconds}} seconds, click to change"
   }
 }

@@ -70,11 +70,19 @@ import {
 } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
 import { activePanes, focusedProjectPath } from "./grid/gridState";
+import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
 import { buildSessionState, restoredSlots, restoredTemplate } from "./session/sessionState";
 import { loadSession, saveSession } from "./session/sessionStore";
+import { isMacPlatform } from "./shortcuts/platform";
+import {
+  matchesShortcut,
+  SHORTCUTS,
+  terminalTabSelectNumber,
+  TOGGLE_FOCUS_MODE_SHORTCUT_ID,
+} from "./shortcuts/registry";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
 import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
@@ -100,12 +108,112 @@ function App() {
     closeTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
+    enterFocusMode,
+    exitFocusMode,
+    focusModeSelectSlot,
   } = useGrid();
   // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
   // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
   // das explizit, statt eine Pane vorzutäuschen, die es nicht gibt.
   const focusedPaneId = gridState.focusedPaneId;
   const focusedPath = focusedProjectPath(gridState);
+  // Rotationsmodus (Ticket 19) — reine Zustandsverwaltung im Hook, `App.tsx`
+  // liefert nur, WOHIN reihum weitergeschaltet wird, und WAS ein
+  // Rotationsschritt tut. Rotationseinheit ist der Terminal-TAB, nicht die
+  // Pane (Nutzer-Korrektur 2026-08-13): die Sequenz geht Pane für Pane in
+  // Slot-Reihenfolge, innerhalb jeder Pane aber erst ihre Tabs 1..N durch,
+  // bevor sie zur nächsten Pane weiterschaltet — ein Rotationsschritt ist
+  // deshalb immer BEIDES zugleich, "maximiere diese Pane" (`enterFocusMode`,
+  // No-Op wenn schon maximiert) UND "zeige diesen ihrer Tabs"
+  // (`switchToTerminalTab`).
+  const maximizedPane = activePanes(gridState).find(
+    (pane) => pane.paneId === gridState.maximizedPaneId,
+  );
+  const focusRotation = useFocusRotation({
+    maximizedPaneId: gridState.maximizedPaneId,
+    activeTabId: maximizedPane?.activeTerminalTabId ?? null,
+    occupiedPanesInOrder: activePanes(gridState).map((pane) => ({
+      paneId: pane.paneId,
+      tabIds: pane.terminalTabs.map((tab) => tab.tabId),
+    })),
+    onRotate: (next) => {
+      enterFocusMode(next.paneId);
+      switchToTerminalTab(next.paneId, next.tabId);
+    },
+  });
+  const notifyRotationInput = focusRotation.notifyInput;
+
+  // Fokus-Modus-Kürzel (Ticket 19) — EIN Fenster-Listener statt drei
+  // verstreuten, weil alle drei dieselbe Reihenfolgefrage gegen
+  // `usePtyTerminal.ts`s Pane-Kürzel klären müssen: die Capture-Phase
+  // (drittes `addEventListener`-Argument `true`) lässt diesen Listener VOR
+  // dem xterm-eigenen `attachCustomKeyEventHandler` laufen (der hängt am
+  // versteckten Textarea-Element der jeweiligen Pane, tiefer im Baum als
+  // `window`) — `stopPropagation()` verhindert dort zuverlässig eine zweite,
+  // widersprüchliche Reaktion (Cmd+Return z. B. dürfte niemals zusätzlich als
+  // \r bei der Shell ankommen). `useAppZoom.ts`s Listener daneben braucht das
+  // nicht (reine App-Kürzel ohne Pane-Gegenstück), dieser hier schon.
+  useEffect(() => {
+    const isMac = isMacPlatform();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      notifyRotationInput();
+
+      const toggleShortcut = SHORTCUTS.find(
+        (def) =>
+          def.id === TOGGLE_FOCUS_MODE_SHORTCUT_ID &&
+          matchesShortcut(event, def, isMac),
+      );
+      if (toggleShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (gridState.maximizedPaneId !== null) exitFocusMode();
+        else if (focusedPaneId !== null) enterFocusMode(focusedPaneId);
+        return;
+      }
+
+      if (gridState.maximizedPaneId === null) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        exitFocusMode();
+        return;
+      }
+
+      // Zahlen-Hotkeys wählen im Fokus-Modus eine ANDERE Pane an statt (wie
+      // sonst) einen Terminal-Tab der aktiven — dieselben Kürzel-Definitionen
+      // wie `usePtyTerminal.ts`, nur mit umgedeuteter Wirkung, deshalb hier
+      // abgefangen, bevor sie dort ankommen.
+      const digitShortcut = SHORTCUTS.find(
+        (def) =>
+          matchesShortcut(event, def, isMac) &&
+          terminalTabSelectNumber(def) !== null,
+      );
+      const slotNumber = digitShortcut
+        ? terminalTabSelectNumber(digitShortcut)
+        : null;
+      if (slotNumber !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        focusModeSelectSlot(slotNumber - 1);
+      }
+    };
+    const onPointerDown = () => notifyRotationInput();
+
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [
+    gridState.maximizedPaneId,
+    focusedPaneId,
+    enterFocusMode,
+    exitFocusMode,
+    focusModeSelectSlot,
+    notifyRotationInput,
+  ]);
   // Destrukturiert statt als `projects`-Objekt weitergereicht: `load`/
   // `refresh` sind eigene, stabile Bindungen (in `useProjects.ts` per
   // `useCallback` memoisiert) — das hält sie aus `useEffect`-Dep-Arrays
@@ -753,6 +861,9 @@ function App() {
               onCloseTerminalTab={closeTerminalTabGuarded}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
+              onEnterFocusMode={enterFocusMode}
+              onExitFocusMode={exitFocusMode}
+              rotation={focusRotation}
             />
           </main>
         </div>

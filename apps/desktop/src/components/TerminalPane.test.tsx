@@ -61,6 +61,7 @@ const paneElement = (dropTarget: boolean, active: boolean) => (
       projectPath="/tmp/projekt"
       projectName="projekt"
       focused
+      maximized={false}
       active={active}
       dropTarget={dropTarget}
       tabs={paneTabs}
@@ -72,6 +73,8 @@ const paneElement = (dropTarget: boolean, active: boolean) => (
       }}
       onClose={vi.fn()}
       onFocus={vi.fn()}
+      onToggleFocusMode={vi.fn()}
+      focusModeHud={null}
     />
   </Tooltip.Provider>
 );

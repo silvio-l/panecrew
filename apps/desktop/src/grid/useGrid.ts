@@ -4,6 +4,9 @@ import {
   assignProjectToSlot,
   closePane as closePaneInState,
   closeTerminalTab as closeTerminalTabInState,
+  enterFocusMode as enterFocusModeInState,
+  exitFocusMode as exitFocusModeInState,
+  focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
   openTerminalTab as openTerminalTabInState,
   switchTemplate as switchTemplateInState,
@@ -43,6 +46,15 @@ export interface Grid {
   closeTerminalTab: (paneId: string, tabId: string) => void;
   switchToTerminalTab: (paneId: string, tabId: string) => void;
   switchToFileTab: (paneId: string) => void;
+  /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — sie nimmt das
+   * gesamte Grid ein, die übrigen Panes laufen unsichtbar im Hintergrund
+   * weiter. */
+  enterFocusMode: (paneId: string) => void;
+  /** Verlässt den Fokus-Modus, No-Op wenn er nicht aktiv ist. */
+  exitFocusMode: () => void;
+  /** Wechselt im Fokus-Modus direkt zur Pane in `slotIndex` des aktuellen
+   * Templates — der Zustandsübergang hinter den Zahlen-Hotkeys 1–4. */
+  focusModeSelectSlot: (slotIndex: number) => void;
 }
 
 /**
@@ -97,6 +109,18 @@ export function useGrid(): Grid {
     setState((current) => switchToFileTabInState(current, paneId));
   }, []);
 
+  const enterFocusMode = useCallback((paneId: string) => {
+    setState((current) => enterFocusModeInState(current, paneId));
+  }, []);
+
+  const exitFocusMode = useCallback(() => {
+    setState((current) => exitFocusModeInState(current));
+  }, []);
+
+  const focusModeSelectSlot = useCallback((slotIndex: number) => {
+    setState((current) => focusModeSelectSlotInState(current, slotIndex));
+  }, []);
+
   return {
     state,
     assignProject,
@@ -107,5 +131,8 @@ export function useGrid(): Grid {
     closeTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
+    enterFocusMode,
+    exitFocusMode,
+    focusModeSelectSlot,
   };
 }

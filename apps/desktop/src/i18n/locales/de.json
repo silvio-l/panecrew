@@ -95,7 +95,9 @@
     "copied": "Kopiert",
     "paste": "Einfügen",
     "clear": "Terminal leeren",
-    "dropHint": "Pfad einfügen"
+    "dropHint": "Pfad einfügen",
+    "enterFocusMode": "Fokus-Modus",
+    "exitFocusMode": "Fokus-Modus verlassen"
   },
   "paneTabs": {
     "selectView": "Ansicht wählen",
@@ -155,5 +157,11 @@
     "error": "Update konnte nicht installiert werden.",
     "dismiss": "Ausblenden",
     "homebrewHint": "Über Homebrew installiert — aktualisiere mit „brew upgrade --cask panecrew“."
+  },
+  "focusMode": {
+    "positionAria": "Pane {{slot}} von {{total}} im Fokus-Modus",
+    "rotationStart": "Rotation starten",
+    "rotationStop": "Rotation stoppen",
+    "intervalAria": "Rotationsintervall {{seconds}} Sekunden, klicken zum Wechseln"
   }
 }

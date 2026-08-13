@@ -1,7 +1,8 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { FocusModeButton } from "./FocusModeButton";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { FileEditorState } from "../explorer/fileEditorState";
 import { fileNameFromPath } from "../explorer/filePath";
@@ -37,11 +38,14 @@ import {
 export function FileEditor({
   state,
   focused,
+  maximized,
   projectName,
   tabs,
   onEdit,
   onSave,
   onClose,
+  onToggleFocusMode,
+  focusModeHud,
 }: {
   state: FileEditorState;
   /** Dieselbe Pane-Fokus-Aussage wie in TerminalPane.tsx (`state.focusedPaneId`
@@ -50,6 +54,9 @@ export function FileEditor({
    * Akzentrahmen, auch in unfokussierten Panes (2026-08-12,
    * Nutzerbeobachtung: alle Panes wirken gleichzeitig „aktiv"). */
   focused: boolean;
+  /** Ob GENAU DIESE Pane gerade den Fokus-Modus trägt (Ticket 19) — steuert
+   * nur `FocusModeButton.tsx`, dieselbe Bedeutung wie in TerminalPane.tsx. */
+  maximized: boolean;
   /** Derselbe Projektname wie im Terminal-Header daneben (2026-08-13-
    * Nachtrag) — vorher zeigte dieser Kopf ihn gar nicht (als redundant
    * verworfen, s. Git-Historie), aber genau das ließ die Tab-Leiste beim
@@ -67,6 +74,15 @@ export function FileEditor({
   onEdit: (content: string) => void;
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
+  /** Ticket 19: derselbe Aufruf wie in TerminalPane.tsx — maximiert diese
+   * Pane oder verlässt den Fokus-Modus, je nach `maximized`. */
+  onToggleFocusMode: () => void;
+  /** Fertig gerenderter `<FocusModeHud>` (oder `null`) — `PaneGrid.tsx`
+   * berechnet Slot-Position/Gesamtzahl/Rotationszustand zentral EINMAL pro
+   * Zelle statt sie hier UND in TerminalPane.tsx doppelt herzuleiten; diese
+   * Fläche platziert das fertige Element nur noch an derselben Stelle im
+   * Header wie dort. */
+  focusModeHud: ReactNode;
 }) {
   const { t } = useTranslation();
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
@@ -129,14 +145,22 @@ export function FileEditor({
     <section
       aria-label={t("fileEditor.fileAria", { name })}
       onKeyDown={onKeyDown}
-      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) ${
+      // `group/pane`: allein für den Fokus-Modus-Knopf unten
+      // (`FocusModeButton.tsx`, dieselbe hover-enthüllte Mechanik wie in
+      // TerminalPane.tsx' Kopf) — der Schließen-Knopf dieser Fläche bleibt
+      // bewusst dauerhaft sichtbar (Begründung dort), reagiert also NICHT auf
+      // diese Gruppe.
+      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
       {/* Header-Hairline im gedimmten Amber bei Fokus — Schaltung und
-          Begründung 1:1 wie in TerminalPane.tsx' Header. */}
+          Begründung 1:1 wie in TerminalPane.tsx' Header (inkl. der seit dem
+          Widerruf der 0ms-Zustandswechsel-Regel ergänzten `transition-colors`,
+          `.impeccable/direction-contract-desktop.md` → „Zustandswechsel:
+          „hart 0ms" aufgehoben"). */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
           focused
             ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
             : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"
@@ -163,6 +187,8 @@ export function FileEditor({
         </span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
+        {focusModeHud}
+        <FocusModeButton maximized={maximized} onToggle={onToggleFocusMode} />
         {hasBuffer && (
           <button
             type="button"

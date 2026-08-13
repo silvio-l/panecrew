@@ -4,7 +4,8 @@ import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "../components/TitleBar";
 import { ExplorerPanel } from "../components/ExplorerPanel";
 import { PaneGrid } from "../components/PaneGrid";
 import { usePaneFileEditors } from "../explorer/usePaneFileEditors";
-import { focusedProjectPath } from "../grid/gridState";
+import { activePanes, focusedProjectPath } from "../grid/gridState";
+import { useFocusRotation } from "../grid/useFocusRotation";
 import { useGrid } from "../grid/useGrid";
 import { PtyBackendContext } from "../terminal/ptyBackend";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
@@ -73,6 +74,24 @@ export function HarnessApp({
 
   const focusedPath = focusedProjectPath(grid.state);
   const project = focusedPath !== null ? (projects[focusedPath] ?? null) : null;
+  // Fokus-Modus-Rotation gibt es im Harness nur der Vollständigkeit halber
+  // (Storyboards steuern Panes selbst, nie per Rotation) — derselbe Hook wie
+  // in App.tsx, ohne eigene Bedienung drumherum.
+  const harnessMaximizedPane = activePanes(grid.state).find(
+    (pane) => pane.paneId === grid.state.maximizedPaneId,
+  );
+  const focusRotation = useFocusRotation({
+    maximizedPaneId: grid.state.maximizedPaneId,
+    activeTabId: harnessMaximizedPane?.activeTerminalTabId ?? null,
+    occupiedPanesInOrder: activePanes(grid.state).map((pane) => ({
+      paneId: pane.paneId,
+      tabIds: pane.terminalTabs.map((tab) => tab.tabId),
+    })),
+    onRotate: (next) => {
+      grid.enterFocusMode(next.paneId);
+      grid.switchToTerminalTab(next.paneId, next.tabId);
+    },
+  });
 
   return (
     <PtyBackendContext.Provider value={demoBackend}>
@@ -120,6 +139,9 @@ export function HarnessApp({
                 onCloseTerminalTab={grid.closeTerminalTab}
                 onSwitchToTerminalTab={grid.switchToTerminalTab}
                 onSwitchToFileTab={grid.switchToFileTab}
+                onEnterFocusMode={grid.enterFocusMode}
+                onExitFocusMode={grid.exitFocusMode}
+                rotation={focusRotation}
               />
             </main>
           </div>

@@ -7,6 +7,9 @@ import {
   assignProjectToSlot,
   closePane,
   closeTerminalTab,
+  enterFocusMode,
+  exitFocusMode,
+  focusModeSelectSlot,
   focusPane,
   focusedProjectPath,
   openTerminalTab,
@@ -24,6 +27,7 @@ describe("gridState", () => {
     expect(INITIAL_GRID_STATE.template).toBe("quad");
     expect(INITIAL_GRID_STATE.slots).toEqual([null, null, null, null]);
     expect(INITIAL_GRID_STATE.focusedPaneId).toBeNull();
+    expect(INITIAL_GRID_STATE.maximizedPaneId).toBeNull();
   });
 
   it.each(GRID_TEMPLATES.map((t) => [t.id, t.slotCount] as const))(
@@ -430,6 +434,80 @@ describe("gridState", () => {
       expect(switchToTerminalTab(withOne, "does-not-exist", "tab-0")).toBe(
         withOne,
       );
+    });
+  });
+
+  describe("Fokus-Modus (Ticket 19)", () => {
+    function quadWithTwoPanes(): GridState {
+      return assignProjectToSlot(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        1,
+        "/repo/b",
+        "pane-1",
+        "tab-1",
+      );
+    }
+
+    it("enterFocusMode setzt maximizedPaneId und fokussiert dieselbe Pane", () => {
+      const withTwo = quadWithTwoPanes();
+      const next = enterFocusMode(withTwo, "pane-1");
+      expect(next.maximizedPaneId).toBe("pane-1");
+      expect(next.focusedPaneId).toBe("pane-1");
+    });
+
+    it("enterFocusMode ist ein No-Op bei unbekannter paneId oder bereits maximierter Pane", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(enterFocusMode(withTwo, "does-not-exist")).toBe(withTwo);
+      const maximized = enterFocusMode(withTwo, "pane-0");
+      expect(enterFocusMode(maximized, "pane-0")).toBe(maximized);
+    });
+
+    it("exitFocusMode räumt maximizedPaneId, lässt Slots/Fokus unangetastet", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-1");
+      const next = exitFocusMode(maximized);
+      expect(next.maximizedPaneId).toBeNull();
+      expect(next.focusedPaneId).toBe("pane-1");
+      expect(next.slots).toEqual(maximized.slots);
+    });
+
+    it("exitFocusMode ist ein No-Op, wenn kein Fokus-Modus aktiv ist", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(exitFocusMode(withTwo)).toBe(withTwo);
+    });
+
+    it("focusModeSelectSlot wechselt im Fokus-Modus direkt zur Pane im Ziel-Slot", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-0");
+      const next = focusModeSelectSlot(maximized, 1);
+      expect(next.maximizedPaneId).toBe("pane-1");
+      expect(next.focusedPaneId).toBe("pane-1");
+    });
+
+    it("focusModeSelectSlot ist ein No-Op außerhalb des Fokus-Modus, bei leerem Slot oder unbekanntem Index", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(focusModeSelectSlot(withTwo, 1)).toBe(withTwo);
+
+      const maximized = enterFocusMode(withTwo, "pane-0");
+      expect(focusModeSelectSlot(maximized, 2)).toBe(maximized);
+      expect(focusModeSelectSlot(maximized, 99)).toBe(maximized);
+    });
+
+    it("closePane räumt maximizedPaneId, wenn die maximierte Pane geschlossen wird", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-1");
+      const next = closePane(maximized, "pane-1");
+      expect(next.maximizedPaneId).toBeNull();
+    });
+
+    it("closePane lässt maximizedPaneId unangetastet, wenn eine ANDERE Pane geschlossen wird", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-1");
+      const next = closePane(maximized, "pane-0");
+      expect(next.maximizedPaneId).toBe("pane-1");
+    });
+
+    it("switchTemplate erhält maximizedPaneId, solange die Pane im Ziel-Template weiter aktiv ist", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-1");
+      const next = switchTemplate(maximized, "split");
+      expect(next.template).toBe("split");
+      expect(next.maximizedPaneId).toBe("pane-1");
     });
   });
 });

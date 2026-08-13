@@ -73,12 +73,19 @@ export interface GridState {
   template: TemplateId;
   slots: readonly Slot[];
   focusedPaneId: string | null;
+  /** Fokus-Modus (Ticket 19): die eine Pane, die gerade das gesamte Grid
+   * einnimmt, orthogonal zum Template — `null` heißt "kein Fokus-Modus
+   * aktiv". Die übrigen Panes bleiben in `slots` unverändert (samt ihrer
+   * Terminal-Tabs/PTYs), nur ihre Sichtbarkeit ändert sich beim Rendern
+   * (`PaneGrid.tsx`), nicht ihr Zustand hier. */
+  maximizedPaneId: string | null;
 }
 
 export const INITIAL_GRID_STATE: GridState = {
   template: DEFAULT_TEMPLATE,
   slots: [null, null, null, null],
   focusedPaneId: null,
+  maximizedPaneId: null,
 };
 
 function slotCount(template: TemplateId): number {
@@ -150,7 +157,22 @@ export function switchTemplate(state: GridState, target: TemplateId): GridState 
           return compacted;
         })();
 
-  return { template: target, slots: nextSlots, focusedPaneId: state.focusedPaneId };
+  // Schrumpfen lässt per `templateSwitchBlockReason` oben nie eine aktive
+  // Pane verschwinden, die maximierte eingeschlossen — trotzdem defensiv
+  // geprüft statt vorausgesetzt: eine fremde/veraltete Aufrufreihenfolge darf
+  // keinen `maximizedPaneId` stehen lassen, der auf keinen Slot mehr zeigt.
+  const nextMaximized = nextSlots.some(
+    (slot) => slot?.paneId === state.maximizedPaneId,
+  )
+    ? state.maximizedPaneId
+    : null;
+
+  return {
+    template: target,
+    slots: nextSlots,
+    focusedPaneId: state.focusedPaneId,
+    maximizedPaneId: nextMaximized,
+  };
 }
 
 /** Schreibt die Zuordnung, setzt `focusedPaneId` auf die neue Pane. Die neue
@@ -286,7 +308,18 @@ export function closePane(state: GridState, paneId: string): GridState {
       ? (nextSlots.find((slot): slot is Pane => slot !== null)?.paneId ?? null)
       : state.focusedPaneId;
 
-  return { ...state, slots: nextSlots, focusedPaneId: nextFocus };
+  // Die geschlossene Pane kann nicht weiter das ganze Grid einnehmen — ohne
+  // dieses Aufräumen bliebe `maximizedPaneId` auf eine `paneId` zeigen, die
+  // `PaneGrid.tsx` nirgends mehr findet, und das Grid zeigte dauerhaft nichts.
+  const nextMaximized =
+    state.maximizedPaneId === paneId ? null : state.maximizedPaneId;
+
+  return {
+    ...state,
+    slots: nextSlots,
+    focusedPaneId: nextFocus,
+    maximizedPaneId: nextMaximized,
+  };
 }
 
 /** Setzt `focusedPaneId` auf `paneId` — der Zustandsübergang für einen Klick
@@ -306,4 +339,38 @@ export function focusedProjectPath(state: GridState): string | null {
     state.slots.find((slot) => slot?.paneId === state.focusedPaneId)
       ?.projectPath ?? null
   );
+}
+
+/** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — sie nimmt das gesamte
+ * Grid ein, die übrigen Panes bleiben mit aktiver PTY im Hintergrund
+ * bestehen (`PaneGrid.tsx` entscheidet nur über ihre Sichtbarkeit). Setzt
+ * `focusedPaneId` gleich mit, ein Fokus-Modus-Eintritt ist immer auch ein
+ * Fokussieren. No-Op bei unbekannter `paneId` oder wenn sie bereits maximiert
+ * ist. */
+export function enterFocusMode(state: GridState, paneId: string): GridState {
+  if (state.maximizedPaneId === paneId) return state;
+  if (!state.slots.some((slot) => slot?.paneId === paneId)) return state;
+  return { ...state, focusedPaneId: paneId, maximizedPaneId: paneId };
+}
+
+/** Verlässt den Fokus-Modus — die übrigen Panes erscheinen unverändert im
+ * vorherigen Template-Zustand wieder (er wurde nie verlassen, nur verdeckt).
+ * No-Op, wenn kein Fokus-Modus aktiv ist. */
+export function exitFocusMode(state: GridState): GridState {
+  if (state.maximizedPaneId === null) return state;
+  return { ...state, maximizedPaneId: null };
+}
+
+/** Wechselt innerhalb des Fokus-Modus direkt zur Pane in `slotIndex` des
+ * AKTUELLEN Templates — ohne Zwischenschritt über die Grid-Ansicht (Ticket
+ * 19, Zahlen-Hotkeys 1–4). No-Op außerhalb des Fokus-Modus, bei einem leeren
+ * Ziel-Slot oder einem Index außerhalb des Templates. */
+export function focusModeSelectSlot(
+  state: GridState,
+  slotIndex: number,
+): GridState {
+  if (state.maximizedPaneId === null) return state;
+  const target = state.slots[slotIndex];
+  if (!target) return state;
+  return enterFocusMode(state, target.paneId);
 }

@@ -13,13 +13,16 @@
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
+import type { CSSProperties } from "react";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState, Pane } from "../grid/gridState";
+import type { FocusRotation } from "../grid/useFocusRotation";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
+import { FocusModeHud } from "./FocusModeHud";
 import { ProjectPicker } from "./ProjectPicker";
 import { TerminalPane } from "./TerminalPane";
 
@@ -38,6 +41,9 @@ export function PaneGrid({
   onCloseTerminalTab,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
+  onEnterFocusMode,
+  onExitFocusMode,
+  rotation,
 }: {
   state: GridState;
   paneFileEditors: PaneFileEditors;
@@ -66,11 +72,26 @@ export function PaneGrid({
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
+  /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — der Klick auf den
+   * Maximieren-Knopf im Pane-Header. */
+  onEnterFocusMode: (paneId: string) => void;
+  /** Verlässt den Fokus-Modus — derselbe Knopf im Header der maximierten
+   * Pane ruft je nach `maximized` diese oder `onEnterFocusMode` auf (s.
+   * `onToggleFocusMode` unten). */
+  onExitFocusMode: () => void;
+  /** Rotationsmodus-Zustand + Bedienung (`grid/useFocusRotation.ts`),
+   * gehalten in `App.tsx` — hier nur gereicht an die HUD-Leiste der
+   * maximierten Zelle. */
+  rotation: FocusRotation;
 }) {
   return (
     // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
     // — Spuren und Spannen aller sieben Geometrien stehen in App.css
-    // (`.pc-layout--*`), die Begründung dafür ebenfalls dort.
+    // (`.pc-layout--*`), die Begründung dafür ebenfalls dort. Der Fokus-Modus
+    // ist orthogonal dazu (`gridState.ts`s Kopfkommentar zu
+    // `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
+    // Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
+    // (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig.
     <div className={`pc-workspace pc-layout--${state.template}`}>
       {state.slots.map((slot, index) =>
         slot ? (
@@ -78,6 +99,11 @@ export function PaneGrid({
             key={slot.paneId}
             pane={slot}
             focused={slot.paneId === state.focusedPaneId}
+            maximized={slot.paneId === state.maximizedPaneId}
+            focusModeActive={state.maximizedPaneId !== null}
+            slotNumber={index + 1}
+            totalSlots={state.slots.length}
+            rotation={rotation}
             dropTarget={slot.paneId === dragTargetPaneId}
             editor={paneFileEditors.editorFor(slot.paneId)}
             guardLeave={guardLeave}
@@ -88,6 +114,14 @@ export function PaneGrid({
             onCloseTerminalTab={onCloseTerminalTab}
             onSwitchToTerminalTab={onSwitchToTerminalTab}
             onSwitchToFileTab={onSwitchToFileTab}
+            // Derselbe Header-Knopf ist Ein- und Ausstieg zugleich: eine
+            // maximierte Pane bietet "verlassen" an, jede andere "maximieren"
+            // — zwei Aktionen, aber immer nur EIN sichtbarer Knopf pro Zelle.
+            onToggleFocusMode={() =>
+              slot.paneId === state.maximizedPaneId
+                ? onExitFocusMode()
+                : onEnterFocusMode(slot.paneId)
+            }
           />
         ) : (
           <ProjectPicker
@@ -96,6 +130,7 @@ export function PaneGrid({
             busy={pickingSlot === index}
             restoring={restoringSlots.has(index)}
             slotNumber={index + 1}
+            focusModeActive={state.maximizedPaneId !== null}
           />
         ),
       )}
@@ -106,6 +141,9 @@ export function PaneGrid({
 function PaneCell({
   pane,
   focused,
+  maximized,
+  focusModeActive,
+  slotNumber,
   dropTarget,
   editor,
   guardLeave,
@@ -116,9 +154,23 @@ function PaneCell({
   onCloseTerminalTab,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
+  onToggleFocusMode,
+  totalSlots,
+  rotation,
 }: {
   pane: Pane;
   focused: boolean;
+  /** Ob GENAU DIESE Pane gerade den Fokus-Modus trägt (Ticket 19) — sie
+   * spannt sich per `grid-area` über das ganze Raster, alle übrigen Zellen
+   * bleiben gemountet, werden aber unsichtbar (s. u.). */
+  maximized: boolean;
+  /** Ob IRGENDEINE Pane gerade maximiert ist — auch für die anderen Zellen
+   * relevant, die dann `visibility: hidden` bekommen statt ihrer normalen
+   * Sichtbarkeit. */
+  focusModeActive: boolean;
+  /** 1-basiert, wie die Zahlen-Hotkeys im Fokus-Modus — dieselbe Zahl wie
+   * `ProjectPicker`s Slot-Beschriftung. */
+  slotNumber: number;
   /** Ob ein Datei-Drag gerade über DIESER Pane schwebt (`useWebviewFileDrop`)
    * — der aktive Terminal-Tab zeigt dann sein Drop-Ziel-HUD. */
   dropTarget: boolean;
@@ -131,6 +183,14 @@ function PaneCell({
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
+  /** Ein Aufruf deckt beide Richtungen ab — s. `PaneGrid`s Berechnung oben:
+   * maximiert diese Pane, wenn sie es noch nicht ist, sonst verlässt sie den
+   * Fokus-Modus. */
+  onToggleFocusMode: () => void;
+  /** Für die HUD-Leiste der maximierten Zelle: "2/4"-Positionsanzeige. */
+  totalSlots: number;
+  /** Rotationsmodus-Zustand + Bedienung, gereicht an `FocusModeHud.tsx`. */
+  rotation: FocusRotation;
 }) {
   // `pane.showingFile` ist reine Nutzer-ABSICHT (gridState.ts kennt keinen
   // Dateizustand) — ob dazu wirklich eine Fläche existiert, weiß nur der
@@ -158,11 +218,58 @@ function PaneCell({
     onSelectFile: () => onSwitchToFileTab(pane.paneId),
   };
 
+  // Fokus-Modus-Geometrie (Ticket 19): KEIN Unmount, KEINE zweite
+  // Layout-Klasse am `.pc-workspace` — dieselbe Zelle bleibt an ihrem
+  // Grid-Platz, nur zwei Inline-Werte ändern sich.
+  //
+  // Die maximierte Zelle bekommt `position: absolute; inset: 0` (Anker ist
+  // `.pc-workspace`s eigenes `position: relative`, App.css) statt einer
+  // `grid-area`-Spannung über `1 / 1 / -1 / -1` — Letzteres sah auf dem Papier
+  // richtig aus (row/col-Kurzform bis zur letzten Linie, trifft jedes
+  // Template gleichermaßen), brach aber am eigentlichen Verhalten von CSS
+  // Grid: eine explizit über das GESAMTE Raster gespannte Zelle blockiert für
+  // die ÜBRIGEN, weiterhin nur `auto`-platzierten Geschwister jede freie
+  // Zelle der expliziten Spuren — die Auto-Platzierung weicht ihnen dann in
+  // NEUE implizite Zeilen darunter aus, statt sie (wie beabsichtigt) einfach
+  // unsichtbar unter der maximierten Zelle liegen zu lassen. Ergebnis: die
+  // expliziten Spuren schrumpfen auf einen Bruchteil der Rasterhöhe, und die
+  // maximierte Zelle füllt zwar die volle Breite, aber nur einen Teil der
+  // Höhe (am Vierergrid 2026-08-13 im Demo-Harness sichtbar geworden — vier
+  // statt zwei Zeilenspuren in den DevTools). `position: absolute` nimmt die
+  // Zelle komplett aus der Grid-Auto-Platzierung heraus: die übrigen drei
+  // Geschwister bekommen ihre normalen, aus dem Template ableitbaren
+  // Zellen zurück (eine bleibt dabei ungenutzt, unsichtbar unter der
+  // Absolut-Fläche), und `inset: 0` deckt exakt die Innenfläche von
+  // `.pc-workspace` ab — randlos, auch über den 0.5rem-`gap` hinweg, der sonst
+  // zwischen Grid-Zellen sichtbar wäre.
+  //
+  // Alle ANDEREN Zellen bekommen `visibility: hidden` — nicht `display:
+  // none`: Letzteres kollabiert die Containerbox jedes Nachfahren auf 0×0,
+  // exakt der Grund, warum schon die Terminal-Tab-Sichtbarkeit direkt
+  // darunter (Kommentar dort) dasselbe Muster verwendet. Ohne diesen
+  // Unterschied verlöre `fitAddon.fit()` beim Verlassen des Fokus-Modus seine
+  // Messbasis. Dasselbe gilt für leere Slots (`ProjectPicker.tsx`s eigene
+  // `focusModeActive`-Prop).
+  const cellStyle: CSSProperties | undefined = maximized
+    ? { position: "absolute", inset: 0, zIndex: 30 }
+    : focusModeActive
+      ? { visibility: "hidden" }
+      : undefined;
+
+  // Rotations-Cluster des Fokus-Modus (Ticket 19) — EINMAL pro Zelle
+  // berechnet und identisch an TerminalPane.tsx UND FileEditor.tsx gereicht
+  // (Begründung/Platzierung im Pane-Header statt als freischwebendes Overlay:
+  // FocusModeHud.tsx-Kopfkommentar). `null` für jede nicht-maximierte Zelle —
+  // beide Flächen rendern dann einfach nichts an der Stelle.
+  const focusModeHud = maximized ? (
+    <FocusModeHud slotNumber={slotNumber} totalSlots={totalSlots} rotation={rotation} />
+  ) : null;
+
   return (
     // `relative`, damit die absolut positionierten Flächen darunter (jeder
     // Terminal-Tab UND der File-Tab) sich exakt auf DIESE Zelle beziehen,
     // nicht auf das ganze Grid.
-    <div className="relative flex min-h-0 min-w-0 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-col" style={cellStyle}>
       {/* Wie zuvor: jede Fläche bleibt gemountet, nur ausgeblendet — ein
           Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen.
           Seit Ticket 18 sind das bis zu N Terminal-Tabs gleichzeitig statt
@@ -197,6 +304,7 @@ function PaneCell({
               projectPath={pane.projectPath}
               projectName={projectNameFromPath(pane.projectPath)}
               focused={focused}
+              maximized={maximized}
               // Unabhängig von `showingFile`: genau EIN Terminal-Tab je Pane
               // trägt die Drop-Registrierung (`useWebviewFileDrop.ts`),
               // exakt wie vor Ticket 18 (ein Terminal pro Pane, immer
@@ -208,6 +316,8 @@ function PaneCell({
               dropTargets={dropTargets}
               onClose={onClose}
               onFocus={onFocus}
+              onToggleFocusMode={onToggleFocusMode}
+              focusModeHud={focusModeHud}
             />
           </div>
         );
@@ -219,11 +329,14 @@ function PaneCell({
         <FileEditor
           state={editor.state}
           focused={focused}
+          maximized={maximized}
           projectName={projectNameFromPath(pane.projectPath)}
           tabs={tabs}
           onEdit={editor.editContent}
           onSave={editor.save}
           onClose={() => guardLeave(pane.paneId, editor.close)}
+          onToggleFocusMode={onToggleFocusMode}
+          focusModeHud={focusModeHud}
         />
       </div>
     </div>
