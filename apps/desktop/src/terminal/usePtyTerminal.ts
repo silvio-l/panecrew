@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
@@ -15,6 +14,7 @@ import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
+import { usePtyBackend } from "./ptyBackend";
 import { loadShellHistory } from "./shellHistory";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import {
@@ -87,6 +87,7 @@ export function usePtyTerminal(
   // Geschwister-Tabs neu.
   onSelectTerminalTabByNumber: (number: number) => void,
 ): PtyTerminal {
+  const backend = usePtyBackend();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const selectTabRef = useRef(onSelectTerminalTabByNumber);
@@ -166,19 +167,13 @@ export function usePtyTerminal(
 
     const writeBytes = (bytes: Uint8Array) => {
       if (!sessionReady) return;
-      void invoke("pty_write", { tabId, data: Array.from(bytes) }).catch(
-        reportIpcFailure,
-      );
+      backend.write(tabId, bytes);
     };
     const writeText = (text: string) =>
       writeBytes(new TextEncoder().encode(text));
     const syncSize = () => {
       if (!sessionReady) return;
-      void invoke("pty_resize", {
-        tabId,
-        cols: terminal.cols,
-        rows: terminal.rows,
-      }).catch(reportIpcFailure);
+      backend.resize(tabId, terminal.cols, terminal.rows);
     };
 
     // Genau EIN Decoder pro Pane (Begründung in ptyIo.ts).
@@ -219,8 +214,7 @@ export function usePtyTerminal(
       flushRaf = requestAnimationFrame(flushOutput);
       flushTimeout = window.setTimeout(flushOutput, FLUSH_FALLBACK_MS);
     };
-    const onOutput = new Channel<ArrayBuffer>();
-    onOutput.onmessage = (bytes) => {
+    const handleOutput = (bytes: ArrayBuffer) => {
       if (disposed) return;
       pendingOutput += decodeChunk(bytes);
       // Obergrenze statt unbegrenztem Wachstum: erzwingt einen sofortigen
@@ -235,18 +229,19 @@ export function usePtyTerminal(
 
     queueMicrotask(() => {
       if (cancelled) return;
-      void invoke("pty_spawn", {
-        tabId,
-        cwd,
-        cols: terminal.cols,
-        rows: terminal.rows,
-        onOutput,
-      })
+      void backend
+        .spawn({
+          tabId,
+          cwd,
+          cols: terminal.cols,
+          rows: terminal.rows,
+          onOutput: handleOutput,
+        })
         .then(() => {
           sessionReady = true;
           if (!disposed) setSpawning(false);
           if (cancelled) {
-            killTab(tabId);
+            backend.kill(tabId);
             return;
           }
           // Zwischen fit() und dem Auflösen des Spawns kann sich der
@@ -470,9 +465,9 @@ export function usePtyTerminal(
       // pty_kill ist laut Vertrag nicht idempotent — nur killen, wenn der
       // Spawn tatsächlich durchgelaufen ist. Ist er noch unterwegs, übernimmt
       // der then-Zweig oben das Aufräumen (cancelled === true).
-      if (sessionReady) killTab(tabId);
+      if (sessionReady) backend.kill(tabId);
     };
-  }, [tabId, cwd]);
+  }, [tabId, cwd, backend]);
 
   const copySelection = useCallback(() => {
     const terminal = terminalRef.current;
@@ -562,14 +557,6 @@ function pasteInto(terminal: Terminal): void {
       if (text) terminal.paste(text);
     })
     .catch(noop);
-}
-
-function killTab(tabId: string): void {
-  void invoke("pty_kill", { tabId }).catch(reportIpcFailure);
-}
-
-function reportIpcFailure(error: unknown): void {
-  console.error("PaneCrew: PTY-IPC fehlgeschlagen", error);
 }
 
 function noop(): void {

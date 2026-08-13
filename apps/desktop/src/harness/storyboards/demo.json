@@ -1,0 +1,15 @@
+{
+  "panes": [
+    { "slot": 0, "projectName": "panecrew" },
+    { "slot": 1, "projectName": "website" }
+  ],
+  "focusEvents": [
+    { "atMs": 0, "slot": 0 },
+    { "atMs": 4000, "slot": 1 },
+    { "atMs": 8000, "slot": 0 }
+  ],
+  "typedEvents": [
+    { "atMs": 800, "slot": 0, "text": "pnpm tauri dev" },
+    { "atMs": 4800, "slot": 1, "text": "git status" }
+  ]
+}
