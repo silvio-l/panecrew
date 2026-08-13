@@ -231,6 +231,19 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // als "diese Pane hat jetzt den Fokus" lesbar, nicht als "hier kam etwas
 // rein" — bleibt bei reiner Flächenfarbe wie am Chip.
 //
+// Nachtrag 2026-08-13, Fokus-Leiterbahn (PCB-Metapher, s. FocusTrace.tsx —
+// zwei minimale Ergänzungen an BEIDEN Tab-Arten, sonst bleibt die Box+
+// doppelte-Unterkante-Optik unverändert):
+// 1. STUB: der aktive Chip einer FOKUSSIERTEN Pane trägt einen 2px-Amber-Steg
+//    unter seiner Unterkante, der sie optisch mit der Header-Hairline
+//    darunter verbindet — "auf die Leitung gelötet". Nur bei Pane-Fokus:
+//    ohne bestromte Leitung gibt es nichts, woran der Steg hinge.
+// 2. DÄMPFUNG: in unfokussierten Panes fällt das Akzent-Amber des aktiven
+//    Tabs auf dieselbe 45%-Abschwächung, die der Pane-Header für seine
+//    Fokus-Hairline nutzt (`border-(--pc-pane-activeBorder)/45`,
+//    TerminalPane.tsx) — der aktive Tab bleibt als Auswahl lesbar, aber nur
+//    die fokussierte Pane spricht in voller Sättigung.
+//
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
 // selbst als bevorzugte von zwei genannten Optionen) — bewusst NICHT als
@@ -376,6 +389,7 @@ export function PaneTabs({
           label={fileName}
           dirty={fileDirty}
           active={showingFile}
+          paneFocused={paneFocused}
           onClick={onSelectFile}
         />
       )}
@@ -543,10 +557,15 @@ function TerminalTabChip({
             // Rand UND Füllung auf.
             className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
               active
-                ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)"
+                ? `${
+                    paneFocused
+                      ? "border-(--pc-pane-activeBorder)"
+                      : "border-(--pc-pane-activeBorder)/45"
+                  } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
                 : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
             } ${CHROME_FOCUS_RING}`}
           >
+            {active && paneFocused && <TraceStub />}
             {flashKey > 0 && (
               <span
                 key={flashKey}
@@ -686,11 +705,13 @@ function PaneTab({
   label,
   dirty,
   active,
+  paneFocused,
   onClick,
 }: {
   label: string;
   dirty?: boolean;
   active: boolean;
+  paneFocused: boolean;
   onClick: () => void;
 }) {
   return (
@@ -699,21 +720,45 @@ function PaneTab({
       onClick={onClick}
       aria-pressed={active}
       // Dieselbe Aktiv-Signalisierung wie TerminalTabChip (volle 1px-Box,
-      // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token) —
-      // ein Bauteil, ein Idiom, s. Kopfkommentar dieser Datei. Kein
+      // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token,
+      // seit der Leiterbahn-Runde auch Stub + 45%-Dämpfung) — ein Bauteil,
+      // ein Idiom, s. Kopfkommentar dieser Datei. Kein
       // ❯-Präfix (2026-08-13 mitentfernt, s. Kopfkommentar "Nachtrag …noch
       // später") — dasselbe Idiom auf beiden Tab-Arten heißt auch: beide
       // verlieren dasselbe Signal, nicht nur eine. Nur oben gerundet, aus
       // demselben Grund wie dort (siehe Kommentar an TerminalTabChip).
-      className={`flex h-6 max-w-32 min-w-0 shrink items-center gap-1 rounded-t-(--pc-paneControl-radius) border border-b-2 px-1.5 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
+      className={`relative flex h-6 max-w-32 min-w-0 shrink items-center gap-1 rounded-t-(--pc-paneControl-radius) border border-b-2 px-1.5 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
         active
-          ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)"
+          ? `${
+              paneFocused
+                ? "border-(--pc-pane-activeBorder)"
+                : "border-(--pc-pane-activeBorder)/45"
+            } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
           : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
       } ${CHROME_FOCUS_RING}`}
     >
+      {active && paneFocused && <TraceStub />}
       <span className="min-w-0 truncate">{label}</span>
       {dirty && <DirtyMark />}
     </button>
+  );
+}
+
+// Der Löt-Steg der Fokus-Leiterbahn (Kopfkommentar, Leiterbahn-Nachtrag):
+// 2px breit, mittig unter dem Chip, reicht 2px über dessen Unterkante hinaus
+// in die Header-Hairline. Positioniert relativ zur Padding-Box des Knopfs —
+// `-bottom-1` (-4px) überdeckt deshalb erst die eigene 2px-Unterkante
+// (border-b-2, dort farbgleich unsichtbar) und ragt dann 2px darunter heraus.
+// `data-trace-stub` ist der Test-Haken (PaneTabs.test.tsx): ein rein
+// dekoratives, aria-verstecktes Element hat keine Rolle, über die es sich
+// sonst greifen ließe.
+function TraceStub() {
+  return (
+    <span
+      aria-hidden="true"
+      data-trace-stub=""
+      className="pointer-events-none absolute -bottom-1 left-1/2 h-1 w-0.5 -translate-x-1/2 bg-(--pc-pane-activeBorder)"
+    />
   );
 }
 

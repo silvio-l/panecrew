@@ -173,15 +173,27 @@ export function TerminalPane({
   // DOM-Fokus im vorher aktiven Tab hängen, auch wenn der Wechsel per
   // Tastatur kam und die Maus das Terminal nie berührt hat. Reagiert bewusst
   // nur auf einen echten false→true-Übergang (per Ref verfolgt), nicht auf
-  // `active` selbst: sonst riefe jede Pane, deren aktiver Tab beim initialen
-  // Mount (Sitzungs-Restore mit mehreren Panes) bereits `active` ist, hier
-  // ebenfalls focus() — die zuletzt gemountete Pane gewönne den DOM-Fokus,
-  // unabhängig davon, welche Pane vorher `focusedPaneId` im Grid-Store trug.
+  // `active`/`focused` selbst: sonst riefe jede Pane, deren aktiver Tab beim
+  // initialen Mount (Sitzungs-Restore mit mehreren Panes) bereits `active`
+  // ist, hier ebenfalls focus() — die zuletzt gemountete Pane gewönne den
+  // DOM-Fokus, unabhängig davon, welche Pane vorher `focusedPaneId` im
+  // Grid-Store trug.
+  //
+  // Zweite Bedingung (`focused`) ergänzt 2026-08-13: ein reiner
+  // Pane-Fokuswechsel ohne Tab-Wechsel (Pin-Header-Klick, FocusPinHeader.tsx;
+  // ebenso Cmd+1..4/Fokus-Modus-Rotation bei Panes mit nur einem Tab) ändert
+  // `active` gar nicht — ohne diesen Zweig blieb der Rahmen/Trace-Fokus
+  // sichtbar bei der Ziel-Pane, während Tastatureingaben weiter im vorher
+  // fokussierten Terminal landeten.
   const wasActive = useRef(active);
+  const wasFocused = useRef(focused);
   useEffect(() => {
-    if (active && !wasActive.current) focus();
+    if (active && (!wasActive.current || !wasFocused.current) && focused) {
+      focus();
+    }
     wasActive.current = active;
-  }, [active, focus]);
+    wasFocused.current = focused;
+  }, [active, focused, focus]);
 
   // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
   // Pane-Aufblitz): `onTabAttentionFlash` meldet den Chip-Aufblitz

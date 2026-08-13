@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Tooltip } from "radix-ui";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "../components/TitleBar";
 import { ExplorerPanel } from "../components/ExplorerPanel";
+import { FocusPinHeader } from "../components/FocusPinHeader";
+import { FocusTrace } from "../components/FocusTrace";
 import { PaneGrid } from "../components/PaneGrid";
 import { usePaneFileEditors } from "../explorer/usePaneFileEditors";
 import { activePanes, focusedProjectPath } from "../grid/gridState";
@@ -9,6 +11,7 @@ import { useFocusRotation } from "../grid/useFocusRotation";
 import { useGrid } from "../grid/useGrid";
 import { PtyBackendContext } from "../terminal/ptyBackend";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
+import { projectNameFromPath } from "../types/project";
 import { createDemoPtyBackend } from "./demoPtyBackend";
 import { mockProject, mockProjectPath } from "./mockProjects";
 import { parseStoryboard, type Storyboard } from "./storyboard";
@@ -99,28 +102,49 @@ export function HarnessApp({
       <Tooltip.Provider delayDuration={300}>
         <div className="relative flex h-full flex-col">
           <TitleBar zoom={1} />
+          {/* `relative`: Anker fürs FocusTrace-Overlay, s. App.tsx. Der
+              Harness hat keinen Resize-Separator (keine echte Explorer-
+              Breitenbedienung), der Pin-Header dockt hier direkt hinter dem
+              Explorer an derselben Naht an. */}
           <div
             style={{ paddingTop: `${TITLE_BAR_ZONE_HEIGHT}px` }}
-            className="flex min-h-0 flex-1"
+            className="relative flex min-h-0 flex-1"
           >
             {project !== null && (
-              <ExplorerPanel
-                key={project.path}
-                project={project}
-                width={EXPLORER_WIDTH}
-                selectedFile=""
-                dirtyFile={null}
-                onExpandedChange={() => undefined}
-                onSelectFile={() => undefined}
-                onCollapse={() => undefined}
-                onRefresh={() => undefined}
-                onLoadChildren={() => Promise.resolve()}
-                onStartPathDrag={() => undefined}
-                draggingPath={null}
-                onConsumeDragClick={() => false}
-                onEntryRenamed={() => undefined}
-                onEntryDeleted={() => undefined}
-              />
+              <>
+                <ExplorerPanel
+                  key={project.path}
+                  project={project}
+                  width={EXPLORER_WIDTH}
+                  selectedFile=""
+                  dirtyFile={null}
+                  onExpandedChange={() => undefined}
+                  onSelectFile={() => undefined}
+                  onCollapse={() => undefined}
+                  onRefresh={() => undefined}
+                  onLoadChildren={() => Promise.resolve()}
+                  onStartPathDrag={() => undefined}
+                  draggingPath={null}
+                  onConsumeDragClick={() => false}
+                  onEntryRenamed={() => undefined}
+                  onEntryDeleted={() => undefined}
+                />
+                <FocusPinHeader
+                  pins={grid.state.slots.flatMap((slot, index) =>
+                    slot
+                      ? [
+                          {
+                            paneId: slot.paneId,
+                            slotNumber: index + 1,
+                            projectName: projectNameFromPath(slot.projectPath),
+                          },
+                        ]
+                      : [],
+                  )}
+                  focusedPaneId={grid.state.focusedPaneId}
+                  onFocusPane={grid.focusPane}
+                />
+              </>
             )}
             <main className="flex min-w-0 flex-1 flex-col p-2">
               <PaneGrid
@@ -146,6 +170,14 @@ export function HarnessApp({
                 rotation={focusRotation}
               />
             </main>
+            {project !== null && (
+              <FocusTrace
+                focusedPaneId={grid.state.focusedPaneId}
+                template={grid.state.template}
+                slots={grid.state.slots}
+                maximizedPaneId={grid.state.maximizedPaneId}
+              />
+            )}
           </div>
         </div>
       </Tooltip.Provider>

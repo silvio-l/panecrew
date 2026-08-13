@@ -56,14 +56,14 @@ const paneTabs: PaneTabsProps = {
   onSelectFile: vi.fn(),
 };
 
-const paneElement = (dropTarget: boolean, active: boolean) => (
+const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
   <Tooltip.Provider>
     <TerminalPane
       paneId="pane-1"
       tabId="tab-1"
       projectPath="/tmp/projekt"
       projectName="projekt"
-      focused
+      focused={focused}
       maximized={false}
       active={active}
       dropTarget={dropTarget}
@@ -82,8 +82,8 @@ const paneElement = (dropTarget: boolean, active: boolean) => (
   </Tooltip.Provider>
 );
 
-const renderPane = (dropTarget: boolean, active = true) =>
-  render(paneElement(dropTarget, active));
+const renderPane = (dropTarget: boolean, active = true, focused = true) =>
+  render(paneElement(dropTarget, active, focused));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -131,6 +131,28 @@ describe("TerminalPane", () => {
     // Pane focus() auf, und die zuletzt gemountete gewönne den DOM-Fokus,
     // unabhängig davon, welche Pane vorher `focusedPaneId` trug.
     renderPane(false, true);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("holt den Fokus zurück ins Terminal, sobald die Pane fokussiert wird — auch ohne Tab-Wechsel", () => {
+    // Das Pin-Header-Szenario (FocusPinHeader.tsx) und Cmd+1..4/Fokus-
+    // Rotation bei Panes mit nur einem Tab: `active` bleibt durchgehend
+    // `true`, nur `focusedPaneId` im Grid-Store wechselt auf diese Pane.
+    const { rerender } = renderPane(false, true, false);
+    expect(focus).not.toHaveBeenCalled();
+
+    rerender(paneElement(false, true, true));
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("holt keinen Fokus, solange die Pane unfokussiert bleibt, auch wenn ihr Tab aktiv wird", () => {
+    // Absichtliche Einschränkung ggü. dem reinen Tab-Wechsel-Fall oben: ein
+    // aktiv werdender Tab in einer nicht fokussierten Pane darf ihr
+    // verstecktes Terminal nicht heimlich zum DOM-Fokus-Ziel machen.
+    const { rerender } = renderPane(false, false, false);
+    expect(focus).not.toHaveBeenCalled();
+
+    rerender(paneElement(false, true, false));
     expect(focus).not.toHaveBeenCalled();
   });
 

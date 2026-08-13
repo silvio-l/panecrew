@@ -57,6 +57,8 @@ import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
 import { CollapsedExplorerStrip, ExplorerPanel } from "./components/ExplorerPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { FocusPinHeader } from "./components/FocusPinHeader";
+import { FocusTrace } from "./components/FocusTrace";
 import { GridStatusRail } from "./components/GridStatusRail";
 import { PaneGrid } from "./components/PaneGrid";
 import { PathDragGhost } from "./components/PathDragGhost";
@@ -795,9 +797,13 @@ function App() {
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch
             den Zoomfaktor, weil die Kapsel darüber physisch konstant bleibt. */}
+        {/* `relative`: Anker für das FocusTrace-Overlay unten, das Explorer-
+            Naht UND Grid überspannen muss — im Explorer oder in <main> allein
+            gerendert würde die Leiterbahn an deren Kante beschnitten (dasselbe
+            Argument wie beim PathDragGhost ganz außen). */}
         <div
           style={{ paddingTop: `${TITLE_BAR_ZONE_HEIGHT / zoom}px` }}
-          className="flex min-h-0 flex-1"
+          className="relative flex min-h-0 flex-1"
         >
           {/* Ohne offenes Projekt gibt es nichts, dem der Explorer folgen
               könnte — er erscheint erst mit der Pane. "Dauerhaft sichtbar"
@@ -854,6 +860,25 @@ function App() {
                     : "bg-transparent hover:bg-(--pc-focusBorder)/45"
                 }`}
               />
+              {/* Pin-Header "J1" der Fokus-Leiterbahn — dockt an der Naht an,
+                  auf der der Separator sitzt, ohne ihn umzubauen (eigenes
+                  Nullbreiten-Element, s. FocusPinHeader.tsx). Ein Pin je
+                  belegtem Slot, Klick = Fokuswechsel. */}
+              <FocusPinHeader
+                pins={gridState.slots.flatMap((slot, index) =>
+                  slot
+                    ? [
+                        {
+                          paneId: slot.paneId,
+                          slotNumber: index + 1,
+                          projectName: projectNameFromPath(slot.projectPath),
+                        },
+                      ]
+                    : [],
+                )}
+                focusedPaneId={focusedPaneId}
+                onFocusPane={focusPane}
+              />
             </>
           )}
           <main className="flex min-w-0 flex-1 flex-col p-2">
@@ -904,6 +929,19 @@ function App() {
               rotation={focusRotation}
             />
           </main>
+          {/* Die bestromte Leiterbahn vom aktiven Pin zur fokussierten Pane —
+              nur solange es den Pin-Header gibt (dieselbe Bedingung wie der
+              Explorer-Zweig oben): ohne Naht kein Startpunkt. Als LETZTES Kind
+              des relativen Containers, damit das Overlay über Explorer,
+              Separator und Grid liegt. */}
+          {project !== null && !explorerCollapsed && (
+            <FocusTrace
+              focusedPaneId={focusedPaneId}
+              template={gridState.template}
+              slots={gridState.slots}
+              maximizedPaneId={gridState.maximizedPaneId}
+            />
+          )}
         </div>
         {/* Außerhalb des `project !== null`-Zweigs: die bestätigte Handlung
             kann genau dieses Projekt schließen (`closeProject`), und ein

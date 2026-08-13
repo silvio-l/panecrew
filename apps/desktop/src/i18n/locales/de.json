@@ -123,6 +123,10 @@
       "shell": "Shell"
     }
   },
+  "pinHeader": {
+    "groupLabel": "Pane-Steckverbinder",
+    "focusPane": "Pane {{number}} fokussieren — {{projectName}}"
+  },
   "projectPicker": {
     "choose": "Projekt wählen",
     "hint": "PaneCrew startet darin eine echte Shell."

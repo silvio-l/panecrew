@@ -253,6 +253,50 @@ describe("PaneTabs", () => {
     });
   });
 
+  describe("Leiterbahn-Anbindung (Stub + Dämpfung)", () => {
+    // Zwei Ergänzungen der Fokus-Leiterbahn-Runde (Kopfkommentar in
+    // PaneTabs.tsx, Leiterbahn-Nachtrag): der Löt-Steg unter dem aktiven
+    // Chip existiert nur bei Pane-Fokus, und ohne Pane-Fokus fällt das
+    // Akzent-Amber des aktiven Tabs auf die 45%-Dämpfung des Pane-Headers.
+    it("lötet den aktiven Tab nur in der fokussierten Pane auf die Leitung", () => {
+      const { container, rerender } = renderTabs(baseProps({ paneFocused: true }));
+      expect(container.querySelectorAll("[data-trace-stub]")).toHaveLength(1);
+
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...baseProps({ paneFocused: false })} />
+        </Tooltip.Provider>,
+      );
+      expect(container.querySelector("[data-trace-stub]")).toBeNull();
+    });
+
+    it("trägt der Datei-Tab denselben Steg, wenn er der aktive ist", () => {
+      const { container } = renderTabs(
+        baseProps({ paneFocused: true, showingFile: true, fileName: "a.ts" }),
+      );
+
+      const fileTab = screen.getByRole("button", { name: "a.ts" });
+      expect(fileTab.querySelector("[data-trace-stub]")).not.toBeNull();
+      // Der jetzt inaktive Terminal-Chip bekommt keinen.
+      expect(container.querySelectorAll("[data-trace-stub]")).toHaveLength(1);
+    });
+
+    it("dämpft das Amber des aktiven Tabs in einer unfokussierten Pane auf /45", () => {
+      renderTabs(baseProps({ paneFocused: false }));
+
+      const active = screen.getByRole("button", { name: "Terminal 1" });
+      expect(active.className).toContain("border-(--pc-pane-activeBorder)/45");
+    });
+
+    it("lässt den aktiven Tab der fokussierten Pane in voller Sättigung", () => {
+      renderTabs(baseProps({ paneFocused: true }));
+
+      const active = screen.getByRole("button", { name: "Terminal 1" });
+      expect(active.className).toContain("border-(--pc-pane-activeBorder)");
+      expect(active.className).not.toContain("border-(--pc-pane-activeBorder)/45");
+    });
+  });
+
   describe("Tool-Icon-Erkennung", () => {
     it("hängt den erkannten Tool-Namen an Tooltip und aria-label an", async () => {
       const detectTool = vi
