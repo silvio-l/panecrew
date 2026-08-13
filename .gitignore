@@ -14,15 +14,9 @@ DESIGN.md
 # gitleaks, Changelog-Gate) -- laufen nur auf der eigenen Maschine über
 # core.hooksPath, gehören nicht ins öffentliche Repo.
 .githooks/
-# `tools/*` statt `tools/` (rekursiv), damit die eine gezielte Ausnahme
-# darunter greifen kann — ein Verzeichnis-Muster ohne `*` lässt sich laut
-# git-Doku nicht durch eine `!`-Negation für Inhalte wieder freischalten.
-tools/*
-# changelog-gate ist keine interne Planung, sondern das Release-CI-Gate
-# selbst (docs/decisions.md -> "Auto-Update via GitHub Releases", Punkt 6:
-# Pfad→Modul-Mapping muss öffentlich sein) — ohne diesen Pfad im Repo
-# funktioniert `.github/workflows/release-*.yml` in der Öffentlichkeit nicht.
-!tools/changelog-gate/
+# Alle internen Tools (Promo-Pipeline, Changelog-Gate) laufen ausschließlich
+# lokal, nie auf GitHub.
+tools/
 
 # Secrets
 .env
