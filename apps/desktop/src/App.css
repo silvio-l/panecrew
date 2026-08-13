@@ -279,12 +279,19 @@ body {
   transition: border-color 150ms;
 }
 
+/* --pc-hud-lock-x/-y: Einwärts-Startlage der Einrast-Bewegung beim
+   Hover-Eintritt der leeren Slots (@keyframes pc-hud-lock, s. Choreografie-
+   Block unten) — je Ecke der Vektor Richtung Slot-Mitte. An anderen
+   Einsatzorten der Ecken (Titelkapsel --fine, Drop-HUD --invite) bleiben die
+   Variablen inert, dort greift die hover-gebundene Animation nie. */
 .pc-hud-corner--tl {
   top: 0;
   left: 0;
   border-top-width: 1px;
   border-left-width: 1px;
   border-top-left-radius: 0.5rem;
+  --pc-hud-lock-x: 4px;
+  --pc-hud-lock-y: 4px;
 }
 
 .pc-hud-corner--tr {
@@ -293,6 +300,8 @@ body {
   border-top-width: 1px;
   border-right-width: 1px;
   border-top-right-radius: 0.5rem;
+  --pc-hud-lock-x: -4px;
+  --pc-hud-lock-y: 4px;
 }
 
 .pc-hud-corner--bl {
@@ -301,6 +310,8 @@ body {
   border-bottom-width: 1px;
   border-left-width: 1px;
   border-bottom-left-radius: 0.5rem;
+  --pc-hud-lock-x: 4px;
+  --pc-hud-lock-y: -4px;
 }
 
 .pc-hud-corner--br {
@@ -309,6 +320,8 @@ body {
   border-bottom-width: 1px;
   border-right-width: 1px;
   border-bottom-right-radius: 0.5rem;
+  --pc-hud-lock-x: -4px;
+  --pc-hud-lock-y: -4px;
 }
 
 /* Feine Fassung der Sucher-Ecken für die 28px-Befehlszeile in der Titelkapsel
@@ -446,6 +459,45 @@ body {
  * ambiente Sequenz liefe sonst sichtbar GEGEN die Hover-Farbe an — der Slot
  * schaut den Zeiger an, statt weiter vor sich hin zu scannen. Nur der
  * Cursor pulst immer, per Hover auch auf einem `restoring`-Slot.
+ *
+ * HOVER-EINTRITT „Lock-on & Boot-Lap" (2026-08-13, Nutzer-Wunsch nach einer
+ * eigenen, „fancy" Hover-Animation zusätzlich zum reinen Farbanzug): zwei
+ * einmalige Stimmen im Moment des Eintritts, beide Wiederverwendung
+ * vorhandener Bewegungssprache statt einer neuen —
+ *
+ *   A. SUCHER RASTET EIN: die vier Ecken starten 4px zur Slot-Mitte
+ *      konvergiert und expandieren einmalig in ihren Sitz (220ms, derselbe
+ *      Apple-Auslauf wie pc-cell-in) — der Sucher „fasst" den Slot. Bewusst
+ *      von INNEN nach außen (statt von außen einrastend): die Ecken sitzen
+ *      auf inset-0 des Knopfs, ein Start außerhalb liefe in die
+ *      Nachbarzellen des Grids. Das bleibt Hover-/Fokus-exklusiv, die
+ *      dokumentierte Trennung (Ecken tragen KEINE ambiente Animation) steht.
+ *      Basiszustand ist der Sitz selbst: Eintritt startet die Bewegung am
+ *      0%-Frame, Austritt entfernt sie am Zielwert — kein Sprung in beide
+ *      Richtungen. Translate statt Farbe: kein Zeichen, also ohnehin keine
+ *      Typografie-Frage; kein Glow.
+ *   B. BOOT-LAP: dieselben zehn Rahmensegmente wie im Idle-Rundlauf zünden
+ *      einmal im Uhrzeigersinn (40ms-Versatz statt 150ms, 320ms-Fenster):
+ *      Ruhe-Dimmton → Akzent-Blitz → heller Hover-Rahmenton. fill-mode
+ *      backwards hält jedes Segment bis zu seinem Fenster im Dimmton — der
+ *      Rahmen bootet sichtbar Segment für Segment hoch statt als Fläche
+ *      umzufärben; nach dem letzten Frame übernimmt nahtlos die geerbte
+ *      Hover-Farbe (100%-Wert = Hover-Regel unten). Erkennbar dieselbe
+ *      Rundlauf-Grammatik wie die ambiente Sequenz, nur als energische
+ *      Antwort auf die Hand statt als Selbstgespräch.
+ *
+ * Der Cursor bekommt bewusst KEINE dritte Eintritts-Stimme — er pulst beim
+ * Hover ohnehin schon in voller Akzentfarbe weiter; ein zusätzliches
+ * Doppel-Blinken wäre die Überladung, vor der die Design-Linie steht.
+ * Beide Stimmen sind auf echte leere Slots begrenzt: der Boot-Lap über
+ * `--blinking` am Emblem, das Ecken-Einrasten über `:has(--blinking)` am
+ * Rahmen (:has ist im WKWebView seit Jahren etabliert und wurde per
+ * CSS.supports gegen die laufende Engine verifiziert) — ein
+ * `restoring`-Slot ist kein Angebot und darf die Einladungs-Geste nicht
+ * ausführen. Kollision mit
+ * der Idle-Sequenz ist strukturell ausgeschlossen: sie läuft nur
+ * `:not(:hover):not(:focus-visible)`, der Boot-Lap nur `:hover`/`:focus-
+ * visible` — dieselben Segmente, komplementäre Zustände.
  */
 .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
   color: var(--pc-pane-activeBorder);
@@ -473,6 +525,24 @@ body {
     .pc-hud-emblem--blinking
     .pc-hud-emblem__prompt-glyph {
     animation: pc-hud-ack 3.5s ease-in-out infinite;
+  }
+
+  /* Hover-Eintritt, Stimme A: Sucher rastet ein (einmalig, kein infinite).
+     Die Einwärts-Startlage kommt je Ecke aus --pc-hud-lock-x/-y (bei den
+     --tl/--tr/--bl/--br-Regeln oben gesetzt) — ein Keyframe-Satz für vier
+     Richtungen. */
+  .pc-slotframe:hover:has(.pc-hud-emblem--blinking) .pc-hud-corner,
+  .pc-slotframe:focus-visible:has(.pc-hud-emblem--blinking) .pc-hud-corner {
+    animation: pc-hud-lock 220ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Hover-Eintritt, Stimme B: Boot-Lap der Rahmensegmente (einmalig).
+     backwards: bis zum eigenen Fenster hält das Segment den 0%-Dimmton,
+     danach fällt es auf die geerbte Hover-Farbe zurück (= 100%-Frame). */
+  .pc-slotframe:hover .pc-hud-emblem--blinking .pc-hud-emblem__seg,
+  .pc-slotframe:focus-visible .pc-hud-emblem--blinking .pc-hud-emblem__seg {
+    animation: pc-hud-wake 320ms ease-out backwards;
+    animation-delay: calc(var(--pc-hud-seg) * 40ms);
   }
 }
 
@@ -507,6 +577,34 @@ body {
   65.714%,
   100% {
     color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
+  }
+}
+
+/* Hover-Eintritt A — Einrast-Bewegung der Sucher-Ecken: von der je Ecke
+   gesetzten Einwärts-Lage in den Sitz. `translate` (Einzeleigenschaft) statt
+   `transform`, damit nichts kollidiert, falls eine Ecke je eine
+   transform-Utility bekommt. */
+@keyframes pc-hud-lock {
+  from {
+    translate: var(--pc-hud-lock-x) var(--pc-hud-lock-y);
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+/* Hover-Eintritt B — Zünd-Fenster eines Segments: Ruhe-Dimmton (identisch
+   mit .pc-hud-emblem) → Akzent-Blitz → der volle Beschreibungston, den die
+   Hover-Regel unten dem Rahmen gibt. */
+@keyframes pc-hud-wake {
+  0% {
+    color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
+  }
+  35% {
+    color: var(--pc-pane-activeBorder);
+  }
+  100% {
+    color: var(--pc-descriptionForeground);
   }
 }
 
