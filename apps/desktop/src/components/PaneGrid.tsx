@@ -16,10 +16,7 @@
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState, Pane } from "../grid/gridState";
-import {
-  useWebviewFileDrop,
-  type PaneDropRegistration,
-} from "../terminal/useWebviewFileDrop";
+import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
@@ -32,7 +29,8 @@ export function PaneGrid({
   guardLeave,
   pickingSlot,
   restoringSlots,
-  zoom,
+  dropTargets,
+  dragTargetPaneId,
   onAssignProject,
   onClosePane,
   onFocusPane,
@@ -52,9 +50,15 @@ export function PaneGrid({
    * (App.tsx, bis `hydrated` kippt) — ihr Picker zeigt einen Ladehinweis
    * statt eines klickbaren Knopfs. */
   restoringSlots: ReadonlySet<number>;
-  /** Für die Drop-Positionsprüfung (`useWebviewFileDrop.ts`) — physische
-   * Drop-Koordinaten sind vom App-Zoom mitskaliert. */
-  zoom: number;
+  /** Die eine Drop-Registrierung, seit dem Explorer-Ziehen von `App.tsx`
+   * gehalten statt hier erzeugt (Begründung dort) — beide Drop-Quellen
+   * brauchen sie, und die eine beginnt außerhalb dieses Baums. */
+  dropTargets: PaneDropRegistration;
+  /** Die Pane unter einem schwebenden Drag, aus welcher Quelle auch immer —
+   * `null`, wenn gerade keine. `App.tsx` führt die beiden Quellen zu diesem
+   * einen Wert zusammen, damit das Drop-Ziel-HUD hier nicht zwei Herkünfte
+   * auseinanderhalten muss: für die Pane ist beides derselbe Zustand. */
+  dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
@@ -63,11 +67,6 @@ export function PaneGrid({
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
 }) {
-  // Die eine Drag-Drop-Registrierung für das ganze Grid (Begründung dort) —
-  // plus die Pane unter einem gerade schwebenden Datei-Drag, die ihr
-  // Drop-Ziel-HUD einschaltet.
-  const { dropTargets, dragTargetPaneId } = useWebviewFileDrop(zoom);
-
   return (
     // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
     // — Spuren und Spannen aller sieben Geometrien stehen in App.css

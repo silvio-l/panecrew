@@ -53,6 +53,20 @@
     "discard": "Änderungen verwerfen",
     "cancel": "Abbrechen"
   },
+  "gridStatus": {
+    "panes": "{{active}} von {{slots}} Rasterflächen belegt",
+    "terminals_one": "{{count}} laufende Terminal-Sitzung insgesamt",
+    "terminals_other": "{{count}} laufende Terminal-Sitzungen insgesamt"
+  },
+  "closeDialog": {
+    "paneTitle": "Pane schließen?",
+    "paneDescription": "Die Pane <bold>{{projectName}}</bold> wird geschlossen, ihre laufenden Terminal-Sitzungen werden beendet.",
+    "confirmPane": "Pane schließen",
+    "terminalTabTitle": "Terminal-Tab schließen?",
+    "terminalTabDescription": "<bold>Terminal {{number}}</bold> wird geschlossen, die darin laufende Sitzung wird beendet.",
+    "confirmTerminalTab": "Tab schließen",
+    "cancel": "Abbrechen"
+  },
   "terminalPane": {
     "terminalAria": "Terminal {{projectName}}",
     "closePane": "Pane schließen",

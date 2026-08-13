@@ -31,14 +31,18 @@ export function TemplateSwitcher({
 }) {
   const { t } = useTranslation();
   return (
-    // `self-end` statt eines eigenen Zeilen-Wrappers: `<main>` ist ein
-    // Spalten-Flex, die Querachse ist also die waagerechte — das rückt den
-    // Streifen an die rechte Kante und lässt ihn zugleich auf seine
-    // Inhaltsbreite schrumpfen, statt die Zeile zu füllen.
+    // Ohne eigene Ausrichtung und ohne eigenen Abstand nach unten: beides
+    // lag hier, solange der Streifen allein in seiner Zeile stand und sich
+    // per `self-end` an die rechte Kante von `<main>` schob. Seit links das
+    // Raster-Readout danebensteht (`GridStatusRail`), gehört die Zeile einem
+    // Wrapper in App.tsx — und eine Ausrichtung, die sich ein Kind selbst
+    // gibt, während der Wrapper sie ebenfalls verteilt, wäre eine zweite
+    // Meinung zum selben Layout. `shrink-0` bleibt: der Streifen ist die
+    // Bedienung, das Readout daneben darf ihm nie Platz nehmen.
     <div
       role="group"
       aria-label={t("templateSwitcher.selectTemplate")}
-      className="mb-2 flex shrink-0 items-center gap-px self-end rounded-md border border-(--pc-pane-border) p-px"
+      className="flex shrink-0 items-center gap-px rounded-md border border-(--pc-pane-border) p-px"
     >
       {GRID_TEMPLATES.map((template) => {
         // Beide Zustände — gesperrt und warum — werden bei JEDEM Render neu

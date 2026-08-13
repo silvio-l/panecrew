@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "radix-ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FileIcon, FolderIcon } from "./explorerIcons";
+import { HudReadout } from "./HudReadout";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
 import { filterTree } from "../types/treeFilter";
@@ -57,6 +62,9 @@ export function ExplorerPanel({
   onSelectFile,
   onCollapse,
   onRefresh,
+  onStartPathDrag,
+  draggingPath,
+  onConsumeDragClick,
 }: {
   project: Project;
   width: number;
@@ -85,6 +93,21 @@ export function ExplorerPanel({
    * (`explorer_read_tree`) liegt bei App, nicht hier — der Explorer weiß nur,
    * dass es ihn gibt. */
   onRefresh: () => void;
+  /** Beginnt das Ziehen einer Zeile in eine Pane (Ticket 25). Bekommt den
+   * ABSOLUTEN Pfad — die Umrechnung passiert hier, wo `project.path` bekannt
+   * ist, genau wie bei `dirtyFile`: der Baum selbst spricht durchgehend
+   * projekt-relativ, und ein zusätzlicher `projectPath` durch TreeList und
+   * TreeRow hindurch wäre eine zweite Konvention in derselben Datei. */
+  onStartPathDrag: (
+    event: ReactPointerEvent<HTMLElement>,
+    absolutePath: string,
+    rowPath: string,
+  ) => void;
+  /** Die gerade gezogene Zeile (projekt-relativ), sonst `null`. */
+  draggingPath: string | null;
+  /** Ob der jetzt eintreffende Klick noch zum eben beendeten Ziehen gehört —
+   * dann öffnet er keine Datei und klappt keinen Ordner. */
+  onConsumeDragClick: () => boolean;
 }) {
   const { t } = useTranslation();
   // Jeder Ordnerpfad des Baums — die Bezugsmenge, gegen die sich „eingeklappt"
@@ -424,6 +447,11 @@ export function ExplorerPanel({
               gitDecorations={project.gitDecorations}
               onToggleFolder={toggleFolder}
               onSelectFile={onSelectFile}
+              onStartPathDrag={(event, rowPath) => {
+                onStartPathDrag(event, `${project.path}/${rowPath}`, rowPath);
+              }}
+              draggingPath={draggingPath}
+              onConsumeDragClick={onConsumeDragClick}
             />
           )}
           {/* Nur unter einem echten Baum: unter Fehler- und Leerzuständen
@@ -439,12 +467,13 @@ export function ExplorerPanel({
 }
 
 // HUD-Fußzeile des Baums (TUI-Direktive 2026-08-13): sichtbare gegen
-// vorhandene Einträge, im selben 10px-Terminalschrift-Register wie das
-// Slot-Readout der leeren Panes (.pc-hud-readout, App.css — auch dieselbe
-// gedimmte Farbe). Sichtbar sind nur Ziffern und der Schrägstrich, deshalb
-// keine i18n-Frage im Sichtbaren; der Screenreader bekommt stattdessen den
-// ganzen Satz. Die Zahl reagiert auf Klappen, Suchen UND Aktualisieren —
-// ein lebendes Instrument, kein Zierrat.
+// vorhandene Einträge. Das Register selbst — Terminalschrift, 10px, Sperrung,
+// gedimmte Farbe, Ziffern sichtbar und der ganze Satz nur für Screenreader —
+// steht seit 2026-08-13 in `HudReadout`; diese Fußzeile war der erste Ort, an
+// dem es galt, und ist deshalb der erste, der es aus dem Bauteil bezieht.
+// Hier bleibt nur die Fassung: Höhe, Trennlinie, Einzug. Die Zahl reagiert
+// auf Klappen, Suchen UND Aktualisieren — ein lebendes Instrument, kein
+// Zierrat.
 function TreeStatusReadout({
   visible,
   total,
@@ -455,15 +484,10 @@ function TreeStatusReadout({
   const { t } = useTranslation();
   return (
     <div className="flex h-5 shrink-0 items-center border-t border-(--pc-explorer-border) px-3">
-      <span
-        aria-hidden="true"
-        className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em]"
-      >
-        {`${String(visible)}/${String(total)}`}
-      </span>
-      <span className="sr-only">
-        {t("explorer.visibleCount", { visible, total })}
-      </span>
+      <HudReadout
+        value={`${String(visible)}/${String(total)}`}
+        srText={t("explorer.visibleCount", { visible, total })}
+      />
     </div>
   );
 }
@@ -502,6 +526,9 @@ function TreeList({
   gitDecorations,
   onToggleFolder,
   onSelectFile,
+  onStartPathDrag,
+  draggingPath,
+  onConsumeDragClick,
 }: {
   rows: readonly FlatRow[];
   selected: string;
@@ -509,6 +536,14 @@ function TreeList({
   gitDecorations: GitDecorations;
   onToggleFolder: (path: string) => void;
   onSelectFile: (path: string) => void;
+  /** Wie in `ExplorerPanel`, nur schon auf den Baumpfad der Zeile verkürzt —
+   * die Umrechnung auf den absoluten Pfad liegt eine Ebene höher. */
+  onStartPathDrag: (
+    event: ReactPointerEvent<HTMLElement>,
+    rowPath: string,
+  ) => void;
+  draggingPath: string | null;
+  onConsumeDragClick: () => boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Der React Compiler überspringt diese Komponente — um eine API herum, die
@@ -612,6 +647,9 @@ function TreeList({
               gitDecorations={gitDecorations}
               onToggleFolder={onToggleFolder}
               onSelectFile={onSelectFile}
+              onStartPathDrag={onStartPathDrag}
+              dragging={draggingPath === row.path}
+              onConsumeDragClick={onConsumeDragClick}
               onKeyDown={moveRowFocus}
             />
           );
@@ -1277,6 +1315,13 @@ interface TreeRowProps {
   gitDecorations: GitDecorations;
   onToggleFolder: (path: string) => void;
   onSelectFile: (path: string) => void;
+  onStartPathDrag: (
+    event: ReactPointerEvent<HTMLElement>,
+    rowPath: string,
+  ) => void;
+  /** Ob GENAU diese Zeile gerade gezogen wird. */
+  dragging: boolean;
+  onConsumeDragClick: () => boolean;
   onKeyDown: (
     index: number,
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -1295,6 +1340,9 @@ function TreeRow({
   gitDecorations,
   onToggleFolder,
   onSelectFile,
+  onStartPathDrag,
+  dragging,
+  onConsumeDragClick,
   onKeyDown,
 }: TreeRowProps) {
   const isSelected = !isFolder && selected === path;
@@ -1323,7 +1371,17 @@ function TreeRow({
     <button
       type="button"
       data-row-index={index}
-      onClick={() => (isFolder ? onToggleFolder(path) : onSelectFile(path))}
+      onClick={() => {
+        // Ein Klick, der nur das Ende eines Ziehens ist, tut hier nichts.
+        // Ohne diese Klammer öffnete jeder erfolgreiche Drop die gezogene
+        // Datei nebenbei auch noch im Editor — das Pointer-Capture führt den
+        // Klick zur Zeile zurück, auch wenn über einer Pane losgelassen wurde
+        // (`useExplorerPathDrag.ts`).
+        if (onConsumeDragClick()) return;
+        if (isFolder) onToggleFolder(path);
+        else onSelectFile(path);
+      }}
+      onPointerDown={(event) => onStartPathDrag(event, path)}
       onKeyDown={(event) => onKeyDown(index, event)}
       // Absolut statt im Fluss: die Zeile sitzt auf ihrem ausgerechneten Platz
       // im Platzhalter voller Höhe. `translateY` und nicht `top`, weil es die
@@ -1338,7 +1396,16 @@ function TreeRow({
       // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
       // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
       // auch die eigene Lösung des Referenz-Editors für Listenzeilen.
+      // Die gezogene Zeile senkt sich ab, statt zu verschwinden: sie ist der
+      // Herkunftsort des Vorgangs und muss ihn überdauern — was gezogen wird,
+      // steht schon auf der Zeigerplakette. Nur Deckkraft, keine
+      // Farbe/Rahmenänderung, damit die Zeile ihre eigenen Zustände (Auswahl,
+      // Git-Deko) sichtbar behält. Ohne `transition-*`: ein Zustandswechsel
+      // schaltet hart (Direction Contract), Bewegung entsteht in diesem
+      // Vorgang aus dem Zeiger, nicht aus Easing.
       className={`absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
+        dragging ? "opacity-40" : ""
+      } ${
         isSelected
           ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
           : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"

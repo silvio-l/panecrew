@@ -46,7 +46,12 @@ const renderPane = (dropTarget: boolean) =>
         active
         dropTarget={dropTarget}
         tabs={paneTabs}
-        dropTargets={{ register: vi.fn(), unregister: vi.fn() }}
+        dropTargets={{
+          register: vi.fn(),
+          unregister: vi.fn(),
+          paneAtPoint: vi.fn(() => null),
+          insertInto: vi.fn(),
+        }}
         onClose={vi.fn()}
         onFocus={vi.fn()}
       />
@@ -69,7 +74,12 @@ describe("TerminalPane", () => {
           active
           dropTarget={false}
           tabs={paneTabs}
-          dropTargets={{ register: vi.fn(), unregister: vi.fn() }}
+          dropTargets={{
+          register: vi.fn(),
+          unregister: vi.fn(),
+          paneAtPoint: vi.fn(() => null),
+          insertInto: vi.fn(),
+        }}
           onClose={vi.fn()}
           onFocus={vi.fn()}
         />

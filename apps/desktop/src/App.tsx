@@ -50,13 +50,16 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { Tooltip } from "radix-ui";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
 import { CollapsedExplorerStrip, ExplorerPanel } from "./components/ExplorerPanel";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { GridStatusRail } from "./components/GridStatusRail";
 import { PaneGrid } from "./components/PaneGrid";
+import { PathDragGhost } from "./components/PathDragGhost";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { fileNameFromPath } from "./explorer/filePath";
@@ -64,9 +67,12 @@ import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
 import { focusedProjectPath } from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
+import { projectNameFromPath } from "./types/project";
 import { buildSessionState, restoredSlots, restoredTemplate } from "./session/sessionState";
 import { loadSession, saveSession } from "./session/sessionStore";
 import { useAppZoom } from "./shortcuts/useAppZoom";
+import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
+import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
 import "./App.css";
 
 const EXPLORER_MIN_WIDTH = 180;
@@ -169,6 +175,17 @@ function App() {
   // nötig.
   const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
   const zoom = useAppZoom();
+  // Die EINE Drop-Registrierung des Grids. Sie stand bis zum Explorer-Ziehen
+  // in `PaneGrid.tsx` — mit einer zweiten Drop-QUELLE, die im Explorer
+  // beginnt (einem Geschwister von `PaneGrid`, nicht einem Kind), muss sie
+  // über beiden liegen. Ihre Einzigkeit ist dabei nicht bloß Aufräumen,
+  // sondern Bedingung: die Registrierung ordnet Drops Panes zu, zwei
+  // Instanzen führten zwei unvollständige Listen.
+  const { dropTargets, dragTargetPaneId } = useWebviewFileDrop(zoom);
+  // Die zweite Quelle: Ziehen aus dem Explorer. Eigener Zustand fürs HUD,
+  // aber dieselbe Registrierung als Ziel — ein Pfad, der im Terminal landet,
+  // nimmt ab dort denselben Weg wie ein Drop aus dem Finder.
+  const explorerDrag = useExplorerPathDrag(dropTargets);
 
   // Halbes Freigabesignal für das Hauptfenster: es startet unsichtbar hinter dem
   // Splash und darf erst aufgedeckt werden, wenn hier etwas zu sehen ist. Rust
@@ -340,6 +357,25 @@ function App() {
     { paneId: string; run: () => void } | null
   >(null);
 
+  // Die Rückfrage vor dem Schließen (Pane oder Terminal-Tab) — der Schutz
+  // gegen das versehentlich getroffene Kreuz. Bewusst GETRENNT von
+  // `pendingLeave`: das dort ist die Rückfrage nach ungespeicherter Arbeit,
+  // die hier ist die Rückfrage nach einer laufenden Sitzung. Sie können nie
+  // gleichzeitig offen sein (die eine Entscheidungsstelle in
+  // `closePaneGuarded` unten wählt genau eine von beiden), aber sie zu einem
+  // Zustand zusammenzuziehen hieße, ihre Bedingungen zu vermischen.
+  //
+  // Gespeichert wird neben der Handlung nur, was die Rückfrage BENENNEN muss.
+  // Bewusst als Wert und nicht als Id: das Kreuz ist im Augenblick des Klicks
+  // eindeutig, die Liste dahinter kann sich bis zur Antwort ändern — eine
+  // nachträglich aufgelöste Id benennte dann etwas anderes als das, was der
+  // Nutzer angeklickt hat.
+  const [pendingClose, setPendingClose] = useState<
+    | { target: "pane"; projectName: string; run: () => void }
+    | { target: "terminalTab"; tabNumber: number; run: () => void }
+    | null
+  >(null);
+
   // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
   // absichtlich zwischen Absicht und Ausführung statt in den Aufrufern:
   // derselbe Dialog mehrfach direkt verdrahtet wären ebenso viele Stellen, an
@@ -395,11 +431,57 @@ function App() {
 
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.
-  const closePaneGuarded = (paneId: string) =>
-    guardLeave(paneId, () => {
+  //
+  // Hier steht die EINE Entscheidungsstelle zwischen den beiden Rückfragen,
+  // und sie ist eine Verzweigung, keine Verkettung: wer ungespeicherte Arbeit
+  // in dieser Pane liegen hat, bekommt AUSSCHLIESSLICH die
+  // Ungespeichert-Rückfrage. Die ist die stärkere Aussage — sie benennt einen
+  // Verlust, den kein Neustart zurückholt, während die Schließen-Rückfrage nur
+  // eine Sitzung meint. Zwei Rückfragen nacheinander für einen Klick wären
+  // nicht doppelt so sicher, sondern nur doppelt so lästig; die zweite würde
+  // reflexhaft weggeklickt und entwertete damit auch die erste.
+  const closePaneGuarded = (paneId: string) => {
+    const run = () => {
       closePane(paneId);
       paneFileEditors.forget(paneId);
+    };
+    if (paneFileEditors.editorFor(paneId).wouldLoseWork) {
+      guardLeave(paneId, run);
+      return;
+    }
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    // Ohne Pane keine Rückfrage: der Zustand ist nicht erreichbar (das Kreuz
+    // hängt an genau dieser Pane), aber eine Rückfrage, die ihr Objekt nicht
+    // benennen kann, wäre schlechter als gar keine.
+    if (!pane) {
+      run();
+      return;
+    }
+    setPendingClose({
+      target: "pane",
+      projectName: projectNameFromPath(pane.projectPath),
+      run,
     });
+  };
+
+  // Dasselbe Kreuz eine Ebene tiefer: ein Terminal-Tab. Hier gibt es keinen
+  // Dateizustand zu prüfen — der hängt an der Pane, nicht am Tab — also auch
+  // keine Verzweigung, nur die eine Rückfrage. Der letzte verbliebene Tab
+  // einer Pane trägt gar kein Kreuz (`PaneTabs.tsx`), dieser Weg kann eine
+  // Pane also nie leer zurücklassen.
+  const closeTerminalTabGuarded = (paneId: string, tabId: string) => {
+    const run = () => closeTerminalTab(paneId, tabId);
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    const index = pane?.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+    if (index === undefined || index < 0) {
+      run();
+      return;
+    }
+    // Dieselbe Zählung wie die Beschriftung des Chips selbst (`PaneTabs.tsx`
+    // nummeriert nach Position, nicht nach Id) — die Rückfrage nennt damit
+    // genau die Zahl, die auf dem angeklickten Tab steht.
+    setPendingClose({ target: "terminalTab", tabNumber: index + 1, run });
+  };
 
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
   // Zeile UND öffnet die Datei in der Editorfläche. Bewusst kein zusätzlicher
@@ -533,6 +615,9 @@ function App() {
                 onSelectFile={selectFile}
                 onCollapse={() => setExplorerCollapsed(true)}
                 onRefresh={refreshExplorer}
+                onStartPathDrag={explorerDrag.startDrag}
+                draggingPath={explorerDrag.draggingPath}
+                onConsumeDragClick={explorerDrag.consumeDragClick}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
                   Explorer-Breite für Tastaturnutzer unerreichbar macht — das
@@ -558,10 +643,22 @@ function App() {
             </>
           )}
           <main className="flex min-w-0 flex-1 flex-col p-2">
-            <TemplateSwitcher
-              state={gridState}
-              onSwitchTemplate={switchTemplate}
-            />
+            {/* Eine Zeile, zwei Enden: links das Instrument, rechts die
+                Bedienung. `justify-end` plus `mr-auto` am Readout statt
+                `justify-between`: im leeren Raster rendert die Statuszeile gar
+                nichts, und `justify-between` schöbe den Switcher dann an die
+                LINKE Kante — also ausgerechnet auf dem ersten Bildschirm, den
+                jemand sieht, und mit einem Sprung nach rechts, sobald das
+                erste Projekt geöffnet ist. So bleibt er an der rechten Kante,
+                wo er vor dem Readout schon stand, unabhängig davon, ob links
+                etwas steht. */}
+            <div className="mb-2 flex shrink-0 items-center justify-end gap-2">
+              <GridStatusRail state={gridState} />
+              <TemplateSwitcher
+                state={gridState}
+                onSwitchTemplate={switchTemplate}
+              />
+            </div>
             {/* Jede Pane trägt ihr eigenes Terminal+Editor-Paar (Begründung
                 fürs Nur-Ausblenden statt Unmount jetzt in `PaneGrid.tsx`).
                 Ein leerer Slot zeigt seinen eigenen Ordner-Dialog-Platzhalter
@@ -573,12 +670,18 @@ function App() {
               guardLeave={guardLeave}
               pickingSlot={pickingSlot}
               restoringSlots={restoringSlots}
-              zoom={zoom}
+              dropTargets={dropTargets}
+              // Die beiden Drop-Quellen werden HIER zu einem Wert
+              // zusammengeführt, nicht in der Pane: für sie ist „etwas
+              // schwebt über mir" ein Zustand, kein Paar. Sie schließen
+              // einander ohnehin aus — ein Zeiger kann nicht gleichzeitig
+              // eine Baumzeile ziehen und eine Datei aus dem Finder halten.
+              dragTargetPaneId={dragTargetPaneId ?? explorerDrag.targetPaneId}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
               onFocusPane={focusPane}
               onOpenTerminalTab={openTerminalTab}
-              onCloseTerminalTab={closeTerminalTab}
+              onCloseTerminalTab={closeTerminalTabGuarded}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
             />
@@ -610,6 +713,66 @@ function App() {
               )
             );
           })()}
+        {/* Die zweite Rückfrage, gleiche Fläche, andere Worte. Beide Zweige
+            stehen nebeneinander statt ineinander: sie schließen sich per
+            Konstruktion aus (`closePaneGuarded`), und ein verschachtelter
+            Ausdruck würde diese Ausschließlichkeit behaupten, wo sie ohnehin
+            schon gilt. */}
+        {pendingClose !== null && (
+          <ConfirmDialog
+            title={t(
+              pendingClose.target === "pane"
+                ? "closeDialog.paneTitle"
+                : "closeDialog.terminalTabTitle",
+            )}
+            description={
+              // Dasselbe Rezept wie bei der Ungespeichert-Rückfrage: das
+              // Objekt, um das es geht, steht im vollen Vordergrund, und wo
+              // im Satz es steht, entscheidet die Übersetzung.
+              pendingClose.target === "pane" ? (
+                <Trans
+                  i18nKey="closeDialog.paneDescription"
+                  values={{ projectName: pendingClose.projectName }}
+                  components={{
+                    bold: (
+                      <span className="font-medium text-(--pc-foreground)" />
+                    ),
+                  }}
+                />
+              ) : (
+                <Trans
+                  i18nKey="closeDialog.terminalTabDescription"
+                  values={{ number: pendingClose.tabNumber }}
+                  components={{
+                    bold: (
+                      <span className="font-medium text-(--pc-foreground)" />
+                    ),
+                  }}
+                />
+              )
+            }
+            confirmLabel={t(
+              pendingClose.target === "pane"
+                ? "closeDialog.confirmPane"
+                : "closeDialog.confirmTerminalTab",
+            )}
+            cancelLabel={t("closeDialog.cancel")}
+            onConfirm={pendingClose.run}
+            onClose={() => setPendingClose(null)}
+          />
+        )}
+        {/* Ganz außen, damit die Plakette über Explorer UND Panes liegt — im
+            Explorer gerendert würde sie an dessen Kante beschnitten, und
+            genau über diese Kante führt der Weg. */}
+        {explorerDrag.draggingPath !== null &&
+          explorerDrag.ghostOrigin !== null && (
+            <PathDragGhost
+              ghostRef={explorerDrag.ghostRef}
+              path={explorerDrag.draggingPath}
+              origin={explorerDrag.ghostOrigin}
+              overPane={explorerDrag.targetPaneId !== null}
+            />
+          )}
       </div>
     </Tooltip.Provider>
   );

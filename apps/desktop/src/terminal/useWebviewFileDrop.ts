@@ -3,11 +3,34 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { paneIdAtPoint, type PaneRect } from "./dropRouting";
 
+/** Ein Punkt im CSS-Layoutrahmen (das, was `clientX`/`clientY` und
+ * `getBoundingClientRect()` sprechen) — NICHT in physischen Gerätepixeln. Wer
+ * physische Koordinaten hat (Tauris Drop-Event), rechnet vorher um.
+ *
+ * Bewusst nicht exportiert: die Aufrufer bilden die Form ohnehin strukturell
+ * ab (sie reichen `{ x, y }` durch), ein zweiter exportierter Punkt-Typ neben
+ * dem der Browser-Ereignisse brächte nur einen Namen mehr für dasselbe. */
+interface ClientPoint {
+  x: number;
+  y: number;
+}
+
 export interface PaneDropRegistration {
   /** Trägt die Pane für Drop-Routing ein — aufgerufen aus `TerminalPane.tsx`
    * per Effekt, jedes Mal wenn `paneId` (neu) mountet. */
   register: (paneId: string, insertPaths: (paths: string[]) => void) => void;
   unregister: (paneId: string) => void;
+  /** Welche registrierte Pane liegt unter diesem Punkt — `null`, wenn keine.
+   *
+   * Öffentlich, seit es eine ZWEITE Drop-Quelle gibt: das Ziehen aus dem
+   * eigenen Explorer (`useExplorerPathDrag.ts`). Beide Quellen fragen dieselbe
+   * Funktion, damit „wo würde ein Loslassen jetzt landen" auch wirklich eine
+   * Antwort hat und nicht zwei nebenher gepflegte Geometrien. */
+  paneAtPoint: (point: ClientPoint) => string | null;
+  /** Liefert Pfade an die Pane — derselbe Weg, den der Finder-Drop nimmt
+   * (`usePtyTerminal.ts`s `insertDroppedPaths`, inklusive Quotierung). Eine
+   * unbekannte `paneId` ist folgenlos. */
+  insertInto: (paneId: string, paths: string[]) => void;
 }
 
 export interface WebviewFileDrop {
@@ -58,6 +81,31 @@ export function useWebviewFileDrop(zoom: number): WebviewFileDrop {
     targetsRef.current.delete(paneId);
   }, []);
 
+  // Die Treffermathe, herausgezogen aus dem Listener unten, damit die zweite
+  // Drop-Quelle exakt dieselbe benutzen kann. Die Rechtecke werden bei JEDEM
+  // Aufruf frisch gemessen statt einmal beim Drag-Start zwischengespeichert:
+  // ein Template-Wechsel oder ein Explorer-Resize während eines laufenden
+  // Drags verschiebt sie, und ein gecachtes Rechteck zeigte dann auf Fläche,
+  // die dort nicht mehr liegt.
+  const paneAtPoint = useCallback((point: ClientPoint) => {
+    const rects: PaneRect[] = [];
+    for (const paneId of targetsRef.current.keys()) {
+      const element = document.querySelector(
+        `[data-pane-id="${CSS.escape(paneId)}"]`,
+      );
+      if (!element) continue;
+      // Eine versteckte Pane (offener Editor) liefert hier ein Nullrechteck
+      // und scheidet über die halboffenen Grenzen in `paneIdAtPoint` von
+      // selbst aus — kein Extra-Check nötig.
+      rects.push({ paneId, rect: element.getBoundingClientRect() });
+    }
+    return paneIdAtPoint(rects, point);
+  }, []);
+
+  const insertInto = useCallback((paneId: string, paths: string[]) => {
+    targetsRef.current.get(paneId)?.(paths);
+  }, []);
+
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
     let disposed = false;
@@ -82,23 +130,11 @@ export function useWebviewFileDrop(zoom: number): WebviewFileDrop {
           y: logical.y / zoomRef.current,
         };
 
-        const rects: PaneRect[] = [];
-        for (const paneId of targetsRef.current.keys()) {
-          const element = document.querySelector(
-            `[data-pane-id="${CSS.escape(paneId)}"]`,
-          );
-          if (!element) continue;
-          // Eine versteckte Pane (offener Editor) liefert hier ein
-          // Nullrechteck und scheidet über die halboffenen Grenzen in
-          // `paneIdAtPoint` von selbst aus — kein Extra-Check nötig.
-          rects.push({ paneId, rect: element.getBoundingClientRect() });
-        }
-
-        const hit = paneIdAtPoint(rects, point);
+        const hit = paneAtPoint(point);
         if (event.payload.type === "drop") {
           setDragTargetPaneId(null);
           if (hit === null) return;
-          targetsRef.current.get(hit)?.(event.payload.paths);
+          insertInto(hit, event.payload.paths);
           return;
         }
         // `enter`/`over`: dieselbe Treffermathe wie der Drop selbst — das
@@ -119,14 +155,14 @@ export function useWebviewFileDrop(zoom: number): WebviewFileDrop {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [paneAtPoint, insertInto]);
 
   // Memoisiert, damit Konsumenten (`TerminalPane.tsx`s Registrierungs-Effekt)
   // sie bedenkenlos in ihr eigenes Dep-Array aufnehmen können, ohne bei jedem
   // Render von `PaneGrid.tsx` neu zu registrieren.
   const dropTargets = useMemo(
-    () => ({ register, unregister }),
-    [register, unregister],
+    () => ({ register, unregister, paneAtPoint, insertInto }),
+    [register, unregister, paneAtPoint, insertInto],
   );
   return { dropTargets, dragTargetPaneId };
 }

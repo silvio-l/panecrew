@@ -7,6 +7,7 @@ import { usePaneFileEditors } from "../explorer/usePaneFileEditors";
 import { focusedProjectPath } from "../grid/gridState";
 import { useGrid } from "../grid/useGrid";
 import { PtyBackendContext } from "../terminal/ptyBackend";
+import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { createDemoPtyBackend } from "./demoPtyBackend";
 import { mockProject, mockProjectPath } from "./mockProjects";
 import { parseStoryboard, type Storyboard } from "./storyboard";
@@ -25,6 +26,17 @@ import demoStoryboardJson from "./storyboards/demo.json";
 // Aufnahme läuft dadurch auf jeder Maschine identisch, ohne vorbereitete
 // Ordner auf der Platte.
 const EXPLORER_WIDTH = 224;
+
+// Beide Drop-Wege (Finder-Drop, Ziehen aus dem Explorer) liegen im Harness
+// bewusst tot. Der Harness spielt ein Storyboard ab — es gibt keinen echten
+// Zeiger, der etwas zöge — und `useWebviewFileDrop` spräche Tauris
+// Webview-API an, die es im reinen Vite-Harness gar nicht gibt.
+const INERT_DROP_TARGETS: PaneDropRegistration = {
+  register: () => undefined,
+  unregister: () => undefined,
+  paneAtPoint: () => null,
+  insertInto: () => undefined,
+};
 
 const DEFAULT_STORYBOARD: Storyboard = parseStoryboard(demoStoryboardJson);
 
@@ -82,6 +94,9 @@ export function HarnessApp({
                 onSelectFile={() => undefined}
                 onCollapse={() => undefined}
                 onRefresh={() => undefined}
+                onStartPathDrag={() => undefined}
+                draggingPath={null}
+                onConsumeDragClick={() => false}
               />
             )}
             <main className="flex min-w-0 flex-1 flex-col p-2">
@@ -91,7 +106,8 @@ export function HarnessApp({
                 guardLeave={(_paneId, run) => run()}
                 pickingSlot={null}
                 restoringSlots={new Set()}
-                zoom={1}
+                dropTargets={INERT_DROP_TARGETS}
+                dragTargetPaneId={null}
                 // Storyboard-getriebene Panes klicken sich nie selbst zu —
                 // ein leerer Slot bleibt im Harness leer.
                 onAssignProject={() => undefined}

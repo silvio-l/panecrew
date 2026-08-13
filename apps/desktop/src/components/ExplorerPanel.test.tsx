@@ -45,6 +45,9 @@ const renderPanel = (
         onSelectFile={() => undefined}
         onCollapse={() => undefined}
         onRefresh={() => undefined}
+        onStartPathDrag={() => undefined}
+        draggingPath={null}
+        onConsumeDragClick={() => false}
       />
     </Tooltip.Provider>,
   );

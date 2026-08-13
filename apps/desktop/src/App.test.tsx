@@ -218,6 +218,18 @@ const pickerButton = (index: number) => {
 
 const clickPicker = () => fireEvent.click(pickerButton(0));
 
+// Beide Schließen-Kreuze (Pane, Terminal-Tab) fragen seit den
+// Schließen-Rückfragen zurück — jeder Schließen-Weg in diesen Tests führt
+// deshalb über eine Bestätigung, und die Prüfung darunter (killt genau diese
+// PTY, lässt jene stehen) beginnt erst danach.
+//
+// Auf den Dialog gescoped statt ungescoped: die Beschriftung „Pane schließen"
+// trägt auch das Kreuz im Pane-Kopf, das die Rückfrage gerade ausgelöst hat.
+const confirmClose = async (name: string) => {
+  const dialog = await screen.findByRole("alertdialog");
+  fireEvent.click(within(dialog).getByRole("button", { name }));
+};
+
 // Seit PaneTabs.tsx (2026-08-12) trägt der Datei-Tab im Pane-Header denselben
 // ", ungespeichert"-Zusatz wie die Baumzeile in ExplorerPanel.tsx (bewusst
 // identischer Wortlaut, siehe DirtyMark dort) — ein ungescoptes
@@ -1054,6 +1066,7 @@ describe("App", () => {
     const tabId = (spawnCall?.[1] as { tabId: string }).tabId;
 
     fireEvent.click(screen.getByRole("button", { name: "Pane schließen" }));
+    await confirmClose("Pane schließen");
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("pty_kill", { tabId });
@@ -1062,6 +1075,28 @@ describe("App", () => {
     expect(
       invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
     ).toHaveLength(1);
+  });
+
+  // Der eigentliche Zweck der Schließen-Rückfrage: das versehentlich
+  // getroffene Kreuz. Geprüft wird deshalb nicht, dass ein Dialog erscheint,
+  // sondern dass das Abbrechen die laufende Sitzung WIRKLICH unangetastet
+  // lässt — ein Dialog, nach dessen Abbruch die PTY trotzdem stirbt, wäre
+  // schlimmer als gar keiner.
+  it("lässt die Pane beim Abbrechen der Schließen-Rückfrage laufen", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pane schließen" }));
+    await confirmClose("Abbrechen");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
   });
 
   it("killt kein PTY, solange pty_spawn noch nicht aufgelöst ist", async () => {
@@ -1322,6 +1357,7 @@ describe("Grid / Mehrfach-Pane", () => {
         { name: "Pane schließen" },
       ),
     );
+    await confirmClose("Pane schließen");
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("pty_kill", {
@@ -1390,6 +1426,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Terminal 2 schließen" }),
     );
+    await confirmClose("Tab schließen");
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("pty_kill", {
@@ -1495,13 +1532,26 @@ describe("Grid / Mehrfach-Pane", () => {
     });
     fireEvent.change(textbox, { target: { value: "geändert" } });
 
-    // storefront hat nichts Ungespeichertes — sein Schließen braucht keine
-    // Rückfrage, obwohl admin gerade dirty ist.
+    // storefront hat nichts Ungespeichertes — sein Schließen bekommt deshalb
+    // NUR die Schließen-Rückfrage, nicht die stärkere Ungespeichert-
+    // Rückfrage, obwohl admin gerade ungespeicherten Stand hält. Genau diese
+    // Unterscheidung ist der Punkt: der ungespeicherte Stand EINER Pane darf
+    // nie den Weg einer anderen guarden. Seit den Schließen-Rückfragen reicht
+    // dafür kein "gar kein Dialog" mehr — geprüft wird jetzt, WELCHER.
     fireEvent.click(
       within(screen.getByLabelText("Terminal storefront")).getByRole(
         "button",
         { name: "Pane schließen" },
       ),
+    );
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Pane schließen?");
+    expect(dialog).not.toHaveTextContent(
+      "Ungespeicherte Änderungen verwerfen?",
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Pane schließen" }),
     );
 
     await waitFor(() => {

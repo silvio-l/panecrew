@@ -68,4 +68,39 @@ describe("formatDroppedPaths", () => {
   it("liefert für ein leeres Drop nichts", () => {
     expect(formatDroppedPaths([])).toBe("");
   });
+
+  // Der Kern der Erlaubnisliste: alles hier hätte die frühere Prüfung (nur
+  // Leerraum) unquotiert durchgelassen, und jedes Zeichen davon hätte in der
+  // Shell etwas anderes getan als "einen Pfad benennen".
+  it.each([
+    ["Dollar (Variablen-Expansion)", "/Users/dev/$HOME/a.png"],
+    ["Kommandosubstitution in Backticks", "/Users/dev/`whoami`/a.png"],
+    ["Kommandosubstitution per $()", "/Users/dev/$(id)/a.png"],
+    ["Glob-Zeichen", "/Users/dev/log*/a.png"],
+    ["Kommandotrenner", "/Users/dev/a;rm -rf b/c.png"],
+    ["Hintergrund-Operator", "/Users/dev/a&b/c.png"],
+    ["Pipe", "/Users/dev/a|b/c.png"],
+    ["Umleitung", "/Users/dev/a>b/c.png"],
+    ["Klammern", "/Users/dev/a(1)/c.png"],
+    ["doppelte Anführungszeichen", '/Users/dev/a"b/c.png'],
+    ["Backslash", "/Users/dev/a\\b/c.png"],
+    ["Kommentarzeichen", "/Users/dev/a#b/c.png"],
+    ["History-Expansion", "/Users/dev/a!b/c.png"],
+    ["Tilde als Namensanfang", "/Users/dev/~backup/a.png"],
+  ])("quotet %s", (_name, path) => {
+    expect(formatDroppedPaths([path])).toBe(`'${path}'`);
+  });
+
+  // Die Gegenprobe, und der Grund für \p{L}/\p{N} statt A-Za-z0-9: ein Umlaut
+  // ist für keine Shell ein Sonderzeichen. Würde er quotiert, wäre für einen
+  // deutschsprachigen Nutzer der Ausnahmefall der Normalfall — samt der
+  // Anführungszeichen, die ein TUI-Prompt als reine Zeichen anzeigt.
+  it("lässt Pfade mit Umlauten und anderen Buchstaben unquotiert", () => {
+    expect(formatDroppedPaths(["/Users/dev/Bücher/Größe-2.png"])).toBe(
+      "/Users/dev/Bücher/Größe-2.png",
+    );
+    expect(formatDroppedPaths(["/Users/dev/日本語/a.png"])).toBe(
+      "/Users/dev/日本語/a.png",
+    );
+  });
 });
