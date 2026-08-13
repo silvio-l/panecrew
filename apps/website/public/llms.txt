@@ -6,3 +6,4 @@
 > agent — Claude Code, Codex, Gemini CLI, or a plain shell — equally well. <!-- brandlint-ok: functional list of supported CLI tools, matches README/homepage wording -->
 
 - [Homepage](https://panecrew.dev/): product overview, feature grid, nightly builds
+- [How to Run Multiple CLI Coding Agent Sessions](https://panecrew.dev/guides/multiple-cli-agent-sessions/): guide + FAQ on running Claude Code/Codex/Gemini CLI in parallel <!-- brandlint-ok: functional list of supported CLI tools, matches the guide page's own copy -->
