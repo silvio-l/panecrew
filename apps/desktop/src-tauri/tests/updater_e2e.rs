@@ -212,3 +212,157 @@ async fn download_verifies_real_signature_and_rejects_tampering() {
         "eine manipulierte Signatur darf download() nicht bestehen"
     );
 }
+
+/// Baut ein winziges Fake-".app.tar.gz" nach demselben Layout, das
+/// `tauri-bundler` für macOS erzeugt (ein Top-Level-Verzeichnis `*.app`,
+/// darunter `Contents/MacOS/<exe>`) -- `Update::install_inner` überspringt
+/// beim Entpacken exakt eine Pfad-Ebene (`entry.path()?.iter().skip(1)`), das
+/// Top-Level-Verzeichnis muss also existieren, sein Name ist aber egal.
+fn build_fake_app_tarball(marker_content: &str) -> Vec<u8> {
+    use std::io::Write as _;
+
+    let mut tar_bytes = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut tar_bytes);
+        let exe_content = b"#!/bin/sh\necho fake\n";
+        let mut exe_header = tar::Header::new_gnu();
+        exe_header.set_path("FakeApp.app/Contents/MacOS/faketool").unwrap();
+        exe_header.set_size(exe_content.len() as u64);
+        exe_header.set_mode(0o755);
+        exe_header.set_cksum();
+        builder.append(&exe_header, &exe_content[..]).unwrap();
+
+        let marker_bytes = marker_content.as_bytes();
+        let mut marker_header = tar::Header::new_gnu();
+        marker_header
+            .set_path("FakeApp.app/VERSION_MARKER")
+            .unwrap();
+        marker_header.set_size(marker_bytes.len() as u64);
+        marker_header.set_mode(0o644);
+        marker_header.set_cksum();
+        builder.append(&marker_header, marker_bytes).unwrap();
+        builder.finish().unwrap();
+    }
+
+    let mut gz_bytes = Vec::new();
+    {
+        let mut encoder = flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
+        encoder.write_all(&tar_bytes).unwrap();
+        encoder.finish().unwrap();
+    }
+    gz_bytes
+}
+
+/// Ergänzt den obigen Test um den Teil, den `download()` allein nicht zeigt:
+/// `Update::install()` (bzw. `download_and_install()`) macht auf macOS ein
+/// echtes `rename()`/`remove_dir_all()`/`rename()` gegen `self.extract_path`
+/// (s. updater.rs `install_inner`, `#[cfg(target_os = "macos")]`) -- also das
+/// eigentliche Ersetzen des App-Bundles, nicht nur die Signaturprüfung.
+///
+/// Läuft absichtlich NICHT gegen den echten laufenden Testprozess: der
+/// `executable_path()` des Updaters wird auf ein Fake-Bundle in einem
+/// Temp-Verzeichnis umgebogen (die Pfad-Arithmetik in
+/// `extract_path_from_executable` braucht nur den String, keine reale
+/// Datei) -- der echte Testbinary/-prozess bleibt unberührt. Bewusst OHNE
+/// `tauri-plugin-process`-Neustart danach: der würde den Testprozess selbst
+/// per `exit()` beenden, das ist kein sicher wiederholbarer Testschritt.
+/// Schließt die von Task #7 unabhängige Hälfte der E2E-Lücke: Task #7 bleibt
+/// der öffentliche Akzeptanztest gegen ein reales GitHub-Release.
+#[tokio::test]
+#[ignore = "braucht ein lokales minisign-Testschlüsselpaar, s. Dateikommentar oben"]
+async fn download_and_install_replaces_real_app_bundle() {
+    let Some(key_path) = key_path_from_env() else {
+        eprintln!("übersprungen: PANECREW_UPDATER_E2E_KEY ist nicht gesetzt");
+        return;
+    };
+    let pubkey_path = PathBuf::from(format!("{}.pub", key_path.display()));
+    let pubkey = std::fs::read_to_string(&pubkey_path)
+        .unwrap_or_else(|e| panic!("öffentlichen Testschlüssel {pubkey_path:?} lesen: {e}"));
+
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "panecrew-updater-install-e2e-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&tmp_dir).unwrap();
+
+    // Das "alte", bereits installierte Bundle -- muss real existieren, weil
+    // `install_inner` es per `rename()` wegsichert.
+    let old_bundle = tmp_dir.join("FakeApp.app");
+    std::fs::create_dir_all(old_bundle.join("Contents/MacOS")).unwrap();
+    std::fs::write(old_bundle.join("VERSION_MARKER"), "old-version").unwrap();
+    std::fs::write(
+        old_bundle.join("Contents/MacOS/faketool"),
+        "#!/bin/sh\necho old\n",
+    )
+    .unwrap();
+
+    let artifact_bytes = build_fake_app_tarball("new-version");
+    let artifact_path = tmp_dir.join("artifact.app.tar.gz");
+    std::fs::write(&artifact_path, &artifact_bytes).unwrap();
+    let signature = sign_with_real_cli(&artifact_path, &key_path);
+
+    let (port, listener) = bind_local_server();
+    let latest_json = serde_json::to_vec(&serde_json::json!({
+        "version": "0.1.1",
+        "notes": "e2e install test",
+        "pub_date": "2026-08-13T00:00:00Z",
+        "platforms": {
+            "install-test": {
+                "url": format!("http://127.0.0.1:{port}/artifact.tar.gz"),
+                "signature": signature,
+            },
+        },
+    }))
+    .unwrap();
+    serve(listener, latest_json, artifact_bytes);
+
+    let mut context = mock_context(noop_assets());
+    context
+        .config_mut()
+        .plugins
+        .0
+        .insert("updater".to_string(), serde_json::json!({ "pubkey": "" }));
+
+    let app = mock_builder()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .build(context)
+        .expect("Mock-App mit Updater-Plugin bauen");
+
+    let endpoint: tauri::Url = format!("http://127.0.0.1:{port}/latest.json")
+        .parse()
+        .unwrap();
+
+    let updater = app
+        .updater_builder()
+        .pubkey(pubkey)
+        .endpoints(vec![endpoint])
+        .expect("http-Endpoint im Debug-Build zulässig")
+        .target("install-test")
+        // Zeigt NICHT auf den echten Testprozess -- reine Pfad-Arithmetik in
+        // `extract_path_from_executable` leitet daraus `old_bundle` als
+        // `extract_path` ab, ohne dass dieser Pfad selbst existieren muss.
+        .executable_path(old_bundle.join("Contents/MacOS/faketool"))
+        .build()
+        .expect("Updater bauen");
+
+    let update = updater
+        .check()
+        .await
+        .expect("check() gegen den lokalen Server")
+        .expect("0.1.1 muss als Update über 0.1.0 erkannt werden");
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .expect("download_and_install() muss das Fake-Bundle real ersetzen");
+
+    let new_marker = std::fs::read_to_string(old_bundle.join("VERSION_MARKER"))
+        .expect("ersetztes Bundle muss den neuen VERSION_MARKER enthalten");
+    assert_eq!(new_marker, "new-version");
+    assert!(
+        old_bundle.join("Contents/MacOS/faketool").exists(),
+        "ersetztes Bundle muss die neue Bundle-Struktur enthalten"
+    );
+
+    std::fs::remove_dir_all(&tmp_dir).ok();
+}

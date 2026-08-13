@@ -44,4 +44,9 @@ clap-markdown = "0.1"
 # regulären `tauri`-Abhängigkeit oben, kein zweiter Build.
 tauri = { version = "2", features = ["test"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# Nur für den install()-Zweig in tests/updater_e2e.rs: baut das Fake-.app.tar.gz
+# selbst zusammen -- Versionen sind exakt die, die tauri-plugin-updater ohnehin
+# transitiv zieht (s. Cargo.lock), kein zweiter Build.
+tar = "0.4"
+flate2 = "1.1"
 
