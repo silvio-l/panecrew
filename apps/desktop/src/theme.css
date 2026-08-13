@@ -1,11 +1,13 @@
 /*
  * Panecrew Theme-Tokens — Dark (Ausgangsszene) + Light, beide 1:1 gemappt auf
- * VS Codes "Dark 2026 Default" / "Light 2026 Default" Workbench-Paletten.
+ * die "Dark 2026 Default" / "Light 2026 Default" Workbench-Paletten des
+ * Referenz-Editors (der als Vorbild vermessene Editor — Herleitung in
+ * docs/agents/editor-theming-research.md).
  *
- * Namenskonvention nach VS-Code-Vorbild „bereich.element.zustand":
+ * Namenskonvention nach dem Vorbild des Referenz-Editors „bereich.element.zustand":
  * JSON-Pendant pane.activeBorder → CSS-Custom-Property --pc-pane-activeBorder.
  *
- * Struktur-Invarianten (Surface Brief, docs/agents/vscode-theming-research.md):
+ * Struktur-Invarianten (Surface Brief, docs/agents/editor-theming-research.md):
  * - Light ist ein zweiter, VOLLSTÄNDIGER Block unter :root[data-theme="light"]
  *   — keine Ableitung aus Dark.
  * - pane.activeBorder ist ein eigenes, nicht-generisches Token (Fokus ist die
@@ -14,15 +16,15 @@
  *   strukturell 1:1 auf das ITheme-Objekt von xterm.js abbildbar und wird bei
  *   der PTY-Integration unverändert dorthin gemappt. Die ANSI-Werte sind seit
  *   2026-08-05 eine EIGENE, aus den Grundflächen abgeleitete Palette und nicht
- *   mehr VS Codes Engine-Defaults (terminalColorRegistry) — Herleitung im
+ *   mehr die Engine-Defaults des Referenz-Editors (terminalColorRegistry) — Herleitung im
  *   Kommentarblock über dem Dark-Set.
  */
 /*
  * Maß-Tokens (Chrome-Typo-/Spacing-Skala) — theme-unabhängig, daher bewusst
  * nur einmal unter :root (die Dark/Light-Vollständigkeits-Invariante oben
  * betrifft die Farbpalette). In rem statt px, damit eine künftige app-eigene
- * Textgrößen-Einstellung (Verändern der Root-Font-Size, analog VS Codes
- * window.zoomLevel) das Chrome tatsächlich mitskaliert. Rechenbasis: 16px.
+ * Textgrößen-Einstellung (Verändern der Root-Font-Size, analog dem
+ * window.zoomLevel des Referenz-Editors) das Chrome tatsächlich mitskaliert. Rechenbasis: 16px.
  */
 :root {
   /*
@@ -49,8 +51,8 @@
   --pc-paneControl-radius: 0.25rem; /* 4px */
 
   /*
-   * Terminal-Schriftregister (ui-monospace, relaxed line-height — Warp-Wärme
-   * über VS Codes Grammatik). Bewusst in px statt rem, anders als die
+   * Terminal-Schriftregister (ui-monospace, relaxed line-height — warme
+   * Terminal-Anmutung über der Workbench-Grammatik). Bewusst in px statt rem, anders als die
    * Chrome-Skala darüber: xterm.js nimmt fontSize als einheitenlose
    * Pixelzahl in ITerminalOptions entgegen und misst sein Zellraster selbst
    * daraus — ein rem-Wert müsste hier von Hand gegen die Root-Font-Size
@@ -66,7 +68,8 @@
    *
    * 13px/1.4 statt 12px/1.65: 12px war spürbar kleiner als jedes ernsthafte
    * Terminal, und 1.65 hat die Glyphen zusätzlich in Luft aufgelöst — mehr
-   * als VS Codes Terminal-Default (1.0) und Warps ~1.2, also über das Ziel
+   * als der Terminal-Default des Referenz-Editors (1.0) und die ~1.2 moderner
+   * GPU-Terminals, also über das Ziel
    * "relaxed" hinaus. Die neue Kombination ergibt sogar eine flachere
    * Zeilenbox (18.2px statt 19.8px): größere Schrift UND mehr Zeilen.
    */
@@ -105,7 +108,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Global (Fallback-Basis nach VS-Code-Muster) */
+  /* Global (Fallback-Basis nach dem Muster des Referenz-Editors) */
   --pc-foreground: #bfbfbf;
   --pc-descriptionForeground: #8c8c8c;
 
@@ -133,9 +136,9 @@
    * der Akzent eine flache, ruhigere Fläche (C 0,125). Eine größere
    * Tonabweichung hätte ihn aus der Gold-Familie geschoben, also genau aus dem
    * heraus, worum es ging. Die Marken-Verläufe selbst bleiben unangetastet und
-   * bleiben laut CLAUDE.md fixe Identität, kein Theme-Token.
+   * bleiben laut den internen Markenleitlinien fixe Identität, kein Theme-Token.
    *
-   * focusBorder ist die generische Fallback-Basis (VS-Code-Muster),
+   * focusBorder ist die generische Fallback-Basis (Muster des Referenz-Editors),
    * --pc-pane-activeBorder weiter unten das eigenständige Fokus-Token der Pane.
    * Beide tragen jetzt DENSELBEN Hexwert und unterscheiden sich nur über das
    * Alpha-Byte — ein Akzent in zwei Stärken statt zweier Töne, die man getrennt
@@ -163,10 +166,10 @@
 
   /*
    * Glas-Material (app-weit, nicht an eine Komponente gebunden) — Apples
-   * Liquid-Glass-Sprache, Referenz Safari 26. Seit 2026-08-05 die Fläche der
+   * Liquid-Glass-Sprache, Referenz: der System-Browser von macOS 26. Seit 2026-08-05 die Fläche der
    * Titelzeile, die dadurch keine randlose Farbfläche mehr ist; das
-   * VS-Code-Mapping aus docs/agents/vscode-theming-research.md §10 (die Bar sei
-   * durchgehend editor.background) beschreibt ab da VS Codes Bar, nicht unsere.
+   * Workbench-Mapping aus docs/agents/editor-theming-research.md §10 (die Bar sei
+   * durchgehend editor.background) beschreibt ab da die Bar des Referenz-Editors, nicht unsere.
    *
    * Bewusst OHNE Komponentenpräfix: es ist EIN Rezept, das mehrere schwebende
    * Flächen lesen (heute Titelzeile und cd-Popup). Wer abweicht, weicht
@@ -181,8 +184,8 @@
    * bis 2026-08-13 als Beleg genannte Fokus-Glow ist seit 2026-08-05 weg.)
    *
    * Die Zahlen sind an echten macOS-26-Fenstern ausgemessen, nicht geschätzt —
-   * Safari 26 und Finder liefern identische Werte, Messreihen und Herleitung in
-   * docs/agents/vscode-theming-research.md §11/§11.6. Apples Referenz, Dark:
+   * System-Browser und Finder von macOS 26 liefern identische Werte, Messreihen und Herleitung in
+   * docs/agents/editor-theming-research.md §11/§11.6. Apples Referenz, Dark:
    * Systemfläche (35,42,44), schwebendes Bedienelement darauf +5, dessen Kante
    * +24 und oben wie unten GLEICH hell, Füllung über die ganze Höhe
    * gleichmäßig, kein Schlagschatten.
@@ -212,20 +215,20 @@
   --pc-titleBar-border: #2a2b2c;
 
   /*
-   * Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt.
+   * Command Center: Feldfläche transparent wie im Referenz-Editor, nur Rahmen malt.
    * Der Vordergrund ist bewusst descriptionForeground und nicht der volle
-   * foreground: VS Codes Command Center zeigt an dieser Stelle den echten
+   * foreground: das Command Center des Referenz-Editors zeigt an dieser Stelle den echten
    * Dateinamen (Inhalt, also hell), unseres nur eine Aufforderung
    * ("Suchen oder Befehl ausführen"). Auf Inhaltshelligkeit gesetzt las sich
    * der Platzhalter wie ein bereits eingegebener Wert. Beide Werte stammen
-   * weiterhin aus derselben VS-Code-Palette, nur aus einem anderen Schlüssel;
+   * weiterhin aus derselben Referenz-Palette, nur aus einem anderen Schlüssel;
    * Kontrast 5,5:1 auf #121314.
    */
   --pc-titleBar-searchBackground: transparent;
   --pc-titleBar-searchBorder: #2e3031;
   --pc-titleBar-searchForeground: #8c8c8c;
 
-  /* Explorer (VS-Code-nahe Baum-Optik) */
+  /* Explorer (Workbench-nahe Baum-Optik) */
   --pc-explorer-background: #191a1b;
   --pc-explorer-border: #2a2b2c;
   --pc-explorer-foreground: #bfbfbf;
@@ -237,7 +240,7 @@
   /*
    * Schwebende Widgets über der Inhaltsfläche (heute: das Verzeichnis-Popup
    * der cd-Vervollständigung). Eigene Tokens statt der Explorer-Werte, obwohl
-   * die Fläche dieselbe ist — nach VS Codes eigener Trennung `editorWidget.*`
+   * die Fläche dieselbe ist — nach der eigenen Trennung des Referenz-Editors `editorWidget.*`
    * gegen `sideBar.*`: ein Panel grenzt an eine bekannte Nachbarfläche, ein
    * Widget liegt über beliebigem Inhalt und muss seine Kante allein tragen.
    * Genau daran hängt der Unterschied im Rand: der Panel-Rand
@@ -287,9 +290,9 @@
    * 2. Die Eigenschaft ist weder neu noch amber-spezifisch: derselbe Abstand
    *    zwischen Akzent und Icon bestand vorher in Blau (ΔE 7,6 zu
    *    --pc-icon-folder), und Ordner stehen auf JEDER Ordnerzeile statt nur
-   *    auf .rs/.html. VS Codes Explorer, laut Direction Contract die gepinnte
+   *    auf .rs/.html. Der Explorer des Referenz-Editors, laut Direction Contract die gepinnte
    *    Vorlage, führt dieselbe Paarung.
-   * 3. Umfärben hieße, die Contract-Vorgabe „Explorer 1:1 nach VS Codes
+   * 3. Umfärben hieße, die Contract-Vorgabe „Explorer 1:1 nach des Referenz-Editors
    *    Icon-Sprache" zu brechen, um „ein Akzent, allein dem Fokus" zu
    *    schützen — zwei gepinnte Sätze gegeneinander, für eine Nachbarschaft,
    *    die es derzeit gar nicht zu sehen gibt: der Baum ist leer (`tree: []`
@@ -310,7 +313,7 @@
   --pc-icon-gray: #6d8086;
 
   /*
-   * Git-Deko im Explorer (VS-Code-Kategorie 41,
+   * Git-Deko im Explorer (Workbench-Kategorie 41,
    * `gitDecoration.modifiedResourceForeground`/`.untrackedResourceForeground`).
    *
    * Eigenes Tokenpaar statt der --pc-icon-*-Töne, obwohl der Dark-Block
@@ -344,7 +347,7 @@
    * Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar.
    *
    * Eigene Palette, aus dem Grund #121314 hergeleitet (2026-08-05); vorher
-   * standen hier VS Codes unveränderte Engine-Defaults, deren Helligkeiten
+   * standen hier die unveränderten Engine-Defaults des Referenz-Editors, deren Helligkeiten
    * quer über die Farben um den Faktor 3 auseinanderliefen (OKLCH-L von 0,53
    * bei Rot bis 0,87 bei Gelb) — genau das las sich neben dem eigenen Chrome
    * als „zufällig eingesetztes Fremdschema".
@@ -358,10 +361,10 @@
    *    BrightWhite waren zudem beide #e5e5e5, also nicht unterscheidbar;
    *    Programme, die auf den Unterschied setzen, zeigten nichts.
    * 2. Die sechs Buntfarben teilen ein Chroma-Band (0,10–0,18) und ein
-   *    gemeinsames Helligkeitsband statt VS Codes Streuung; Bright ist
+   *    gemeinsames Helligkeitsband statt der Streuung der Referenz-Defaults; Bright ist
    *    durchgehend dieselbe Hue bei ~+0,11 L und leicht kleinerem Chroma.
    * 3. Kontrast-Untergrenze auf dem Grund: 4,5:1 für den Normalsatz, 7:1 für
-   *    den Bright-Satz. VS Codes Default-Rot lag hier bei 3,4:1.
+   *    den Bright-Satz. Das Default-Rot des Referenz-Editors lag hier bei 3,4:1.
    * 4. Rot/Gelb/Grün behalten ihre Grundfarbidentität (ANSI-Semantik im
    *    Inhalt), sind nur in Sättigung/Helligkeit in die Familie gezogen.
    * 5. Abstand zum Fokus-Akzent, der laut Direction Contract allein dem Fokus
@@ -432,7 +435,7 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* Global (Fallback-Basis nach VS-Code-Muster) */
+  /* Global (Fallback-Basis nach dem Muster des Referenz-Editors) */
   --pc-foreground: #202020;
   --pc-descriptionForeground: #606060;
   /*
@@ -485,7 +488,7 @@
   --pc-titleBar-searchBorder: #d8d8d8aa;
   --pc-titleBar-searchForeground: #606060;
 
-  /* Explorer (VS-Code-nahe Baum-Optik) */
+  /* Explorer (Workbench-nahe Baum-Optik) */
   --pc-explorer-background: #fafafd;
   --pc-explorer-border: #f0f1f2;
   --pc-explorer-foreground: #202020;
@@ -519,7 +522,7 @@
    * unter den 4,5:1 für Normalsatz. Als Dateityp-Glyph (3:1) ist das nie
    * aufgefallen, als Dateiname ist es zu wenig.
    *
-   * Die Werte sind VS Codes eigene Light-Fassung derselben zwei Schlüssel
+   * Die Werte sind die eigene Light-Fassung des Referenz-Editors derselben zwei Schlüssel
    * (Light+ / Light Modern), nicht neu erfunden: #895503 misst 5,98:1,
    * #007100 misst 6,00:1 auf demselben Grund. Beide bleiben zugleich klar
    * unterscheidbar (warmes Braun gegen sattes Grün) und liegen als reine
@@ -555,7 +558,7 @@
    *
    * Zwei Werte weichen bewusst vom reinen Schema ab: ansiWhite/BrightWhite
    * bleiben mittelgraue Töne statt echtem Weiß, sonst wären sie auf dem
-   * weißen Grund unsichtbar (VS Codes Light-Spalte löst das genauso).
+   * weißen Grund unsichtbar (die Light-Spalte des Referenz-Editors löst das genauso).
    */
   --pc-terminal-background: #ffffff;
   --pc-terminal-foreground: #3b3d40;
