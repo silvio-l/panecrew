@@ -20,6 +20,7 @@
 // Fokus-Exklusivität des Akzents (Direction Contract) bleibt also unberührt —
 // hier ist Amber Einladung, nicht Zustand. Statisch, kein Glow, keine
 // kinetische Typografie: das Emblem steht, es tippt nicht.
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 
@@ -28,6 +29,8 @@ export function ProjectPicker({
   busy,
   restoring,
   slotNumber,
+  focusModeActive,
+  gridEmpty,
 }: {
   onChoose: () => void;
   busy: boolean;
@@ -41,18 +44,38 @@ export function ProjectPicker({
   /** 1-basierte Slot-Position im aktiven Template (PaneGrid reicht den
    * Array-Index durch) — reine Anzeige im HUD-Readout. */
   slotNumber: number;
+  /** Ob IRGENDEINE Pane gerade maximiert ist (Ticket 19) — ein leerer Slot
+   * kann selbst nie maximiert sein, muss dann aber genauso wie jede andere
+   * unbeteiligte Zelle unsichtbar werden, sonst schiene sein Rahmen hinter
+   * der maximierten Pane durch (PaneGrid.tsx behandelt PaneCell und
+   * ProjectPicker sonst als zwei unabhängige Zweige). `visibility: hidden`
+   * statt `display: none` — dieselbe Begründung wie bei `PaneCell`: der
+   * Slot bleibt Teil der Grid-Spurberechnung, kollabiert also nicht. */
+  focusModeActive: boolean;
+  /** Ob AUSNAHMSLOS jeder Slot des Grids gerade leer ist (PaneGrid.tsx) —
+   * steuert den ambienten Cursor-Blink im ASCII-Emblem unten. Nur auf dem
+   * echten Kaltstart-Bildschirm blinkt der Cursor von selbst; sobald
+   * irgendwo eine Pane läuft, bleibt jeder übrige leere Slot still (eigener
+   * Kopfkommentar oben: bis zu vier gleichzeitig, keiner darf um
+   * Aufmerksamkeit rufen). */
+  gridEmpty: boolean;
 }) {
   const { t } = useTranslation();
+  const cellStyle: CSSProperties | undefined = focusModeActive
+    ? { visibility: "hidden" }
+    : undefined;
   if (restoring) {
     return (
-      <div className="@container flex min-h-0 min-w-0">
+      <div className="@container flex min-h-0 min-w-0" style={cellStyle}>
         <div className="pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground)">
           <HudCorners />
           <SlotReadout number={slotNumber} />
           {/* Dasselbe Emblem wie im leeren Slot: der Restore-Zustand ist
               derselbe Ort eine Sekunde früher — ohne das Emblem blitzte beim
-              Befüllen erst ein karger, dann der gebaute Slot auf. */}
-          <AsciiEmblem />
+              Befüllen erst ein karger, dann der gebaute Slot auf. Kein
+              ambienter Blink hier: der Slot ist bereits auf ein Projekt
+              festgelegt, kein offenes Angebot mehr. */}
+          <AsciiEmblem ambient={false} />
           <span className="text-(length:--pc-chrome-fontSize) font-medium">
             {t("common.loading")}
           </span>
@@ -65,7 +88,7 @@ export function ProjectPicker({
     // Container-Query statt Media-Query: entscheidend ist die Breite DIESES
     // Slots, nicht die des Fensters. Derselbe Slot ist im Vierergrid rund
     // 470px breit und in der Viererreihe rund 230px — bei gleichem Fenster.
-    <div className="@container flex min-h-0 min-w-0">
+    <div className="@container flex min-h-0 min-w-0" style={cellStyle}>
       <button
         type="button"
         onClick={onChoose}
@@ -79,7 +102,7 @@ export function ProjectPicker({
       >
         <HudCorners />
         <SlotReadout number={slotNumber} />
-        <AsciiEmblem />
+        <AsciiEmblem ambient={gridEmpty} />
         <span className="text-(length:--pc-chrome-fontSize) font-medium">
           {t("projectPicker.choose")}
         </span>
@@ -137,14 +160,27 @@ function SlotReadout({ number }: { number: number }) {
 // Beschreibungston, Prompt + Cursor tragen gedimmtes Amber; beim Überfahren
 // zieht beides an (App.css, .pc-slotframe:hover). Keine Buchstaben, deshalb
 // kein i18n-Fall; als reine Zeichnung für Screenreader unsichtbar.
-function AsciiEmblem() {
+//
+// Der Cursor-Block ist ein eigener Span (App.css, .pc-hud-emblem__cursor),
+// damit CSS ihn unabhängig vom umgebenden Prompt-Ton hart blinken lassen
+// kann — 2026-08-13, Nutzer-Wunsch "ein bisschen animier das gerne auch",
+// dasselbe pc-clock-blink-Timing wie der TitleBar-Uhr-Doppelpunkt, keine
+// neue Bewegungssprache. `ambient` (nur wahr, wenn PaneGrid meldet, dass
+// WIRKLICH jeder Slot leer ist) lässt ihn von selbst blinken, statt nur bei
+// Hover/Fokus — das ist genau der Kaltstart-Bildschirm, den der Nutzer
+// meinte, und der einzige Moment, in dem kein zweiter leerer Slot daneben um
+// dieselbe Aufmerksamkeit konkurrieren könnte.
+function AsciiEmblem({ ambient }: { ambient: boolean }) {
   return (
     <pre
       aria-hidden="true"
-      className="pc-hud-emblem font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-[1.15]"
+      className={`pc-hud-emblem font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-[1.15]${ambient ? " pc-hud-emblem--ambient" : ""}`}
     >
       {"╭─────────╮\n│ "}
-      <span className="pc-hud-emblem__prompt">{"❯ █"}</span>
+      <span className="pc-hud-emblem__prompt">
+        {"❯ "}
+        <span className="pc-hud-emblem__cursor">{"█"}</span>
+      </span>
       {"     │\n│         │\n╰─────────╯"}
     </pre>
   );

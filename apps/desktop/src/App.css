@@ -427,6 +427,26 @@ body {
   }
 }
 
+/* Cursorblock des ASCII-Mini-Terminals (ProjectPicker.tsx, AsciiEmblem):
+ * derselbe pc-clock-blink-Takt wie oben, zwei Auslöser statt einem.
+ *
+ * 1. Hover/Fokus: der angefasste Slot "erwacht" wie Ecken/Emblem-Farbe.
+ * 2. `.pc-hud-emblem--ambient` (nur gesetzt, wenn PaneGrid meldet, dass
+ *    WIRKLICH jeder Slot leer ist, nie während `restoring`): der
+ *    Kaltstart-Bildschirm blinkt von selbst, ohne Hover — genau der erste
+ *    Eindruck, um den es 2026-08-13 ging. Sobald irgendwo eine Pane läuft,
+ *    bleibt jeder übrige leere Slot still (ProjectPicker.tsx-Kopfkommentar:
+ *    bis zu vier gleichzeitig, keiner darf um Aufmerksamkeit rufen — das
+ *    gilt neben laufenden Panes, nicht auf dem leeren Bildschirm selbst).
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .pc-slotframe:hover .pc-hud-emblem__cursor,
+  .pc-slotframe:focus-visible .pc-hud-emblem__cursor,
+  .pc-hud-emblem--ambient .pc-hud-emblem__cursor {
+    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+  }
+}
+
 .pc-slotframe:hover .pc-hud-corner,
 .pc-slotframe:focus-visible .pc-hud-corner {
   border-color: var(--pc-pane-activeBorder);
