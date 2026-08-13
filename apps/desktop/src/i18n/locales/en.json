@@ -112,7 +112,15 @@
     "openTerminalTab": "Open another terminal tab",
     "closeTerminalTab": "Close terminal {{number}}",
     "renameTerminalTab": "Rename terminal {{number}}",
-    "renameTerminalTabFieldLabel": "Name for terminal {{number}}"
+    "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
+    "tool": {
+      "claude": "Claude Code",
+      "gemini": "Gemini CLI",
+      "copilot": "GitHub Copilot CLI",
+      "codex": "Codex CLI",
+      "opencode": "OpenCode",
+      "shell": "Shell"
+    }
   },
   "projectPicker": {
     "choose": "Choose project",

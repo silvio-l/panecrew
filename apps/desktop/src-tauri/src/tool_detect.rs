@@ -1,20 +1,54 @@
 //! Cross-platform CLI-tool detection for terminal tab icons (wayfinder-map
 //! Task 11/12, project-instructions scope note): walks the real OS process
-//! tree from a spawned PTY's own shell pid downward and returns the most
-//! active descendant's binary name. Deterministic OS process state, not
-//! terminal-output parsing — the reason this does NOT fall under the
-//! project instructions' session-status-detection exclusion, unlike
-//! `Needs-Attention` (ticket 13), which does and is documented there as an
-//! explicit scope extension.
+//! tree from a spawned PTY's own shell pid downward and returns a canonical
+//! tool id (see `TOOL_MARKERS` below) or `None` when nothing recognizable is
+//! running. Deterministic OS process state, not terminal-output parsing —
+//! the reason this does NOT fall under the project instructions'
+//! session-status-detection exclusion, unlike `Needs-Attention` (ticket 13),
+//! which does and is documented there as an explicit scope extension.
 //!
 //! `portable-pty`'s own `process_group_leader()` is `#[cfg(unix)]`-only (no
 //! Windows implementation exists in the crate), so this uses `sysinfo`
-//! instead for one code path on every platform. The returned binary name is
-//! raw and unmapped — icon selection is a frontend concern.
+//! instead for one code path on every platform.
+//!
+//! Matching happens against BOTH the process name and its full command-line
+//! arguments, not the name alone: most Node.js-based CLI agents ship as a
+//! `#!/usr/bin/env node` shebang script — the kernel execs `node` directly
+//! for those, so the OS-level process is genuinely named "node", never
+//! anything tool-specific. Only the script's own path, visible in argv,
+//! still carries that name. Matching on the name alone briefly "worked"
+//! only for the instant right after spawn (before the shebang exec replaced
+//! the image), then silently reverted to nothing — the exact bug this
+//! comment exists to prevent regressing.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+/// (Suchstichwort, kanonische Tool-ID) — das Stichwort wird als
+/// Teilstring-Suche (case-insensitive) gegen Prozessname UND volle
+/// Befehlszeile geprüft, s. Kopfkommentar zum Grund.
+const TOOL_MARKERS: &[(&str, &str)] = &[
+    ("claude", "claude"), // brandlint-ok: funktionaler Match-String gegen den realen Prozessnamen/argv, keine Werbenennung
+    ("gemini", "gemini"), // brandlint-ok: funktionaler Match-String gegen den realen Prozessnamen/argv, keine Werbenennung
+    ("copilot", "copilot"), // brandlint-ok: funktionaler Match-String gegen den realen Prozessnamen/argv, keine Werbenennung
+    ("codex", "codex"), // brandlint-ok: funktionaler Match-String gegen den realen Prozessnamen/argv, keine Werbenennung
+    ("opencode", "opencode"),
+];
+
+const SHELL_BINARIES: &[&str] = &[
+    "bash",
+    "zsh",
+    "fish",
+    "sh",
+    "dash",
+    "ksh",
+    "tcsh",
+    "csh",
+    "pwsh",
+    "powershell",
+    "cmd",
+];
 
 /// Wraps a `System` behind a `Mutex` so it can live in Tauri's managed state
 /// across repeated polls — CPU usage is meaningless from a single refresh
@@ -24,22 +58,29 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 pub struct ToolDetector(Mutex<System>);
 
 impl ToolDetector {
-    /// Returns the binary name of `root_pid`'s most active descendant, or of
-    /// `root_pid` itself when it has no children (the common idle-shell
-    /// case). `None` when `root_pid` is already gone — the tab can close
-    /// between the frontend's poll and this call reaching the process table.
+    /// Returns a canonical tool id for `root_pid`'s process tree, or `None`
+    /// when nothing recognizable is running there. `root_pid` gone entirely
+    /// (the tab closed between the frontend's poll and this call reaching
+    /// the process table) also reads as `None`.
     ///
-    /// "Most active" prefers the highest sampled CPU usage; ties — including
-    /// the common case where nothing has used any CPU since the previous
-    /// poll — fall back to the deepest descendant, since a foreground CLI
-    /// tool is almost always the leaf of the shell's own process chain
-    /// (shell → node wrapper → the actual tool, or similar).
+    /// Priority: (1) the SHALLOWEST descendant whose name or argv matches a
+    /// known tool wins outright — depth beats CPU here, since the actual
+    /// CLI invocation is almost always the shell's direct child, with any
+    /// deeper matches (e.g. a subprocess the tool itself spawned that
+    /// happens to mention the same word) being noise. (2) If nothing
+    /// matches but a child process exists at all, that's a real foreground
+    /// job we just don't recognize — the spec calls for showing no icon
+    /// then, not a guess. (3) Only a childless root (an idle shell) falls
+    /// back to identifying the shell itself.
     pub fn detect(&self, root_pid: u32) -> Option<String> {
         let mut system = self.0.lock().unwrap();
+        // `cmd` defaults to `UpdateKind::Never` — without asking for it
+        // explicitly, `Process::cmd()` stays empty forever regardless of the
+        // real command line, silently defeating `match_tool`'s argv search.
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing().with_cpu(),
+            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
         );
 
         let root = Pid::from_u32(root_pid);
@@ -52,7 +93,8 @@ impl ToolDetector {
             }
         }
 
-        let mut best: Option<(Pid, f32, u32)> = None;
+        let mut best_match: Option<(&'static str, u32)> = None; // (tool_id, depth)
+        let mut has_unmatched_descendant = false;
         let mut stack: Vec<(Pid, u32)> = vec![(root, 0)];
         while let Some((pid, depth)) = stack.pop() {
             if let Some(children) = children_by_parent.get(&pid) {
@@ -60,36 +102,58 @@ impl ToolDetector {
                     stack.push((child, depth + 1));
                 }
             }
-            // The shell itself (depth 0) is only the fallback target below,
-            // never a candidate that could "win" over an actual descendant.
             if depth == 0 {
-                continue;
+                continue; // root only ever matters as the childless-shell fallback below
             }
             let Some(process) = system.process(pid) else {
                 continue;
             };
-            let cpu = process.cpu_usage();
-            let is_better = match best {
-                None => true,
-                Some((_, best_cpu, best_depth)) => {
-                    cpu > best_cpu || (cpu == best_cpu && depth > best_depth)
+            match match_tool(process) {
+                Some(tool_id) => {
+                    let better = match best_match {
+                        None => true,
+                        Some((_, best_depth)) => depth < best_depth,
+                    };
+                    if better {
+                        best_match = Some((tool_id, depth));
+                    }
                 }
-            };
-            if is_better {
-                best = Some((pid, cpu, depth));
+                None => has_unmatched_descendant = true,
             }
         }
 
-        let target = best.map_or(root, |(pid, _, _)| pid);
-        system
-            .process(target)
-            .map(|process| process.name().to_string_lossy().into_owned())
+        if let Some((tool_id, _)) = best_match {
+            return Some(tool_id.to_string());
+        }
+        if has_unmatched_descendant {
+            return None;
+        }
+
+        let root_process = system.process(root)?;
+        let root_name = root_process.name().to_string_lossy().to_lowercase();
+        let root_name = root_name.strip_suffix(".exe").unwrap_or(&root_name);
+        SHELL_BINARIES
+            .contains(&root_name)
+            .then(|| "shell".to_string())
     }
+}
+
+fn match_tool(process: &Process) -> Option<&'static str> {
+    let mut haystack = process.name().to_string_lossy().to_lowercase();
+    for arg in process.cmd() {
+        haystack.push(' ');
+        haystack.push_str(&arg.to_string_lossy().to_lowercase());
+    }
+    TOOL_MARKERS
+        .iter()
+        .find(|(marker, _)| haystack.contains(marker))
+        .map(|(_, id)| *id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::process::{Child, Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -119,34 +183,30 @@ mod tests {
             .expect("spawning the fixture shell should succeed")
     }
 
+    /// Reproduces the real bug this module's header comment documents:
+    /// writes a throwaway shebang script whose PATH contains a known tool
+    /// marker, then runs it as a background job of a shell. The kernel
+    /// execs `/bin/sh` for that script (the shebang interpreter), so the
+    /// resulting process is itself named "sh" — exactly like a real
+    /// Node-based CLI agent, which the kernel execs as "node". Only the
+    /// script's own path in argv still carries the recognizable name, which
+    /// is what `match_tool` must find.
     #[test]
-    fn detects_the_deepest_child_when_nothing_has_measurable_cpu_usage() {
-        let mut shell = spawn_shell_with_child();
-        let detector = ToolDetector::default();
+    fn matches_a_known_tool_by_argv_even_when_the_process_itself_is_named_after_the_interpreter() {
+        let script_path = std::env::temp_dir().join(format!(
+            "panecrew-tool-detect-claude-fixture-{}.sh", // brandlint-ok: Fixture-Dateiname muss ein echtes TOOL_MARKERS-Stichwort enthalten, sonst testet der Fall nichts
+            std::process::id()
+        ));
+        std::fs::write(&script_path, "#!/bin/sh\nsleep 30\n").expect("writing the fixture script should succeed");
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("fixture script metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("fixture script should become executable");
 
-        // sysinfo's CPU delta needs two refreshes with real wall-clock time
-        // between them before it reports anything other than 0% for a
-        // process that's just sleeping — matching real production polling.
-        detector.detect(shell.id());
-        std::thread::sleep(Duration::from_millis(200));
-
-        let detected = wait_for(
-            || detector.detect(shell.id()).as_deref() == Some("sleep"),
-            Duration::from_secs(5),
-        );
-
-        let _ = shell.kill();
-        let _ = shell.wait();
-        assert!(
-            detected,
-            "expected the sleeping grandchild 'sleep' to be detected as the deepest descendant"
-        );
-    }
-
-    #[test]
-    fn falls_back_to_the_root_process_when_it_has_no_children() {
         let mut shell = Command::new("sh")
-            .args(["-c", "sleep 30"])
+            .arg("-c")
+            .arg(format!("{} & wait", script_path.display()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -154,18 +214,63 @@ mod tests {
             .expect("spawning the fixture shell should succeed");
         let detector = ToolDetector::default();
 
-        // A plain `sh -c "sleep 30"` execs directly into `sleep` on most
-        // shells (no fork), so the spawned pid itself already reports as
-        // "sleep" — there is no child to fall back FROM, which is exactly
-        // the "root has no children" case this test targets.
         let detected = wait_for(
-            || detector.detect(shell.id()).is_some(),
+            || detector.detect(shell.id()).as_deref() == Some("claude"), // brandlint-ok: erwartete kanonische Tool-ID, funktionale Testaussage
             Duration::from_secs(5),
         );
 
         let _ = shell.kill();
         let _ = shell.wait();
-        assert!(detected, "expected a name for the root process itself");
+        let _ = std::fs::remove_file(&script_path);
+        assert!(
+            detected,
+            "expected the tool marker in the script's own path (argv) to be matched even though the running process itself reports as 'sh'"
+        );
+    }
+
+    #[test]
+    fn returns_no_icon_for_an_active_but_unrecognized_descendant() {
+        let mut shell = spawn_shell_with_child();
+        let detector = ToolDetector::default();
+
+        // The very first refresh after spawn can still return `None` simply
+        // because sysinfo hasn't observed the child yet — only a SUSTAINED
+        // `None` across later polls proves this isn't a guess, matching how
+        // the frontend actually polls in production.
+        detector.detect(shell.id());
+        std::thread::sleep(Duration::from_millis(200));
+        let stayed_none = wait_for(|| detector.detect(shell.id()).is_none(), Duration::from_secs(2))
+            && detector.detect(shell.id()).is_none();
+
+        let _ = shell.kill();
+        let _ = shell.wait();
+        assert!(
+            stayed_none,
+            "expected an unrecognized real descendant ('sleep') to still show no icon, not a guessed name"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_shell_when_the_root_has_no_children() {
+        // No `-c` script to exec into: a bare interactive `sh` reads from
+        // stdin in a loop and spawns nothing on its own, staying a genuine
+        // childless root for as long as its stdin stays open.
+        let mut shell = Command::new("sh")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawning the fixture shell should succeed");
+        let detector = ToolDetector::default();
+
+        let detected = wait_for(
+            || detector.detect(shell.id()).as_deref() == Some("shell"),
+            Duration::from_secs(5),
+        );
+
+        let _ = shell.kill();
+        let _ = shell.wait();
+        assert!(detected, "expected a childless shell root to identify as 'shell'");
     }
 
     #[test]

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
 import { describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
+import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 
 // Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
 // PaneTabs.tsx, "Schließen per Kontextmenü"): das Schließkreuz ist ersatzlos
@@ -33,6 +34,26 @@ const renderTabs = (props: PaneTabsProps) =>
       <PaneTabs {...props} />
     </Tooltip.Provider>,
   );
+
+/** Wie `renderTabs`, aber mit einem gestellten `PtyBackend` — für die
+ * Tool-Icon-Tests unten, die `detectTool` einen festen Binärnamen pro
+ * `tabId` beantworten lassen, statt des echten Tauri-IPC-Aufrufs. */
+const renderTabsWithBackend = (props: PaneTabsProps, backend: PtyBackend) =>
+  render(
+    <Tooltip.Provider>
+      <PtyBackendContext.Provider value={backend}>
+        <PaneTabs {...props} />
+      </PtyBackendContext.Provider>
+    </Tooltip.Provider>,
+  );
+
+const fakePtyBackend = (detectTool: PtyBackend["detectTool"]): PtyBackend => ({
+  spawn: vi.fn().mockResolvedValue(undefined),
+  write: vi.fn(),
+  resize: vi.fn(),
+  kill: vi.fn(),
+  detectTool,
+});
 
 /** Der `ContextMenu.Trigger` ist der `<span>`, der Zahl-Knopf/Umbenennen-Feld
  * umschließt — derselbe unmittelbare Elternknoten in beiden Zuständen
@@ -104,5 +125,25 @@ describe("PaneTabs", () => {
 
     expect(props.onRenameTerminalTab).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+  });
+
+  describe("Tool-Icon-Erkennung", () => {
+    it("hängt den erkannten Tool-Namen an Tooltip und aria-label an", async () => {
+      const detectTool = vi
+        .fn<PtyBackend["detectTool"]>()
+        .mockImplementation((tabId) => Promise.resolve(tabId === "tab-1" ? "claude" : null)); // brandlint-ok: kanonische Tool-ID als Test-Fixture für toolIcons.ts' Mapping
+      renderTabsWithBackend(baseProps(), fakePtyBackend(detectTool));
+
+      expect(await screen.findByRole("button", { name: "Terminal 1: Claude Code" })).toBeInTheDocument(); // brandlint-ok: erwarteter i18n-Anzeigename desselben Mappings
+      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+    });
+
+    it("zeigt kein Icon und keinen Namenszusatz für einen unbekannten Prozess", async () => {
+      const detectTool = vi.fn<PtyBackend["detectTool"]>().mockResolvedValue("some-unknown-tool");
+      renderTabsWithBackend(baseProps(), fakePtyBackend(detectTool));
+
+      await waitFor(() => expect(detectTool).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Terminal 1" })).toBeInTheDocument();
+    });
   });
 });

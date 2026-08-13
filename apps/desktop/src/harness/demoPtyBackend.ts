@@ -30,6 +30,12 @@ export function createDemoPtyBackend(): DemoPtyBackend {
     kill(tabId) {
       outputs.delete(tabId);
     },
+    detectTool() {
+      // Der Harness hat nie einen echten Prozess dahinter (ADR-0001) — ohne
+      // ein Backend-Signal bleibt das Tool-Icon in Promo-Aufnahmen bewusst
+      // aus, statt einen erfundenen Treffer vorzutäuschen.
+      return Promise.resolve(null);
+    },
     emit(tabId, text) {
       const onOutput = outputs.get(tabId);
       if (!onOutput) return;

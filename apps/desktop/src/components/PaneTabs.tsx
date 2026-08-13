@@ -9,6 +9,8 @@ import {
 } from "./ChromeTooltip";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
+import { useDetectedToolId } from "../terminal/useDetectedTool";
+import { resolveToolIcon } from "../terminal/toolIcons";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert) plus höchstens ein File-Tab, immer hinter allen
@@ -99,6 +101,30 @@ import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/regist
 //    installiert) — ein Kontextmenü existiert nur noch an den Stellen, an
 //    denen die App selbst eins eingerichtet hat, dieser Chip ist eine davon.
 //
+// Nachtrag 2026-08-13, noch später (Tool-Icon-Erkennung, Nutzer-Vorgabe:
+// Prozessbaum statt Terminal-Ausgabe, `tool_detect.rs`): der Zeile 51-62
+// oben entfernte Farbpunkt bekommt hier KEIN Comeback — dieser Nachtrag ist
+// ein eigenes, neues Signal mit eigener Bedeutung (welches CLI-Tool läuft),
+// nicht der alte Busy/Idle-Punkt in neuer Form. `useDetectedToolId` pollt
+// `pty_detect_tool` alle 2s (das Rust-Backend liefert bereits eine
+// kanonische Tool-ID, keinen rohen Binärnamen — es matcht selbst gegen
+// Prozessname UND volle Argumente, s. `tool_detect.rs`s Kopfkommentar zum
+// Node-Shebang-Problem), `resolveToolIcon` (toolIcons.ts) bildet sie auf ein
+// eigenes Monogramm-Glyph ab (kein kopiertes Marken-Logo) oder liefert
+// `null` — dann wird bewusst gar kein Icon gezeichnet, statt eines
+// Platzhalters für "unbekannt". Sitzt VOR der Zahl, in derselben Zeile.
+//
+// Nachtrag 2026-08-13, noch später (Nutzer-Feedback nach erstem Dogfood-Test:
+// "nicht bloß so ein Buchstabe", gern in Herstellerfarbe): erkannte Tools
+// bekommen eine gefüllte Badge in einer an den jeweiligen Hersteller
+// angelehnten Akzentfarbe (`toolIcons.ts`s `badgeClassName`, plausible
+// Annäherung, keine zertifizierte Markenfarbe) statt reinem `currentColor` —
+// bewusst weiterhin ein eigenes Buchstaben-Monogramm statt eines kopierten
+// Logos (Lizenz-/Trademark-Vorsicht). Nur die unerkannte Shell (`$`) bleibt
+// ungefüllt/`currentColor`, da sie keinen Hersteller hat, dem eine Farbe
+// zustünde — sie folgt weiterhin automatisch dem Aktiv/Inaktiv-Kontrast der
+// Zahl statt einer zweiten Farblogik.
+//
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
 // selbst als bevorzugte von zwei genannten Optionen) — bewusst NICHT als
@@ -174,6 +200,7 @@ export function PaneTabs({
       {terminalTabs.map((tab) => (
         <TerminalTabChip
           key={tab.tabId}
+          tabId={tab.tabId}
           number={tab.number}
           label={tab.label}
           active={!showingFile && tab.tabId === activeTerminalTabId}
@@ -221,6 +248,7 @@ export function PaneTabs({
 // (`onAuxClick`), dasselbe Idiom wie Browser-Tabs, das die Entwickler-
 // Zielgruppe dieser App aus jedem Chrome-artigen Werkzeug kennt.
 function TerminalTabChip({
+  tabId,
   number,
   label,
   active,
@@ -232,6 +260,7 @@ function TerminalTabChip({
   onCommitRename,
   onDiscardRename,
 }: {
+  tabId: string;
   number: number;
   label: string | null;
   active: boolean;
@@ -245,6 +274,8 @@ function TerminalTabChip({
 }) {
   const { t } = useTranslation();
   const baseLabel = t("paneTabs.terminalTab", { number });
+  const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
+  const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
   // schlicht keinen Akkord im Tooltip.
@@ -252,12 +283,16 @@ function TerminalTabChip({
   const chordLabel = shortcut
     ? `${baseLabel} (${formatChord(shortcut, isMacPlatform() ? "mac" : "other")})`
     : baseLabel;
-  // Der eigene Name hängt sich an den Tooltip an, statt ihn zu ersetzen — die
-  // Nummer bleibt die verlässliche, immer gültige Kennung (Cmd/Strg+1..9
-  // bleibt positionsbasiert), der Name ist zusätzlicher Kontext. Siehe
-  // Kopfkommentar dieser Datei zur "am besten als Tooltip"-Entscheidung.
-  const tooltipLabel = label === null ? chordLabel : `${chordLabel} — ${label}`;
-  const ariaLabel = label === null ? baseLabel : `${baseLabel}: ${label}`;
+  // Der eigene Name UND das erkannte Tool hängen sich als Anhang an den
+  // Tooltip, statt ihn zu ersetzen — die Nummer bleibt die verlässliche,
+  // immer gültige Kennung (Cmd/Strg+1..9 bleibt positionsbasiert), beides
+  // andere ist zusätzlicher Kontext. Siehe Kopfkommentar dieser Datei zur
+  // "am besten als Tooltip"-Entscheidung.
+  const suffixParts = [label, toolLabel].filter((part): part is string => part !== null);
+  const tooltipLabel =
+    suffixParts.length === 0 ? chordLabel : `${chordLabel} — ${suffixParts.join(" · ")}`;
+  const ariaLabel =
+    suffixParts.length === 0 ? baseLabel : `${baseLabel}: ${suffixParts.join(" · ")}`;
   // Radix' ContextMenu.Content hält seinen FocusScope-Trap bis zum Ende des
   // eigenen Schließvorgangs aktiv (in der echten App bis zum Ablauf der
   // `CHROME_MENU_CONTENT_CLASS`-Austrittsanimation) — ein Fokussieren des neu
@@ -338,12 +373,24 @@ function TerminalTabChip({
                 : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
             } ${CHROME_FOCUS_RING}`}
           >
-            {/* Terminalschrift + tabular-nums statt der Chrome-Schrift:
-                die Nummer ist HUD-Readout wie die Slot-Nummern der leeren
-                Slots (ProjectPicker.tsx) und bleibt bei jedem Wert gleich
-                breit. */}
-            <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums">
-              {number}
+            <span className="flex items-center gap-1">
+              {toolIcon && (
+                <span
+                  aria-hidden="true"
+                  className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] font-(family-name:--pc-terminal-fontFamily) text-[9px] font-semibold leading-none transition-colors ${
+                    toolIcon.badgeClassName ?? "border border-current/35"
+                  }`}
+                >
+                  {toolIcon.glyph}
+                </span>
+              )}
+              {/* Terminalschrift + tabular-nums statt der Chrome-Schrift:
+                  die Nummer ist HUD-Readout wie die Slot-Nummern der leeren
+                  Slots (ProjectPicker.tsx) und bleibt bei jedem Wert gleich
+                  breit. */}
+              <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums">
+                {number}
+              </span>
             </span>
           </button>
         )}

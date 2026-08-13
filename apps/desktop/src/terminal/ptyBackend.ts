@@ -22,6 +22,11 @@ export interface PtyBackend {
   write(tabId: string, data: Uint8Array): void;
   resize(tabId: string, cols: number, rows: number): void;
   kill(tabId: string): void;
+  /** Tool-Icon-Erkennung (Task 11/12): Binärname des aktivsten
+   * Prozessbaum-Nachfahren dieses Tabs, `null` wenn (noch) nichts erkennbar
+   * ist. Löst nie ab (auch bei IPC-Fehler `null`) — ein fehlendes Icon ist
+   * ein reiner Komfortverlust, kein Grund für eine sichtbare Fehlermeldung. */
+  detectTool(tabId: string): Promise<string | null>;
 }
 
 function reportIpcFailure(error: unknown): void {
@@ -47,6 +52,14 @@ const tauriPtyBackend: PtyBackend = {
   },
   kill(tabId) {
     void invoke("pty_kill", { tabId }).catch(reportIpcFailure);
+  },
+  detectTool(tabId) {
+    return invoke<string | null>("pty_detect_tool", { tabId })
+      .then((result) => result ?? null)
+      .catch((error: unknown) => {
+        reportIpcFailure(error);
+        return null;
+      });
   },
 };
 
