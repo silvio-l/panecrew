@@ -103,12 +103,8 @@ jobs:
           releaseName: "PaneCrew Nightly"
           releaseDraft: true
           prerelease: true
-          # UNVERIFIZIERT (s. docs/decisions.md-Umsetzungsnotiz zu Ticket 30):
-          # weder der --config-Pfad relativ zu `projectPath` noch Tauris
-          # Array-Merge-Verhalten für `app.windows` wurden je gegen einen
-          # echten Build laufen gelassen -- vor dem ersten echten Nightly-Tag
-          # unbedingt einmal lokal mit
-          # `pnpm tauri build --config src-tauri/tauri.nightly.conf.json`
-          # prüfen, dass Identifier/Fenster/Endpoints wirklich wie erwartet
-          # überlagert werden.
+          # --config-Pfad relativ zu `projectPath` und Tauris Merge-Verhalten
+          # sind gegen einen echten lokalen Build verifiziert (identifier,
+          # Fenstertitel, Updater-Endpoints landen wie erwartet aus dem
+          # Nightly-Overlay) -- s. docs/decisions.md, Ticket 30.
           args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json
