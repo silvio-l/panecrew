@@ -10,6 +10,10 @@ PRODUCT.md
 DESIGN.md
 .impeccable/
 .claude/
+# Git-Hooks sind reine lokale Tooling-Konfiguration (Allowlist-Guard,
+# gitleaks, Changelog-Gate) -- laufen nur auf der eigenen Maschine über
+# core.hooksPath, gehören nicht ins öffentliche Repo.
+.githooks/
 # `tools/*` statt `tools/` (rekursiv), damit die eine gezielte Ausnahme
 # darunter greifen kann — ein Verzeichnis-Muster ohne `*` lässt sich laut
 # git-Doku nicht durch eine `!`-Negation für Inhalte wieder freischalten.

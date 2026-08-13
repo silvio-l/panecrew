@@ -12,6 +12,10 @@ name: Release (Nightly)
 #
 # Auslösen (bewusster Akt, kein Auto-Release pro Push, Punkt 2 der Entscheidung):
 #   git tag -f nightly-latest && git push -f origin nightly-latest
+#
+# Changelog-Gate läuft lokal im pre-push-Hook (.githooks/pre-push), nicht hier
+# als eigener Job -- ein Tag-Push mit unvollständigem CHANGELOG.md kommt gar
+# nicht erst bis GitHub.
 
 on:
   push:
@@ -22,24 +26,8 @@ permissions:
   contents: write
 
 jobs:
-  changelog-gate:
-    name: Changelog-Gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Coverage- und Diff-Hash-Prüfung
-        run: |
-          python3 tools/changelog-gate/check.py \
-            --mode nightly \
-            --current-ref "${{ github.sha }}" \
-            --previous-ref "${{ github.event.before }}"
-
   build:
     name: Build & Release (${{ matrix.target }})
-    needs: changelog-gate
     strategy:
       fail-fast: false
       matrix:
