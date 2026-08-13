@@ -340,15 +340,26 @@ body {
 /* Trennzeichen der TitleBar-Uhr (TitleBar.tsx, DateTimeReadout): blinkt wie
    ein Terminal-Cursor statt weich zu pulsieren — dieselbe "Zustandswechsel
    schalten hart bei 0ms"-Regel wie überall sonst im Chrome, hier nur als
-   Dauerschleife statt an ein Nutzer-Ereignis gebunden. steps(1, jump-none)
+   Dauerschleife statt an ein Nutzer-Ereignis gebunden. steps(1, end)
    erzwingt den harten Sprung zwischen den beiden Keyframes; ohne das würde
    der Browser zwischen 1 und 0 Deckkraft interpolieren, also weich blinken
    statt zu schalten — genau das Kinetik-Verbot der App. Passend zur eigenen
    Wortmarke (Chevron + "Cursor-Block", s. AppMark-Kommentar), keine neue
-   Bewegungssprache, nur ihre kleinste mögliche Anwendung. */
+   Bewegungssprache, nur ihre kleinste mögliche Anwendung.
+
+   NICHT steps(1, jump-none): das ist per CSS-Easing-Spezifikation UNGÜLTIG
+   (jump-none verlangt mindestens 2 Intervalle — Start- und Endwert müssen
+   beide gehalten werden, was mit einem einzigen Intervall nicht geht), und
+   eine ungültige Timing-Funktion lässt Browser die GESAMTE
+   animation-Kurzschreibweise beim Parsen fallen. Genau so stand es hier bis
+   2026-08-13: weder der Uhr-Doppelpunkt noch der Slot-Cursor haben je
+   geblinkt — WebKit wie Blink verwarfen die Deklaration stillschweigend
+   (nachgemessen: CSS.supports('animation-timing-function',
+   'steps(1, jump-none)') === false in beiden Engines, computedStyle
+   animationName blieb "none"). */
 @media (prefers-reduced-motion: no-preference) {
   .pc-clock-cursor {
-    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+    animation: pc-clock-blink 1s steps(1, end) infinite;
   }
 }
 
@@ -358,32 +369,99 @@ body {
   }
 }
 
-/* Chevron + Cursorblock des ASCII-Mini-Terminals (ProjectPicker.tsx,
- * AsciiEmblem): derselbe pc-clock-blink-Takt wie oben, gegenphasig auf zwei
- * Elemente verteilt — solange der Cursor unsichtbar ist, steht der Chevron
- * voll da, und umgekehrt (500ms-Delay-Versatz = exakt die halbe
- * Zyklusdauer). Liest sich als kleiner "Herzschlag" statt als einzelnes
- * Blinken, ohne dass eine dritte Bewegungssprache dazukäme.
+/* Choreografie des ASCII-Mini-Terminals (ProjectPicker.tsx, AsciiEmblem) auf
+ * jedem echten leeren Slot (`.pc-hud-emblem--blinking`; `false` nur im
+ * `restoring`-Zweig, dort ruht das Emblem): ein 6s-Takt aus drei Stimmen
+ * statt eines einzelnen Blinkens (Nutzer-Urteil zum Vorgänger — zwei
+ * gegenphasig blinkende Glyphen: "nicht fancy").
  *
- * `.pc-hud-emblem--blinking` ist auf JEDEM echten leeren Slot für sich
- * gesetzt (Nutzer-Korrektur 2026-08-13: "die Animation... soll auf das Pane
- * bezogen sein... auf jeden einzelnen Slot" — hebt die frühere, engere
- * "nur beim Kaltstart mit leerem Gesamtgrid"-Fassung wieder auf), `false`
- * nur im `restoring`-Zweig. Hover/Fokus lässt zusätzlich JEDEN Slot
- * (auch `restoring`) kurz "erwachen", wie Ecken/Emblem-Farbe.
+ *   1. RUNDLAUF (0–1,0s): der Box-Drawing-Rahmen ist in zehn Spans zerlegt
+ *      (`__seg`; Position im Uhrzeigersinn steht als `--pc-hud-seg` inline
+ *      am Span, ProjectPicker.tsx) — jedes Segment schaltet für genau sein
+ *      100ms-Fenster hart in den Akzent und zurück, ein Läufer umrundet das
+ *      Mini-Terminal einmal, wie ein HUD, das sich selbst abtastet.
+ *   2. QUITTUNG (1,0–1,4s): kaum ist der Läufer zurück an der Promptzeile,
+ *      blitzt der Chevron zweimal kurz voll auf — das Terminal meldet sich.
+ *   3. CURSOR: klassischer, durchgehender 1s-Blink in VOLLER Akzentfarbe —
+ *      voll statt des gedimmten 70%-Prompt-Tons, weil der Blink bei 11px
+ *      gedimmt praktisch unsichtbar war (Nutzer-Fund; `color` ist ererbt,
+ *      der direkte Wert am Kind schlägt den geerbten Elternwert immer).
+ *
+ * Alles harte steps(1, end)-Schaltungen von Farbe/Deckkraft an STEHENDEN
+ * Glyphen — nichts bewegt sich, kein Glow, keine kinetische Typografie;
+ * dieselbe Bewegungssprache wie der TitleBar-Uhr-Doppelpunkt, nur zu einer
+ * Sequenz orchestriert. Die Sucher-Ecken (.pc-hud-corner) bleiben bewusst
+ * außen vor: ihr Amber ist exklusiv Hover-/Fokus-Einladung (Direction
+ * Contract), eine ambiente Ecken-Animation verwässerte genau das.
+ *
+ * Rundlauf und Quittung pausieren bei Hover/Fokus (`:not(:hover)`): die
+ * Hover-Regeln unten heben Rahmen und Prompt ohnehin komplett an, die
+ * ambiente Sequenz liefe sonst sichtbar GEGEN die Hover-Farbe an — der Slot
+ * schaut den Zeiger an, statt weiter vor sich hin zu scannen. Nur der
+ * Cursor blinkt immer, per Hover auch auf einem `restoring`-Slot.
  */
+.pc-hud-emblem--blinking .pc-hud-emblem__cursor {
+  color: var(--pc-pane-activeBorder);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .pc-slotframe:hover .pc-hud-emblem__cursor,
   .pc-slotframe:focus-visible .pc-hud-emblem__cursor,
   .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
-    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+    animation: pc-clock-blink 1s steps(1, end) infinite;
   }
 
-  .pc-slotframe:hover .pc-hud-emblem__prompt-glyph,
-  .pc-slotframe:focus-visible .pc-hud-emblem__prompt-glyph,
-  .pc-hud-emblem--blinking .pc-hud-emblem__prompt-glyph {
-    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
-    animation-delay: 500ms;
+  .pc-slotframe:not(:hover):not(:focus-visible)
+    .pc-hud-emblem--blinking
+    .pc-hud-emblem__seg {
+    animation: pc-hud-scan 6s steps(1, end) infinite;
+    /* 100ms Versatz je Uhrzeigersinn-Position — positiver Delay ist hier
+       richtig: bis zum ersten Start zeigt jedes Segment schlicht seinen
+       Ruhe-Dimmton, der Rundlauf "bootet" also einmal sauber von der
+       oberen linken Ecke aus. */
+    animation-delay: calc(var(--pc-hud-seg) * 100ms);
+  }
+
+  .pc-slotframe:not(:hover):not(:focus-visible)
+    .pc-hud-emblem--blinking
+    .pc-hud-emblem__prompt-glyph {
+    animation: pc-hud-ack 6s steps(1, end) infinite;
+  }
+}
+
+/* Ein Scan-Fenster = 100ms von 6s = 1,667%. steps(1, end) hält den
+   FROM-Wert und springt am Intervallende: 0→1,667% Akzent, danach der
+   Ruhe-Dimmton — identisch mit .pc-hud-emblem, damit ein Segment außerhalb
+   seines Fensters farblich nahtlos im Rahmen steht. */
+@keyframes pc-hud-scan {
+  0% {
+    color: var(--pc-pane-activeBorder);
+  }
+  1.667%,
+  100% {
+    color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
+  }
+}
+
+/* Doppelblitz des Chevrons bei 1,0–1,4s (16,7–23,3% von 6s): dim → voll →
+   dim → voll → dim, alle Sprünge hart. Ruhewert = der 70%-Ton von
+   .pc-hud-emblem__prompt. */
+@keyframes pc-hud-ack {
+  0% {
+    color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
+  }
+  16.667% {
+    color: var(--pc-pane-activeBorder);
+  }
+  19.167% {
+    color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
+  }
+  20.833% {
+    color: var(--pc-pane-activeBorder);
+  }
+  23.333%,
+  100% {
+    color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
   }
 }
 

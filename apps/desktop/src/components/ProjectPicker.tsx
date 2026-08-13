@@ -20,13 +20,14 @@
 // Fokus-Exklusivität des Akzents (Direction Contract) bleibt also unberührt —
 // hier ist Amber Einladung, nicht Zustand.
 //
-// Der Cursor im ASCII-Mini-Terminal blinkt IMMER auf jedem leeren Slot für
-// sich (Nutzer-Korrektur 2026-08-13: "die Animation... soll auf das Pane
-// bezogen sein und nicht bei einem leeren Grid, sondern auf jeden einzelnen
-// Slot" — hebt die frühere, engere "nur beim echten Kaltstart"-Regel wieder
-// auf, s. AsciiEmblem-Kommentar unten). Kein Glow, keine kinetische
-// Typografie: das Emblem tippt nicht, es blinkt nur — der eine erlaubte
-// Bewegungstyp dieser App für ein stehendes ASCII-Zeichen.
+// Das ASCII-Mini-Terminal trägt auf jedem leeren Slot für sich eine ambiente
+// 6s-Choreografie (Nutzer-Korrektur 2026-08-13: "auf jeden einzelnen Slot",
+// nicht nur beim leeren Gesamtgrid; danach ausgebaut vom simplen Blink zur
+// Sequenz — Rundlauf-Scan des Rahmens, Chevron-Quittung, Cursor-Blink, s.
+// AsciiEmblem-Kommentar unten und den Choreografie-Block in App.css). Kein
+// Glow, keine kinetische Typografie: das Emblem tippt nicht, kein Zeichen
+// ändert sich — es schalten ausschließlich Farbe/Sichtbarkeit stehender
+// Glyphen hart im steps(1)-Takt.
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
@@ -160,30 +161,60 @@ function SlotReadout({ number }: { number: number }) {
 // zieht beides an (App.css, .pc-slotframe:hover). Keine Buchstaben, deshalb
 // kein i18n-Fall; als reine Zeichnung für Screenreader unsichtbar.
 //
-// Chevron und Cursor-Block sind zwei EIGENE Spans (App.css,
-// .pc-hud-emblem__prompt-glyph / .pc-hud-emblem__cursor), nicht bloß der
-// Cursor allein — damit CSS beide unabhängig voneinander hart blinken lassen
-// kann, GEGENPHASIG (App.css: der Cursor bekommt einen 500ms-Delay-Versatz
-// zum Chevron auf demselben pc-clock-blink-Keyframe). Ergebnis: während der
-// Cursor unsichtbar ist, steht der Chevron voll da, und umgekehrt — ein
-// kleiner "Herzschlag" statt eines einzelnen Blinkens, ohne neue
-// Bewegungssprache (dieselbe Kurve/Dauer wie der TitleBar-Uhr-Doppelpunkt,
-// nur zweifach versetzt eingesetzt). `blinking` ist auf jedem echten leeren
-// Slot für sich wahr (Nutzer-Korrektur 2026-08-13: "auf jeden einzelnen
-// Slot", nicht nur beim Kaltstart mit leerem Gesamtgrid) — `false` nur im
-// `restoring`-Zweig, wo der Slot schon auf ein Projekt festgelegt ist.
+// Das Emblem ist in EIGENE Spans zerlegt, weil die 6s-Choreografie in
+// App.css (Kommentarblock dort: Rundlauf → Chevron-Quittung → Cursor-Blink)
+// jede Stimme einzeln adressieren muss — CSS darf nur Farbe/Sichtbarkeit
+// stehender Glyphen hart schalten, also braucht jedes unabhängig schaltende
+// Stück Rahmen sein eigenes Element:
+//   - `__prompt-glyph` (Chevron) und `__cursor` (Block) wie gehabt,
+//   - der Box-Drawing-Rahmen als zehn `__seg`-Spans, deren Position im
+//     Uhrzeigersinn (0 = obere linke Ecke) als `--pc-hud-seg` inline
+//     mitgeht — App.css macht daraus den 100ms-Versatz des Rundlauf-Scans.
+// Ohne die `--blinking`-Klasse (restoring-Zweig) sind die Segmente inerte
+// Spans und erben schlicht die Rahmenfarbe. `blinking` ist auf jedem echten
+// leeren Slot für sich wahr (Nutzer-Korrektur 2026-08-13: "auf jeden
+// einzelnen Slot", nicht nur beim Kaltstart mit leerem Gesamtgrid).
 function AsciiEmblem({ blinking }: { blinking: boolean }) {
   return (
     <pre
       aria-hidden="true"
       className={`pc-hud-emblem font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-[1.15]${blinking ? " pc-hud-emblem--blinking" : ""}`}
     >
-      {"╭─────────╮\n│ "}
+      <Seg index={0}>{"╭───"}</Seg>
+      <Seg index={1}>{"───"}</Seg>
+      <Seg index={2}>{"───╮"}</Seg>
+      {"\n"}
+      <Seg index={9}>{"│"}</Seg>
+      {" "}
       <span className="pc-hud-emblem__prompt">
         <span className="pc-hud-emblem__prompt-glyph">{"❯"}</span>{" "}
         <span className="pc-hud-emblem__cursor">{"█"}</span>
       </span>
-      {"     │\n│         │\n╰─────────╯"}
+      {"     "}
+      <Seg index={3}>{"│"}</Seg>
+      {"\n"}
+      <Seg index={8}>{"│"}</Seg>
+      {"         "}
+      <Seg index={4}>{"│"}</Seg>
+      {"\n"}
+      <Seg index={7}>{"╰───"}</Seg>
+      <Seg index={6}>{"───"}</Seg>
+      <Seg index={5}>{"───╯"}</Seg>
     </pre>
+  );
+}
+
+// Ein Rahmensegment des Rundlauf-Scans. Nur ein Span mit Positionsnummer —
+// Takt, Fenster und Farben stehen komplett in App.css (@keyframes
+// pc-hud-scan), hier steht ausschließlich, WO im Uhrzeigersinn das Segment
+// sitzt.
+function Seg({ index, children }: { index: number; children: string }) {
+  return (
+    <span
+      className="pc-hud-emblem__seg"
+      style={{ "--pc-hud-seg": index } as CSSProperties}
+    >
+      {children}
+    </span>
   );
 }
