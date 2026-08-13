@@ -112,14 +112,24 @@ const description =
     transition: color var(--lift);
   }
   .nav-links a:hover { color: var(--cream); }
+  .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .nav-cta {
-    margin-left: auto; text-decoration: none;
+    text-decoration: none;
     font-family: var(--mono); font-size: 13px;
     background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
     border-radius: 999px; padding: 7px 16px;
     transition: transform var(--lift), background var(--lift);
   }
   .nav-cta:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); }
+  .nav-gh {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px;
+    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
+    border-radius: 999px; color: var(--cream); text-decoration: none;
+    transition: transform var(--lift), background var(--lift), border-color var(--lift);
+  }
+  .nav-gh svg { width: 17px; height: 17px; }
+  .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
 
   /* ---------- hero with bokeh clouds ---------- */
   .hero { position: relative; padding: 40px 0 110px; }
@@ -295,9 +305,7 @@ const description =
   .sticker {
     font-family: var(--display); font-weight: 700;
     font-size: clamp(26px, 2.6vw, 32px); letter-spacing: -0.01em; line-height: 1.1;
-    background: linear-gradient(180deg, #e59656 8%, #b95f10 88%);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-    filter: drop-shadow(0 2px 0 rgba(31, 36, 60, 0.14));
+    color: var(--amber-text);
     display: inline-block; margin-bottom: 8px;
   }
   .card .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -377,9 +385,7 @@ const description =
     font-family: var(--display); font-weight: 700;
     font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -0.015em; line-height: 1.08;
     margin-bottom: 14px;
-    background: linear-gradient(115deg, #fef2de 0%, #ffd394 52%, #fcad43 100%);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-    display: inline-block;
+    color: var(--amber);
   }
   .closer-copy p { color: rgba(255, 253, 245, 0.8); text-wrap: pretty; margin-bottom: 10px; }
   .closer-copy .hint { font-family: var(--mono); font-size: 12.5px; color: var(--cyan-bright); }
@@ -459,6 +465,15 @@ const description =
   .foot b { font-family: var(--display); font-weight: 700; font-size: 17px; }
   .foot .cp { color: var(--ink-dim); font-size: 13.5px; }
   .foot .r { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  .foot-gh {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; flex: none;
+    border: 1px solid rgba(35, 40, 63, 0.14); border-radius: 999px;
+    color: var(--ink); text-decoration: none;
+    transition: background var(--lift), border-color var(--lift), transform var(--lift);
+  }
+  .foot-gh svg { width: 16px; height: 16px; }
+  .foot-gh:hover { background: rgba(35, 40, 63, 0.06); border-color: rgba(35, 40, 63, 0.26); transform: translateY(-2px); }
 
   /* ---------- reduced motion ---------- */
   @media (prefers-reduced-motion: reduce) {
@@ -516,6 +531,7 @@ const description =
       <rect x="1" y="9" width="6" height="6" rx="1.4"/>
       <rect x="9" y="9" width="6" height="6" rx="1.4"/>
     </g>
+    <path id="mkGithub" fill-rule="evenodd" clip-rule="evenodd" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
   </defs>
 </svg>
 
@@ -530,7 +546,12 @@ const description =
     <a href="#oss">Open source</a>
     <a href="#install">Install</a>
   </div>
-  <a class="nav-cta" href="#install">get panecrew</a>
+  <div class="nav-end">
+    <a class="nav-gh" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener" aria-label="PaneCrew on GitHub">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><use href="#mkGithub"/></svg>
+    </a>
+    <a class="nav-cta" href="#install">get panecrew</a>
+  </div>
 </nav>
 
 <main id="top">
@@ -905,17 +926,17 @@ const description =
       <article class="card">
         <div class="card-vis">
           <div class="mock" data-title="zsh" aria-hidden="true">
-            <div>$ git push public main</div>
-            <div><span class="c">→</span> ships with v0.1</div>
+            <div>$ git push origin main</div>
+            <div><span class="c">→</span> public today</div>
             <div><span class="w">›</span> <span class="cursor"></span></div>
           </div>
         </div>
         <div class="card-body">
           <h3 class="sticker">In the open</h3>
           <div class="pills">
-            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>with v0.1</span>
+            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>public now</span>
           </div>
-          <p>The source goes public with the first release. No star counts to show off yet — just an app that's dogfooded daily and decisions kept on the record.</p>
+          <p>The source is public today, pre-release. No star counts to show off yet — just an app that's dogfooded daily and decisions kept on the record.</p>
         </div>
       </article>
     </div>
@@ -945,6 +966,9 @@ const description =
     <b>PaneCrew</b>
     <span class="cp">© 2026 PaneCrew</span>
     <span class="r">panes: 4 · explorers: 1</span>
+    <a class="foot-gh" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener" aria-label="PaneCrew on GitHub">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><use href="#mkGithub"/></svg>
+    </a>
   </div>
 </footer>
 
