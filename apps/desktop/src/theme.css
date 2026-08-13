@@ -105,12 +105,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Global (Fallback-Basis nach VS-Code-Muster). Zwischen den beiden
-     Indigo-Fassungen des 2026-08-13 stand hier kurz ein angehobenes,
-     getöntes #9599b1 — nötig nur, weil die erste Fassung einen hellen
-     Explorer-Grund (#262d58) trug, auf dem #8c8c8c auf 3,9:1 fiel. Auf der
-     dunklen Endfassung hält der neutrale Ton alle Grenzen wieder selbst
-     (4,9:1 auf dem Explorer, 5,3:1 auf dem Fenstergrund). */
+  /* Global (Fallback-Basis nach VS-Code-Muster) */
   --pc-foreground: #bfbfbf;
   --pc-descriptionForeground: #8c8c8c;
 
@@ -148,36 +143,23 @@
    *
    * Das Alpha ist beim Rechnen leicht zu übersehen und war hier zwei Commits
    * lang falsch dokumentiert: der opake Hexwert sagt nichts über die sichtbare
-   * Fläche, gemessen werden muss die Komposition über dem Grund. Auf dem
-   * Indigo-Grund #14172b (seit 2026-08-13, dunkle Fassung):
+   * Fläche, gemessen werden muss die Komposition über dem Grund. Auf #121314:
    *
-   *   focusBorder  #e59656 bei cc (80 %)  →  #bb7d4d  =  5,2:1
-   *   pane.activeBorder #e59656 opak, auf Pane-Grund #0d1020:  7,9:1
+   *   focusBorder  #e59656 bei cc (80 %)  →  #ad7345  =  4,8:1
+   *   pane.activeBorder #e59656 opak      →             7,8:1
    *
-   * Das Alpha stieg beim Indigo-Umbau von b3 (70 %) auf cc; auf der dunklen
-   * Endfassung des Grundes käme zwar auch b3 wieder auf 4,2:1, aber cc bleibt
-   * bewusst stehen: die Palette hält ihre Fokus-Sichtbarkeit seit dem
-   * Blau-Altwert (#3994bcb3, komponiert 3,3:1) in jeder Runde mindestens und
-   * senkt sie nicht wieder ab, nur weil der Grund es gerade erlaubte.
+   * Das frühere Blau #3994bcb3 kam komponiert auf 3,3:1 und lag damit
+   * haarscharf über der 3:1-Untergrenze für nicht-textliche Fokusindikatoren
+   * (WCAG 1.4.11); die erste Amber-Fassung traf mit 3,3:1 exakt dieselbe
+   * Wirkung. Das Alpha stand danach lange auf b3 (komponiert 4,4:1) und wurde
+   * im Zuge der Akzent-Investition (Nutzer-Direktive 2026-08-13: „bei den
+   * Akzenten deutlich stärker investieren") auf cc angehoben — einmal
+   * kräftiger gemacht, wird Fokus-Sichtbarkeit nicht wieder abgesenkt.
    */
   --pc-focusBorder: #e59656cc;
 
-  /*
-   * App-Chrome — der Fenstergrund. Seit dem Indigo-Umbau (2026-08-13, „1a":
-   * die charm-Linie der Website gilt vollständig auch in der App,
-   * .impeccable/direction-contract-desktop.md) ist das nicht mehr die
-   * neutrale #121314-Content-Plane, auf der die Panes nur per Border saßen,
-   * sondern eine Indigo-Markenfläche in der Achse der Website-Familie. Die
-   * erste Fassung übernahm deren #1f2547 wörtlich; Nutzer-Feedback vom
-   * selben Tag („dieser helle Blauton gefällt mir gar nicht — die App
-   * sollte weiterhin eher dunkel sein") hat die Familie auf die heutige
-   * DUNKLE Lage gedrückt: #14172b liegt in der Helligkeit zwischen den
-   * beiden alten Neutralflächen (#121314/#191a1b), trägt aber deren
-   * Indigo-Hue. Die Schichtung der Website bleibt: die Panes liegen als
-   * noch dunklere Terminal-Fenster (#0d1020) auf dem Grund, getrennt durch
-   * den 8px-Gap des Workspaces statt nur durch Hairlines.
-   */
-  --pc-app-background: #14172b;
+  /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
+  --pc-app-background: #121314;
 
   /*
    * Glas-Material (app-weit, nicht an eine Komponente gebunden) — Apples
@@ -191,15 +173,12 @@
    * begründet an der eigenen Klasse ab (Deckkraft, Radius), statt eine zweite
    * Materialsprache aufzumachen.
    *
-   * Der Grund ist bewusst HELLER als --pc-app-background: auf einer dunklen
-   * Fläche trägt nicht der Weichzeichner die Tiefe (der Grund verwaschen
-   * bleibt der Grund), sondern die Materialkante — heller Ton, 1px-Lichtkante
-   * oben, echter versetzter Schlagschatten darunter. Der backdrop-filter
-   * arbeitet, sobald Inhalt die Kapsel unterläuft. (Der hier bis 2026-08-13
-   * als Beleg genannte Fokus-Glow ist seit 2026-08-05 weg.) Seit dem
-   * Indigo-Umbau ist der Ton in die Grund-Achse gedreht: effektiv hebt die
-   * Platte den Grund #14172b auf ≈#20243e, dieselben ~+12 Kanalwerte wie die
-   * frühere Neutralfassung.
+   * Der Grund ist bewusst HELLER als --pc-app-background: auf einer nahezu
+   * monochromen Dunkeloberfläche trägt nicht der Weichzeichner die Tiefe
+   * (#121314 verwaschen bleibt #121314), sondern die Materialkante — heller
+   * Ton, 1px-Lichtkante oben, echter versetzter Schlagschatten darunter. Der
+   * backdrop-filter arbeitet, sobald Inhalt die Kapsel unterläuft. (Der hier
+   * bis 2026-08-13 als Beleg genannte Fokus-Glow ist seit 2026-08-05 weg.)
    *
    * Die Zahlen sind an echten macOS-26-Fenstern ausgemessen, nicht geschätzt —
    * Safari 26 und Finder liefern identische Werte, Messreihen und Herleitung in
@@ -222,7 +201,7 @@
    * Grund kann die Fläche nicht heller werden als ihr Untergrund, dort ist die
    * Kante das einzige, was die Erhebung überhaupt trägt.
    */
-  --pc-glass-background: rgba(52, 58, 96, 0.36);
+  --pc-glass-background: rgba(46, 49, 55, 0.36);
   --pc-glass-border: rgba(255, 255, 255, 0.055);
   --pc-glass-sheen: rgba(255, 255, 255, 0.015);
   --pc-glass-topLight: rgba(255, 255, 255, 0.012);
@@ -230,7 +209,7 @@
 
   /* Hairline schwebender Chrome-Ränder (Tooltip, Kontextmenü) — seit dem
      Glas-Umbau nicht mehr der Rand der Titelzeile selbst. */
-  --pc-titleBar-border: #31365a;
+  --pc-titleBar-border: #2a2b2c;
 
   /*
    * Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt.
@@ -238,20 +217,17 @@
    * foreground: VS Codes Command Center zeigt an dieser Stelle den echten
    * Dateinamen (Inhalt, also hell), unseres nur eine Aufforderung
    * ("Suchen oder Befehl ausführen"). Auf Inhaltshelligkeit gesetzt las sich
-   * der Platzhalter wie ein bereits eingegebener Wert. Der Ton ist derselbe
-   * wie --pc-descriptionForeground; auf der Glaskapsel über #14172b misst
-   * er 4,5:1.
+   * der Platzhalter wie ein bereits eingegebener Wert. Beide Werte stammen
+   * weiterhin aus derselben VS-Code-Palette, nur aus einem anderen Schlüssel;
+   * Kontrast 5,5:1 auf #121314.
    */
   --pc-titleBar-searchBackground: transparent;
-  --pc-titleBar-searchBorder: #3b4166;
+  --pc-titleBar-searchBorder: #2e3031;
   --pc-titleBar-searchForeground: #8c8c8c;
 
-  /* Explorer (VS-Code-nahe Baum-Optik). Der Grund ist seit dem Indigo-Umbau
-     die hellere Nachbarfläche der Familie — dieselbe Rolle, die vorher
-     #191a1b gegenüber #121314 spielte: sichtbar über dem Fenstergrund, ohne
-     eigene Kante zu brauchen. */
-  --pc-explorer-background: #1a1e35;
-  --pc-explorer-border: #31365a;
+  /* Explorer (VS-Code-nahe Baum-Optik) */
+  --pc-explorer-background: #191a1b;
+  --pc-explorer-border: #2a2b2c;
   --pc-explorer-foreground: #bfbfbf;
   --pc-explorerHeader-foreground: #bfbfbf;
   --pc-list-hoverBackground: #ffffff14;
@@ -271,8 +247,8 @@
    * genau diesen Fall schon führt (--pc-titleBar-searchBorder, hier ohne
    * dessen Transparenz).
    */
-  --pc-widget-background: #1a1e35;
-  --pc-widget-border: #3b4166;
+  --pc-widget-background: #191a1b;
+  --pc-widget-border: #2e3031;
 
   /*
    * Abdunklung hinter einem modalen Dialog (heute: die Rückfrage vor dem
@@ -282,9 +258,8 @@
    * ist das Gegenteil, nämlich weggenommenes Licht über fremdem Inhalt.
    *
    * Der Dark-Wert ist deutlich kräftiger als der Light-Wert, und das ist keine
-   * Symmetriepanne: der Grund darunter (dunkles Indigo, #14172b/#0d1020) ist
-   * bereits fast schwarz, ein Schwarzschleier kann ihn kaum noch senken.
-   * Sichtbar abgedunkelt wird hier
+   * Symmetriepanne: der Grund darunter (#121314) ist bereits fast schwarz, ein
+   * Schwarzschleier kann ihn kaum noch senken. Sichtbar abgedunkelt wird hier
    * in Wahrheit der helle INHALT — Terminaltext #eceff1 fällt bei 0,5 auf
    * #767879 und damit von 15,8:1 auf 4,4:1 gegen den abgedunkelten Grund:
    * noch lesbar (man soll sehen, was man verlässt), aber unmissverständlich
@@ -345,8 +320,8 @@
    * auch dort noch, wo sie es als Text nicht mehr tun (siehe Light-Block).
    * Ein eigener Slot macht diesen Unterschied überhaupt erst ausdrückbar.
    *
-   * Gemessen auf --pc-explorer-background (#1a1e35): Orange 5,50:1,
-   * Grün 7,69:1. Bewusst als eigener Hexwert und nicht als var()-Verweis auf
+   * Gemessen auf --pc-explorer-background (#191a1b): Orange 5,80:1,
+   * Grün 8,11:1. Bewusst als eigener Hexwert und nicht als var()-Verweis auf
    * --pc-icon-orange/-green — diese Datei aliast nirgends ein Token auf ein
    * anderes, jeder Slot trägt seinen Wert selbst; die beiden var()-Vorkommen
    * weiter oben stehen in zusammengesetzten Werten (Schatten/Verlauf), nicht
@@ -355,26 +330,20 @@
   --pc-gitDecoration-modifiedResourceForeground: #e37933;
   --pc-gitDecoration-untrackedResourceForeground: #8dc149;
 
-  /* Terminal-Panes — seit dem Indigo-Umbau die dunkelste Fläche der App
-     (#0d1020): die Panes sitzen als dunkle Fenster auf dem helleren
-     Fenstergrund, wie die Terminals der Website auf deren Indigo. */
-  --pc-pane-background: #0d1020;
-  --pc-pane-border: #31365a;
+  /* Terminal-Panes */
+  --pc-pane-background: #121314;
+  --pc-pane-border: #2a2b2c;
   /* Der eine Akzent, Herleitung im Block über --pc-focusBorder. Seit dem
      Wegfall des Glows ist dieser Rahmen das erste Fokussignal der Pane. */
   --pc-pane-activeBorder: #e59656;
   --pc-paneHeader-foreground: #8c8c8c;
   --pc-paneHeader-activeForeground: #e59656;
-  --pc-paneHeader-border: #31365a;
+  --pc-paneHeader-border: #2a2b2c;
 
   /*
    * Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar.
    *
-   * Eigene Palette, aus dem Grund hergeleitet (2026-08-05, damals #121314;
-   * seit 2026-08-13 liegt der Grund auf #0d1020 — alle Kontraste unten sind
-   * auf dem neuen Grund nachgemessen, die Buntwerte halten die Grenzen
-   * unverändert: schwächster Normalwert Rot 4,78:1, schwächster Bright-Wert
-   * BrightBlue 7,41:1); vorher
+   * Eigene Palette, aus dem Grund #121314 hergeleitet (2026-08-05); vorher
    * standen hier VS Codes unveränderte Engine-Defaults, deren Helligkeiten
    * quer über die Farben um den Faktor 3 auseinanderliefen (OKLCH-L von 0,53
    * bei Rot bis 0,87 bei Gelb) — genau das las sich neben dem eigenen Chrome
@@ -383,14 +352,10 @@
    * Konstruktionsregeln (in OKLCH gerechnet, Skript in der Herleitung, nicht
    * im Repo — die Hexwerte hier sind die Quelle):
    * 1. Alle Neutralen (Black, BrightBlack, White, BrightWhite, foreground,
-   *    cursor) liegen auf DERSELBEN Achse wie der Grund: ursprünglich Hue
-   *    250, Chroma ~0,005. Seit dem Indigo-Umbau sitzt der Grund selbst bei
-   *    H ~266 und deutlich mehr Chroma; die hellen Neutralen bleiben auf der
-   *    alten Achse stehen — bei C 0,005 liegt der Hue-Unterschied unter der
-   *    Wahrnehmungsschwelle —, nur ansiBlack als einziger dunkler Wert ist
-   *    in die neue Achse gezogen (#070a16 statt #0c0d0f), damit er dunkler
-   *    als der Grund bleibt statt neben ihm zu stehen. White und
-   *    BrightWhite waren früher beide #e5e5e5, also nicht unterscheidbar;
+   *    cursor) liegen auf DERSELBEN Achse wie der Grund: Hue 250, Chroma
+   *    ~0,005. Auch ansiBlack — das frühere reine #000000 war der einzige
+   *    Wert der Palette ohne jede Verbindung zur App-Grundfläche. White und
+   *    BrightWhite waren zudem beide #e5e5e5, also nicht unterscheidbar;
    *    Programme, die auf den Unterschied setzen, zeigten nichts.
    * 2. Die sechs Buntfarben teilen ein Chroma-Band (0,10–0,18) und ein
    *    gemeinsames Helligkeitsband statt VS Codes Streuung; Bright ist
@@ -409,7 +374,7 @@
    * 6. Gelb meidet das Marken-Amber (#fcad43, H 70): H 100 ist messingfarben
    *    statt orange-golden, die Marke bleibt allein der Marke.
    */
-  --pc-terminal-background: #0d1020;
+  --pc-terminal-background: #121314;
   --pc-terminal-foreground: #c5c8ca;
   --pc-terminal-cursor: #ced1d5;
   /*
@@ -417,11 +382,11 @@
    * focusBorder noch eine ANSI-Farbe: der Akzent gehört laut Direction
    * Contract allein dem Fokus, und Rot/Gelb/Grün haben im Terminalinhalt
    * feste Bedeutung. Deshalb der neutrale Chrome-Ton descriptionForeground —
-   * 5,6:1 auf #0d1020, klar unter dem Inhaltston #c5c8ca (10,3:1) und damit
+   * 5,5:1 auf #121314, klar unter dem Inhaltston #c5c8ca (11,1:1) und damit
    * lesbar als Vorschlag statt als bereits Getipptes.
    */
   --pc-terminal-ghostForeground: #8c8c8c;
-  --pc-terminal-ansiBlack: #070a16;
+  --pc-terminal-ansiBlack: #0c0d0f;
   --pc-terminal-ansiRed: #d9544b;
   --pc-terminal-ansiGreen: #32a85f;
   --pc-terminal-ansiYellow: #b9a624;
