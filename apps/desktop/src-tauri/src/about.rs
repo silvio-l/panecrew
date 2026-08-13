@@ -74,8 +74,18 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, check_updates: bool) {
     // Ohne native Dekoration: die angeschnittene Ecke ist die echte
     // Fensterkontur und keine Kerbe in einem Rechteck. Damit entfallen auch die
     // Ampeln — das Dokument bringt sein eigenes Schließkreuz mit.
+    // Muss auf den ersten Blick erkennbar bleiben, welcher Kanal offen ist —
+    // dieselbe Regel wie beim Splash-Badge (splash.ts), hier aber am nativen
+    // Fenstertitel statt an einem Dokumentelement, weil dieses Fenster keine
+    // eigene Konfigurationszeile in tauri.nightly.conf.json hat (`about.html`
+    // wird zur Laufzeit gebaut, nicht aus `app.windows` übernommen).
+    let title = if app.config().identifier.ends_with(".nightly") {
+        "Über PaneCrew Nightly"
+    } else {
+        "Über PaneCrew"
+    };
     let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("about.html".into()))
-        .title("Über PaneCrew")
+        .title(title)
         .inner_size(
             FRAME_WIDTH + 2.0 * SHADOW_MARGIN,
             FRAME_HEIGHT + 2.0 * SHADOW_MARGIN,

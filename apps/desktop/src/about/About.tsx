@@ -21,7 +21,7 @@
  * und Folgeaktion, nicht über einen Farbcode.
  */
 import { useEffect, useRef, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { getIdentifier, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -77,6 +77,7 @@ const SILHOUETTE_CLIP = `path("${SILHOUETTE}")`;
 export function About() {
   const { t } = useTranslation();
   const [version, setVersion] = useState<string | null>(null);
+  const [nightly, setNightly] = useState(false);
   const [licenseOpen, setLicenseOpen] = useState(false);
   const licenseRef = useRef<HTMLDivElement>(null);
   const { state, check, installAndRestart, confirmRestart, dismiss } =
@@ -85,9 +86,13 @@ export function About() {
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
-      const current = await getVersion();
+      const [current, identifier] = await Promise.all([
+        getVersion(),
+        getIdentifier(),
+      ]);
       if (cancelled) return;
       setVersion(current);
+      setNightly(identifier.endsWith(".nightly"));
       // Das Fenster startet unsichtbar und deckt sich erst hier selbst auf —
       // erst ab jetzt steht die Silhouette samt Version. KEIN
       // requestAnimationFrame: das Fenster ist zu diesem Zeitpunkt noch
@@ -187,10 +192,19 @@ export function About() {
           <BrandMark />
           <div className="pointer-events-none flex flex-col items-center gap-1">
             {/* Markenname, keine Übersetzungssache — "PaneCrew" bleibt laut
-                Markenleitlinie in jeder Sprache gleich geschrieben. */}
+                Markenleitlinie in jeder Sprache gleich geschrieben. Dasselbe
+                gilt für "Nightly" als Kanal-/Produktnamenszusatz (wie im
+                Splash-Badge) — der Kanal muss hier immer erkennbar sein,
+                unabhängig vom nativen Fenstertitel (about.rs). */}
             {/* eslint-disable-next-line no-restricted-syntax */}
-            <h1 className="text-(length:--pc-chrome-fontSizeDisplay) font-semibold tracking-tight text-(--pc-foreground)">
+            <h1 className="flex items-baseline gap-1.5 text-(length:--pc-chrome-fontSizeDisplay) font-semibold tracking-tight text-(--pc-foreground)">
               PaneCrew
+              {nightly && (
+                // eslint-disable-next-line no-restricted-syntax
+                <span className="text-(length:--pc-chrome-fontSize) font-medium text-(--pc-descriptionForeground)">
+                  Nightly
+                </span>
+              )}
             </h1>
             <p className="text-(length:--pc-chrome-fontSizeSmall) tracking-[0.07em] text-(--pc-descriptionForeground)">
               {t("about.version", { version: version ?? "…" })}

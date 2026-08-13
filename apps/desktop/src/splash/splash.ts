@@ -1,7 +1,16 @@
-import { getIdentifier } from "@tauri-apps/api/app";
+import { getIdentifier, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 
 const video = document.getElementById("splash-video") as HTMLVideoElement;
+
+// Einzige Quelle für die angezeigte Version ist der zur Laufzeit kompilierte
+// Wert (letztlich aus tauri.conf.json/Cargo.toml) — das Markup trägt nur
+// einen Platzhalter, damit hier nie eine zweite, bei einem Release vergessene
+// Kopie der Zahl herumliegt. Dasselbe Muster wie in About.tsx.
+void getVersion().then((version) => {
+  const el = document.getElementById("app-version");
+  if (el) el.textContent = version;
+});
 
 // Der Nightly-Kanal bekommt einen eigenen `identifier`
 // (docs/decisions.md → "Auto-Update via GitHub Releases", Punkt 1) — daran

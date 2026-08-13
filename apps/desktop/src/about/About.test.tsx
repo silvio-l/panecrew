@@ -11,7 +11,11 @@ import { About } from "./About";
 // hält beides fest: `about_visible` läuft ohne rAF-Vermittlung, und die
 // Komponente ruft `requestAnimationFrame` überhaupt nicht mehr auf.
 
-vi.mock("@tauri-apps/api/app", () => ({ getVersion: () => Promise.resolve("0.1.0") }));
+const getIdentifierMock = vi.fn(() => Promise.resolve("dev.panecrew.desktop"));
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: () => Promise.resolve("0.1.0"),
+  getIdentifier: () => getIdentifierMock(),
+}));
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => undefined) }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ close: vi.fn() }),
@@ -42,5 +46,20 @@ describe("About", () => {
     await screen.findByText("Version 0.1.0");
     expect(invokeMock).toHaveBeenCalledWith("about_visible");
     expect(rafSpy).not.toHaveBeenCalled();
+  });
+
+  it("zeigt das Nightly-Abzeichen nur auf dem Nightly-Kanal", async () => {
+    getIdentifierMock.mockResolvedValueOnce("dev.panecrew.desktop.nightly");
+    render(<About />);
+
+    await screen.findByText("Version 0.1.0");
+    expect(screen.getByText("Nightly")).toBeInTheDocument();
+  });
+
+  it("zeigt kein Nightly-Abzeichen auf dem Stable-Kanal", async () => {
+    render(<About />);
+
+    await screen.findByText("Version 0.1.0");
+    expect(screen.queryByText("Nightly")).not.toBeInTheDocument();
   });
 });
