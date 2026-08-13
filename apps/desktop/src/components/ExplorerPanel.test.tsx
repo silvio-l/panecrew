@@ -150,6 +150,27 @@ describe("ExplorerPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("zählt im Fußzeilen-Readout sichtbare gegen vorhandene Einträge", () => {
+    renderPanel([
+      { name: "src", children: [{ name: "main.rs" }, { name: "lib.rs" }] },
+      { name: "README.md", kind: "md" },
+    ]);
+    // 4 Knoten insgesamt, sichtbar anfangs nur die 2 Wurzelkinder (Ordner
+    // starten eingeklappt). Geprüft wird der Screenreader-Satz statt des
+    // sichtbaren "2/4": Letzteres ist als reines Ziffernpaar bewusst nicht
+    // übersetzt, der Satz dagegen trägt beide Zahlen UND die Bedeutung.
+    expect(
+      screen.getByText("2 von 4 Einträgen sichtbar"),
+    ).toBeInTheDocument();
+
+    // Das Readout ist ein Instrument, kein Standbild: Aufklappen hebt die
+    // sichtbare Zahl, die Bezugsgröße bleibt.
+    fireEvent.click(screen.getByRole("button", { name: "src" }));
+    expect(
+      screen.getByText("4 von 4 Einträgen sichtbar"),
+    ).toBeInTheDocument();
+  });
+
   it("wandert mit den Pfeiltasten auf die benachbarte Zeile", () => {
     renderPanel(flatTree(5000));
 

@@ -25,6 +25,7 @@
     "newFolderNamePlaceholder": "New folder name",
     "nameContainsPathError": "Name must not contain a path.",
     "filterFilesAria": "Filter files in project",
+    "visibleCount": "{{visible}} of {{total}} entries visible",
     "treeReadError": "File tree could not be read.",
     "gitStatus": {
       "modifiedFile": "modified",

@@ -25,6 +25,7 @@
     "newFolderNamePlaceholder": "Neuer Ordnername",
     "nameContainsPathError": "Name darf keinen Pfad enthalten.",
     "filterFilesAria": "Dateien im Projekt filtern",
+    "visibleCount": "{{visible}} von {{total}} Einträgen sichtbar",
     "treeReadError": "Dateibaum konnte nicht gelesen werden.",
     "gitStatus": {
       "modifiedFile": "geändert",

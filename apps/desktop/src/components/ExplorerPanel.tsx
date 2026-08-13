@@ -11,13 +11,17 @@ import type { Project, TreeNode } from "../types/project";
 import { filterTree } from "../types/treeFilter";
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
-// nur der Dateibaum, kein Icon-Rail, kein Overlay. Optik an VS Codes Explorer
-// angelehnt: Ordner-Chevrons, Einrückungs-Führungslinien, gedämpfter
-// Baum-Vordergrund mit hellerer Hervorhebung des aktiven Eintrags. Die
-// Datei-Glyphen sind seit 2026-08-05 nicht mehr eine eingefärbte Strichdatei
-// pro Typ, sondern das echte Seti-Set, aus dem auch VS Code seine baut —
-// Herkunft, Lizenz und Farbzuordnung stehen in `explorerIcons.tsx`. Der
-// Akzent-Punkt im Kopf ist das Explorer-Echo der fokussierten Pane.
+// nur der Dateibaum, kein Icon-Rail, kein Overlay. Die STRUKTUR (Chevron-
+// Spalte, Einrückungsstaffelung, Hervorhebung des aktiven Eintrags) folgt dem
+// Referenz-Editor; die OPTIK spricht seit der TUI-Runde 2026-08-13
+// (Nutzer-Direktive „TUI-Chic-Nordstern") das Terminal-Register der App:
+// Baumzeilen, Kopfname und Eingabefelder in der Terminal-Monospace,
+// ▸/▾-Zeichen statt rotierender SVG-Winkel, ├/└-Ast-Konnektoren als
+// gezeichnete Hairlines, ❯ auf der ausgewählten Datei und ein Zähl-Readout
+// als HUD-Fußzeile. Die Datei-Glyphen sind seit 2026-08-05 das echte
+// Seti-Set — Herkunft, Lizenz und Farbzuordnung stehen in
+// `explorerIcons.tsx`. Der Akzent-Punkt im Kopf ist das Explorer-Echo der
+// fokussierten Pane.
 // Breite/Einklapp-Zustand des PANELS besitzt App (überlebt so den key-Remount
 // pro Projektwechsel); der Resize-Handle sitzt ebenfalls dort. Was der Baum in
 // sich einklappt — einzelne Ordner und die Wurzel — gehört dagegen hierher:
@@ -206,6 +210,10 @@ export function ExplorerPanel({
     () => flattenTree(shownTree, collapsed, filteredTree !== null),
     [shownTree, collapsed, filteredTree],
   );
+  // Bezugsgröße des Fußzeilen-Readouts: ALLE Einträge des ungefilterten
+  // Baums, unabhängig von Klapp- und Suchzustand — genau dadurch sagt
+  // „12/384" etwas aus (wie viel vom Projekt gerade sichtbar ist).
+  const totalEntries = useMemo(() => countNodes(project.tree), [project.tree]);
 
   return (
     <aside
@@ -222,7 +230,12 @@ export function ExplorerPanel({
           Wurzel-Chevrons und die der obersten Ordner stehen damit in einer
           Spalte, der Projektname eine Einrückungsstufe links vor seinen
           Kindern — dieselbe Staffelung wie in VS Codes Explorer. */}
-      <div className="flex h-10 shrink-0 items-center gap-1 pl-0.5 pr-1.5">
+      {/* h-[41px] = die bisherigen 40px Innenhöhe plus die 1px-Hairline unten
+          (border-box!): die Trennlinie kam mit der TUI-Runde 2026-08-13 dazu —
+          sie rahmt den Baum wie die Pane-Header ihre Terminals — und hätte
+          bei h-10 die optische Mitte der Zeile auf 19,5px gedrückt, aus der
+          Flucht mit dem Projektnamen im Pane-Header (Mitte 20, s. o.). */}
+      <div className="flex h-[41px] shrink-0 items-center gap-1 border-b border-(--pc-explorer-border) pl-0.5 pr-1.5">
         {/* Die Kopfzeile ist zugleich der Wurzelknoten: ein Klick klappt den
             gesamten Baum weg. Bewusst KEINE zusätzliche „Explorer"-Titelzeile
             darüber — der Direction Contract legt genau eine kompakte Kopfzeile
@@ -245,7 +258,9 @@ export function ExplorerPanel({
             aria-hidden="true"
             className="size-1.5 shrink-0 rounded-full bg-(--pc-pane-activeBorder)"
           />
-          <span className="min-w-0 flex-1 truncate text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-explorerHeader-foreground)">
+          {/* Terminalschrift auch hier: der Kopf ist die Wurzelzeile des
+              Baums darunter und spricht seit der TUI-Runde dessen Register. */}
+          <span className="min-w-0 flex-1 truncate font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) font-semibold text-(--pc-explorerHeader-foreground)">
             {project.name}
           </span>
         </button>
@@ -411,9 +426,55 @@ export function ExplorerPanel({
               onSelectFile={onSelectFile}
             />
           )}
+          {/* Nur unter einem echten Baum: unter Fehler- und Leerzuständen
+              gäbe es nichts zu zählen, und ein Readout „0/0" sähe wie ein
+              weiterer Fehler aus. */}
+          {project.treeError === null && project.tree.length > 0 && (
+            <TreeStatusReadout visible={rows.length} total={totalEntries} />
+          )}
         </>
       )}
     </aside>
+  );
+}
+
+// HUD-Fußzeile des Baums (TUI-Direktive 2026-08-13): sichtbare gegen
+// vorhandene Einträge, im selben 10px-Terminalschrift-Register wie das
+// Slot-Readout der leeren Panes (.pc-hud-readout, App.css — auch dieselbe
+// gedimmte Farbe). Sichtbar sind nur Ziffern und der Schrägstrich, deshalb
+// keine i18n-Frage im Sichtbaren; der Screenreader bekommt stattdessen den
+// ganzen Satz. Die Zahl reagiert auf Klappen, Suchen UND Aktualisieren —
+// ein lebendes Instrument, kein Zierrat.
+function TreeStatusReadout({
+  visible,
+  total,
+}: {
+  visible: number;
+  total: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex h-5 shrink-0 items-center border-t border-(--pc-explorer-border) px-3">
+      <span
+        aria-hidden="true"
+        className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em]"
+      >
+        {`${String(visible)}/${String(total)}`}
+      </span>
+      <span className="sr-only">
+        {t("explorer.visibleCount", { visible, total })}
+      </span>
+    </div>
+  );
+}
+
+// Zählt jeden Knoten des Baums (Dateien wie Ordner), unabhängig vom
+// Klappzustand — die Bezugsgröße des Fußzeilen-Readouts.
+function countNodes(nodes: readonly TreeNode[]): number {
+  return nodes.reduce(
+    (sum, node) =>
+      sum + 1 + (node.children === undefined ? 0 : countNodes(node.children)),
+    0,
   );
 }
 
@@ -690,7 +751,7 @@ function NewEntryRow({
           }}
           onKeyDown={onKeyDown}
           onBlur={onDiscard}
-          className={`min-w-0 flex-1 rounded-sm border bg-(--pc-widget-background) px-1 py-px text-(--pc-explorer-foreground) outline-none placeholder:text-(--pc-descriptionForeground) ${
+          className={`min-w-0 flex-1 rounded-sm border bg-(--pc-widget-background) px-1 py-px font-(family-name:--pc-terminal-fontFamily) text-(--pc-explorer-foreground) outline-none placeholder:text-(--pc-descriptionForeground) ${
             error === null
               ? "border-(--pc-widget-border) focus:border-(--pc-focusBorder)"
               : "border-(--pc-icon-red)"
@@ -779,7 +840,7 @@ function TreeFilterRow({
           event.preventDefault();
           onClose();
         }}
-        className="min-w-0 flex-1 rounded-sm border border-(--pc-widget-border) bg-(--pc-widget-background) px-1 py-px text-(length:--pc-chrome-fontSize) text-(--pc-explorer-foreground) outline-none placeholder:text-(--pc-descriptionForeground) focus:border-(--pc-focusBorder)"
+        className="min-w-0 flex-1 rounded-sm border border-(--pc-widget-border) bg-(--pc-widget-background) px-1 py-px font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-explorer-foreground) outline-none placeholder:text-(--pc-descriptionForeground) focus:border-(--pc-focusBorder)"
       />
     </div>
   );
@@ -897,6 +958,16 @@ interface FlatRow {
   depth: number;
   isFolder: boolean;
   isOpen: boolean;
+  /** Ast-Geometrie für die Ebenen 0 … depth-2 (die eigene Ebene depth-1 trägt
+   * `isLast`): `true`, wenn der Vorfahr dieser Ebene noch Geschwister UNTER
+   * sich hat — nur dann läuft dort eine durchgehende Vertikale weiter. Beim
+   * letzten Kind endet der Ast, und alles darunter bliebe eine Linie ins
+   * Leere. Beim Ausrollen mitberechnet statt pro Zeile hergeleitet: die Zeile
+   * selbst kennt ihre Geschwister nicht mehr. */
+  ancestorGuides: readonly boolean[];
+  /** Letztes Kind seiner Ebene → der eigene Konnektor ist ein └ (Vertikale
+   * endet auf halber Zeilenhöhe) statt eines ├. */
+  isLast: boolean;
 }
 
 /** Rollt den Baum zu der Zeilenfolge aus, die gerade sichtbar ist: ein
@@ -919,17 +990,25 @@ function flattenTree(
     level: readonly TreeNode[],
     parentPath: string,
     depth: number,
+    ancestorGuides: readonly boolean[],
   ) => {
-    for (const node of level) {
+    level.forEach((node, index) => {
       const path = parentPath === "" ? node.name : `${parentPath}/${node.name}`;
       const isFolder = node.children !== undefined;
       const isOpen = isFolder && (forceOpen || !collapsed.has(path));
-      rows.push({ node, path, depth, isFolder, isOpen });
-      if (isOpen && node.children) walk(node.children, path, depth + 1);
-    }
+      const isLast = index === level.length - 1;
+      rows.push({ node, path, depth, isFolder, isOpen, ancestorGuides, isLast });
+      // Die Kinder erben die Astlage aller Ebenen darüber plus die dieser
+      // Zeile: läuft hier unten noch ein Geschwister nach, führt die
+      // Vertikale durch den ganzen Teilbaum — sonst endet sie mit dieser
+      // Zeile. Dasselbe Array wird pro Ebene GETEILT (kein Kopieren pro
+      // Zeile): erzeugt wird es genau einmal pro aufgeklapptem Ordner.
+      if (isOpen && node.children)
+        walk(node.children, path, depth + 1, [...ancestorGuides, !isLast]);
+    });
   };
 
-  walk(nodes, "", 0);
+  walk(nodes, "", 0, []);
   return rows;
 }
 
@@ -1208,7 +1287,7 @@ interface TreeRowProps {
 // Virtualisierung rekursiert hier nichts mehr, welche Zeilen es gibt,
 // entscheidet `flattenTree`.
 function TreeRow({
-  row: { node, path, depth, isFolder, isOpen },
+  row: { node, path, depth, isFolder, isOpen, ancestorGuides, isLast },
   index,
   offset,
   selected,
@@ -1259,40 +1338,74 @@ function TreeRow({
       // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
       // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
       // auch VS Codes eigene Lösung für Listenzeilen.
-      className={`absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
+      className={`absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
         isSelected
           ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
           : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
       }`}
     >
-      {/* Einrückungs-Führungslinien: pro übersprungener Ebene eine Haarlinie
-            über die volle Zeilenhöhe. Weil die Zeilen lückenlos aufeinander
-            folgen, ergeben die Segmente eine durchgehende Linie über den ganzen
-            ausgeklappten Teilbaum — dieselbe Bauweise wie in VS Code, und sie
-            braucht keinen eigenen Zustand: dass eine Ebene noch offen ist,
-            steht schon darin, dass diese Zeile überhaupt gerendert wird.
+      {/* Ast-Konnektoren in ├/└-Geometrie (TUI-Direktive 2026-08-13) — als
+            1px-Hairlines GEZEICHNET statt als Box-Drawing-Glyphen gesetzt:
+            Zeichen müssten die 22px-Zeilenbox exakt füllen, um lückenlos zu
+            stapeln, Hairlines stapeln von selbst lückenlos und bleiben auf
+            jeder Zoomstufe scharf. Drei Bausteine pro Zeile:
+            1. Durchlauf-Vertikalen der Vorfahren-Ebenen — nur wo der Ast dort
+               wirklich weiterläuft (`ancestorGuides`, sonst Linie ins Leere).
+            2. Die eigene Vertikale auf Ebene depth-1: voll (├) oder bis zur
+               Zeilenmitte (└, `isLast`) — 11.5px, damit sie die Horizontale
+               (10.5–11.5) gerade einschließt statt 0.5px vor ihr zu enden.
+            3. Der 6px-Stichel zur Zeile, mittig bei calc(50% - 0.5px): auf
+               Retina ein ganzer Gerätepixel, exakt auf der optischen Mitte
+               der 22px-Zeile.
 
             x = 15 + Ebene * 12 trifft die Mitte des Chevrons des jeweiligen
             Elternordners (dessen paddingLeft 10 + 12 pro Ebene, Chevron 10
-            breit) — die Linie hängt damit sichtbar an ihrem Ordner, nicht
-            irgendwo im Einzug.
+            breit); der Stichel endet 1px vor der Inhaltskante (10 + Tiefe*12).
 
             Farbe ist --pc-widget-border, nicht --pc-explorer-border: theme.css
             hält fest, dass Letzterer im Light-Theme fast verschwindet, sobald
             unter ihm nicht die erwartete Nachbarfläche liegt. Genau dieser Fall
             ist hier — die Linie steht auf dem Panelgrund selbst. */}
-      {Array.from({ length: depth }, (_, level) => (
-        <span
-          key={level}
-          aria-hidden="true"
-          style={{ left: 15 + level * 12 }}
-          className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
-        />
-      ))}
+      {ancestorGuides.map((continues, level) =>
+        continues ? (
+          <span
+            key={level}
+            aria-hidden="true"
+            style={{ left: 15 + level * 12 }}
+            className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
+          />
+        ) : null,
+      )}
+      {depth > 0 && (
+        <>
+          <span
+            aria-hidden="true"
+            style={{ left: 15 + (depth - 1) * 12 }}
+            className={`pointer-events-none absolute top-0 w-px bg-(--pc-widget-border) ${
+              isLast ? "h-[11.5px]" : "bottom-0"
+            }`}
+          />
+          <span
+            aria-hidden="true"
+            style={{ left: 15 + (depth - 1) * 12, width: 6, top: "calc(50% - 0.5px)" }}
+            className="pointer-events-none absolute h-px bg-(--pc-widget-border)"
+          />
+        </>
+      )}
       {isFolder ? (
         <Chevron open={isOpen} />
       ) : (
-        <span className="w-2.5 shrink-0" />
+        // Die Chevron-Spalte der Dateizeile trägt den ❯-Marker der
+        // ausgewählten Datei — dieselbe HUD-Grammatik wie im Kopf der
+        // fokussierten Pane (TerminalPane.tsx): ❯ heißt „hier bist du".
+        // Im Vordergrundton der Auswahl, nicht im Akzent — der Akzent
+        // gehört dem Pane-Fokus, die Dateiauswahl ist ein leiserer Zustand.
+        <span
+          aria-hidden="true"
+          className="w-2.5 shrink-0 text-center text-[11px] leading-none"
+        >
+          {isSelected ? "❯" : ""}
+        </span>
       )}
       {isFolder ? <FolderIcon open={isOpen} /> : <FileIcon kind={node.kind} />}
       <span
@@ -1435,23 +1548,19 @@ function GitDecorationMark({
   );
 }
 
+// ▸/▾ als Zeichen statt des früheren rotierenden SVG-Winkels (TUI-Direktive
+// 2026-08-13). Zwei Gewinne: die gefüllten Dreiecke sind die Klapp-Glyphen
+// echter TUIs, und der Wechsel ist ein harter Zeichentausch bei 0ms — exakt
+// die Motion-Regel „Zustandswechsel schalten hart", die die 100ms-Rotation
+// des SVGs bis dahin als geduldete Ausnahme unterlief. Terminalschrift als
+// HUD-Register, 10px in der 22px-Zeile — dieselbe Größe, die das SVG hatte.
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
+    <span
       aria-hidden="true"
-      className={`shrink-0 text-(--pc-descriptionForeground) transition-transform duration-100 ${open ? "rotate-90" : ""}`}
+      className="w-2.5 shrink-0 text-center font-(family-name:--pc-terminal-fontFamily) text-[10px] leading-none text-(--pc-descriptionForeground)"
     >
-      <path
-        d="M3.5 1.8 6.7 5 3.5 8.2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      {open ? "▾" : "▸"}
+    </span>
   );
 }
