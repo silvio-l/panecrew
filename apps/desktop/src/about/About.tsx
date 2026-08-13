@@ -115,7 +115,16 @@ export function About() {
     return () => {
       cancelled = true;
     };
-  }, [check]);
+    // Mount-once mit Absicht, wie in UpdateBanner.tsx: `check` ändert seine
+    // Identität mit jedem `version`-Update (useUpdateFlow → useCallback([
+    // currentVersion])). Mit `[check]` als Dependency feuert dieser Effekt
+    // dadurch ein zweites Mal, sobald `setVersion` oben selbst greift —
+    // zweiter Aufruf von getIdentifier()/about_visible()/
+    // about_take_update_request, und dessen setNightly() überschreibt das
+    // Ergebnis des ersten Laufs abhängig von Promise-Timing (Race). Genau
+    // das ließ About.test.tsx' Nightly-Badge-Test nur manchmal fehlschlagen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Zweiter Weg für denselben Menüpunkt: war das Fenster bereits offen, ist der
   // Mount oben längst vorbei und Rust schickt stattdessen ein Ereignis.
