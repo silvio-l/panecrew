@@ -9,6 +9,7 @@ docs/agents/
 PRODUCT.md
 DESIGN.md
 .impeccable/
+.claude/
 # `tools/*` statt `tools/` (rekursiv), damit die eine gezielte Ausnahme
 # darunter greifen kann — ein Verzeichnis-Muster ohne `*` lässt sich laut
 # git-Doku nicht durch eine `!`-Negation für Inhalte wieder freischalten.
