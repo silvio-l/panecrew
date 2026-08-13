@@ -46,6 +46,37 @@ body {
 }
 
 /*
+ * App-weite Scrollbars (Explorer-Baum, Editor-Textarea, Overlays) im
+ * TUI-Duktus statt der wuchtigen Webview-Vorgabe: schmale Läufer ohne
+ * Spur, Farbe aus denselben List-Tokens, die auch Hover/Auswahl tragen —
+ * und damit automatisch theme-fest. xterm.js bringt seine eigene Leiste mit
+ * (terminalTheme.ts, dieselben Token), hier steht das Pendant für alles
+ * andere. Kein Hover-Amber: eine Scrollleiste ist Mechanik, kein Akzentort,
+ * und der Akzent gehört dem Fokus.
+ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--pc-list-hoverBackground);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pc-list-activeSelectionBackground);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
  * Theme-Umschaltung der Titelzeilen-Marke (components/TitleBar.tsx → AppMark).
  * Beide Verlaufsfassungen stehen dort neben der Geometrie; hier steht nur,
  * welche gilt — derselbe data-theme-Schalter wie für jedes Farbtoken, nur mit
@@ -186,6 +217,87 @@ body {
 .pc-minimap > span {
   border-radius: 1px;
   background: currentColor;
+}
+
+/*
+ * HUD-Sprache der leeren Slots (components/ProjectPicker.tsx, 2026-08-13,
+ * Nutzer-Direktive „technoide HUD-Details + ASCII-Deko"): vier Sucher-Ecken
+ * rahmen den Slot, je ein L aus zwei 1px-Kanten in der Pane-Hairline-Farbe.
+ * Beim Überfahren (oder Tastatur-Fokus) wechseln Ecken und ASCII-Emblem
+ * gemeinsam in den Amber-Akzent — ein leerer Slot kann nie Pane-Fokus tragen,
+ * die Akzent-Exklusivität des Direction Contract bleibt also stehen; hier ist
+ * Amber Einladung. 150ms border-color/color folgt der Hover-Regel oben.
+ *
+ * Der Eckradius jeder Ecke entspricht dem rounded-lg (0.5rem) des Knopfs,
+ * damit der Winkel der Rundung folgt statt sie zu überschneiden.
+ */
+.pc-hud-corner {
+  position: absolute;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 0 solid var(--pc-pane-border);
+  transition: border-color 150ms;
+}
+
+.pc-hud-corner--tl {
+  top: 0;
+  left: 0;
+  border-top-width: 1px;
+  border-left-width: 1px;
+  border-top-left-radius: 0.5rem;
+}
+
+.pc-hud-corner--tr {
+  top: 0;
+  right: 0;
+  border-top-width: 1px;
+  border-right-width: 1px;
+  border-top-right-radius: 0.5rem;
+}
+
+.pc-hud-corner--bl {
+  bottom: 0;
+  left: 0;
+  border-bottom-width: 1px;
+  border-left-width: 1px;
+  border-bottom-left-radius: 0.5rem;
+}
+
+.pc-hud-corner--br {
+  bottom: 0;
+  right: 0;
+  border-bottom-width: 1px;
+  border-right-width: 1px;
+  border-bottom-right-radius: 0.5rem;
+}
+
+/* Das ASCII-Mini-Terminal, zweifarbig: Rahmen leise (gedimmter
+   Beschreibungston), Prompt + Cursor in gedimmtem Amber. color-mix statt
+   Opacity, damit der Hover-Wechsel eine reine Farbtransition bleibt (die
+   150ms-Hover-Regel deckt transition-colors, nicht transition-opacity an
+   Deko). Beim Überfahren zieht beides gemeinsam mit den Ecken an. */
+.pc-hud-emblem {
+  color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
+  transition: color 150ms;
+}
+
+.pc-hud-emblem__prompt {
+  color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
+  transition: color 150ms;
+}
+
+.pc-slotframe:hover .pc-hud-corner,
+.pc-slotframe:focus-visible .pc-hud-corner {
+  border-color: var(--pc-pane-activeBorder);
+}
+
+.pc-slotframe:hover .pc-hud-emblem {
+  color: var(--pc-descriptionForeground);
+}
+
+.pc-slotframe:hover .pc-hud-emblem__prompt,
+.pc-slotframe:focus-visible .pc-hud-emblem__prompt {
+  color: var(--pc-pane-activeBorder);
 }
 
 /*

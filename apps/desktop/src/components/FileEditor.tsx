@@ -133,11 +133,13 @@ export function FileEditor({
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
+      {/* Header-Hairline im gedimmten Amber bei Fokus — Schaltung und
+          Begründung 1:1 wie in TerminalPane.tsx' Header. */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
           focused
-            ? "text-(--pc-paneHeader-activeForeground)"
-            : "text-(--pc-paneHeader-foreground)"
+            ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
+            : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"
         }`}
       >
         {/* Derselbe Tab-Umschalter wie im Terminal-Header daneben (2026-08-12)
@@ -249,8 +251,10 @@ export function FileEditor({
             // Kopieren und Ändern da. Kein eigener Fokusring — das Feld ist
             // fokussierbar und zeigt dann seinen Cursor, wie jede
             // Editorfläche; ein Ring um die halbe Pane wäre der lautere und
-            // zugleich unschärfere Hinweis.
-            className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) outline-none"
+            // zugleich unschärfere Hinweis. caret im Terminal-Cursor-Ton:
+            // dieselbe „hier schreibst du"-Aussage wie der Amber-Block im
+            // Terminal nebenan (theme.css, Akzent-Investition 2026-08-13).
+            className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) caret-(--pc-terminal-cursor) outline-none"
           />
         </>
       )}

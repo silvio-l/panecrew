@@ -376,7 +376,17 @@
    */
   --pc-terminal-background: #121314;
   --pc-terminal-foreground: #c5c8ca;
-  --pc-terminal-cursor: #ced1d5;
+  /*
+   * Der Cursor-Block trägt seit der Akzent-Investition (2026-08-13,
+   * Nutzer-Direktive „bei den Akzenten deutlich stärker investieren") das
+   * Marken-Amber statt des früheren Neutralwerts #ced1d5. Er ist die eine
+   * Ausnahme von Konstruktionsregel 1 oben, und zwar bewusst: der Cursor ist
+   * kein INHALT (den ANSI-Regeln schützen), sondern das UI-Element „hier
+   * schreibst du" — dieselbe Aussage wie der Fokusrahmen, dieselbe Farbe.
+   * Text unter dem Block bleibt lesbar über cursorAccent = Terminalgrund
+   * (terminalTheme.ts); 7,8:1 auf #121314.
+   */
+  --pc-terminal-cursor: #e59656;
   /*
    * Inline-Vervollständigung (Geistertext hinter dem Cursor). Weder
    * focusBorder noch eine ANSI-Farbe: der Akzent gehört laut Direction
@@ -549,7 +559,11 @@
    */
   --pc-terminal-background: #ffffff;
   --pc-terminal-foreground: #3b3d40;
-  --pc-terminal-cursor: #26292d;
+  /* Amber-Cursor wie im Dark-Block (Begründung dort), in der Light-Fassung
+     des Akzents: derselbe Wert wie --pc-focusBorder light, 4,4:1 auf Weiß —
+     als Grafikobjekt klar über der 3:1-Grenze (WCAG 1.4.11), Text unter dem
+     Block läuft über cursorAccent = Grund. */
+  --pc-terminal-cursor: #b0651f;
   /* Geistertext, gleiche Regel wie im Dark-Block: 4,5:1 auf #ffffff, klar
      unter dem Inhaltston #3b3d40 (10,9:1). Nicht descriptionForeground
      (#606060, 7:1) — auf Weiß las sich das schon wie echter Inhalt. */

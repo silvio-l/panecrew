@@ -131,12 +131,19 @@ export function TerminalPane({
       {/* Zweites Fokussignal: der Projektname der aktiven Pane steht im
           Akzent, die der übrigen im gedimmten Header-Ton. Bei einer einzelnen
           Pane war das nicht unterscheidbar — mit sieben Templates und bis zu
-          vier Panes ist es der Unterschied, den man ohne Suchen liest. */}
+          vier Panes ist es der Unterschied, den man ohne Suchen liest.
+          Seit der Akzent-Investition (2026-08-13) zieht auch die Hairline
+          unter dem Header mit: gedimmtes Amber (45 %) statt Neutralgrau —
+          dritter Baustein desselben Signals, bewusst unter der Deckkraft des
+          Rahmens, damit der weiterhin die erste Antwort auf „wo ist der
+          Fokus?" bleibt. Harter Wechsel wie der Rahmen (Zustands-, kein
+          Hover-Signal), daher keine transition-Klasse. FileEditor.tsx' Header
+          spiegelt exakt dieselbe Schaltung. */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b border-(--pc-paneHeader-border) pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
+        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide ${
           focused
-            ? "text-(--pc-paneHeader-activeForeground)"
-            : "text-(--pc-paneHeader-foreground)"
+            ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
+            : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"
         }`}
       >
         {/* Drei-Zonen-Header (2026-08-13-Nachtrag, Ticket 18): Name und

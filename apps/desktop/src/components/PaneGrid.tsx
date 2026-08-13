@@ -93,6 +93,7 @@ export function PaneGrid({
             onChoose={() => onAssignProject(index)}
             busy={pickingSlot === index}
             restoring={restoringSlots.has(index)}
+            slotNumber={index + 1}
           />
         ),
       )}
