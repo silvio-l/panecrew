@@ -62,7 +62,7 @@ coverage:
   - tooling
   - updater
   - website
-diff_hash: PLACEHOLDER
+diff_hash: 39a51addaf14d7b0de3d961e77a43a75330f21a39dc80400baba2fb3714d6011
 -->
 Erster Release. PaneCrew kann ab jetzt:
 
