@@ -26,7 +26,7 @@ const MIN_WIDTH: f64 = 960.0;
 const MIN_HEIGHT: f64 = 600.0;
 const BACKGROUND: &str = "#121314";
 
-/// Cascading offset between successive new windows, same idea as VS Code's
+/// Cascading offset between successive new windows, same idea as VS Code's brandlint-ok: funktionaler Verhaltensvergleich, kein Marketing
 /// own "New Window" placement — each window lands visibly offset from its
 /// opener instead of stacked exactly on top of it.
 const CASCADE_STEP: f64 = 32.0;
