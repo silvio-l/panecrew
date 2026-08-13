@@ -33,6 +33,25 @@
       "modifiedFolder": "enthält geänderte Dateien",
       "untrackedFile": "nicht versioniert",
       "untrackedFolder": "enthält nicht versionierte Dateien"
+    },
+    "contextMenu": {
+      "revealInFinder": "Im Finder anzeigen",
+      "revealInExplorer": "Im Explorer anzeigen",
+      "openInVSCode": "In VS Code öffnen",
+      "rename": "Umbenennen",
+      "delete": "Löschen",
+      "copyPath": "Pfad kopieren",
+      "copyRelativePath": "Relativen Pfad kopieren",
+      "renameFieldAria": "„{{name}}“ umbenennen",
+      "pathCopied": "Pfad kopiert",
+      "relativePathCopied": "Relativer Pfad kopiert"
+    },
+    "deleteDialog": {
+      "title": "„{{name}}“ löschen?",
+      "descriptionFile": "Die Datei <bold>{{name}}</bold> wird in den Papierkorb verschoben.",
+      "descriptionFolder": "Der Ordner <bold>{{name}}</bold> und sein gesamter Inhalt werden in den Papierkorb verschoben.",
+      "confirm": "Löschen",
+      "cancel": "Abbrechen"
     }
   },
   "fileEditor": {
@@ -121,5 +140,19 @@
   "directoryPopup": {
     "tabHint": "übernehmen",
     "enterHint": "abschicken"
+  },
+  "updater": {
+    "available": "Version {{version}} ist verfügbar.",
+    "installAndRestart": "Installieren & Neustarten",
+    "later": "Später",
+    "downloading": "Wird heruntergeladen …",
+    "downloadingPercent": "Wird heruntergeladen … {{percent}} %",
+    "restartTitle": "Update installieren und neu starten?",
+    "restartDescription": "PaneCrew wird neu gestartet, um Version <bold>{{version}}</bold> zu installieren. Laufende Terminal-Sitzungen werden dabei beendet.",
+    "restartConfirm": "Jetzt neu starten",
+    "restartLater": "Später",
+    "error": "Update konnte nicht installiert werden.",
+    "dismiss": "Ausblenden",
+    "homebrewHint": "Über Homebrew installiert — aktualisiere mit „brew upgrade --cask panecrew“."
   }
 }

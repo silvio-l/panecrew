@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PaneCrew Nightly",
+  "identifier": "dev.panecrew.desktop.nightly",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "PaneCrew Nightly",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 21, "y": 27.5 },
+        "backgroundColor": "#121314",
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splash.html",
+        "title": "PaneCrew Nightly",
+        "width": 940,
+        "height": 590,
+        "resizable": false,
+        "decorations": false,
+        "center": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "shadow": false,
+        "visible": false
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDMzk0ODIwQUI5N0NBQjgKUldTNHlwZXJJRWc1UENaU2YzWjFKZytwMFVTdGNBVnk0ZldyeHlXYnBxdUo3OURkUEhBcG05dlEK",
+      "endpoints": [
+        "https://github.com/silvio-l/panecrew/releases/download/nightly-latest/latest.json"
+      ]
+    }
+  }
+}

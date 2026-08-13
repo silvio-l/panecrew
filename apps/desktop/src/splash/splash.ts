@@ -1,6 +1,18 @@
+import { getIdentifier } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 
 const video = document.getElementById("splash-video") as HTMLVideoElement;
+
+// Der Nightly-Kanal bekommt einen eigenen `identifier`
+// (docs/decisions.md → "Auto-Update via GitHub Releases", Punkt 1) — daran
+// statt an einem eigenen Build-Flag lässt sich der Kanal hier erkennen, ohne
+// neue Konfigurationsoberfläche nur für dieses eine Abzeichen. Der Identifier
+// ist ein technischer String (kein übersetzter Anzeigename), die Prüfung ist
+// deshalb sprachunabhängig sicher.
+void getIdentifier().then((identifier) => {
+  if (!identifier.endsWith(".nightly")) return;
+  document.getElementById("nightly-badge")?.removeAttribute("hidden");
+});
 
 let handedOff = false;
 const handOff = (): void => {

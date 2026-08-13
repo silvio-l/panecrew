@@ -9,7 +9,15 @@ docs/agents/
 PRODUCT.md
 DESIGN.md
 .impeccable/
-tools/
+# `tools/*` statt `tools/` (rekursiv), damit die eine gezielte Ausnahme
+# darunter greifen kann — ein Verzeichnis-Muster ohne `*` lässt sich laut
+# git-Doku nicht durch eine `!`-Negation für Inhalte wieder freischalten.
+tools/*
+# changelog-gate ist keine interne Planung, sondern das Release-CI-Gate
+# selbst (docs/decisions.md -> "Auto-Update via GitHub Releases", Punkt 6:
+# Pfad→Modul-Mapping muss öffentlich sein) — ohne diesen Pfad im Repo
+# funktioniert `.github/workflows/release-*.yml` in der Öffentlichkeit nicht.
+!tools/changelog-gate/
 
 # Secrets
 .env
@@ -19,6 +27,7 @@ tools/
 node_modules/
 dist/
 dist-ssr/
+.astro/
 
 # Promo-Pipeline: Storyboard, das die Capture-Stage zur Laufzeit an den
 # Demo-Harness ausliefert (tools/promo-pipeline/capture.py) — generiert pro

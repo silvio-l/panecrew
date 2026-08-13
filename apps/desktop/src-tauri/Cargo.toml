@@ -25,15 +25,23 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9.0"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+trash = "5.2.6"
 
 [dev-dependencies]
 # Only reachable from `cargo run --example gen-cli-docs` (examples get
 # dev-dependencies, a `[[bin]]` would not): regenerates docs/cli.md from the
 # same `Cli` struct that drives `--help`, so the two can't drift apart.
 clap-markdown = "0.1"
+# Nur für tests/updater_e2e.rs: `test`-Feature schaltet tauri::test frei
+# (mock_builder/mock_context), Cargo unifiziert die Features mit der
+# regulären `tauri`-Abhängigkeit oben, kein zweiter Build.
+tauri = { version = "2", features = ["test"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 

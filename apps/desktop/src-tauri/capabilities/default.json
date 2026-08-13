@@ -15,6 +15,8 @@
       "identifier": "opener:allow-open-path",
       "allow": [{ "path": "**" }, { "path": "$HOME/**" }]
     },
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

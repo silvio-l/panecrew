@@ -132,6 +132,14 @@
         color: #bfbfbf;
       }
 
+      /* Nur für den Nightly-Kanal sichtbar (per JS anhand des Produktnamens
+         umgeschaltet, siehe splash.ts) — kein Amber (dem Emblem vorbehalten)
+         und keine ANSI-Farbe, deshalb schlicht angehoben statt eingefärbt. */
+      .nightlyBadge {
+        font-weight: 600;
+        color: #e6e6e6;
+      }
+
       /* Früh und dann stehend: die Leiste kommt mit dem Wiedergabestart und
          bleibt die restlichen ~1,7 s, damit die Version wirklich lesbar ist.
          Kein Fade mehr (stand hier bis 2026-08-13 mit 350ms ease-out):
@@ -162,7 +170,14 @@
         ></video>
         <div class="topLight"></div>
         <p class="colophon">
-          <span class="version">PaneCrew 0.1.0</span>
+          <span class="version"
+            >PaneCrew 0.1.0<span
+              id="nightly-badge"
+              class="nightlyBadge"
+              hidden
+              >&nbsp;Nightly</span
+            ></span
+          >
           <span>&copy; 2026 Silvio Lindstedt &middot; MIT License</span>
         </p>
       </div>

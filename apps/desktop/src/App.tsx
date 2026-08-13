@@ -62,9 +62,14 @@ import { PaneGrid } from "./components/PaneGrid";
 import { PathDragGhost } from "./components/PathDragGhost";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
-import { fileNameFromPath } from "./explorer/filePath";
+import { UpdateBanner } from "./updater/UpdateBanner";
+import {
+  fileNameFromPath,
+  isPathOrDescendant,
+  remapRenamedPath,
+} from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
-import { focusedProjectPath } from "./grid/gridState";
+import { activePanes, focusedProjectPath } from "./grid/gridState";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
@@ -535,6 +540,66 @@ function App() {
       ? openFilePath.slice(project.path.length + 1)
       : null;
 
+  // Trägt eine Explorer-Umbenennung (Ticket 24) über jeden Ort, der einen
+  // Pfad projekt-relativ hält, hinweg mit — spiegelbildlich zu
+  // `paneFileEditors.renamePath`, das dasselbe für die absoluten Pfade der
+  // offenen Puffer erledigt. `oldRelPath`/`newRelPath` kommen unverändert aus
+  // `ExplorerPanel`, in dessen eigener Konvention (projekt-relativ).
+  //
+  // `selectedFile` ist EIN Record über ALLE Panes, nicht nur die des gerade
+  // umbenennenden Projekts — zwei Panes können unterschiedliche Projekte
+  // offen haben und dabei zufällig denselben projekt-relativen Pfad markiert
+  // haben (z. B. beide "src/index.ts"). Ein Remap ohne Projekt-Filter träfe
+  // dann auch die Pane des FREMDEN Projekts. Eingegrenzt wird deshalb auf die
+  // Panes, deren `projectPath` genau dieses Projekt ist — dieselbe Prüfung,
+  // die `paneFileEditors.renamePath`/`closeUnder` sich sparen können, weil sie
+  // mit bereits absoluten (und damit projekt-eindeutigen) Pfaden arbeiten.
+  const onEntryRenamed = (oldRelPath: string, newRelPath: string) => {
+    if (project === null) return;
+    paneFileEditors.renamePath(
+      `${project.path}/${oldRelPath}`,
+      `${project.path}/${newRelPath}`,
+    );
+    const paneIdsInProject = new Set(
+      activePanes(gridState)
+        .filter((pane) => pane.projectPath === project.path)
+        .map((pane) => pane.paneId),
+    );
+    setSelectedFile((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([paneId, path]) => [
+          paneId,
+          paneIdsInProject.has(paneId)
+            ? remapRenamedPath(path, oldRelPath, newRelPath)
+            : path,
+        ]),
+      ),
+    );
+  };
+
+  // Schließt jeden offenen Puffer unter einer gelöschten Explorer-Datei/einem
+  // gelöschten Ordner (über `paneFileEditors.closeUnder`) UND nimmt die
+  // Auswahl-Markierung jeder Pane DIESES Projekts mit, die genau dorthin
+  // zeigte — sonst bliebe eine Baumzeile markiert, die es nicht mehr gibt.
+  // Derselbe Projekt-Filter wie bei `onEntryRenamed`, aus demselben Grund.
+  const onEntryDeleted = (relPath: string) => {
+    if (project === null) return;
+    paneFileEditors.closeUnder(`${project.path}/${relPath}`);
+    const paneIdsInProject = new Set(
+      activePanes(gridState)
+        .filter((pane) => pane.projectPath === project.path)
+        .map((pane) => pane.paneId),
+    );
+    setSelectedFile((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([paneId, path]) =>
+            !(paneIdsInProject.has(paneId) && isPathOrDescendant(path, relPath)),
+        ),
+      ),
+    );
+  };
+
   const nudgeExplorerWidth = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 32 : 8;
     const delta =
@@ -618,6 +683,8 @@ function App() {
                 onStartPathDrag={explorerDrag.startDrag}
                 draggingPath={explorerDrag.draggingPath}
                 onConsumeDragClick={explorerDrag.consumeDragClick}
+                onEntryRenamed={onEntryRenamed}
+                onEntryDeleted={onEntryDeleted}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
                   Explorer-Breite für Tastaturnutzer unerreichbar macht — das
@@ -773,6 +840,7 @@ function App() {
               overPane={explorerDrag.targetPaneId !== null}
             />
           )}
+        <UpdateBanner />
       </div>
     </Tooltip.Provider>
   );

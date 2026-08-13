@@ -33,6 +33,25 @@
       "modifiedFolder": "contains modified files",
       "untrackedFile": "untracked",
       "untrackedFolder": "contains untracked files"
+    },
+    "contextMenu": {
+      "revealInFinder": "Reveal in Finder",
+      "revealInExplorer": "Reveal in Explorer",
+      "openInVSCode": "Open in VS Code",
+      "rename": "Rename",
+      "delete": "Delete",
+      "copyPath": "Copy Path",
+      "copyRelativePath": "Copy Relative Path",
+      "renameFieldAria": "Rename “{{name}}”",
+      "pathCopied": "Path copied",
+      "relativePathCopied": "Relative path copied"
+    },
+    "deleteDialog": {
+      "title": "Delete “{{name}}”?",
+      "descriptionFile": "The file <bold>{{name}}</bold> will be moved to the trash.",
+      "descriptionFolder": "The folder <bold>{{name}}</bold> and all of its contents will be moved to the trash.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
     }
   },
   "fileEditor": {
@@ -121,5 +140,19 @@
   "directoryPopup": {
     "tabHint": "accept",
     "enterHint": "submit"
+  },
+  "updater": {
+    "available": "Version {{version}} is available.",
+    "installAndRestart": "Install & Restart",
+    "later": "Later",
+    "downloading": "Downloading …",
+    "downloadingPercent": "Downloading … {{percent}}%",
+    "restartTitle": "Install update and restart?",
+    "restartDescription": "PaneCrew will restart to install version <bold>{{version}}</bold>. Running terminal sessions will end.",
+    "restartConfirm": "Restart now",
+    "restartLater": "Later",
+    "error": "The update could not be installed.",
+    "dismiss": "Dismiss",
+    "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
   }
 }

@@ -20,22 +20,22 @@
  * zudem ANSI-Semantik aus den Terminals) — sie unterscheiden sich über Text
  * und Folgeaktion, nicht über einen Farbcode.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useTranslation } from "react-i18next";
+import type { Update } from "@tauri-apps/plugin-updater";
+import { Trans, useTranslation } from "react-i18next";
 // Aus der echten LICENSE des Repos statt aus einer Kopie im Code: eine zweite
 // Fassung des Lizenztextes wäre genau die Art Duplikat, die still veraltet.
 import licenseText from "../../../../LICENSE?raw";
-import {
-  REPOSITORY_URL,
-  RELEASES_URL,
-  checkForUpdate,
-  type UpdateCheck,
-} from "./updateCheck";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { useUpdateFlow, type UpdateFlowState } from "../updater/useUpdateFlow";
+
+const REPOSITORY_URL = "https://github.com/silvio-l/panecrew";
+const RELEASES_URL = `${REPOSITORY_URL}/releases`;
 
 // Die LICENSE ist auf 80 Zeichen hart umbrochen. In einer 380px schmalen Box
 // zerfiele sie dadurch in Stummelzeilen — hier werden die Umbrüche INNERHALB
@@ -74,34 +74,19 @@ const SILHOUETTE = [
 ].join(" ");
 const SILHOUETTE_CLIP = `path("${SILHOUETTE}")`;
 
-type UpdateState =
-  | { phase: "idle" }
-  | { phase: "checking" }
-  | { phase: "done"; result: UpdateCheck };
-
 export function About() {
   const { t } = useTranslation();
   const [version, setVersion] = useState<string | null>(null);
-  const [update, setUpdate] = useState<UpdateState>({ phase: "idle" });
   const [licenseOpen, setLicenseOpen] = useState(false);
-  const versionRef = useRef<string | null>(null);
   const licenseRef = useRef<HTMLDivElement>(null);
-
-  const runCheck = useCallback(() => {
-    const current = versionRef.current;
-    if (current === null) return;
-    setUpdate({ phase: "checking" });
-    void checkForUpdate(current).then((result) => {
-      setUpdate({ phase: "done", result });
-    });
-  }, []);
+  const { state, check, installAndRestart, confirmRestart, dismiss } =
+    useUpdateFlow(version);
 
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
       const current = await getVersion();
       if (cancelled) return;
-      versionRef.current = current;
       setVersion(current);
       // Das Fenster startet unsichtbar und deckt sich erst hier selbst auf —
       // erst ab jetzt steht die Silhouette samt Version. KEIN
@@ -117,7 +102,7 @@ export function About() {
       void invoke("about_visible");
       // Das Menü kann die Prüfung schon angefordert haben, bevor dieses
       // Fenster überhaupt existierte; Rust hat den Wunsch so lange gehalten.
-      if (await invoke<boolean>("about_take_update_request")) runCheck();
+      if (await invoke<boolean>("about_take_update_request")) void check();
     };
     void start().catch((error: unknown) => {
       console.error("PaneCrew: Über-Fenster konnte nicht laden", error);
@@ -125,18 +110,18 @@ export function About() {
     return () => {
       cancelled = true;
     };
-  }, [runCheck]);
+  }, [check]);
 
   // Zweiter Weg für denselben Menüpunkt: war das Fenster bereits offen, ist der
   // Mount oben längst vorbei und Rust schickt stattdessen ein Ereignis.
   useEffect(() => {
-    const unlisten = listen("about:check-updates", runCheck);
+    const unlisten = listen("about:check-updates", () => void check());
     return () => {
       void unlisten.then((stop) => {
         stop();
       });
     };
-  }, [runCheck]);
+  }, [check]);
 
   // Der Lizenztext klappt unterhalb der Fensterkante auf — ohne das hier wäre
   // die einzige Rückmeldung auf den Klick eine erscheinende Bildlaufleiste.
@@ -219,16 +204,26 @@ export function About() {
           </p>
 
           <section className="flex flex-col items-start gap-2.5">
-            <button
-              type="button"
-              onClick={runCheck}
-              disabled={update.phase === "checking"}
-              aria-busy={update.phase === "checking"}
-              className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
-            >
-              {t("about.checkForUpdates")}
-            </button>
-            <UpdateStatus state={update} version={version} />
+            {state.phase === "homebrew" ? (
+              <p className="text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+                {t("updater.homebrewHint")}
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void check()}
+                disabled={state.phase === "checking"}
+                aria-busy={state.phase === "checking"}
+                className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
+              >
+                {t("about.checkForUpdates")}
+              </button>
+            )}
+            <UpdateStatus
+              state={state}
+              version={version}
+              onInstall={installAndRestart}
+            />
           </section>
 
           <div className="flex items-center gap-5">
@@ -282,6 +277,25 @@ export function About() {
           strokeWidth="2"
         />
       </svg>
+
+      {state.phase === "confirmRestart" && (
+        <ConfirmDialog
+          title={t("updater.restartTitle")}
+          description={
+            <Trans
+              i18nKey="updater.restartDescription"
+              values={{ version: state.update.version }}
+              components={{
+                bold: <span className="font-medium text-(--pc-foreground)" />,
+              }}
+            />
+          }
+          confirmLabel={t("updater.restartConfirm")}
+          cancelLabel={t("updater.restartLater")}
+          onConfirm={confirmRestart}
+          onClose={dismiss}
+        />
+      )}
     </div>
   );
 }
@@ -289,9 +303,11 @@ export function About() {
 function UpdateStatus({
   state,
   version,
+  onInstall,
 }: {
-  state: UpdateState;
+  state: UpdateFlowState;
   version: string | null;
+  onInstall: (update: Update) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -301,35 +317,42 @@ function UpdateStatus({
       // rutscht beim ersten Ergebnis alles darunter eine Zeile nach unten.
       className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)"
     >
-      {message(state, version, t)}
+      {message(state, version, onInstall, t)}
     </p>
   );
 }
 
 function message(
-  state: UpdateState,
+  state: UpdateFlowState,
   version: string | null,
+  onInstall: (update: Update) => void,
   t: (key: string, options?: Record<string, unknown>) => string,
 ) {
-  if (state.phase === "idle") return null;
-  if (state.phase === "checking") return t("about.checking");
-
-  const result = state.result;
-  switch (result.status) {
+  switch (state.phase) {
+    case "idle":
+    case "homebrew":
+    case "confirmRestart":
+      return null;
+    case "checking":
+      return t("about.checking");
     case "current":
       return t("about.current", { version: version ?? "" });
     case "available":
       return (
         <>
           <span className="text-(--pc-foreground)">
-            {t("about.availableVersion", { version: result.version })}
+            {t("about.availableVersion", { version: state.update.version })}
           </span>
-          <QuietButton onClick={() => void openUrl(result.url)}>
-            {t("about.openRelease")}
+          <QuietButton onClick={() => onInstall(state.update)}>
+            {t("updater.installAndRestart")}
           </QuietButton>
         </>
       );
-    case "failed":
+    case "downloading":
+      return state.percent === null
+        ? t("updater.downloading")
+        : t("updater.downloadingPercent", { percent: state.percent });
+    case "error":
       return (
         <>
           {t("about.checkFailed")}

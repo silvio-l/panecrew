@@ -1,0 +1,114 @@
+name: Release (Nightly)
+
+# docs/decisions.md -> "Auto-Update via GitHub Releases (Stable + Nightly-Kanal)".
+# Nightly speist sich aus `dev` über einen einzigen rollierenden Tag
+# `nightly-latest`, der bei jedem Nightly-Release per Force-Push neu gesetzt
+# wird -- GitHubs `/releases/latest`-Alias schließt Prereleases aus
+# (docs.github.com/rest/releases), ein SemVer-Tag pro Version würde also nicht
+# auflösbar sein. Weil der Tag beim Auslösen dieses Workflows schon auf den
+# NEUEN Commit zeigt, kommt der Vorgänger-Stand fürs Changelog-Gate aus dem
+# Push-Event selbst (`github.event.before`), nicht aus `git rev-parse
+# nightly-latest` -- der wäre zu diesem Zeitpunkt bereits der neue Stand.
+#
+# Auslösen (bewusster Akt, kein Auto-Release pro Push, Punkt 2 der Entscheidung):
+#   git tag -f nightly-latest && git push -f origin nightly-latest
+
+on:
+  push:
+    tags:
+      - "nightly-latest"
+
+permissions:
+  contents: write
+
+jobs:
+  changelog-gate:
+    name: Changelog-Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Coverage- und Diff-Hash-Prüfung
+        run: |
+          python3 tools/changelog-gate/check.py \
+            --mode nightly \
+            --current-ref "${{ github.sha }}" \
+            --previous-ref "${{ github.event.before }}"
+
+  build:
+    name: Build & Release (${{ matrix.target }})
+    needs: changelog-gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Apple-Signierzertifikat
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+
+      # Eigenes Keypaar, eigener `identifier`, eigenes Overlay (Punkt 1): der
+      # Nightly-Signing-Key ist häufiger exponiert als der Stable-Key, ein
+      # kompromittierter Nightly-Key darf Stable nicht mitgefährden.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          tagName: nightly-latest
+          releaseName: "PaneCrew Nightly"
+          releaseDraft: true
+          prerelease: true
+          # UNVERIFIZIERT (s. docs/decisions.md-Umsetzungsnotiz zu Ticket 30):
+          # weder der --config-Pfad relativ zu `projectPath` noch Tauris
+          # Array-Merge-Verhalten für `app.windows` wurden je gegen einen
+          # echten Build laufen gelassen -- vor dem ersten echten Nightly-Tag
+          # unbedingt einmal lokal mit
+          # `pnpm tauri build --config src-tauri/tauri.nightly.conf.json`
+          # prüfen, dass Identifier/Fenster/Endpoints wirklich wie erwartet
+          # überlagert werden.
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json

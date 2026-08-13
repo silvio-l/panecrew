@@ -1,6 +1,7 @@
 pub mod about;
 pub mod cli;
 pub mod explorer_fs;
+pub mod external_editor;
 pub mod git_status;
 pub mod launch;
 pub mod menu;
@@ -11,6 +12,7 @@ pub mod session_store;
 pub mod shell_history;
 pub mod shell_integration;
 pub mod splash;
+pub mod updater;
 
 use about::PendingUpdateCheck;
 use cli::Cli;
@@ -28,6 +30,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(PtyState::default())
         .manage(LaunchProject(launch_project))
         .manage(RevealGate::default())
@@ -71,6 +75,10 @@ pub fn run() {
             explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
             explorer_fs::explorer_create_directory,
+            explorer_fs::explorer_rename,
+            explorer_fs::explorer_delete,
+            external_editor::vscode_is_installed,
+            external_editor::vscode_open,
             git_status::explorer_git_status,
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
@@ -82,6 +90,7 @@ pub fn run() {
             splash::main_ready,
             about::about_take_update_request,
             about::about_visible,
+            updater::updater_is_homebrew_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
