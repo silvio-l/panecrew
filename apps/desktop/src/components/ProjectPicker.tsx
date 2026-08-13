@@ -21,13 +21,15 @@
 // hier ist Amber Einladung, nicht Zustand.
 //
 // Das ASCII-Mini-Terminal trägt auf jedem leeren Slot für sich eine ambiente
-// 6s-Choreografie (Nutzer-Korrektur 2026-08-13: "auf jeden einzelnen Slot",
+// 3,5s-Choreografie (Nutzer-Korrektur 2026-08-13: "auf jeden einzelnen Slot",
 // nicht nur beim leeren Gesamtgrid; danach ausgebaut vom simplen Blink zur
-// Sequenz — Rundlauf-Scan des Rahmens, Chevron-Quittung, Cursor-Blink, s.
-// AsciiEmblem-Kommentar unten und den Choreografie-Block in App.css). Kein
-// Glow, keine kinetische Typografie: das Emblem tippt nicht, kein Zeichen
-// ändert sich — es schalten ausschließlich Farbe/Sichtbarkeit stehender
-// Glyphen hart im steps(1)-Takt.
+// Sequenz — Lichtlauf um den Rahmen, Chevron-Quittung, Cursor-Puls, s.
+// AsciiEmblem-Kommentar unten und den Choreografie-Block in App.css; dort
+// auch, warum diese eine Animation auf expliziten Nutzer-Wunsch WEICH
+// ease-in-out läuft statt im harten steps-Takt der übrigen HUD-Events).
+// Kein Glow, keine kinetische Typografie: das Emblem tippt nicht, kein
+// Zeichen ändert sich — es wechseln ausschließlich Farbe/Deckkraft
+// stehender Glyphen.
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
@@ -161,15 +163,15 @@ function SlotReadout({ number }: { number: number }) {
 // zieht beides an (App.css, .pc-slotframe:hover). Keine Buchstaben, deshalb
 // kein i18n-Fall; als reine Zeichnung für Screenreader unsichtbar.
 //
-// Das Emblem ist in EIGENE Spans zerlegt, weil die 6s-Choreografie in
-// App.css (Kommentarblock dort: Rundlauf → Chevron-Quittung → Cursor-Blink)
-// jede Stimme einzeln adressieren muss — CSS darf nur Farbe/Sichtbarkeit
-// stehender Glyphen hart schalten, also braucht jedes unabhängig schaltende
+// Das Emblem ist in EIGENE Spans zerlegt, weil die 3,5s-Choreografie in
+// App.css (Kommentarblock dort: Lichtlauf → Chevron-Quittung → Cursor-Puls)
+// jede Stimme einzeln adressieren muss — CSS darf nur Farbe/Deckkraft
+// stehender Glyphen wechseln, also braucht jedes unabhängig animierte
 // Stück Rahmen sein eigenes Element:
 //   - `__prompt-glyph` (Chevron) und `__cursor` (Block) wie gehabt,
 //   - der Box-Drawing-Rahmen als zehn `__seg`-Spans, deren Position im
 //     Uhrzeigersinn (0 = obere linke Ecke) als `--pc-hud-seg` inline
-//     mitgeht — App.css macht daraus den 100ms-Versatz des Rundlauf-Scans.
+//     mitgeht — App.css macht daraus den 150ms-Versatz des Lichtlaufs.
 // Ohne die `--blinking`-Klasse (restoring-Zweig) sind die Segmente inerte
 // Spans und erben schlicht die Rahmenfarbe. `blinking` ist auf jedem echten
 // leeren Slot für sich wahr (Nutzer-Korrektur 2026-08-13: "auf jeden

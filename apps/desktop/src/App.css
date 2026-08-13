@@ -407,34 +407,45 @@ body {
 
 /* Choreografie des ASCII-Mini-Terminals (ProjectPicker.tsx, AsciiEmblem) auf
  * jedem echten leeren Slot (`.pc-hud-emblem--blinking`; `false` nur im
- * `restoring`-Zweig, dort ruht das Emblem): ein 6s-Takt aus drei Stimmen
+ * `restoring`-Zweig, dort ruht das Emblem): ein 3,5s-Takt aus drei Stimmen
  * statt eines einzelnen Blinkens (Nutzer-Urteil zum Vorgänger — zwei
  * gegenphasig blinkende Glyphen: "nicht fancy").
  *
- *   1. RUNDLAUF (0–1,0s): der Box-Drawing-Rahmen ist in zehn Spans zerlegt
+ *   1. RUNDLAUF (0–2,0s): der Box-Drawing-Rahmen ist in zehn Spans zerlegt
  *      (`__seg`; Position im Uhrzeigersinn steht als `--pc-hud-seg` inline
- *      am Span, ProjectPicker.tsx) — jedes Segment schaltet für genau sein
- *      100ms-Fenster hart in den Akzent und zurück, ein Läufer umrundet das
- *      Mini-Terminal einmal, wie ein HUD, das sich selbst abtastet.
- *   2. QUITTUNG (1,0–1,4s): kaum ist der Läufer zurück an der Promptzeile,
- *      blitzt der Chevron zweimal kurz voll auf — das Terminal meldet sich.
- *   3. CURSOR: klassischer, durchgehender 1s-Blink in VOLLER Akzentfarbe —
+ *      am Span, ProjectPicker.tsx) — jedes Segment schwillt weich in den
+ *      Akzent an (~140ms) und klingt langsamer wieder ab (~360ms), 150ms
+ *      versetzt zum Vorgänger: ein Lichtlauf mit Nachleuchten umrundet das
+ *      Mini-Terminal, wie ein HUD, das sich selbst abtastet.
+ *   2. QUITTUNG (1,5–2,3s): kaum ist der Läufer zurück an der Promptzeile,
+ *      schwillt der Chevron EINMAL weich auf volle Akzentfarbe an und ab —
+ *      das Terminal meldet sich.
+ *   3. CURSOR: durchgehender, weicher 1,2s-Puls in VOLLER Akzentfarbe —
  *      voll statt des gedimmten 70%-Prompt-Tons, weil der Blink bei 11px
  *      gedimmt praktisch unsichtbar war (Nutzer-Fund; `color` ist ererbt,
  *      der direkte Wert am Kind schlägt den geerbten Elternwert immer).
  *
- * Alles harte steps(1, end)-Schaltungen von Farbe/Deckkraft an STEHENDEN
- * Glyphen — nichts bewegt sich, kein Glow, keine kinetische Typografie;
- * dieselbe Bewegungssprache wie der TitleBar-Uhr-Doppelpunkt, nur zu einer
- * Sequenz orchestriert. Die Sucher-Ecken (.pc-hud-corner) bleiben bewusst
- * außen vor: ihr Amber ist exklusiv Hover-/Fokus-Einladung (Direction
- * Contract), eine ambiente Ecken-Animation verwässerte genau das.
+ * WEICH statt hart ist hier eine EXPLIZITE Nutzer-Entscheidung (2026-08-13,
+ * zur ersten, komplett steps(1, end)-harten Fassung: "das Blinken finde ich
+ * ein bisschen zu hart... weicher... häufiger... ein kleines bisschen
+ * langsamer, nicht ganz so dramatisch") — sie überschreibt die "HUD-Events
+ * schalten hart"-Regel bewusst für GENAU dieses Emblem: ease-in-out an
+ * allen drei Stimmen, auch am Cursor (Präzedenz: VS Codes "smooth" Caret;
+ * der Uhr-Doppelpunkt der TitleBar bleibt hart — gleiche pc-clock-blink-
+ * Keyframes, andere Timing-Funktion pro animation-Deklaration). "Häufiger,
+ * aber gemächlicher" heißt: kürzerer Gesamtzyklus (3,5s statt 6s, Pause
+ * ~1,2s statt ~4,6s) bei zugleich gestreckterer Einzelbewegung (Sweep 1,5s
+ * statt 1,0s, Fenster mit Ausklang statt 100ms-Schnitt). Weiterhin: kein
+ * Glow, keine kinetische Typografie (kein Zeichen ändert sich — nur Farbe/
+ * Deckkraft stehender Glyphen), und die Sucher-Ecken (.pc-hud-corner)
+ * bleiben außen vor: ihr Amber ist exklusiv Hover-/Fokus-Einladung
+ * (Direction Contract), eine ambiente Ecken-Animation verwässerte genau das.
  *
  * Rundlauf und Quittung pausieren bei Hover/Fokus (`:not(:hover)`): die
  * Hover-Regeln unten heben Rahmen und Prompt ohnehin komplett an, die
  * ambiente Sequenz liefe sonst sichtbar GEGEN die Hover-Farbe an — der Slot
  * schaut den Zeiger an, statt weiter vor sich hin zu scannen. Nur der
- * Cursor blinkt immer, per Hover auch auf einem `restoring`-Slot.
+ * Cursor pulst immer, per Hover auch auf einem `restoring`-Slot.
  */
 .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
   color: var(--pc-pane-activeBorder);
@@ -444,58 +455,56 @@ body {
   .pc-slotframe:hover .pc-hud-emblem__cursor,
   .pc-slotframe:focus-visible .pc-hud-emblem__cursor,
   .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
-    animation: pc-clock-blink 1s steps(1, end) infinite;
+    animation: pc-clock-blink 1.2s ease-in-out infinite;
   }
 
   .pc-slotframe:not(:hover):not(:focus-visible)
     .pc-hud-emblem--blinking
     .pc-hud-emblem__seg {
-    animation: pc-hud-scan 6s steps(1, end) infinite;
-    /* 100ms Versatz je Uhrzeigersinn-Position — positiver Delay ist hier
+    animation: pc-hud-scan 3.5s ease-in-out infinite;
+    /* 150ms Versatz je Uhrzeigersinn-Position — positiver Delay ist hier
        richtig: bis zum ersten Start zeigt jedes Segment schlicht seinen
        Ruhe-Dimmton, der Rundlauf "bootet" also einmal sauber von der
        oberen linken Ecke aus. */
-    animation-delay: calc(var(--pc-hud-seg) * 100ms);
+    animation-delay: calc(var(--pc-hud-seg) * 150ms);
   }
 
   .pc-slotframe:not(:hover):not(:focus-visible)
     .pc-hud-emblem--blinking
     .pc-hud-emblem__prompt-glyph {
-    animation: pc-hud-ack 6s steps(1, end) infinite;
+    animation: pc-hud-ack 3.5s ease-in-out infinite;
   }
 }
 
-/* Ein Scan-Fenster = 100ms von 6s = 1,667%. steps(1, end) hält den
-   FROM-Wert und springt am Intervallende: 0→1,667% Akzent, danach der
-   Ruhe-Dimmton — identisch mit .pc-hud-emblem, damit ein Segment außerhalb
-   seines Fensters farblich nahtlos im Rahmen steht. */
+/* Lichtlauf-Fenster eines Segments: weich anschwellen bis 4% (~140ms von
+   3,5s), langsamer abklingen bis 14,3% (~360ms Ausklang) — der Ruhe-Dimmton
+   ist identisch mit .pc-hud-emblem, damit ein Segment außerhalb seines
+   Fensters farblich nahtlos im Rahmen steht. */
 @keyframes pc-hud-scan {
   0% {
+    color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
+  }
+  4% {
     color: var(--pc-pane-activeBorder);
   }
-  1.667%,
+  14.286%,
   100% {
     color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
   }
 }
 
-/* Doppelblitz des Chevrons bei 1,0–1,4s (16,7–23,3% von 6s): dim → voll →
-   dim → voll → dim, alle Sprünge hart. Ruhewert = der 70%-Ton von
-   .pc-hud-emblem__prompt. */
+/* Quittungs-Schwellen des Chevrons bei 1,5–2,3s (42,9–65,7% von 3,5s):
+   einmal weich dim → voll → dim (der frühere harte DOPPELblitz war dem
+   Nutzer zu dramatisch). Ruhewert = der 70%-Ton von .pc-hud-emblem__prompt. */
 @keyframes pc-hud-ack {
-  0% {
+  0%,
+  42.857% {
     color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
   }
-  16.667% {
+  51.429% {
     color: var(--pc-pane-activeBorder);
   }
-  19.167% {
-    color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
-  }
-  20.833% {
-    color: var(--pc-pane-activeBorder);
-  }
-  23.333%,
+  65.714%,
   100% {
     color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
   }
