@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { setLanguage, SUPPORTED_LANGUAGES } from "../i18n";
+import type { SupportedLanguage } from "../i18n";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
 // Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
@@ -66,15 +67,7 @@ export const TITLE_BAR_ZONE_HEIGHT = CAPSULE_INSET * 2 + CAPSULE_HEIGHT;
 const TRAFFIC_LIGHT_INSET = 84;
 
 export function TitleBar({ zoom }: { zoom: number }) {
-  const { t, i18n } = useTranslation();
-  const nextLanguage =
-    SUPPORTED_LANGUAGES[
-      (SUPPORTED_LANGUAGES.indexOf(
-        i18n.language as (typeof SUPPORTED_LANGUAGES)[number],
-      ) +
-        1) %
-        SUPPORTED_LANGUAGES.length
-    ] ?? SUPPORTED_LANGUAGES[0];
+  const { t } = useTranslation();
   return (
     <header
       aria-label={t("titleBar.windowTitleBarAria")}
@@ -163,24 +156,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
           </div>
         )}
 
-        <ChromeTooltip label={t("titleBar.language")} align="end">
-          <button
-            type="button"
-            aria-label={t("titleBar.language")}
-            onClick={() => setLanguage(nextLanguage)}
-            // Terminal-Register statt Chrome-Font (TUI-Direktive 2026-08-13):
-            // das Kürzel ist ein technischer Zustandswert, kein Wort — 10px
-            // Mono mit Tracking, derselbe Registergriff wie die Readouts.
-            // paddingLeft gleicht das Tracking hinter dem letzten Zeichen aus
-            // (letter-spacing hängt RECHTS an jedem Glyph), sonst stünde das
-            // Kürzel um 1,5px links der Knopfmitte. Der DE→EN-Wechsel ist ein
-            // harter Zeichentausch, exakt die Motion-Regel.
-            style={{ paddingLeft: "0.15em" }}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-(family-name:--pc-terminal-fontFamily) text-[10px] font-semibold uppercase tracking-[0.15em] text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-          >
-            {i18n.language}
-          </button>
-        </ChromeTooltip>
+        <DateTimeReadout t={t} />
 
         <ChromeTooltip label={t("titleBar.newWindow")} align="end">
           <button
@@ -212,6 +188,105 @@ export function TitleBar({ zoom }: { zoom: number }) {
       </div>
     </header>
   );
+}
+
+// Tick-Intervall der HUD-Uhr — 15s statt sekundengenau: die Anzeige selbst
+// zeigt nur Minuten, ein feinerer Takt würde ausschließlich unsichtbare
+// Re-Renders erzeugen (Nutzer-Wunsch 2026-08-13: "ein bisschen Feedback...
+// wie spät das eigentlich ist", kein Sekundenzähler).
+const CLOCK_TICK_MS = 15_000;
+
+/**
+ * Ersetzt den früheren Sprachumschalter (2026-08-13, Nutzerentscheidung: "so
+ * oft schaltet man die Sprache nicht um", jetzt ein appearance.language-
+ * Setting statt eines Titelzeilen-Knopfs, s. `i18n/applyLanguage.ts`) — an
+ * derselben Stelle steht jetzt ein echtes HUD-Instrument statt eines toten
+ * Knopfs: Datum + Uhrzeit, lokalisiert über `i18n.language`, live via
+ * eigenem Tick-Timer statt einmalig beim Mount gelesen. Eigene Komponente
+ * (statt Inline-State in TitleBar) hält den 15s-Re-Render auf genau dieses
+ * eine Element beschränkt, der Rest der Titelzeile rendert dadurch nicht mit.
+ */
+function DateTimeReadout({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const { i18n } = useTranslation();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const language = i18n.language === "en" ? "en" : "de";
+  const { weekday, datePart, hour, minute } = hudClockParts(now, language);
+  const fullDateTime = new Intl.DateTimeFormat(language, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now);
+
+  return (
+    <div className="pointer-events-none flex shrink-0 items-baseline gap-1.5 pr-1">
+      {/* Wochentag + Datum bleiben im gedimmten Readout-Register (Nebeninfo)
+          — der Nutzer-Wunsch galt ausdrücklich "der Uhrzeit", nicht dem
+          Datum, das Größen-/Kontrastgefälle spiegelt genau diese Gewichtung. */}
+      <span
+        aria-hidden="true"
+        className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.15em]"
+      >
+        {weekday} {datePart}
+      </span>
+      {/* Die Uhrzeit selbst: größer, voller Vordergrundton statt gedimmt,
+          mit blinkendem Doppelpunkt als Terminal-Cursor (2026-08-13,
+          Nutzer-Wunsch "präsenter... kontrastreicher... ein bisschen
+          Terminal, verspielt"). */}
+      <span
+        aria-hidden="true"
+        className="font-(family-name:--pc-terminal-fontFamily) text-[13px] font-semibold tracking-[0.04em] text-(--pc-foreground) tabular-nums"
+      >
+        {hour}
+        <span className="pc-clock-cursor">:</span>
+        {minute}
+      </span>
+      <span className="sr-only">
+        {t("titleBar.dateTime", { dateTime: fullDateTime })}
+      </span>
+    </div>
+  );
+}
+
+interface HudClockParts {
+  weekday: string;
+  datePart: string;
+  hour: string;
+  minute: string;
+}
+
+// Kompaktes HUD-Format statt Intl-Standardsatzzeichen (Kommas, Punkte hinter
+// dem Wochentag) und in Einzelteile statt einem String, damit der Doppelpunkt
+// zwischen Stunde/Minute als eigenes, blinkendes Element gerendert werden
+// kann. Ausschließlich 24h — dieselbe "technischer Messwert, kein Fließtext"-
+// Haltung wie das Zoom-Readout daneben, deshalb ohne Rücksicht auf eine
+// 12h-Vorliebe der Locale. Tag/Monat-Reihenfolge bleibt sprachabhängig (DE
+// TT.MM, EN MM/TT) — bei nur zwei unterstützten Sprachen eine einfache
+// Verzweigung statt eines generischen Intl-Parts-Zusammenbaus für
+// hypothetische weitere Locales.
+function hudClockParts(date: Date, language: SupportedLanguage): HudClockParts {
+  const weekday = new Intl.DateTimeFormat(language, { weekday: "short" })
+    .format(date)
+    .replace(/\.$/, "")
+    .toUpperCase();
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const datePart = language === "de" ? `${day}.${month}.` : `${month}/${day}`;
+  return { weekday, datePart, hour, minute };
 }
 
 // App-Marke: Geometrie und Verlauf des echten App-Icons ("K3H — Verzahnung,

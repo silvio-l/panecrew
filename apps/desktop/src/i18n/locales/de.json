@@ -8,9 +8,9 @@
     "newWindow": "Neues Fenster",
     "settings": "Einstellungen",
     "explorerWidthAria": "Explorer-Breite anpassen",
-    "language": "Sprache wechseln",
     "windowTitleBarAria": "Fenster-Titelzeile",
-    "zoomLevel": "Zoomstufe {{percent}} %"
+    "zoomLevel": "Zoomstufe {{percent}} %",
+    "dateTime": "Aktuelles Datum und Uhrzeit: {{dateTime}}"
   },
   "explorer": {
     "newFile": "Neue Datei",
@@ -205,6 +205,14 @@
             "system": "System",
             "light": "Hell",
             "dark": "Dunkel"
+          }
+        },
+        "language": {
+          "label": "Sprache",
+          "description": "Sprache der Benutzeroberfläche, wirkt sofort in allen offenen Fenstern.",
+          "options": {
+            "de": "Deutsch",
+            "en": "English"
           }
         }
       },

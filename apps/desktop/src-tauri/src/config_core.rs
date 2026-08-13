@@ -52,6 +52,11 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Enum(vec!["system".into(), "light".into(), "dark".into()]),
         serde_json::json!("system"),
     ))?;
+    registry.register(entry(
+        "appearance.language",
+        SettingType::Enum(vec!["de".into(), "en".into()]),
+        serde_json::json!("de"),
+    ))?;
 
     // Grid
     registry.register(entry(
@@ -82,7 +87,24 @@ mod tests {
         assert!(keys.contains(&"terminal.fontSize"));
         assert!(keys.contains(&"explorer.confirmBeforeDelete"));
         assert!(keys.contains(&"appearance.theme"));
+        assert!(keys.contains(&"appearance.language"));
         assert!(keys.contains(&"grid.defaultTemplate"));
+    }
+
+    #[test]
+    fn appearance_language_defaults_to_de_with_the_two_supported_options() {
+        let mut registry = ConfigRegistry::new();
+        register_core_settings(&mut registry).unwrap();
+
+        let entry = registry
+            .find("appearance.language")
+            .expect("should be registered");
+
+        assert_eq!(entry.default, serde_json::json!("de"));
+        assert_eq!(
+            entry.setting_type,
+            SettingType::Enum(vec!["de".into(), "en".into()])
+        );
     }
 
     #[test]

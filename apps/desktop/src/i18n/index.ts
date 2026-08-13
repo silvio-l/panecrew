@@ -3,19 +3,20 @@ import { initReactI18next } from "react-i18next";
 import de from "./locales/de.json";
 import en from "./locales/en.json";
 
-export const SUPPORTED_LANGUAGES = ["de", "en"] as const;
+const SUPPORTED_LANGUAGES = ["de", "en"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 const STORAGE_KEY = "panecrew-language";
 
-function isSupportedLanguage(value: string | null): value is SupportedLanguage {
+export function isSupportedLanguage(value: string | null): value is SupportedLanguage {
   return (SUPPORTED_LANGUAGES as readonly string[]).includes(value ?? "");
 }
 
-// Persistierte Wahl schlägt den Default — sonst würde jede Umschaltung den
-// nächsten App-Start wieder auf Deutsch zurückwerfen. `localStorage` reicht
-// hier: das ist eine reine UI-Präferenz, kein Fachdatum, das `session.json`
-// tragen müsste.
+// Seit dem appearance.language-Setting (applyLanguage.ts) ist settings.json
+// die eigentliche Quelle — der lokale Wert hier ist nur noch ein schneller
+// Zwischenspeicher für den allerersten Frame, bevor die async
+// settings_get_values-Antwort da ist. Ohne ihn stünde jedes Fenster kurz auf
+// Deutsch, selbst wenn Englisch eingestellt ist.
 function initialLanguage(): SupportedLanguage {
   const stored = window.localStorage.getItem(STORAGE_KEY);
   return isSupportedLanguage(stored) ? stored : "de";

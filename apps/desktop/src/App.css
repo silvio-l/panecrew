@@ -2,6 +2,22 @@
 @import "@xterm/xterm/css/xterm.css";
 @import "./theme.css";
 
+/*
+ * Tailwinds Preflight setzt für `<button>` nur `-webkit-appearance: button`,
+ * nie `none` — WebKit (Tauris Webview unter macOS) malt darunter weiterhin
+ * sein natives Aqua-Chrome (heller Verlauf/Bevel an der Kante) durch, egal
+ * welche eigenen Klassen draufliegen. Chrome/Blink zeigt diesen Verlauf nie,
+ * daher fiel er in keiner Browser-Vorschau auf, erst im echten Tauri-Fenster
+ * (gefunden 2026-08-13 an den PaneTabs-Mini-Tabs, betrifft aber jeden Knopf
+ * der App gleichermaßen). Ein Reset pro Datei würde sich unweigerlich
+ * auseinanderlaufen, daher hier einmalig für jeden Knopf im Chrome.
+ */
+@layer base {
+  button {
+    appearance: none;
+  }
+}
+
 html,
 body,
 #root {
@@ -14,12 +30,63 @@ body,
  * HOVER-Feedback im Chrome wechselt kurz und knackig — Tailwinds
  * transition-colors/-opacity (150ms ease) an den interaktiven Elementen sind
  * bewusst wieder da (dieselben ~25 Stellen, die die 0ms-Fassung entfernt
- * hatte). ZUSTANDSWECHSEL dagegen bleiben hart: der Pane-Fokusrahmen, aktive
- * Tabs, Auf/Zu von Overlays schalten instant — Fokus ist Arbeitssignal, kein
- * Schmuck. Unverändert verboten: box-shadow/text-shadow als Leucht-/Halo-
- * Effekt (versetzte Tiefenschatten an schwebenden Overlays sind davon
- * unberührt) und jede kinetische Typografie (Typing-/Rolltext).
+ * hatte). ZUSTANDSWECHSEL — Pane-Fokusrahmen, aktive Tabs, Auf/Zu von
+ * Overlays — schalteten hier ursprünglich hart, das ist inzwischen (noch
+ * später am selben Tag, während der `/impeccable critique` der PaneTabs-
+ * Mini-Tabs) widerrufen: alle drei nehmen jetzt dasselbe ~150ms-Timing wie
+ * Hover an, Details/Fundstellen in `.impeccable/direction-contract-desktop.md`
+ * → „Zustandswechsel: „hart 0ms" aufgehoben". Separat begründete, weiterhin
+ * harte HUD-Instrument-Events (Zoom-Readout, Sprachchip, ▸/▾-Glyphentausch,
+ * „✓ KOPIERT"-Plakette, Drop-Ziel-HUD) sind davon NICHT betroffen. Unverändert
+ * verboten: box-shadow/text-shadow als Leucht-/Halo-Effekt (versetzte
+ * Tiefenschatten an schwebenden Overlays sind davon unberührt) und jede
+ * kinetische Typografie (Typing-/Rolltext).
  */
+
+/*
+ * Overlay-Auf/Zu-Animation (s. Motion-Regel oben): reine Opacity/Skalierung,
+ * kein Glow, kein Text-Effekt — für Tooltip.Content und CHROME_MENU_CONTENT_CLASS
+ * (ChromeTooltip.tsx) über Radix' `data-state`. Radix' Presence-Mechanik hält
+ * das Element bis zum `animationend` im DOM, eine reine `transition-*`-Klasse
+ * würde beim Schließen sofort entfernt, bevor der Browser sie zeichnet — daher
+ * `animation`, nicht `transition`. `ConfirmDialog.tsx` nutzt nur die
+ * Ein-Variante (`pc-overlay-in`/`pc-overlay-fade-in`): seine Rückfrage ist der
+ * Elternkomponente bedingt gerendert, nicht über Radix' eigenen `open`-State
+ * geschlossen (Kopfkommentar dort) — eine Aus-Animation würde dort nie feuern.
+ */
+@keyframes pc-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pc-overlay-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Backdrop-Variante ohne Skalierung — ein vollflächiges `fixed inset-0`
+   dürfte an den Kanten keine Lücke aufreißen. */
+@keyframes pc-overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 body {
   overflow: hidden;
   background: var(--pc-app-background);
@@ -181,9 +248,15 @@ body {
  * Der Arbeitsraum: das eine echte Raster, Kind für Kind eine Pane oder ein
  * leerer Slot. 8px Abstand wie der Fensterrand darum (die Titelkapsel hält
  * denselben) — die Panes trennt sonst nichts als ihr Hairline-Rahmen.
+ *
+ * `position: relative` ist der Anker für die maximierte Zelle im Fokus-Modus
+ * (Ticket 19, `components/PaneGrid.tsx`) — die liegt absolut über diesem
+ * Container, s. Kommentar dort für die Begründung, warum `grid-area`-Spannung
+ * dafür NICHT funktioniert.
  */
 .pc-workspace {
   display: grid;
+  position: relative;
   flex: 1 1 0%;
   min-height: 0;
   gap: 0.5rem;
@@ -331,6 +404,27 @@ body {
 .pc-hud-readout {
   color: color-mix(in srgb, var(--pc-descriptionForeground) 70%, transparent);
   transition: color 150ms;
+}
+
+/* Trennzeichen der TitleBar-Uhr (TitleBar.tsx, DateTimeReadout): blinkt wie
+   ein Terminal-Cursor statt weich zu pulsieren — dieselbe "Zustandswechsel
+   schalten hart bei 0ms"-Regel wie überall sonst im Chrome, hier nur als
+   Dauerschleife statt an ein Nutzer-Ereignis gebunden. steps(1, jump-none)
+   erzwingt den harten Sprung zwischen den beiden Keyframes; ohne das würde
+   der Browser zwischen 1 und 0 Deckkraft interpolieren, also weich blinken
+   statt zu schalten — genau das Kinetik-Verbot der App. Passend zur eigenen
+   Wortmarke (Chevron + "Cursor-Block", s. AppMark-Kommentar), keine neue
+   Bewegungssprache, nur ihre kleinste mögliche Anwendung. */
+@media (prefers-reduced-motion: no-preference) {
+  .pc-clock-cursor {
+    animation: pc-clock-blink 1s steps(1, jump-none) infinite;
+  }
+}
+
+@keyframes pc-clock-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 .pc-slotframe:hover .pc-hud-corner,
