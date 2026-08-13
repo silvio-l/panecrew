@@ -286,9 +286,22 @@ body {
   transition: color 150ms;
 }
 
+/* Slot-Nummern-Readout: gedimmt, zieht beim Überfahren auf den vollen
+   Beschreibungston an — bewusst NICHT auf Amber, die Nummer ist Beschriftung,
+   nicht Einladung. */
+.pc-hud-readout {
+  color: color-mix(in srgb, var(--pc-descriptionForeground) 70%, transparent);
+  transition: color 150ms;
+}
+
 .pc-slotframe:hover .pc-hud-corner,
 .pc-slotframe:focus-visible .pc-hud-corner {
   border-color: var(--pc-pane-activeBorder);
+}
+
+.pc-slotframe:hover .pc-hud-readout,
+.pc-slotframe:focus-visible .pc-hud-readout {
+  color: var(--pc-descriptionForeground);
 }
 
 .pc-slotframe:hover .pc-hud-emblem {

@@ -213,9 +213,22 @@ export function TerminalPane({
               Terminalfläche schwebt, ohne ihre künftige Bedienbarkeit
               vorwegzunehmen. Kein `aria-hidden`: für wen den Bildschirm nicht
               sieht, ist dieser Text das einzige Signal, dass die Pane
-              überhaupt startet. */}
+              überhaupt startet.
+              Präzision statt Zentrierung (2026-08-13, „messerscharf"-Goal):
+              der Hinweis steht in der TERMINALSCHRIFT exakt an der Position,
+              an der gleich die erste Prompt-Zeile erscheint (dasselbe
+              px-3 py-2 wie der xterm-Container, dieselbe Zeilenbox) — der
+              Übergang vom Platzhalter zur echten Shell ist damit ein
+              Textwechsel in derselben Zelle, kein Layoutsprung von der
+              Flächenmitte an den Rand. */}
           {spawning && (
-            <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-3 py-2 text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)">
+            <p
+              className="pointer-events-none absolute inset-0 px-3 py-2 font-(family-name:--pc-terminal-fontFamily) text-(--pc-descriptionForeground)"
+              style={{
+                fontSize: "var(--pc-terminal-fontSize)",
+                lineHeight: "var(--pc-terminal-lineHeight)",
+              }}
+            >
               {t("terminalPane.starting")}
             </p>
           )}

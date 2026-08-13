@@ -49,6 +49,10 @@ export function ProjectPicker({
         <div className="pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground)">
           <HudCorners />
           <SlotReadout number={slotNumber} />
+          {/* Dasselbe Emblem wie im leeren Slot: der Restore-Zustand ist
+              derselbe Ort eine Sekunde früher — ohne das Emblem blitzte beim
+              Befüllen erst ein karger, dann der gebaute Slot auf. */}
+          <AsciiEmblem />
           <span className="text-(length:--pc-chrome-fontSize) font-medium">
             {t("common.loading")}
           </span>
@@ -109,11 +113,14 @@ function HudCorners() {
 // Slot-Position als HUD-Readout, Terminalschrift, gesperrt gesetzt. Rein
 // numerisch und dekorativ (aria-hidden): der zugängliche Name des Knopfs
 // bleibt "Projekt wählen", die Nummer ist Orientierung fürs Auge im Grid.
+// Farbe/Hover-Anzug in App.css (.pc-hud-readout): gedimmt im Ruhezustand,
+// voller Beschreibungston beim Überfahren — derselbe Takt wie Ecken und
+// Emblem, ein Slot wacht als Ganzes auf.
 function SlotReadout({ number }: { number: number }) {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute left-3 top-2 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] opacity-70"
+      className="pc-hud-readout pointer-events-none absolute left-3 top-2 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em]"
     >
       {String(number).padStart(2, "0")}
     </span>
