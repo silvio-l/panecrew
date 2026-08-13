@@ -10,6 +10,7 @@ import {
   matchesShortcut,
   SAVE_FILE_SHORTCUT_ID,
   SHORTCUTS,
+  terminalTabSelectNumber,
 } from "../shortcuts/registry";
 
 // Die Editorfläche des Mini-Editors (.scratch/explorer-file-io/, Tickets 03
@@ -36,6 +37,7 @@ import {
 export function FileEditor({
   state,
   focused,
+  projectName,
   tabs,
   onEdit,
   onSave,
@@ -48,6 +50,13 @@ export function FileEditor({
    * Akzentrahmen, auch in unfokussierten Panes (2026-08-12,
    * Nutzerbeobachtung: alle Panes wirken gleichzeitig „aktiv"). */
   focused: boolean;
+  /** Derselbe Projektname wie im Terminal-Header daneben (2026-08-13-
+   * Nachtrag) — vorher zeigte dieser Kopf ihn gar nicht (als redundant
+   * verworfen, s. Git-Historie), aber genau das ließ die Tab-Leiste beim
+   * Öffnen/Schließen einer Datei zwischen zwei Kopfzeilen-Layouts springen.
+   * Jetzt trägt dieser Kopf dieselbe erste Zone wie TerminalPane.tsx, Position
+   * an Position — die Redundanz ist der Preis für stehende Tab-Chips. */
+  projectName: string;
   /** Tab-Leiste dieser Pane (PaneTabs.tsx) — dasselbe Objekt wie an
    * TerminalPane.tsx derselben Pane (PaneGrid.tsx hält den Tab-Zustand als
    * einzige Wahrheit), 2026-08-12/Ticket 18. Enthält u. a. den Wechsel
@@ -87,18 +96,33 @@ export function FileEditor({
   // Bewusst am <section> und nicht nur an der Textarea: so greift das Kürzel
   // auch, während der Speichern-Knopf oder „Trotzdem überschreiben" den Fokus
   // hat — Tastenereignisse aus den Kindern blubbern hierher.
+  //
+  // Nachtrag 2026-08-13: Cmd/Strg+1..9 wechselt jetzt AUCH von hier aus zu
+  // einem Terminal-Tab — der Tooltip in PaneTabs.tsx verspricht den Akkord
+  // pro Chip, unabhängig davon, ob gerade eine Datei oder ein Terminal
+  // sichtbar ist. Ohne diesen Zweig hätte das Kürzel genau dann nichts getan,
+  // wenn eine Datei offen ist — derselbe „ich weiß nicht, wie ich wechsle"-
+  // Fall, nur eine Ansicht weiter.
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    const shortcut = SHORTCUTS.find(
-      (def) =>
-        def.id === SAVE_FILE_SHORTCUT_ID &&
-        matchesShortcut(event, def, isMacPlatform()),
+    const shortcut = SHORTCUTS.find((def) =>
+      matchesShortcut(event, def, isMacPlatform()),
     );
     if (!shortcut) return;
-    // Auch dann, wenn es gerade nichts zu speichern gibt: der Webview hat auf
-    // dieser Taste eine eigene Vorstellung („Seite sichern unter …"), und die
-    // will man in einem Editor nie sehen. `onSave` ist in dem Fall ein No-Op.
+    if (shortcut.id === SAVE_FILE_SHORTCUT_ID) {
+      // Auch dann, wenn es gerade nichts zu speichern gibt: der Webview hat
+      // auf dieser Taste eine eigene Vorstellung („Seite sichern unter …"),
+      // und die will man in einem Editor nie sehen. `onSave` ist in dem Fall
+      // ein No-Op.
+      event.preventDefault();
+      onSave();
+      return;
+    }
+    const tabNumber = terminalTabSelectNumber(shortcut);
+    if (tabNumber === null) return;
+    const target = tabs.terminalTabs.find((tab) => tab.number === tabNumber);
+    if (!target) return;
     event.preventDefault();
-    onSave();
+    tabs.onSelectTerminalTab(target.tabId);
   };
 
   return (
@@ -119,10 +143,11 @@ export function FileEditor({
         {/* Derselbe Tab-Umschalter wie im Terminal-Header daneben (2026-08-12)
             — er trägt den Dateinamen samt Ungespeichert-Punkt jetzt selbst,
             eine zusätzliche Namenszeile daneben wäre dieselbe Information ein
-            zweites Mal. */}
-        <span className="flex min-w-0 flex-1 items-center">
-          <PaneTabs {...tabs} />
-        </span>
+            zweites Mal. Layout seit 2026-08-13 Position-für-Position wie
+            TerminalPane.tsx' Kopf (Begründung am `projectName`-Prop oben). */}
+        <span className="min-w-0 shrink truncate">{projectName}</span>
+        <PaneTabs {...tabs} />
+        <div aria-hidden="true" className="min-w-0 flex-1" />
         {hasBuffer && (
           <button
             type="button"

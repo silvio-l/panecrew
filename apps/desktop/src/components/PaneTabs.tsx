@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { isMacPlatform } from "../shortcuts/platform";
+import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert und über einen kleinen Farbpunkt unterscheidbar) plus
@@ -28,6 +30,19 @@ import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 // bleibt. Die Nummer trägt die Information primär (s. DirtyMark unten), der
 // Punkt ist nur Verstärkung — bei mehr als drei Tabs wiederholt sich die
 // Palette, das ist bewusst kein Problem.
+//
+// Nachtrag 2026-08-13 (Nutzerbeschwerde, reine Maus-Bedienung nicht möglich):
+// der Chip war ursprünglich ein 20×20-Icon-Knopf, dessen Zahl beim Hovern
+// komplett durch ein `absolute inset-0`-Schließkreuz ersetzt wurde — jedes
+// Überfahren machte den GANZEN Chip zum Schließen-Knopf, ein Wechsel per Maus
+// war so nicht möglich. `TerminalTabChip` unten reserviert dem Kreuz
+// stattdessen einen eigenen, schmalen Bereich am Chip-Rand (immer da, nur bei
+// Hover/Fokus sichtbar); Zahl und Punkt bleiben unbedingt sichtbar und
+// bedienen den Tab-Wechsel im übrigen, größeren Bereich des Chips.
+// Zusätzlich trägt der Tooltip jetzt den Akkord aus der Kürzel-Registry
+// (Cmd/Strg+1..9, `usePtyTerminal.ts`s Pane-Kürzel-Zweig) — der Weg von der
+// Maus zur Tastatur muss sich aus der UI selbst erschließen, nicht aus
+// docs/shortcuts.md.
 const TAB_ACCENT_DOT_CLASSES = [
   "bg-(--pc-icon-blue)",
   "bg-(--pc-icon-purple)",
@@ -75,7 +90,12 @@ export function PaneTabs({
     <div
       role="group"
       aria-label={t("paneTabs.selectView")}
-      className="flex min-w-0 shrink items-center gap-px rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) p-px"
+      // `shrink-0` statt `shrink` (2026-08-13): diese Gruppe soll nie unter
+      // Platzdruck geraten, das übernimmt der Spacer im Pane-Header
+      // (TerminalPane.tsx/FileEditor.tsx) — sonst kann derselbe Sprung, den
+      // der Spacer zwischen Terminal- und Datei-Ansicht behebt, innerhalb
+      // EINER Ansicht wiederkehren, sobald ein Tab hinzukommt.
+      className="flex min-w-0 shrink-0 items-center gap-px rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) p-px"
     >
       {terminalTabs.map((tab) => (
         <TerminalTabChip
@@ -119,12 +139,18 @@ export function PaneTabs({
   );
 }
 
-// Ein einzelner Terminal-Tab: Farbpunkt + Nummer, beim Überfahren wird die
-// Nummer durch das Schließkreuz ersetzt (Idiom aus Editoren mit Tabs, VS Code
-// eingeschlossen) statt beides nebeneinander in eine 20px-Fläche zu
-// quetschen. Ein `<span>` als gemeinsamer ChromeTooltip-Trigger um beide
-// Knöpfe: der Tooltip nennt den Tab, das Schließkreuz trägt sein eigenes
-// `aria-label` für Screenreader unabhängig davon.
+// Ein einzelner Terminal-Tab: Farbpunkt + Nummer, IMMER sichtbar (2026-08-13,
+// s. Kopfkommentar) — das Schließkreuz bekommt einen eigenen, festen
+// Randbereich (`pr-4` am Auswahlknopf, UNBEDINGT, auch wenn `closable` false
+// ist — sonst würde der letzte verbleibende Tab schmaler als alle anderen,
+// derselbe Breitensprung, den dieser ganze Umbau beheben sollte, nur jetzt
+// ausgelöst durch Schließen statt durch Hover). Das Kreuz
+// selbst liegt `absolute` darüber und gewinnt dort dank positionierten
+// Stapelkontexts jeden Klick, ohne dem Auswahlknopf seine übrige Fläche
+// streitig zu machen. Ein `<span>` als gemeinsamer ChromeTooltip-Trigger um
+// beide Knöpfe: der Tooltip nennt den Tab samt Tastaturakkord, das
+// Schließkreuz trägt sein eigenes `aria-label` für Screenreader unabhängig
+// davon.
 function TerminalTabChip({
   number,
   dotClassName,
@@ -142,19 +168,26 @@ function TerminalTabChip({
 }) {
   const { t } = useTranslation();
   const label = t("paneTabs.terminalTab", { number });
+  // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
+  // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
+  // schlicht keinen Akkord im Tooltip.
+  const shortcut = SHORTCUTS.find((def) => def.id === terminalTabSelectId(number));
+  const tooltipLabel = shortcut
+    ? `${label} (${formatChord(shortcut, isMacPlatform() ? "mac" : "other")})`
+    : label;
   return (
-    <ChromeTooltip label={label}>
-      <span className="group/tab relative flex h-5 w-5 shrink-0 items-center justify-center">
+    <ChromeTooltip label={tooltipLabel}>
+      <span className="group/tab relative flex h-5 shrink-0 items-stretch">
         <button
           type="button"
           onClick={onSelect}
           aria-pressed={active}
           aria-label={label}
-          className={`flex size-full items-center justify-center gap-0.5 rounded-(--pc-paneControl-radius) text-(length:--pc-chrome-fontSizeSmall) font-medium ${
+          className={`flex h-full items-center gap-1 rounded-(--pc-paneControl-radius) pl-1.5 pr-4 text-(length:--pc-chrome-fontSizeSmall) font-medium ${
             active
               ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
               : "text-(--pc-paneHeader-foreground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
-          } ${closable ? "group-hover/tab:opacity-0" : ""} ${CHROME_FOCUS_RING}`}
+          } ${CHROME_FOCUS_RING}`}
         >
           <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClassName}`} />
           {number}
@@ -170,7 +203,7 @@ function TerminalTabChip({
               onClose();
             }}
             aria-label={t("paneTabs.closeTerminalTab", { number })}
-            className={`absolute inset-0 flex items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) group-hover/tab:opacity-100 focus-visible:opacity-100 ${CHROME_FOCUS_RING}`}
+            className={`absolute inset-y-0 right-0.5 my-auto flex size-3.5 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) group-hover/tab:opacity-100 focus-visible:opacity-100 ${CHROME_FOCUS_RING}`}
           >
             <CloseIcon />
           </button>

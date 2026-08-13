@@ -31,8 +31,12 @@ type ShortcutScope = "app" | "pane";
  * unten unterscheidet damit Zoom-Kürzel von allem anderen. */
 type ZoomGlyph = "+" | "-" | "0";
 
+/** Ziffer 1-9 — Terminal-Tab-Wahl, dieselbe Zahl, die der Tab-Chip selbst
+ * zeigt (PaneTabs.tsx), deshalb selbsterklärend ohne eigene Legende. */
+type DigitGlyph = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = ZoomGlyph | "S";
+type ShortcutGlyph = ZoomGlyph | "S" | DigitGlyph;
 
 export interface ShortcutDefinition {
   readonly id: string;
@@ -115,7 +119,45 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     codes: ["KeyS"],
     shift: false,
   },
+  // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-
+  // Beschwerde): neun Definitionen statt einer parametrisierten, weil
+  // ShortcutDefinition keine Nummer trägt, nur `codes` — dieselbe Bauart wie
+  // die Zoom-Trias oben, nur neunmal statt dreimal. `terminalTabSelectId` und
+  // `terminalTabSelectNumber` unten sind die einzige Stelle, die die
+  // Nummerierung aus der Id zurückgewinnt, damit sie nirgends ein zweites Mal
+  // von Hand geführt wird.
+  ...Array.from({ length: 9 }, (_, index): ShortcutDefinition => {
+    const number = index + 1;
+    return {
+      id: terminalTabSelectId(number),
+      description: `Terminal-Tab ${number} der aktiven Pane anzeigen`,
+      scope: "pane",
+      glyph: String(number) as ShortcutGlyph,
+      codes: [`Digit${number}`, `Numpad${number}`],
+      shift: false,
+    };
+  }),
 ];
+
+/** Id-Schema der neun Terminal-Tab-Kürzel — von `terminalTabSelectNumber`
+ * unten umgekehrt. Exportiert, damit PaneTabs.tsx denselben Namen zum
+ * Nachschlagen in `SHORTCUTS` verwendet statt ihn nachzubauen. */
+export function terminalTabSelectId(number: number): string {
+  return `pane.selectTerminalTab${number}`;
+}
+
+const TERMINAL_TAB_SELECT_ID_PATTERN = /^pane\.selectTerminalTab([1-9])$/;
+
+/**
+ * Die Tab-Nummer, die dieses Kürzel auswählt — `null` für jedes andere.
+ * Gleiche Rolle wie `zoomAction` daneben: `usePtyTerminal.ts`s
+ * Pane-Kürzel-Zweig behandelt beide Aktionsarten nebeneinander, keine darf
+ * über bloßes Ausschließen der anderen erraten werden.
+ */
+export function terminalTabSelectNumber(def: ShortcutDefinition): number | null {
+  const match = TERMINAL_TAB_SELECT_ID_PATTERN.exec(def.id);
+  return match ? Number(match[1]) : null;
+}
 
 /**
  * Welche Zoom-Wirkung ein Kürzel hat — `null` für jedes, das gar keins ist.

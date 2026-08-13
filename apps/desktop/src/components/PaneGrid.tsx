@@ -211,6 +211,7 @@ function PaneCell({
         <FileEditor
           state={editor.state}
           focused={focused}
+          projectName={projectNameFromPath(pane.projectPath)}
           tabs={tabs}
           onEdit={editor.editContent}
           onSave={editor.save}

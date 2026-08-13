@@ -5,7 +5,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { isMacPlatform } from "../shortcuts/platform";
-import { matchesShortcut, SHORTCUTS, zoomAction } from "../shortcuts/registry";
+import {
+  matchesShortcut,
+  SHORTCUTS,
+  terminalTabSelectNumber,
+  zoomAction,
+} from "../shortcuts/registry";
 import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
@@ -71,9 +76,23 @@ export interface PtyTerminal {
   insertDroppedPaths: (paths: string[]) => void;
 }
 
-export function usePtyTerminal(tabId: string, cwd: string): PtyTerminal {
+export function usePtyTerminal(
+  tabId: string,
+  cwd: string,
+  // Cmd/Strg+1..9 wählen einen Terminal-Tab der Pane an (Ticket 18-Nachtrag)
+  // — die Tab-Liste selbst lebt im Grid-Store, nicht hier. Als Ref statt
+  // Effekt-Abhängigkeit gehalten (s. `selectTabRef` unten): der Haupteffekt
+  // hängt nur an [tabId, cwd] und darf bei jedem Tab-Wechsel der Pane nicht
+  // neu laufen, sonst stürbe die PTY bei jedem Tab-Öffnen/-Schließen der
+  // Geschwister-Tabs neu.
+  onSelectTerminalTabByNumber: (number: number) => void,
+): PtyTerminal {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const selectTabRef = useRef(onSelectTerminalTabByNumber);
+  useEffect(() => {
+    selectTabRef.current = onSelectTerminalTabByNumber;
+  }, [onSelectTerminalTabByNumber]);
   // Die eigentliche Einfüge-Handlung braucht `writeText` (kennt `tabId` UND
   // den `sessionReady`-Schutz) und `suggestion.reset()` — beides lebt nur als
   // lokale Variable im Effekt unten. `insertDroppedPaths` (der öffentliche,
@@ -347,6 +366,19 @@ export function usePtyTerminal(tabId: string, cwd: string): PtyTerminal {
             ? DEFAULT_ZOOM
             : nextZoomLevel(paneZoom, action === "in" ? 1 : -1),
         );
+        return false;
+      }
+
+      // Cmd/Strg+1..9: Terminal-Tab wählen. Dieselbe Vollständigkeits-Regel
+      // wie beim Zoom-Zweig oben — `paneShortcut` kann hier auch ein Treffer
+      // sein, der weder Zoom noch Tab-Wahl ist (aktuell nur Cmd+S), und der
+      // muss unangetastet zur Shell durchfallen.
+      const tabNumber = paneShortcut
+        ? terminalTabSelectNumber(paneShortcut)
+        : null;
+      if (tabNumber !== null) {
+        event.preventDefault();
+        selectTabRef.current(tabNumber);
         return false;
       }
 

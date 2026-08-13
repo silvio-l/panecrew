@@ -69,6 +69,10 @@ export function TerminalPane({
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
+  const selectTerminalTabByNumber = (number: number) => {
+    const target = tabs.terminalTabs.find((tab) => tab.number === number);
+    if (target) tabs.onSelectTerminalTab(target.tabId);
+  };
   const {
     containerRef,
     copySelection,
@@ -78,7 +82,7 @@ export function TerminalPane({
     hasSelection,
     insertDroppedPaths,
     spawning,
-  } = usePtyTerminal(tabId, projectPath);
+  } = usePtyTerminal(tabId, projectPath, selectTerminalTabByNumber);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
 
   useEffect(() => {
@@ -135,8 +139,20 @@ export function TerminalPane({
             : "text-(--pc-paneHeader-foreground)"
         }`}
       >
-        <span className="min-w-0 flex-1 truncate">{projectName}</span>
+        {/* Drei-Zonen-Header (2026-08-13-Nachtrag, Ticket 18): Name und
+            Tab-Leiste sitzen fest nebeneinander, der Leerraum liegt IMMER im
+            Spacer danach — nie zwischen Name und Tabs. FileEditor.tsx' Kopf
+            spiegelt exakt dieselbe Reihenfolge (bis auf den Speichern-Knopf
+            statt nichts vor dem Schließen-Kreuz), sonst würde beim Öffnen/
+            Schließen einer Datei zwischen zwei Layouts umgeschaltet und die
+            Chips sprängen sichtbar (genau der gemeldete Fehler — vorher stand
+            hier `flex-1` an DIESEM Namen, wodurch jede Größenänderung der
+            Tab-Leiste ihn stauchte und die Chips mitzog). Ohne `flex-1` wächst
+            der Name nie über seinen Textinhalt hinaus, `shrink` lässt ihn nur
+            bei echtem Platzmangel trunkieren. */}
+        <span className="min-w-0 shrink truncate">{projectName}</span>
         <PaneTabs {...tabs} />
+        <div aria-hidden="true" className="min-w-0 flex-1" />
         <ChromeTooltip label={t("terminalPane.closePane")} align="end">
           <button
             type="button"
