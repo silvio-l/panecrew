@@ -230,6 +230,10 @@ function PaneCell({
       label: tab.label,
     })),
     activeTerminalTabId: pane.activeTerminalTabId,
+    // Grid-Fokus dieser Pane, nicht Tab-Auswahl innerhalb ihrer eigenen
+    // Leiste (Begründung an PaneTabs.tsx' `paneFocused`-Feld) — `focused` ist
+    // hier ohnehin schon im Scope, da PaneCell es selbst als Prop trägt.
+    paneFocused: focused,
     showingFile,
     fileName: openPath === null ? null : fileNameFromPath(openPath),
     fileDirty: editor.wouldLoseWork,

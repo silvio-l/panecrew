@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
+import { disposeTerminalActivity, reportLineAdvance } from "../terminal/terminalActivity";
 import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 
 // Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
@@ -17,6 +18,7 @@ const baseProps = (
     { tabId: "tab-2", number: 2, label: null },
   ],
   activeTerminalTabId: "tab-1",
+  paneFocused: true,
   showingFile: false,
   fileName: null,
   fileDirty: false,
@@ -125,6 +127,37 @@ describe("PaneTabs", () => {
 
     expect(props.onRenameTerminalTab).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+  });
+
+  describe("Needs-Attention-Badge", () => {
+    // Regressionstest zum Hintergrund-Pane-Fund (Kopfkommentar von
+    // PaneTabs.tsx, Korrektur "Hintergrund-Pane-Fund"): der ausgewählte Tab
+    // einer unfokussierten Pane muss das Badge zeigen können — nur der Tab,
+    // den der Nutzer GERADE ansieht (ausgewählt UND Pane hat den Grid-Fokus),
+    // darf es unterdrücken.
+    afterEach(() => {
+      disposeTerminalActivity("tab-1");
+      disposeTerminalActivity("tab-2");
+    });
+
+    it("zeigt das Badge für den ausgewählten Tab einer unfokussierten Pane", () => {
+      reportLineAdvance("tab-2", 1);
+      renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }));
+
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Aktiv im Hintergrund" }),
+      ).toBeInTheDocument();
+    });
+
+    it("unterdrückt das Badge nur für den Tab, den der Nutzer in der fokussierten Pane gerade ansieht", () => {
+      reportLineAdvance("tab-2", 1);
+      renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: true }));
+
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Aktiv im Hintergrund" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+    });
   });
 
   describe("Tool-Icon-Erkennung", () => {

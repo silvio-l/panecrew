@@ -45,6 +45,7 @@ vi.mock("../terminal/usePtyTerminal", () => ({
 const paneTabs: PaneTabsProps = {
   terminalTabs: [{ tabId: "tab-1", number: 1, label: null }],
   activeTerminalTabId: "tab-1",
+  paneFocused: true,
   showingFile: false,
   fileName: null,
   fileDirty: false,

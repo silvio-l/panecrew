@@ -158,19 +158,33 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // Leitlinie gegen heuristisches Output-Parsing), sondern zählt echte, per
 // xterm.js committete Zeilen im PTY-Output selbst — ein Tab, der gerade
 // Zeilen committet, PRODUZIERT nachweislich neue Ausgabe, unabhängig davon,
-// ob die CPU dabei nahe null liegt. Zeigt sich NUR auf einem inaktiven Tab
-// (`!active`) — der aktive Tab ist ohnehin sichtbar, ein Signal "hier tut
-// sich was" wäre dort Rauschen. Bewusst nicht auf Pane-Fokus erweitert (ein
-// Tab in einer unfokussierten Pane bliebe für den Nutzer ebenso unsichtbar):
-// PaneTabs.tsx bekommt aktuell keinen Pane-Fokus-Kontext gereicht, das wäre
-// eine eigene, hier nicht beauftragte Erweiterung. Selber Amber-Akzent wie
-// der aktive Tab kam nicht infrage — der Akzent bedeutet dort bereits "das
-// ist der ausgewählte Tab", eine zweite Bedeutung in derselben Farbe auf
-// einem ANDEREN (inaktiven) Chip wäre nicht mehr unterscheidbar. Stattdessen
+// ob die CPU dabei nahe null liegt. Selber Amber-Akzent wie der aktive Tab
+// kam nicht infrage — der Akzent bedeutet dort bereits "das ist der
+// ausgewählte Tab", eine zweite Bedeutung in derselben Farbe auf einem
+// ANDEREN (inaktiven) Chip wäre nicht mehr unterscheidbar. Stattdessen
 // derselbe `bg-current`-Punkt wie `DirtyMark` (unten), aber blinkend
 // (`pc-clock-blink`, dasselbe HUD-Blink-Idiom wie die TitleBar-Uhr und die
 // leeren ProjectPicker-Slots) — Form UND Bewegung tragen das Signal, keine
 // zweite Akzentfarbe.
+//
+// Korrektur 2026-08-13, noch später (Nutzer-Fund: zwei Terminals liefen im
+// Hintergrund, kein Badge erschien): die erste Fassung zeigte den Punkt nur
+// auf `!active` — einem Tab, der innerhalb der EIGENEN Pane gerade nicht
+// ausgewählt ist. Das übersah PaneCrews eigentliche Prämisse ("ein Grid
+// gleichzeitig sichtbarer Panes, kein Tab-Switcher", Projekt-Leitlinie): die eigene
+// Begründung von damals ("ein Tab in einer unfokussierten Pane bliebe für
+// den Nutzer ebenso unsichtbar") war schlicht falsch — eine unfokussierte
+// Pane STEHT im Grid, ihre Tab-Leiste ist die ganze Zeit sichtbar, nur ihr
+// gerade ausgewählter Tab (`active===true`) hielt das Badge fälschlich
+// unterdrückt. `paneFocused` (PaneCell, PaneGrid.tsx — dort ohnehin schon im
+// Scope) liefert jetzt den fehlenden zweiten Faktor: unterdrückt wird das
+// Badge nur noch für den Tab, den der Nutzer GERADE tatsächlich ansieht
+// (ausgewählt UND die Pane hat den Grid-Fokus) — jeder andere strömende Tab,
+// ob in einer fremden Pane oder nur ein weiterer Tab derselben Pane, zeigt
+// es. `active` selbst bleibt unverändert die reine Auswahl-Optik (die volle
+// Akzent-Box unten) — nur die Badge-Bedingung bezieht `paneFocused` mit ein,
+// sonst verschwände "welcher Tab ist hier ausgewählt" sobald man den
+// Pane-Fokus verlässt.
 //
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
@@ -200,6 +214,13 @@ interface TerminalTabInfo {
 export interface PaneTabsProps {
   terminalTabs: readonly TerminalTabInfo[];
   activeTerminalTabId: string;
+  /** Ob die EIGENE Pane gerade den Grid-Fokus trägt (`PaneCell`s `focused`
+   * in PaneGrid.tsx) — unabhängig von `activeTerminalTabId`, das nur die
+   * Tab-Auswahl INNERHALB dieser Pane trägt. Alleine für die
+   * Needs-Attention-Unterdrückung auf dem ausgewählten Tab gebraucht (s.
+   * Kopfkommentar dieser Datei, Korrektur zum Hintergrund-Pane-Fund) — die
+   * Auswahl-Optik selbst (`active` an den Chips) bleibt davon unberührt. */
+  paneFocused: boolean;
   showingFile: boolean;
   /** `null`, solange in dieser Pane keine Datei offen ist — dann gibt es
    * keinen File-Tab in der Leiste. */
@@ -217,6 +238,7 @@ export interface PaneTabsProps {
 export function PaneTabs({
   terminalTabs,
   activeTerminalTabId,
+  paneFocused,
   showingFile,
   fileName,
   fileDirty,
@@ -242,7 +264,24 @@ export function PaneTabs({
       // (TerminalPane.tsx/FileEditor.tsx) — sonst kann derselbe Sprung, den
       // der Spacer zwischen Terminal- und Datei-Ansicht behebt, innerhalb
       // EINER Ansicht wiederkehren, sobald ein Tab hinzukommt.
-      className="flex min-w-0 shrink-0 items-center gap-px rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) p-px"
+      //
+      // Korrektur 2026-08-13, noch später (Nutzer-Fund per Screenshot: "die
+      // Linien liegen nicht ganz sauber"): die eigene Umrandung dieser
+      // Gruppe (`rounded border p-px`) ist ersatzlos gestrichen. Sie war rein
+      // dekorativ — jeder Chip zeichnet ohnehin schon seine eigene komplette
+      // Box (TerminalTabChip/PaneTab unten) — und war zugleich die Ursache
+      // des gemeldeten Fehlers: mit eigenem 1px-Rahmen UND 1px-Padding kam
+      // diese Gruppe auf 24px (Chip-Höhe) + 4px = 28px, vier Pixel mehr als
+      // der sie umschließende `h-6`-Header (TerminalPane.tsx/FileEditor.tsx).
+      // `items-center` zentrierte den Überstand je zur Hälfte über und unter
+      // den Header hinaus — die eigene Unterkante dieser Gruppe lag dadurch
+      // ~1px UNTER der Header-eigenen `border-b`-Hairline (Fokus-Signal,
+      // 45% Deckkraft amber), zwei unabhängig positionierte Linien im selben
+      // Pixel-Streifen, sichtbar leicht versetzt. Ohne eigene Randbox füllt
+      // die Gruppe exakt die Chip-Höhe (24px) und damit exakt die
+      // Header-Höhe — nur noch EINE Linie an dieser Kante, die der Chips
+      // selbst (aktiv: volle Akzent-Box; inaktiv: gedämpfte 1px-Kontur).
+      className="flex min-w-0 shrink-0 items-center gap-px"
     >
       {terminalTabs.map((tab) => (
         <TerminalTabChip
@@ -251,6 +290,7 @@ export function PaneTabs({
           number={tab.number}
           label={tab.label}
           active={!showingFile && tab.tabId === activeTerminalTabId}
+          paneFocused={paneFocused}
           // Der letzte verbleibende Terminal-Tab lässt sich nicht schließen
           // (gridState.ts' closeTerminalTab ist an dieser Stelle ohnehin ein
           // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
@@ -299,6 +339,7 @@ function TerminalTabChip({
   number,
   label,
   active,
+  paneFocused,
   closable,
   renaming,
   onSelect,
@@ -311,6 +352,7 @@ function TerminalTabChip({
   number: number;
   label: string | null;
   active: boolean;
+  paneFocused: boolean;
   closable: boolean;
   renaming: boolean;
   onSelect: () => void;
@@ -327,9 +369,12 @@ function TerminalTabChip({
   // erst danach, sonst würde `!active && useTerminalActivity(...)` den Hook
   // je nach `active` in unterschiedlicher Reihenfolge aufrufen.
   const isStreaming = useTerminalActivity(tabId);
-  // Nur auf einem inaktiven Tab relevant — der aktive ist ohnehin sichtbar
-  // (Begründung: Kopfkommentar dieser Datei, Nachtrag "Needs-Attention").
-  const needsAttention = !active && isStreaming;
+  // Unterdrückt nur für den Tab, den der Nutzer GERADE ansieht: ausgewählt
+  // UND die eigene Pane hat den Grid-Fokus (Begründung: Kopfkommentar dieser
+  // Datei, Korrektur "Hintergrund-Pane-Fund"). Jeder andere strömende Tab —
+  // in einer fremden Pane oder nur ein weiterer Tab derselben Pane — zeigt
+  // das Badge.
+  const needsAttention = isStreaming && !(active && paneFocused);
   const needsAttentionLabel = needsAttention ? t("paneTabs.backgroundActivityLabel") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
