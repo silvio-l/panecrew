@@ -8,7 +8,8 @@
     "settings": "Einstellungen",
     "explorerWidthAria": "Explorer-Breite anpassen",
     "language": "Sprache wechseln",
-    "windowTitleBarAria": "Fenster-Titelzeile"
+    "windowTitleBarAria": "Fenster-Titelzeile",
+    "zoomLevel": "Zoomstufe {{percent}} %"
   },
   "explorer": {
     "newFile": "Neue Datei",

@@ -8,7 +8,8 @@
     "settings": "Settings",
     "explorerWidthAria": "Adjust explorer width",
     "language": "Switch language",
-    "windowTitleBarAria": "Window title bar"
+    "windowTitleBarAria": "Window title bar",
+    "zoomLevel": "Zoom level {{percent}}%"
   },
   "explorer": {
     "newFile": "New File",

@@ -271,6 +271,35 @@ body {
   border-bottom-right-radius: 0.5rem;
 }
 
+/* Feine Fassung der Sucher-Ecken für die 28px-Befehlszeile in der Titelkapsel
+   (TitleBar.tsx): halbe Kantenlänge, 6px-Radius, und der leisere
+   Feld-Hairline-Ton statt des Pane-Rahmens — das Feld liegt in der
+   Glas-Materialzone und spricht leiser als die Slot-Sucher auf der
+   Inhaltsfläche. Statisch ohne Hover-Anzug: das Feld ist rein visueller
+   Platzhalter, kein Ziel. Steht NACH den --tl/--tr/--bl/--br-Regeln, damit
+   die Farbzuweisung bei gleicher Spezifität gewinnt. */
+.pc-hud-corner--fine {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-color: var(--pc-titleBar-searchBorder);
+}
+
+.pc-hud-corner--fine.pc-hud-corner--tl {
+  border-top-left-radius: 6px;
+}
+
+.pc-hud-corner--fine.pc-hud-corner--tr {
+  border-top-right-radius: 6px;
+}
+
+.pc-hud-corner--fine.pc-hud-corner--bl {
+  border-bottom-left-radius: 6px;
+}
+
+.pc-hud-corner--fine.pc-hud-corner--br {
+  border-bottom-right-radius: 6px;
+}
+
 /* Das ASCII-Mini-Terminal, zweifarbig: Rahmen leise (gedimmter
    Beschreibungston), Prompt + Cursor in gedimmtem Amber. color-mix statt
    Opacity, damit der Hover-Wechsel eine reine Farbtransition bleibt (die

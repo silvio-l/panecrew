@@ -112,11 +112,24 @@ export function TitleBar({ zoom }: { zoom: number }) {
             zugleich: unabhängig davon, ob links Ampel-Freiraum steht oder im
             Vollbild nicht. Das Feld ist selbst Drag-Region, als reine Deko wäre
             es ein toter Fleck mitten in der Ziehfläche. */}
+        {/* Sucher statt Pille (TUI-Direktive 2026-08-13): der geschlossene
+            rounded-full-Rand ist vier feinen Eckwinkeln gewichen — dieselbe
+            HUD-Grammatik wie an den leeren Grid-Slots, und semantisch exakt
+            derselbe Fall: ein Ort, an dem noch nichts ist, aber etwas
+            hinkommt (das Feld ist rein visueller Platzhalter für die künftige
+            Befehlszeile). Der Platzhaltertext läuft im Terminal-Register —
+            was hier eines Tages getippt wird, ist ein Befehl, keine Prosa. */}
         <div
           data-tauri-drag-region
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-(--pc-titleBar-searchBorder) bg-(--pc-titleBar-searchBackground) px-2 text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
+          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-(--pc-titleBar-searchBackground) px-2 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
         >
+          <span className="pointer-events-none absolute inset-0">
+            <span className="pc-hud-corner pc-hud-corner--fine pc-hud-corner--tl" />
+            <span className="pc-hud-corner pc-hud-corner--fine pc-hud-corner--tr" />
+            <span className="pc-hud-corner pc-hud-corner--fine pc-hud-corner--bl" />
+            <span className="pc-hud-corner pc-hud-corner--fine pc-hud-corner--br" />
+          </span>
           {/* Einziges Glyph im Feld — die frühere Lupe daneben hätte zwei
               Icon-Sprachen nebeneinandergestellt (Marken-Verlauf gegen
               Strich-Icon), und was das Feld tut, sagt die Zeile selbst. */}
@@ -128,12 +141,41 @@ export function TitleBar({ zoom }: { zoom: number }) {
           </span>
         </div>
 
+        {/* Zoom-Readout — ein echtes HUD-Instrument, kein Zierrat: erscheint
+            nur, wenn der App-Zoom von 100 % abweicht, und verschwindet hart
+            (0ms) mit der Rückkehr. Sichtbar sind nur Ziffern und %, deshalb
+            keine i18n-Frage im Sichtbaren; der Screenreader bekommt den Satz.
+            Gedimmt im Readout-Register (.pc-hud-readout) — es informiert,
+            es ruft nicht. pointer-events-none: die Kapselfläche dahinter
+            bleibt Ziehfläche. */}
+        {zoom !== 1 && (
+          <div className="pointer-events-none flex shrink-0 items-center pr-1">
+            <span
+              aria-hidden="true"
+              className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em]"
+            >
+              {`${String(Math.round(zoom * 100))}%`}
+            </span>
+            <span className="sr-only">
+              {t("titleBar.zoomLevel", { percent: Math.round(zoom * 100) })}
+            </span>
+          </div>
+        )}
+
         <ChromeTooltip label={t("titleBar.language")} align="end">
           <button
             type="button"
             aria-label={t("titleBar.language")}
             onClick={() => setLanguage(nextLanguage)}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            // Terminal-Register statt Chrome-Font (TUI-Direktive 2026-08-13):
+            // das Kürzel ist ein technischer Zustandswert, kein Wort — 10px
+            // Mono mit Tracking, derselbe Registergriff wie die Readouts.
+            // paddingLeft gleicht das Tracking hinter dem letzten Zeichen aus
+            // (letter-spacing hängt RECHTS an jedem Glyph), sonst stünde das
+            // Kürzel um 1,5px links der Knopfmitte. Der DE→EN-Wechsel ist ein
+            // harter Zeichentausch, exakt die Motion-Regel.
+            style={{ paddingLeft: "0.15em" }}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-(family-name:--pc-terminal-fontFamily) text-[10px] font-semibold uppercase tracking-[0.15em] text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             {i18n.language}
           </button>
