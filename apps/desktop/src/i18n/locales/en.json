@@ -5,6 +5,7 @@
   },
   "titleBar": {
     "searchPlaceholder": "Search or run a command",
+    "newWindow": "New Window",
     "settings": "Settings",
     "explorerWidthAria": "Adjust explorer width",
     "language": "Switch language",
@@ -99,11 +100,19 @@
     "enterFocusMode": "Focus mode",
     "exitFocusMode": "Exit focus mode"
   },
+  "focusMode": {
+    "positionAria": "Pane {{slot}} of {{total}} in focus mode",
+    "rotationStart": "Start rotation",
+    "rotationStop": "Stop rotation",
+    "intervalAria": "Rotation interval {{seconds}} seconds, click to change"
+  },
   "paneTabs": {
     "selectView": "Select view",
     "terminalTab": "Terminal {{number}}",
     "openTerminalTab": "Open another terminal tab",
-    "closeTerminalTab": "Close terminal {{number}}"
+    "closeTerminalTab": "Close terminal {{number}}",
+    "renameTerminalTab": "Rename terminal {{number}}",
+    "renameTerminalTabFieldLabel": "Name for terminal {{number}}"
   },
   "projectPicker": {
     "choose": "Choose project",
@@ -144,6 +153,74 @@
     "tabHint": "accept",
     "enterHint": "submit"
   },
+  "settings": {
+    "windowTitle": "Settings",
+    "searchPlaceholder": "Search settings",
+    "searchAria": "Search settings by name or description",
+    "noSearchResults": "No matches for “{{query}}”.",
+    "resetToDefault": "Reset to default",
+    "resetAria": "Reset {{label}} to default",
+    "modifiedBadge": "modified",
+    "loadError": "Settings could not be loaded.",
+    "categories": {
+      "terminal": "Terminal",
+      "explorer": "Explorer",
+      "appearance": "Appearance",
+      "grid": "Grid"
+    },
+    "terminalRestartHint": "Applies starting with the next new terminal session — the running session is unaffected.",
+    "rawJson": {
+      "toggleToRaw": "Raw JSON",
+      "toggleToGraphical": "Graphical view",
+      "hint": "Plain text view with no autocomplete or inline validation.",
+      "save": "Save",
+      "cancel": "Discard",
+      "invalidJson": "Invalid JSON — not saved.",
+      "invalidValue": "Value doesn't match the expected type of “{{key}}” — not saved.",
+      "unknownKey": "Unknown setting “{{key}}” — not saved.",
+      "saved": "Saved."
+    },
+    "schema": {
+      "terminal": {
+        "shell": {
+          "label": "Shell",
+          "description": "The program that starts a new terminal session."
+        },
+        "fontSize": {
+          "label": "Font size",
+          "description": "Character size in the terminal, in pixels."
+        }
+      },
+      "explorer": {
+        "confirmBeforeDelete": {
+          "label": "Confirm before deleting",
+          "description": "Shows a confirmation prompt before moving a file or folder to the trash."
+        }
+      },
+      "appearance": {
+        "theme": {
+          "label": "Theme",
+          "description": "Controls whether PaneCrew renders light, dark, or matches the system setting.",
+          "options": {
+            "system": "System",
+            "light": "Light",
+            "dark": "Dark"
+          }
+        }
+      },
+      "grid": {
+        "defaultTemplate": {
+          "label": "Default grid template",
+          "description": "The grid layout a newly opened window starts with.",
+          "options": {
+            "single": "Single",
+            "split": "Split",
+            "quad": "Quad"
+          }
+        }
+      }
+    }
+  },
   "updater": {
     "available": "Version {{version}} is available.",
     "installAndRestart": "Install & Restart",
@@ -157,11 +234,5 @@
     "error": "The update could not be installed.",
     "dismiss": "Dismiss",
     "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
-  },
-  "focusMode": {
-    "positionAria": "Pane {{slot}} of {{total}} in focus mode",
-    "rotationStart": "Start rotation",
-    "rotationStop": "Stop rotation",
-    "intervalAria": "Rotation interval {{seconds}} seconds, click to change"
   }
 }

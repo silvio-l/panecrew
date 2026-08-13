@@ -5,14 +5,14 @@
 // dieselbe Konvention wie `FileStamp.modified_ms`.
 //
 // v2-Schema (Ticket 17): ein `windows`-Array statt eines einzelnen impliziten
-// Fensters. Solange Multi-Window (Spec-Batch 2026-08-12) noch nicht gebaut
-// ist, hält die App genau ein Fenster in diesem Array — `buildSessionState`/
-// `restoredTemplate` unten greifen deshalb fest auf `windows[0]` zu. Ebenso
-// liefert/liest diese Datei die neuen Terminal-Tab-, Aktiver-Tab-, Adapter-,
-// Maximiert- und Schnittkanten-Ratio-Felder nur als Rundlauf-Daten (Default-
-// Werte, kein Datenverlust bei Restart) — die Features selbst (mehrere
-// Terminal-Tabs, Fokus-Modus, Splitter, Adapter-Auswahl) verdrahtet erst
-// Ticket 18 ff.
+// Fensters, seit Ticket 27 (Multi-Window) tatsächlich mit mehr als einem
+// Eintrag befüllt — `label` (Tauri-Fensterlabel, zugleich `PersistedWindow`-
+// Schlüssel) ordnet Einträge zu, nicht mehr der Array-Index. Diese Datei
+// liefert/liest die neuen Terminal-Tab-, Aktiver-Tab- und Adapter-Felder nur
+// als Rundlauf-Daten (Default-Werte, kein Datenverlust bei Restart) — mehrere
+// Terminal-Tabs und Adapter-Auswahl selbst verdrahtet erst ein späteres
+// Ticket. `maximized_pane_id` (Ticket 19: Fokus-Modus) ist dagegen bereits
+// echt verdrahtet.
 
 import { DEFAULT_TEMPLATE, GRID_TEMPLATES, type GridState, type TemplateId } from "../grid/gridState";
 
@@ -47,7 +47,11 @@ interface PersistedPane {
   adapter_id?: string | null;
 }
 
-interface PersistedWindow {
+export interface PersistedWindow {
+  /** Natives Tauri-Fensterlabel (`useWindowIdentity.ts`), zugleich der
+   * Schlüssel, über den `session_save_window`/`session_remove_window`
+   * Einträge zuordnen — nicht mehr der Array-Index. */
+  label: string;
   template: string;
   slots: (PersistedPane | null)[];
   /** Grid-Track-Verhältnisse der Schnittkanten dieses Templates, nicht seine
@@ -78,72 +82,80 @@ export interface SessionState {
   explorer_width?: number | null;
 }
 
-/** Baut den zu persistierenden Zustand aus dem laufenden Grid, der
- * `paneId`-geschlüsselten Dateiauswahl im Explorer (Ticket 06), dem
- * projektpfad-geschlüsselten Aufklapp-Zustand des Baums und der
- * Explorer-Breite. Jede Pane trägt seit Ticket 18 ihre echten Terminal-Tabs
- * (`Pane.terminalTabs`) ein — nur `title` bleibt vorerst immer leer, ein
- * Umbenennen von Tabs ist nicht Teil dieses Tickets. Aktiver Tab ist
- * `Pane.activeTerminalTabId`, als Index in `terminal_tabs` (das persistierte
- * Schema kennt keine `tabId`, s. `PersistedActiveTab`), AUSSER eine Datei ist
- * sowohl ausgewählt als auch als aktive Ansicht gewählt — genau dieselbe
- * "nur wenn wirklich offen"-Bedingung wie `PaneGrid.tsx`s `showingFile`, hier
- * unabhängig nachgebildet: dieses Modul kennt keinen Editor-Zustand, nur die
- * `selectedFile`-Map, die exakt genau dann einen Eintrag für eine Pane trägt,
- * wenn deren Datei tatsächlich offen ist. Solange es nur ein Fenster gibt,
- * landet der gesamte Grid-Zustand in `windows[0]`. */
-export function buildSessionState(
+/** Baut den zu persistierenden Zustand EINES Fensters (Ticket 27) aus dem
+ * laufenden Grid und der `paneId`-geschlüsselten Dateiauswahl im Explorer
+ * (Ticket 06) — `expanded_folders`/`explorer_width` gehören nicht hierher,
+ * die bleiben window-agnostische Globals und gehen separat an
+ * `saveSessionWindow` (`session_store.rs`s eigener Kommentar). Jede Pane
+ * trägt seit Ticket 18 ihre echten Terminal-Tabs (`Pane.terminalTabs`) ein,
+ * `title` ist seit dem Kontextmenü-Umbenennen (`PaneTabs.tsx`)
+ * `Pane.terminalTabs[i].label`. Aktiver Tab ist `Pane.activeTerminalTabId`,
+ * als Index in `terminal_tabs` (das persistierte Schema kennt keine `tabId`,
+ * s. `PersistedActiveTab`), AUSSER eine Datei ist sowohl ausgewählt als auch
+ * als aktive Ansicht gewählt — genau dieselbe "nur wenn wirklich offen"-
+ * Bedingung wie `PaneGrid.tsx`s `showingFile`, hier unabhängig nachgebildet:
+ * dieses Modul kennt keinen Editor-Zustand, nur die `selectedFile`-Map, die
+ * exakt genau dann einen Eintrag für eine Pane trägt, wenn deren Datei
+ * tatsächlich offen ist. `maximized_pane_id` (Ticket 19) kommt direkt aus
+ * `grid.maximizedPaneId` — echt verdrahtet für den Save, das Zurückmappen
+ * auf eine frisch erzeugte `paneId` beim Restore bleibt offen (Ticket 19,
+ * Persistenz-Teilaufgabe). */
+export function buildWindowState(
+  label: string,
   grid: GridState,
   selectedFile: Record<string, string>,
-  expandedFolders: Record<string, string[]>,
-  explorerWidth: number,
-): SessionState {
+): PersistedWindow {
   return {
-    windows: [
-      {
-        template: grid.template,
-        slots: grid.slots.map((slot): PersistedPane | null => {
-          if (slot === null) return null;
-          const lastSelectedFile = selectedFile[slot.paneId] ?? null;
-          const showingFile = slot.showingFile && lastSelectedFile !== null;
-          const activeTabIndex = slot.terminalTabs.findIndex(
-            (tab) => tab.tabId === slot.activeTerminalTabId,
-          );
-          return {
-            project_path: slot.projectPath,
-            terminal_tabs: slot.terminalTabs.map(() => ({})),
-            active_tab: showingFile
-              ? { kind: "file" }
-              : { kind: "terminal", index: Math.max(activeTabIndex, 0) },
-            file_tab: lastSelectedFile === null ? null : { path: lastSelectedFile },
-            adapter_id: null,
-          };
-        }),
-        split_ratios: [],
-        maximized_pane_id: null,
-      },
-    ],
-    expanded_folders: expandedFolders,
-    explorer_width: explorerWidth,
+    label,
+    template: grid.template,
+    slots: grid.slots.map((slot): PersistedPane | null => {
+      if (slot === null) return null;
+      const lastSelectedFile = selectedFile[slot.paneId] ?? null;
+      const showingFile = slot.showingFile && lastSelectedFile !== null;
+      const activeTabIndex = slot.terminalTabs.findIndex(
+        (tab) => tab.tabId === slot.activeTerminalTabId,
+      );
+      return {
+        project_path: slot.projectPath,
+        terminal_tabs: slot.terminalTabs.map((tab) => ({ title: tab.label })),
+        active_tab: showingFile
+          ? { kind: "file" }
+          : { kind: "terminal", index: Math.max(activeTabIndex, 0) },
+        file_tab: lastSelectedFile === null ? null : { path: lastSelectedFile },
+        adapter_id: null,
+      };
+    }),
+    split_ratios: [],
+    maximized_pane_id: grid.maximizedPaneId,
   };
 }
 
-/** Das persistierte Template des ersten (bislang einzigen) Fensters,
- * validiert gegen die bekannte Liste — eine fremde oder veraltete
- * `session.json` (anderes Template-Vokabular aus einer späteren Version)
- * darf den Start nicht mit einer unbekannten `TemplateId` sprengen, sie
- * fällt auf `DEFAULT_TEMPLATE` zurück statt den Restore ganz abzubrechen —
- * dieselbe "survivable, not fatal"-Haltung wie `session_store.rs`s
- * Ordner-Validierung. */
-export function restoredTemplate(session: SessionState): TemplateId {
-  const template = session.windows[0]?.template;
+/** Der Sitzungs-Eintrag GENAU dieses Fensters, über sein natives
+ * Tauri-Fensterlabel gesucht statt über einen Array-Index (Ticket 27). */
+function restoredWindow(
+  session: SessionState,
+  label: string,
+): PersistedWindow | undefined {
+  return session.windows.find((window) => window.label === label);
+}
+
+/** Das persistierte Template dieses Fensters, validiert gegen die bekannte
+ * Liste — eine fremde oder veraltete `session.json` (anderes
+ * Template-Vokabular aus einer späteren Version) darf den Start nicht mit
+ * einer unbekannten `TemplateId` sprengen, sie fällt auf `DEFAULT_TEMPLATE`
+ * zurück statt den Restore ganz abzubrechen — dieselbe "survivable, not
+ * fatal"-Haltung wie `session_store.rs`s Ordner-Validierung. Ebenso, wenn
+ * dieses Fenster (neu angelegtes Label, oder eine Sitzung von vor Ticket 27)
+ * noch gar keinen eigenen Eintrag hat. */
+export function restoredTemplate(session: SessionState, label: string): TemplateId {
+  const template = restoredWindow(session, label)?.template;
   const known = GRID_TEMPLATES.some((t) => t.id === template);
   return known ? (template as TemplateId) : DEFAULT_TEMPLATE;
 }
 
-/** Die Slots des ersten (bislang einzigen) Fensters — Restore-Code fragt
- * nach `slot.project_path`/`slot.file_tab`, nicht nach den neuen, noch
+/** Die Slots dieses Fensters — Restore-Code fragt nach `slot.project_path`/
+ * `slot.file_tab`, nicht nach den neuen, noch
  * unverdrahteten Feldern (Terminal-Tab-Array, `adapter_id`, …). */
-export function restoredSlots(session: SessionState): (PersistedPane | null)[] {
-  return session.windows[0]?.slots ?? [];
+export function restoredSlots(session: SessionState, label: string): (PersistedPane | null)[] {
+  return restoredWindow(session, label)?.slots ?? [];
 }

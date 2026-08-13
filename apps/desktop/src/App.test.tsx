@@ -42,6 +42,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
 }));
 
+// `useWindowIdentity.ts` (Ticket 27) liest `getCurrentWindow().label` beim
+// Mount — unter jsdom gibt es kein natives Fensterlabel, "main" hält
+// `App.test.tsx`s bestehende Erwartungen (Restore/Autosave als Hauptfenster)
+// unverändert gültig.
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ label: "main" }),
+}));
+
 // Greift in die xterm-Attrappe hinein: der Tastatur-Handler der Pane wird nur
 // an xterm übergeben, ist von außen also sonst nicht auslösbar, und der
 // Schriftzoom wirkt genau auf terminal.options.fontSize.
@@ -1508,9 +1516,15 @@ describe("Grid / Mehrfach-Pane", () => {
       invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
     ).toHaveLength(2);
 
-    // Tab 2 schließen: killt NUR dessen eigene PTY, nicht Tab 1.
+    // Tab 2 schließen: nur über das Kontextmenü erreichbar (PaneTabs.tsx),
+    // killt NUR dessen eigene PTY, nicht Tab 1.
+    const tab2Trigger = screen
+      .getByRole("button", { name: "Terminal 2" })
+      .closest("span");
+    if (!tab2Trigger) throw new Error("Kontextmenü-Trigger für \"Terminal 2\" nicht gefunden");
+    fireEvent.contextMenu(tab2Trigger);
     fireEvent.click(
-      screen.getByRole("button", { name: "Terminal 2 schließen" }),
+      screen.getByRole("menuitem", { name: "Terminal 2 schließen" }),
     );
     await confirmClose("Tab schließen");
 
@@ -1902,7 +1916,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
   });
 
   const saveCalls = () =>
-    invokeMock.mock.calls.filter(([cmd]) => cmd === "session_save");
+    invokeMock.mock.calls.filter(([cmd]) => cmd === "session_save_window");
 
   it("stellt Template und Pane-Zuordnungen aus einer gespeicherten Sitzung wieder her", async () => {
     invokeMock.mockImplementation((cmd) => {
@@ -1910,6 +1924,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         return Promise.resolve({
           windows: [
             {
+              label: "main",
               template: "split",
               slots: [
                 {
@@ -1958,6 +1973,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         return Promise.resolve({
           windows: [
             {
+              label: "main",
               template: "single",
               slots: [
                 {
@@ -2015,6 +2031,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         return Promise.resolve({
           windows: [
             {
+              label: "main",
               template: "quad",
               slots: [
                 {
@@ -2071,6 +2088,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         return Promise.resolve({
           windows: [
             {
+              label: "main",
               template: "single",
               slots: [
                 {
@@ -2112,6 +2130,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         return Promise.resolve({
           windows: [
             {
+              label: "main",
               template: "quad",
               slots: [
                 {
@@ -2169,12 +2188,12 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
 
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
-      const state = (
-        payload as { state?: { windows: { slots: unknown[] }[] } } | undefined
-      )?.state;
-      expect(state?.windows[0]?.slots[0]).toEqual({
+      const window = (
+        payload as { window?: { slots: unknown[] } } | undefined
+      )?.window;
+      expect(window?.slots[0]).toEqual({
         project_path: "/Users/dev/projects/storefront",
-        terminal_tabs: [{}],
+        terminal_tabs: [{ title: null }],
         active_tab: { kind: "terminal", index: 0 },
         file_tab: null,
         adapter_id: null,
@@ -2197,10 +2216,10 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
 
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
-      const state = (
-        payload as { state?: { windows: { template: string }[] } } | undefined
-      )?.state;
-      expect(state?.windows[0]?.template).toBe("split");
+      const window = (
+        payload as { window?: { template: string } } | undefined
+      )?.window;
+      expect(window?.template).toBe("split");
     });
   });
 });

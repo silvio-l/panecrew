@@ -7,25 +7,20 @@ import {
   switchToFileTab,
   switchToTerminalTab,
 } from "../grid/gridState";
-import { buildSessionState, restoredSlots, restoredTemplate, type SessionState } from "./sessionState";
+import { buildWindowState, restoredSlots, restoredTemplate, type SessionState } from "./sessionState";
 
-const EXPLORER_WIDTH = 224;
+const LABEL = "main";
 
-describe("buildSessionState", () => {
+describe("buildWindowState", () => {
   it("baut leere Slots aus einem leeren Grid", () => {
-    const state = buildSessionState(INITIAL_GRID_STATE, {}, {}, EXPLORER_WIDTH);
+    const state = buildWindowState(LABEL, INITIAL_GRID_STATE, {});
 
     expect(state).toEqual({
-      windows: [
-        {
-          template: "quad",
-          slots: [null, null, null, null],
-          split_ratios: [],
-          maximized_pane_id: null,
-        },
-      ],
-      expanded_folders: {},
-      explorer_width: EXPLORER_WIDTH,
+      label: LABEL,
+      template: "quad",
+      slots: [null, null, null, null],
+      split_ratios: [],
+      maximized_pane_id: null,
     });
   });
 
@@ -38,11 +33,11 @@ describe("buildSessionState", () => {
       "tab-1",
     );
 
-    const state = buildSessionState(grid, {}, {}, EXPLORER_WIDTH);
+    const state = buildWindowState(LABEL, grid, {});
 
-    expect(state.windows[0]?.slots[2]).toEqual({
+    expect(state.slots[2]).toEqual({
       project_path: "/repo/storefront",
-      terminal_tabs: [{}],
+      terminal_tabs: [{ title: null }],
       active_tab: { kind: "terminal", index: 0 },
       file_tab: null,
       adapter_id: null,
@@ -57,11 +52,11 @@ describe("buildSessionState", () => {
     );
     const backToFirst = switchToTerminalTab(withTwoTabs, "pane-1", "tab-1");
 
-    const state = buildSessionState(backToFirst, {}, {}, EXPLORER_WIDTH);
+    const state = buildWindowState(LABEL, backToFirst, {});
 
-    expect(state.windows[0]?.slots[0]).toEqual({
+    expect(state.slots[0]).toEqual({
       project_path: "/repo/storefront",
-      terminal_tabs: [{}, {}],
+      terminal_tabs: [{ title: null }, { title: null }],
       active_tab: { kind: "terminal", index: 0 },
       file_tab: null,
       adapter_id: null,
@@ -74,9 +69,9 @@ describe("buildSessionState", () => {
       "pane-1",
     );
 
-    const state = buildSessionState(grid, { "pane-1": "src/App.tsx" }, {}, EXPLORER_WIDTH);
+    const state = buildWindowState(LABEL, grid, { "pane-1": "src/App.tsx" });
 
-    expect(state.windows[0]?.slots[0]).toMatchObject({
+    expect(state.slots[0]).toMatchObject({
       project_path: "/repo/storefront",
       active_tab: { kind: "file" },
       file_tab: { path: "src/App.tsx" },
@@ -96,76 +91,79 @@ describe("buildSessionState", () => {
       "tab-1",
     );
 
-    const state = buildSessionState(grid, { "pane-1": "src/App.tsx" }, {}, EXPLORER_WIDTH);
+    const state = buildWindowState(LABEL, grid, { "pane-1": "src/App.tsx" });
 
-    expect(state.windows[0]?.slots[0]).toMatchObject({
+    expect(state.slots[0]).toMatchObject({
       active_tab: { kind: "terminal", index: 0 },
       file_tab: { path: "src/App.tsx" },
     });
   });
 
   it("ignoriert eine Auswahl, die zu keiner belegten Pane gehört", () => {
-    const state = buildSessionState(
-      INITIAL_GRID_STATE,
-      { "verwaiste-pane": "irgendwas.txt" },
-      {},
-      EXPLORER_WIDTH,
-    );
+    const state = buildWindowState(LABEL, INITIAL_GRID_STATE, {
+      "verwaiste-pane": "irgendwas.txt",
+    });
 
-    expect(state.windows[0]?.slots).toEqual([null, null, null, null]);
+    expect(state.slots).toEqual([null, null, null, null]);
   });
 
-  it("spiegelt einen Template-Wechsel im ersten Fenster", () => {
+  it("spiegelt einen Template-Wechsel", () => {
     const grid = switchTemplate(INITIAL_GRID_STATE, "split");
 
-    expect(buildSessionState(grid, {}, {}, EXPLORER_WIDTH).windows[0]?.template).toBe("split");
+    expect(buildWindowState(LABEL, grid, {}).template).toBe("split");
   });
 
-  it("trägt die aufgeklappten Ordner projektpfad-geschlüsselt ein", () => {
-    const state = buildSessionState(
-      INITIAL_GRID_STATE,
-      {},
-      { "/repo/storefront": ["src", "src/core"] },
-      EXPLORER_WIDTH,
-    );
+  it("trägt das native Fensterlabel ein", () => {
+    const state = buildWindowState("main-2", INITIAL_GRID_STATE, {});
 
-    expect(state.expanded_folders).toEqual({
-      "/repo/storefront": ["src", "src/core"],
-    });
+    expect(state.label).toBe("main-2");
   });
 
-  it("trägt die Explorer-Breite ein", () => {
-    const state = buildSessionState(INITIAL_GRID_STATE, {}, {}, 320);
+  it("trägt die maximierte Pane ein (Fokus-Modus)", () => {
+    const grid = { ...INITIAL_GRID_STATE, maximizedPaneId: "pane-1" };
 
-    expect(state.explorer_width).toBe(320);
+    expect(buildWindowState(LABEL, grid, {}).maximized_pane_id).toBe("pane-1");
   });
 });
 
 describe("restoredTemplate", () => {
-  it("übernimmt ein bekanntes Template des ersten Fensters", () => {
-    const session: SessionState = { windows: [{ template: "row-4", slots: [] }] };
+  it("übernimmt ein bekanntes Template des eigenen Fensters", () => {
+    const session: SessionState = {
+      windows: [{ label: LABEL, template: "row-4", slots: [] }],
+    };
 
-    expect(restoredTemplate(session)).toBe("row-4");
+    expect(restoredTemplate(session, LABEL)).toBe("row-4");
   });
 
   it("fällt bei einem unbekannten Template auf den Default zurück", () => {
-    const session: SessionState = { windows: [{ template: "hexa-grid", slots: [] }] };
+    const session: SessionState = {
+      windows: [{ label: LABEL, template: "hexa-grid", slots: [] }],
+    };
 
-    expect(restoredTemplate(session)).toBe("quad");
+    expect(restoredTemplate(session, LABEL)).toBe("quad");
   });
 
   it("fällt ohne jedes Fenster auf den Default zurück", () => {
     const session: SessionState = { windows: [] };
 
-    expect(restoredTemplate(session)).toBe("quad");
+    expect(restoredTemplate(session, LABEL)).toBe("quad");
+  });
+
+  it("fällt zurück, wenn kein Fenster mit diesem Label existiert", () => {
+    const session: SessionState = {
+      windows: [{ label: "main-2", template: "split", slots: [] }],
+    };
+
+    expect(restoredTemplate(session, LABEL)).toBe("quad");
   });
 });
 
 describe("restoredSlots", () => {
-  it("liefert die Slots des ersten Fensters", () => {
+  it("liefert die Slots des eigenen Fensters", () => {
     const session: SessionState = {
       windows: [
         {
+          label: LABEL,
           template: "single",
           slots: [
             {
@@ -178,10 +176,18 @@ describe("restoredSlots", () => {
       ],
     };
 
-    expect(restoredSlots(session)).toEqual(session.windows[0]?.slots);
+    expect(restoredSlots(session, LABEL)).toEqual(session.windows[0]?.slots);
   });
 
   it("liefert eine leere Liste ohne jedes Fenster", () => {
-    expect(restoredSlots({ windows: [] })).toEqual([]);
+    expect(restoredSlots({ windows: [] }, LABEL)).toEqual([]);
+  });
+
+  it("liefert eine leere Liste, wenn kein Fenster mit diesem Label existiert", () => {
+    const session: SessionState = {
+      windows: [{ label: "main-2", template: "single", slots: [] }],
+    };
+
+    expect(restoredSlots(session, LABEL)).toEqual([]);
   });
 });

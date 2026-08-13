@@ -5,6 +5,7 @@
   },
   "titleBar": {
     "searchPlaceholder": "Suchen oder Befehl ausführen",
+    "newWindow": "Neues Fenster",
     "settings": "Einstellungen",
     "explorerWidthAria": "Explorer-Breite anpassen",
     "language": "Sprache wechseln",
@@ -99,11 +100,19 @@
     "enterFocusMode": "Fokus-Modus",
     "exitFocusMode": "Fokus-Modus verlassen"
   },
+  "focusMode": {
+    "positionAria": "Pane {{slot}} von {{total}} im Fokus-Modus",
+    "rotationStart": "Rotation starten",
+    "rotationStop": "Rotation stoppen",
+    "intervalAria": "Rotationsintervall {{seconds}} Sekunden, klicken zum Wechseln"
+  },
   "paneTabs": {
     "selectView": "Ansicht wählen",
     "terminalTab": "Terminal {{number}}",
     "openTerminalTab": "Weiteren Terminal-Tab öffnen",
-    "closeTerminalTab": "Terminal {{number}} schließen"
+    "closeTerminalTab": "Terminal {{number}} schließen",
+    "renameTerminalTab": "Terminal {{number}} umbenennen",
+    "renameTerminalTabFieldLabel": "Name für Terminal {{number}}"
   },
   "projectPicker": {
     "choose": "Projekt wählen",
@@ -144,6 +153,74 @@
     "tabHint": "übernehmen",
     "enterHint": "abschicken"
   },
+  "settings": {
+    "windowTitle": "Einstellungen",
+    "searchPlaceholder": "Einstellungen durchsuchen",
+    "searchAria": "Einstellungen nach Name oder Beschreibung durchsuchen",
+    "noSearchResults": "Keine Treffer für „{{query}}“.",
+    "resetToDefault": "Auf Standard zurücksetzen",
+    "resetAria": "{{label}} auf Standard zurücksetzen",
+    "modifiedBadge": "geändert",
+    "loadError": "Einstellungen konnten nicht geladen werden.",
+    "categories": {
+      "terminal": "Terminal",
+      "explorer": "Explorer",
+      "appearance": "Erscheinungsbild",
+      "grid": "Raster"
+    },
+    "terminalRestartHint": "Gilt ab der nächsten neuen Terminal-Sitzung — die laufende Sitzung bleibt unverändert.",
+    "rawJson": {
+      "toggleToRaw": "Rohtext (JSON)",
+      "toggleToGraphical": "Grafische Ansicht",
+      "hint": "Reine Textansicht ohne Autovervollständigung oder Prüfung während der Eingabe.",
+      "save": "Speichern",
+      "cancel": "Verwerfen",
+      "invalidJson": "Ungültiges JSON — nicht gespeichert.",
+      "invalidValue": "Wert entspricht nicht dem erwarteten Typ von „{{key}}“ — nicht gespeichert.",
+      "unknownKey": "Unbekanntes Setting „{{key}}“ — nicht gespeichert.",
+      "saved": "Gespeichert."
+    },
+    "schema": {
+      "terminal": {
+        "shell": {
+          "label": "Shell",
+          "description": "Programm, das eine neue Terminal-Sitzung startet."
+        },
+        "fontSize": {
+          "label": "Schriftgröße",
+          "description": "Zeichengröße im Terminal, in Pixel."
+        }
+      },
+      "explorer": {
+        "confirmBeforeDelete": {
+          "label": "Vor dem Löschen bestätigen",
+          "description": "Zeigt vor dem Verschieben einer Datei oder eines Ordners in den Papierkorb eine Sicherheitsabfrage."
+        }
+      },
+      "appearance": {
+        "theme": {
+          "label": "Theme",
+          "description": "Steuert, ob PaneCrew hell, dunkel oder passend zur Systemeinstellung erscheint.",
+          "options": {
+            "system": "System",
+            "light": "Hell",
+            "dark": "Dunkel"
+          }
+        }
+      },
+      "grid": {
+        "defaultTemplate": {
+          "label": "Standard-Rastertemplate",
+          "description": "Rasterlayout, mit dem ein neu geöffnetes Fenster startet.",
+          "options": {
+            "single": "Einzeln",
+            "split": "Geteilt",
+            "quad": "Vierergrid"
+          }
+        }
+      }
+    }
+  },
   "updater": {
     "available": "Version {{version}} ist verfügbar.",
     "installAndRestart": "Installieren & Neustarten",
@@ -157,11 +234,5 @@
     "error": "Update konnte nicht installiert werden.",
     "dismiss": "Ausblenden",
     "homebrewHint": "Über Homebrew installiert — aktualisiere mit „brew upgrade --cask panecrew“."
-  },
-  "focusMode": {
-    "positionAria": "Pane {{slot}} von {{total}} im Fokus-Modus",
-    "rotationStart": "Rotation starten",
-    "rotationStop": "Rotation stoppen",
-    "intervalAria": "Rotationsintervall {{seconds}} Sekunden, klicken zum Wechseln"
   }
 }

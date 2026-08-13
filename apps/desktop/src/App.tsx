@@ -74,8 +74,9 @@ import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
-import { buildSessionState, restoredSlots, restoredTemplate } from "./session/sessionState";
-import { loadSession, saveSession } from "./session/sessionStore";
+import { buildWindowState, restoredSlots, restoredTemplate } from "./session/sessionState";
+import { loadSession, saveSessionWindow } from "./session/sessionStore";
+import { windowIdentity } from "./window/useWindowIdentity";
 import { isMacPlatform } from "./shortcuts/platform";
 import {
   matchesShortcut,
@@ -106,12 +107,17 @@ function App() {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,
   } = useGrid();
+  // Ticket 27: natives Tauri-Fensterlabel + ob dies "main" ist — ändert sich
+  // nie über die Lebenszeit des Fensters (`useWindowIdentity.ts`), deshalb
+  // per Lazy-`useState`-Initializer statt jeden Render neu gelesen.
+  const [windowId] = useState(windowIdentity);
   // `null`, solange keine Pane fokussiert ist (z. B. alle Slots leer beim
   // ersten Start) — jede Stelle unten, die eine `paneId` braucht, behandelt
   // das explizit, statt eine Pane vorzutäuschen, die es nicht gibt.
@@ -305,8 +311,11 @@ function App() {
   // Splash und darf erst aufgedeckt werden, wenn hier etwas zu sehen ist. Rust
   // wartet zusätzlich auf das Ende des Splash-Videos.
   useEffect(() => {
-    void invoke("main_ready");
-  }, []);
+    // Ticket 27, landmine 4: `main_ready`/`get_launch_project` gaten bereits
+    // serverseitig auf "main" (`splash.rs`/`launch.rs`) — dieses Gate hier
+    // erspart einem Sekundärfenster nur den nutzlosen IPC-Roundtrip.
+    if (windowId.isMain) void invoke("main_ready");
+  }, [windowId.isMain]);
 
   // Einmaliger Start-Ablauf (Ticket 06): erst die persistierte Sitzung
   // wiederherstellen (Template, Pane-Zuordnungen, letzte Dateiauswahl je
@@ -328,7 +337,7 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
-      terminalTabCount: number,
+      terminalTabs: readonly { title?: string | null }[],
       activeTab: { kind: "terminal"; index: number } | { kind: "file" },
       lastSelectedFile: string | null,
     ) => {
@@ -348,9 +357,17 @@ function App() {
       // damit nie die Invariante "mindestens ein Terminal-Tab": die Schleife
       // läuft dann einfach keinmal, es bleibt beim einen Default-Tab.
       const tabIds = [firstTabId];
-      for (let i = 1; i < terminalTabCount; i += 1) {
+      for (let i = 1; i < terminalTabs.length; i += 1) {
         tabIds.push(openTerminalTab(paneId));
       }
+      // Umbenennungen zurückspielen (Kontextmenü, `PaneTabs.tsx`) — je
+      // Position, nicht je `tabId`: das persistierte Schema kennt keine
+      // `tabId` (s. `PersistedActiveTab`-Kommentar in `sessionState.ts`),
+      // dieselbe Positions-Zuordnung wie `activeTab.index` unten.
+      tabIds.forEach((restoredTabId, i) => {
+        const title = terminalTabs[i]?.title;
+        if (title) renameTerminalTab(paneId, restoredTabId, title);
+      });
       if (activeTab.kind === "terminal") {
         switchToTerminalTab(paneId, tabIds[activeTab.index] ?? firstTabId);
       }
@@ -364,10 +381,12 @@ function App() {
     const run = async () => {
       const session = await loadSession();
       if (!isCancelled() && session) {
-        switchTemplate(restoredTemplate(session));
+        switchTemplate(restoredTemplate(session, windowId.label));
         // Projektpfad-geschlüsselt wie im Live-Zustand — anders als
         // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
-        // gespeicherte Zustand passt unverändert auf `expandedFolders`.
+        // gespeicherte Zustand passt unverändert auf `expandedFolders`. Beide
+        // Felder sind window-agnostische Globals (Ticket 27) — jedes Fenster
+        // liest denselben Stand, unabhängig von seinem eigenen `label`.
         setExpandedFolders(session.expanded_folders ?? {});
         if (session.explorer_width) {
           const restoredWidth = Math.min(
@@ -377,7 +396,7 @@ function App() {
           setExplorerWidth(restoredWidth);
           setPersistedExplorerWidth(restoredWidth);
         }
-        const slots = restoredSlots(session);
+        const slots = restoredSlots(session, windowId.label);
         // Vor dem ersten `await` in `restoreSlot` gesetzt, damit der erste
         // Render nach `switchTemplate` (leere Slots im neuen Template) sie
         // schon als "wird noch befüllt" statt als klickbare Picker zeigt.
@@ -397,7 +416,7 @@ function App() {
               : restoreSlot(
                   slotIndex,
                   slot.project_path,
-                  slot.terminal_tabs.length,
+                  slot.terminal_tabs,
                   slot.active_tab,
                   slot.file_tab?.path ?? null,
                 ),
@@ -409,8 +428,13 @@ function App() {
       // gegen das echte Dateisystem geprüft (existiert, ist ein
       // Verzeichnis), ein ungültiges/fehlendes Argument liefert hier einfach
       // `null` zurück. Landet immer in Slot 0, unabhängig davon, was die
-      // Sitzung dort gerade wiederhergestellt hat.
-      const launchPath = await invoke<string | null>("get_launch_project");
+      // Sitzung dort gerade wiederhergestellt hat. Ticket 27, landmine 4: nur
+      // "main" bekommt den CLI-Pfad überhaupt (server-seitig gegated,
+      // `windowId.isMain` erspart nur den IPC-Roundtrip für jedes andere
+      // Fenster).
+      const launchPath = windowId.isMain
+        ? await invoke<string | null>("get_launch_project")
+        : null;
       if (!isCancelled() && launchPath) {
         const project = await loadProject(launchPath);
         if (!isCancelled()) assignProject(0, project.path);
@@ -446,12 +470,23 @@ function App() {
   // eigener Speichern-Schritt nötig. Gesperrt bis `hydrated`, damit der
   // Leerzustand des allerersten Renders nicht die gerade geladene Sitzung
   // überschreibt, bevor sie überhaupt angewendet ist.
+  // Ticket 27: pro Fenster statt als ganzes Sitzungs-Array — `expanded_
+  // folders`/`explorer_width` bleiben dabei window-agnostische Globals
+  // (`session_save_window`s eigener Kommentar), jedes Fenster schreibt seinen
+  // eigenen Stand mit. Bei mehreren gleichzeitig offenen Fenstern gewinnt so
+  // der zuletzt speichernde für diese zwei Felder — ein bewusst unaufgelöster
+  // Rand dieser ansonsten window-genauen Persistenz (Ticket 27s Kriterien
+  // decken nur Template/Panes/Fokus-Modus ab), keine Regression gegenüber
+  // dem Vor-Ticket-27-Verhalten, das dieselbe Zuletzt-gewinnt-Semantik schon
+  // hatte, nur eben nie mit einem zweiten Fenster.
   useEffect(() => {
     if (!hydrated) return;
-    void saveSession(
-      buildSessionState(gridState, selectedFile, expandedFolders, persistedExplorerWidth),
+    void saveSessionWindow(
+      buildWindowState(windowId.label, gridState, selectedFile),
+      expandedFolders,
+      persistedExplorerWidth,
     );
-  }, [hydrated, gridState, selectedFile, expandedFolders, persistedExplorerWidth]);
+  }, [hydrated, gridState, selectedFile, expandedFolders, persistedExplorerWidth, windowId.label]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -859,6 +894,7 @@ function App() {
               onFocusPane={focusPane}
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}
+              onRenameTerminalTab={renameTerminalTab}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}

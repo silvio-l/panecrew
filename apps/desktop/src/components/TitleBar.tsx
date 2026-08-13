@@ -182,6 +182,20 @@ export function TitleBar({ zoom }: { zoom: number }) {
           </button>
         </ChromeTooltip>
 
+        <ChromeTooltip label={t("titleBar.newWindow")} align="end">
+          <button
+            type="button"
+            aria-label={t("titleBar.newWindow")}
+            // `window_open_new` generiert Label und Kaskaden-Position selbst
+            // (`windows.rs`) — aus JEDEM Fenster heraus aufrufbar, kein
+            // "main"-exklusiver Command wie `get_launch_project`.
+            onClick={() => void invoke("window_open_new")}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          >
+            <NewWindowIcon />
+          </button>
+        </ChromeTooltip>
+
         <ChromeTooltip label={t("titleBar.settings")} align="end">
           <button
             type="button"
@@ -345,6 +359,27 @@ function AppMark() {
 // verglichen sahen die Werte einheitlich aus (1,2 fast überall), gerendert
 // stach dieses Zahnrad mit 1,19px gegen 1,05px der Explorer-Icons heraus —
 // bei 24er viewBox auf 15px braucht 1,1px gerendert den Wert 1,76.
+// Fensterrahmen mit zentriertem Plus — dieselbe strokeWidth-Herleitung wie
+// `GearIcon` (1,1px gerendert bei 15px auf 24er viewBox).
+function NewWindowIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.76"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M12 10v6M9 13h6" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg
