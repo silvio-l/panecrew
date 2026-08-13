@@ -157,6 +157,17 @@ export function TerminalPane({
             Tab-Leiste ihn stauchte und die Chips mitzog). Ohne `flex-1` wächst
             der Name nie über seinen Textinhalt hinaus, `shrink` lässt ihn nur
             bei echtem Platzmangel trunkieren. */}
+        {/* Viertes Fokussignal, HUD-Sprache: das Prompt-Chevron vor dem
+            Namen — dieselbe Aussage wie das ❯ im ASCII-Emblem der leeren
+            Slots und der Amber-Cursor im Terminal darunter: hier landet die
+            Eingabe. Fester Platz statt bedingtem Mount, damit der Name beim
+            Fokuswechsel nicht springt; unfokussiert bleibt die Stelle leer. */}
+        <span
+          aria-hidden="true"
+          className="w-2 shrink-0 font-(family-name:--pc-terminal-fontFamily)"
+        >
+          {focused ? "❯" : ""}
+        </span>
         <span className="min-w-0 shrink truncate">{projectName}</span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />

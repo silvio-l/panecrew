@@ -190,7 +190,12 @@ function TerminalTabChip({
           } ${CHROME_FOCUS_RING}`}
         >
           <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClassName}`} />
-          {number}
+          {/* Terminalschrift + tabular-nums statt der Chrome-Schrift: die
+              Nummer ist HUD-Readout wie die Slot-Nummern der leeren Slots
+              (ProjectPicker.tsx) und bleibt bei jedem Wert gleich breit. */}
+          <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums">
+            {number}
+          </span>
         </button>
         {closable && (
           <button

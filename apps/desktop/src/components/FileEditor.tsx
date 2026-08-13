@@ -147,6 +147,14 @@ export function FileEditor({
             eine zusätzliche Namenszeile daneben wäre dieselbe Information ein
             zweites Mal. Layout seit 2026-08-13 Position-für-Position wie
             TerminalPane.tsx' Kopf (Begründung am `projectName`-Prop oben). */}
+        {/* Prompt-Chevron der fokussierten Pane — Position-für-Position wie
+            in TerminalPane.tsx' Kopf (Begründung dort). */}
+        <span
+          aria-hidden="true"
+          className="w-2 shrink-0 font-(family-name:--pc-terminal-fontFamily)"
+        >
+          {focused ? "❯" : ""}
+        </span>
         <span className="min-w-0 shrink truncate">{projectName}</span>
         <PaneTabs {...tabs} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
