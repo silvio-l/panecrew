@@ -19,6 +19,7 @@ pub mod settings_window;
 pub mod shell_history;
 pub mod shell_integration;
 pub mod splash;
+pub mod tool_detect;
 pub mod updater;
 pub mod windows;
 
@@ -27,6 +28,7 @@ use cli::Cli;
 use config_registry::ConfigRegistry;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
+use tool_detect::ToolDetector;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
@@ -57,6 +59,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(PtyState::default())
         .manage(WindowPtyRegistry::default())
+        .manage(ToolDetector::default())
         .manage(LaunchProject(launch_project))
         .manage(RevealGate::default())
         .manage(PendingUpdateCheck::default())
@@ -99,6 +102,7 @@ pub fn run() {
             pty_commands::pty_write,
             pty_commands::pty_resize,
             pty_commands::pty_kill,
+            pty_commands::pty_detect_tool,
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,

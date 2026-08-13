@@ -33,6 +33,12 @@ portable-pty = "0.9.0"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 trash = "5.2.6"
+# tool_detect.rs: Tool-Icon-Erkennung über den Prozessbaum statt über
+# Terminal-Ausgabe (deterministisches OS-Prozessstatus, kein Output-Parsing) —
+# `portable-pty`s eigenes `process_group_leader()` ist `#[cfg(unix)]`-only,
+# `sysinfo` ist der einzige hier bereits geprüfte Weg mit echtem
+# Windows-Pfad. Nur das "system"-Feature: kein component/disk/network/user.
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 # Only reachable from `cargo run --example gen-cli-docs` (examples get

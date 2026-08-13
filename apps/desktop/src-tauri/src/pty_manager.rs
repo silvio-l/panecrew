@@ -183,11 +183,19 @@ impl PtyHandle {
         child.kill()?;
         Ok(())
     }
+
+    /// The OS pid of the directly spawned child (the shell, not whatever it
+    /// later runs) — `tool_detect`'s production entry point walks the
+    /// process tree downward from here. Was `#[cfg(test)]`-only until the
+    /// tool-icon feature needed it outside tests too.
+    pub fn pid(&self) -> Option<u32> {
+        self.child.lock().unwrap().process_id()
+    }
 }
 
-// Test-only: no production caller queries child liveness (v0.1 has no exit
-// signal, see the IPC contract), so this stays out of the public surface
-// rather than sit as speculative API. `pub(crate)` (not private) so
+// Test-only: no other production caller queries child liveness (v0.1 has no
+// exit signal, see the IPC contract), so this stays out of the public
+// surface rather than sit as speculative API. `pub(crate)` (not private) so
 // `pty_commands`'s own tests can prove its overwrite-kills-the-old-handle
 // behavior via the real OS process, not just this module's tests.
 #[cfg(test)]
@@ -195,10 +203,6 @@ impl PtyHandle {
     pub(crate) fn has_exited(&self) -> anyhow::Result<bool> {
         let mut child = self.child.lock().unwrap();
         Ok(child.try_wait()?.is_some())
-    }
-
-    pub(crate) fn pid(&self) -> Option<u32> {
-        self.child.lock().unwrap().process_id()
     }
 }
 

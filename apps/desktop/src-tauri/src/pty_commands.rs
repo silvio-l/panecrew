@@ -9,6 +9,7 @@ use crate::pty_manager::{self, PtyHandle};
 use crate::settings_commands::{app_data_dir, ConfigRegistryState};
 use crate::settings_store::{self, Overrides};
 use crate::shell_integration;
+use crate::tool_detect::ToolDetector;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -219,6 +220,22 @@ pub fn kill_all_for_window(state: &PtyState, registry: &WindowPtyRegistry, windo
         let _ = kill(state, &tab_id);
     }
     registry.forget_window(window_label);
+}
+
+/// Tool-icon detection (wayfinder-map Task 11): returns the binary name of
+/// `tab_id`'s most active OS process-tree descendant, for the frontend to
+/// map onto an icon. `None` — not an error — both when the tab has no
+/// handle (already closed, a poll racing a close) and when the detector
+/// itself can't find the root pid anymore; the frontend treats both the
+/// same way, by simply not showing an icon.
+#[tauri::command]
+pub fn pty_detect_tool(
+    state: State<PtyState>,
+    detector: State<ToolDetector>,
+    tab_id: String,
+) -> Option<String> {
+    let pid = state.0.lock().unwrap().get(&tab_id).and_then(PtyHandle::pid)?;
+    detector.detect(pid)
 }
 
 fn with_handle(
