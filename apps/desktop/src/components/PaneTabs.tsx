@@ -109,21 +109,44 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // `pty_detect_tool` alle 2s (das Rust-Backend liefert bereits eine
 // kanonische Tool-ID, keinen rohen Binärnamen — es matcht selbst gegen
 // Prozessname UND volle Argumente, s. `tool_detect.rs`s Kopfkommentar zum
-// Node-Shebang-Problem), `resolveToolIcon` (toolIcons.ts) bildet sie auf ein
-// eigenes Monogramm-Glyph ab (kein kopiertes Marken-Logo) oder liefert
-// `null` — dann wird bewusst gar kein Icon gezeichnet, statt eines
-// Platzhalters für "unbekannt". Sitzt VOR der Zahl, in derselben Zeile.
+// Node-Shebang-Problem), `resolveToolIcon` (toolIcons.tsx) bildet sie auf ein
+// Icon ab (s. u. für die genaue Herkunft, dritte Runde) oder liefert `null`
+// — dann wird bewusst gar kein Icon gezeichnet, statt eines Platzhalters für
+// "unbekannt". Sitzt VOR der Zahl, in derselben Zeile.
 //
 // Nachtrag 2026-08-13, noch später (Nutzer-Feedback nach erstem Dogfood-Test:
 // "nicht bloß so ein Buchstabe", gern in Herstellerfarbe): erkannte Tools
 // bekommen eine gefüllte Badge in einer an den jeweiligen Hersteller
-// angelehnten Akzentfarbe (`toolIcons.ts`s `badgeClassName`, plausible
-// Annäherung, keine zertifizierte Markenfarbe) statt reinem `currentColor` —
-// bewusst weiterhin ein eigenes Buchstaben-Monogramm statt eines kopierten
-// Logos (Lizenz-/Trademark-Vorsicht). Nur die unerkannte Shell (`$`) bleibt
-// ungefüllt/`currentColor`, da sie keinen Hersteller hat, dem eine Farbe
-// zustünde — sie folgt weiterhin automatisch dem Aktiv/Inaktiv-Kontrast der
-// Zahl statt einer zweiten Farblogik.
+// angelehnten Akzentfarbe statt reinem `currentColor`. Nur die unerkannte
+// Shell (`$`) bleibt ungefüllt/`currentColor`, da sie keinen Hersteller hat,
+// dem eine Farbe zustünde — sie folgt weiterhin automatisch dem
+// Aktiv/Inaktiv-Kontrast der Zahl statt einer zweiten Farblogik.
+//
+// Nachtrag 2026-08-13, noch später (Nutzer-Feedback, zweite Runde: "echte
+// Tool-Icons, nicht einfach nur in Buchstaben"): das Buchstaben-Monogramm
+// ist jetzt ein eigenes kleines Vektor-Icon je Tool (`toolIcons.tsx`,
+// dieselbe Pfad-als-JSX-Bauweise wie `explorerIcons.tsx`) — Badge auf 16px
+// angehoben (vorher 14px), dieselbe `GLYPH_SIZE` wie die Datei-Icons im
+// Explorer, damit ein Vektor-Icon darin ebenso viel Luft hat wie dort. Die
+// Badge blendet beim ERSTEN Erscheinen (Tool gerade erkannt) statt hart
+// aufzupoppen mit `pc-overlay-in` ein (App.css, dieselbe 150ms-Kurve wie
+// Tooltip/Menü-Öffnen) — ein React-Mount, keine Radix-Presence, deshalb
+// `animation` statt `transition` (dieselbe Begründung wie im App.css-
+// Kommentar zu `pc-overlay-in`: eine reine `transition`-Klasse feuert nicht
+// beim Erst-Mount, nur bei einer Zustandsänderung eines bereits vorhandenen
+// Elements).
+//
+// Nachtrag 2026-08-13, noch später (Nutzer-Widerspruch, dritte Runde: "echte
+// Tool-Icons, nicht immer wieder diese Solo-Icons... richtige Tool-Icons
+// passen von den Firmen, lizenztechnisch unproblematisch"): die generischen
+// Konzept-Icons der zweiten Runde sind für Claude/Gemini/Copilot/OpenCode // brandlint-ok: welche Tool-IDs jetzt ein echtes Marken-Glyph bekommen, funktionale Nennung
+// jetzt echte, wiedererkennbare Marken-Glyphen aus dem Simple-Icons-Set
+// (CC0-Lizenz, reine Icon-Glyphen ohne Wortmarke — Herkunft, Lizenz und die
+// Nominativ-Begründung dazu ausführlich im Kopfkommentar von
+// `toolBadgeIcons.tsx`) statt eigener abstrakter Formen, mit den dort
+// dokumentierten offiziellen Markenfarben statt vorheriger Annäherungen.
+// Einzige Ausnahme: Codex hat im Quell-Set kein Marken-Glyph (weder das Tool // brandlint-ok: dokumentiert das Fehlen eines Marken-Glyphs für diese Tool-ID
+// Code-Klammern der vorigen Runde — dasselbe gilt unverändert für die Shell.
 //
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
@@ -377,11 +400,11 @@ function TerminalTabChip({
               {toolIcon && (
                 <span
                   aria-hidden="true"
-                  className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] font-(family-name:--pc-terminal-fontFamily) text-[9px] font-semibold leading-none transition-colors ${
+                  className={`flex size-4 shrink-0 animate-[pc-overlay-in_150ms_ease-out] items-center justify-center rounded-[3px] transition-colors ${
                     toolIcon.badgeClassName ?? "border border-current/35"
                   }`}
                 >
-                  {toolIcon.glyph}
+                  <toolIcon.Icon />
                 </span>
               )}
               {/* Terminalschrift + tabular-nums statt der Chrome-Schrift:

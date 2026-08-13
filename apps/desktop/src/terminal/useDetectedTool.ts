@@ -7,7 +7,7 @@ import { usePtyBackend } from "./ptyBackend";
 // bei vielen gleichzeitig offenen Tabs spürbar IPC-Last zu erzeugen.
 const POLL_INTERVAL_MS = 2000;
 
-/** Kanonische Tool-ID (siehe `TOOL_BY_ID` in `toolIcons.ts`) des aktivsten
+/** Kanonische Tool-ID (siehe `TOOL_BY_ID` in `toolIcons.tsx`) des aktivsten
  * erkannten Prozessbaum-Nachfahren einer Terminal-Tab-Shell — `null` bis zur
  * ersten Antwort oder wenn nichts (mehr) erkennbar ist (Tab noch nicht
  * gespawnt, gerade geschlossen, ein laufender aber nicht erkannter Prozess,
@@ -15,7 +15,7 @@ const POLL_INTERVAL_MS = 2000;
  * Argumente (Node-CLI-Shebang-Problem: der OS-Prozess heißt dann "node",
  * nicht nach dem Tool selbst) — dieser Hook bekommt schon die fertige ID,
  * kein roher Binärname mehr. Mapping auf ein anzeigbares Icon macht bewusst
- * nicht dieser Hook, sondern `toolIcons.ts`s `resolveToolIcon` — hier steht
+ * nicht dieser Hook, sondern `toolIcons.tsx`s `resolveToolIcon` — hier steht
  * nur die IPC-Seite. */
 export function useDetectedToolId(tabId: string): string | null {
   const ptyBackend = usePtyBackend();

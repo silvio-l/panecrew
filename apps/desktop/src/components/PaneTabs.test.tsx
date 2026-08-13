@@ -131,7 +131,7 @@ describe("PaneTabs", () => {
     it("hängt den erkannten Tool-Namen an Tooltip und aria-label an", async () => {
       const detectTool = vi
         .fn<PtyBackend["detectTool"]>()
-        .mockImplementation((tabId) => Promise.resolve(tabId === "tab-1" ? "claude" : null)); // brandlint-ok: kanonische Tool-ID als Test-Fixture für toolIcons.ts' Mapping
+        .mockImplementation((tabId) => Promise.resolve(tabId === "tab-1" ? "claude" : null)); // brandlint-ok: kanonische Tool-ID als Test-Fixture für toolIcons.tsx' Mapping
       renderTabsWithBackend(baseProps(), fakePtyBackend(detectTool));
 
       expect(await screen.findByRole("button", { name: "Terminal 1: Claude Code" })).toBeInTheDocument(); // brandlint-ok: erwarteter i18n-Anzeigename desselben Mappings
