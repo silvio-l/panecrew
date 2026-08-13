@@ -44,6 +44,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Voller Verlauf statt Shallow-Clone (Default: Tiefe 1) -- die
+          # Nightly-Pseudoversion weiter unten braucht die ECHTE, monoton
+          # wachsende Commit-Zahl; mit einem Shallow-Clone lieferte
+          # `git rev-list --count HEAD` immer 1, und die Pseudoversion wäre
+          # nie gestiegen -- derselbe Bug, den dieser Schritt eigentlich löst.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -58,6 +65,37 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # tauri-plugin-updater vergleicht beim Check rein per SemVer -- ohne
+      # diesen Schritt trüge jeder Nightly-Build für immer dieselbe, aus
+      # package.json/tauri.conf.json/Cargo.toml eingecheckte Versionsnummer,
+      # und ein zweiter Nightly-Build würde nie als Update erkannt (identische
+      # Version = "kein Update", egal wie viel Code sich geändert hat).
+      # Patch = Commit-Anzahl steigt mit jedem Push monoton, ist plattform-
+      # unabhängig deterministisch und ändert nur diese CI-Checkout-Kopie --
+      # die eingecheckte Version bleibt die reale, kommende Stable-Basis.
+      - name: Nightly-Pseudoversion setzen (nur in dieser CI-Kopie, nie committet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          MAJOR_MINOR=$(echo "$BASE_VERSION" | cut -d. -f1,2)
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          [[ "$COMMIT_COUNT" =~ ^[0-9]+$ ]] || { echo "git rev-list lieferte keine Zahl: '$COMMIT_COUNT'" >&2; exit 1; }
+          NIGHTLY_VERSION="${MAJOR_MINOR}.${COMMIT_COUNT}"
+          echo "Nightly-Version: $NIGHTLY_VERSION"
+          node -e "
+            const fs = require('fs');
+            const version = process.argv[1];
+            for (const file of ['apps/desktop/package.json', 'apps/desktop/src-tauri/tauri.conf.json']) {
+              const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+              json.version = version;
+              fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
+            }
+            const cargoPath = 'apps/desktop/src-tauri/Cargo.toml';
+            const cargo = fs.readFileSync(cargoPath, 'utf8');
+            fs.writeFileSync(cargoPath, cargo.replace(/^version = \"[^\"]+\"/m, 'version = \"' + version + '\"'));
+          " "$NIGHTLY_VERSION"
 
       - name: Import Apple-Signierzertifikat
         if: matrix.platform == 'macos-latest'

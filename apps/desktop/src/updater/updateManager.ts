@@ -13,14 +13,15 @@ const AUTO_CHECK_STORAGE_KEY = "panecrew.updater.lastAutoCheckAt";
 const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Aktivierungsgrenze aus Ticket 30, Punkt 7: der automatische Check bleibt
+ * Aktivierungsgrenze aus Ticket 30, Punkt 7: der automatische Check blieb
  * aus, bis das reale `panecrew`-Repo öffentlich ist — ein privates Repo
  * liefert auf die Updater-Endpunkte ohnehin nur 404/401, ein `false` hier
- * verhindert aber zusätzlich, dass jeder Start eine Fehlermeldung erzeugt.
- * Der manuelle Weg (Über-Fenster-Knopf, Menüpunkt) bleibt davon unberührt —
+ * verhinderte aber zusätzlich, dass jeder Start eine Fehlermeldung erzeugt.
+ * Seit 2026-08-13 ist das Repo öffentlich, die Bedingung ist damit erfüllt.
+ * Der manuelle Weg (Über-Fenster-Knopf, Menüpunkt) war davon nie abhängig —
  * das ist ein bewusster Nutzer-Klick, kein automatisches Verhalten.
  */
-export const AUTO_CHECK_ENABLED = false as boolean;
+export const AUTO_CHECK_ENABLED = true as boolean;
 
 export async function isHomebrewInstall(): Promise<boolean> {
   try {
