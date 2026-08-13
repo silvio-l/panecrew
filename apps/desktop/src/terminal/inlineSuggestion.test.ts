@@ -161,7 +161,7 @@ describe("attachInlineSuggestion", () => {
     expect(ghostText()).toBe("uri dev");
 
     // DECSET 1049 — der Umschalter, den vim und jedes Ink-basierte CLI-Tool
-    // (Claude Code) benutzen.
+    // (Ink-basierte TUI-Agenten) benutzen.
     await write("\x1b[?1049h");
     await settle();
     expect(terminal.buffer.active.type).toBe("alternate");

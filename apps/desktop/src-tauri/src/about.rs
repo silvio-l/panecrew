@@ -119,7 +119,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, check_updates: bool) {
 
 /// Echte Modalität statt nachgebauter: `set_enabled(false)` hängt dem
 /// Hauptfenster auf macOS ein natives, leeres Sheet an (`beginSheet:`, dieselbe
-/// Lösung wie in Electron), unter Windows/Linux schaltet es das Fenster hart
+/// Lösung wie in verbreiteten App-Frameworks), unter Windows/Linux schaltet es das Fenster hart
 /// ab. Solange das steht, nimmt das Hauptfenster keine Eingaben mehr an — es
 /// liegt nicht bloß etwas davor.
 fn block_main<R: Runtime>(app: &AppHandle<R>, blocked: bool) {

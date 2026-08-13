@@ -34,7 +34,7 @@ import { filterTree } from "../types/treeFilter";
 // genau dieser Aufbau bei JEDEM Pane-Wechsel neu an. Das ist die
 // Kernbewegung dieser App, und sie war dadurch spürbar zäh.
 //
-// Der Weg heraus ist der, den VS Code für seine eigenen Listen-/Baum-Widgets
+// Der Weg heraus ist der, den der Referenz-Editor für seine eigenen Listen-/Baum-Widgets
 // geht (`vs/base/browser/ui/list`): feste Zeilenhöhe, den aufgeklappten Baum
 // zu EINER flachen Liste ausrollen und daraus nur das mounten, was im
 // Sichtfenster steht (plus ein kleiner Puffer). Zwei Konsequenzen tragen
@@ -229,7 +229,7 @@ export function ExplorerPanel({
           paddingLeft, mit dem die Baumzeilen der Tiefe 0 beginnen: die
           Wurzel-Chevrons und die der obersten Ordner stehen damit in einer
           Spalte, der Projektname eine Einrückungsstufe links vor seinen
-          Kindern — dieselbe Staffelung wie in VS Codes Explorer. */}
+          Kindern — dieselbe Staffelung wie im Explorer des Referenz-Editors. */}
       {/* h-[41px] = die bisherigen 40px Innenhöhe plus die 1px-Hairline unten
           (border-box!): die Trennlinie kam mit der TUI-Runde 2026-08-13 dazu —
           sie rahmt den Baum wie die Pane-Header ihre Terminals — und hätte
@@ -264,7 +264,7 @@ export function ExplorerPanel({
             {project.name}
           </span>
         </button>
-        {/* Reihenfolge wie in VS Code, in drei Stufen von innen nach außen:
+        {/* Reihenfolge wie im Referenz-Editor, in drei Stufen von innen nach außen:
             zuerst die Aktionen, die etwas IM Baum anlegen, dann die auf dem
             ganzen Baum (Filtern, Aktualisieren, Einklappen), ganz rechts die
             auf dem Panel selbst (Ausblenden). Die Suche steht in der mittleren
@@ -1108,7 +1108,7 @@ export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
   );
 }
 
-// VS-Code-artiges "Sidebar umschalten"-Glyph: Fensterrahmen mit Seitenleiste.
+// Workbench-übliches "Sidebar umschalten"-Glyph: Fensterrahmen mit Seitenleiste.
 function SidebarIcon() {
   return (
     <svg
@@ -1337,7 +1337,7 @@ function TreeRow({
       // Fokusring hier INNEN (negativer Offset) statt über CHROME_FOCUS_RING:
       // die Zeile geht randlos über die ganze Panelbreite, ein nach außen
       // versetzter Ring würde vom scrollenden Container beschnitten. Das ist
-      // auch VS Codes eigene Lösung für Listenzeilen.
+      // auch die eigene Lösung des Referenz-Editors für Listenzeilen.
       className={`absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder) ${
         isSelected
           ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
@@ -1429,19 +1429,19 @@ function TreeRow({
   );
 }
 
-// Git-Deko in derselben Aufteilung wie in VS Codes Explorer: die Farbe liegt
+// Git-Deko in derselben Aufteilung wie im Explorer des Referenz-Editors: die Farbe liegt
 // auf dem Dateinamen, das Zeichen am rechten Zeilenrand.
 //
 // Seit 2026-08-05 hängt sie an einem EIGENEN Tokenpaar
 // (--pc-gitDecoration-modifiedResourceForeground/-untrackedResourceForeground,
-// VS Codes Kategorie 41, in `docs/agents/vscode-theming-research.md` schon
+// Workbench-Kategorie 41, in `docs/agents/editor-theming-research.md` schon
 // vorgemerkt) statt an den Seti-Icon-Tönen, an denen sie zuerst hing. Grund
 // war der hier gemessene Vorbehalt: --pc-icon-orange/-green tragen als
 // Dateiname nur im Dark-Theme (5,80:1 / 8,11:1 auf --pc-explorer-background),
 // im Light-Theme fallen sie auf 3,48:1 bzw. 2,51:1 und damit unter die 4,5:1,
 // die theme.css für Normalsatz führt. Als bloße Icon-Fläche (3:1) war das nie
 // aufgefallen. Das eigene Tokenpaar löst genau das: dark dieselben Werte wie
-// bisher, light VS Codes eigene dunklere Fassung (5,98:1 / 6,00:1). Die
+// bisher, light die eigene dunklere Fassung des Referenz-Editors (5,98:1 / 6,00:1). Die
 // Herleitung samt Zahlen steht bei den Tokens in theme.css, nicht hier —
 // Farbwerte gehören dorthin.
 const GIT_TEXT_COLOR: Record<GitChangeStatus, string> = {

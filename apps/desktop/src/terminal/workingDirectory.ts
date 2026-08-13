@@ -17,7 +17,7 @@ export interface ReportedDirectory {
  * Das Verzeichnis aus einer OSC-7-Meldung (`file://host/pfad`), oder null.
  *
  * OSC 7 ist der Weg, auf dem eine Shell ihr Arbeitsverzeichnis meldet — der
- * gleiche, den VS Code, WezTerm und Kitty benutzen. Gemeldet wird es von
+ * gleiche, den verbreitete Editoren und Terminal-Emulatoren benutzen. Gemeldet wird es von
  * PaneCrews eigenem Shell-Wrapper (`src-tauri/shell-integration/`), weil zsh
  * und bash das von sich aus nicht tun.
  *

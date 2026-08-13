@@ -15,7 +15,7 @@
  * Schließkreuz mit (zusätzlich zu Escape) — bei einem modalen Fenster ist der
  * sichtbare Ausgang Pflicht, nicht Zierde.
  *
- * Farbe: der Amber-Verlauf gehört laut CLAUDE.md ausschließlich dem Emblem.
+ * Farbe: der Amber-Verlauf gehört laut den internen Markenleitlinien ausschließlich dem Emblem.
  * Zustände der Update-Prüfung tragen deshalb KEINE Ampelfarben (grün/rot wären
  * zudem ANSI-Semantik aus den Terminals) — sie unterscheiden sich über Text
  * und Folgeaktion, nicht über einen Farbcode.
@@ -202,7 +202,7 @@ export function About() {
           <BrandMark />
           <div className="pointer-events-none flex flex-col items-center gap-1">
             {/* Markenname, keine Übersetzungssache — "PaneCrew" bleibt laut
-                CLAUDE.md in jeder Sprache gleich geschrieben. */}
+                Markenleitlinie in jeder Sprache gleich geschrieben. */}
             {/* eslint-disable-next-line no-restricted-syntax */}
             <h1 className="text-(length:--pc-chrome-fontSizeDisplay) font-semibold tracking-tight text-(--pc-foreground)">
               PaneCrew

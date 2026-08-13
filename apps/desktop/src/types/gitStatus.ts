@@ -14,7 +14,7 @@ export interface GitFileStatus {
 
 /** Deko pro Baum-Pfad — Dateien tragen ihren eigenen Status, Ordner den
  * bedeutendsten Status irgendeines Nachfahren ("modified" schlägt
- * "untracked", dieselbe Rangfolge wie in VS Codes eigener Aggregation). */
+ * "untracked", dieselbe Rangfolge wie in der Aggregation des Referenz-Editors). */
 export type GitDecorations = ReadonlyMap<string, GitChangeStatus>;
 
 export function gitDecorationsFromStatuses(

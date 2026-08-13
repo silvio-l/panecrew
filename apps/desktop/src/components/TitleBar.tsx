@@ -13,7 +13,7 @@ import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 //
 // Warum die Marke im Feld und nicht mehr links neben einem Wort: ohne Label
 // war sie dort ein Aufkleber ohne Bezug. Im Feld ist sie dasselbe Muster wie
-// VS Codes Command Center und Safaris Schild in der Adresszeile — an der
+// das Command Center des Referenz-Editors und das Schild-Emblem moderner Browser-Adresszeilen — an der
 // prominentesten Stelle des Chromes, und sie zeigt auf das, was die App eines
 // Tages öffnet.
 //
@@ -107,7 +107,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
 
         {/* Am FENSTER zentriert, nicht am verbleibenden Platz rechts der
             Ampeln: im früheren Drei-Spalten-Flexbau saß die Mitte um die halbe
-            Ampel-Einrückung zu weit rechts — neben einem echten VS-Code-Fenster
+            Ampel-Einrückung zu weit rechts — neben einem echten Referenz-Editor-Fenster
             sofort als Schiefstand lesbar. Absolut positioniert heißt hier
             zugleich: unabhängig davon, ob links Ampel-Freiraum steht oder im
             Vollbild nicht. Das Feld ist selbst Drag-Region, als reine Deko wäre
@@ -165,7 +165,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
 //    viewBox — bei 16px sind das 0,3px und 0,7px, also Subpixel. Er glüht dort
 //    nicht, er legt einen bräunlichen Saum um die Form und verschmiert genau
 //    die Gehrungsfuge, die die Marke erkennbar macht (bei 12facher
-//    Vergrößerung gegeneinandergehalten). Das ist der in CLAUDE.md vorgesehene
+//    Vergrößerung gegeneinandergehalten). Das ist der in den Markenleitlinien vorgesehene
 //    Fall: Detail, das bei 1024px trägt, muss für 16px neu gezeichnet werden,
 //    statt den Master zu verkleinern. Der Master behält den Glow für die
 //    großen Icon-Größen.

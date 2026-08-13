@@ -14,7 +14,7 @@
 //!
 //! `read_session` also validates every `project_path` against the real
 //! filesystem: a folder that no longer exists must fall back to an empty
-//! slot silently (CLAUDE.md, ticket 06) rather than surfacing an error or
+//! slot silently (project guideline, ticket 06) rather than surfacing an error or
 //! failing the whole restore.
 
 use std::collections::HashMap;
@@ -277,7 +277,7 @@ mod tests {
                             file_tab: Some(PersistedFileTab {
                                 path: "src/App.tsx".to_string(),
                             }),
-                            adapter_id: Some("claude-code".to_string()),
+                            adapter_id: Some("demo-agent".to_string()),
                         }),
                         terminal_only_pane(&project_b),
                     ],

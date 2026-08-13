@@ -9,7 +9,7 @@ body,
 }
 
 /*
- * Motion-Regel (2026-08-13, „1a"-Entscheidung, docs/decisions.md → charm-Linie
+ * Motion-Regel (2026-08-13, „1a"-Entscheidung, docs/decisions.md → Website-Design-Linie
  * auch in der App; ersetzt die 0ms-Regel der Synthwave-Spec vom selben Tag):
  * HOVER-Feedback im Chrome wechselt kurz und knackig — Tailwinds
  * transition-colors/-opacity (150ms ease) an den interaktiven Elementen sind
@@ -425,7 +425,7 @@ body {
   gap: 0.3125rem;
 }
 
-/* Tastenkappe im VS-Code-Idiom: 1px-Hairline, kein Relief, kein Schatten. */
+/* Tastenkappe im Workbench-Idiom: 1px-Hairline, kein Relief, kein Schatten. */
 .pc-cdpopup__hint kbd {
   padding: 0 0.25rem;
   border: 1px solid var(--pc-widget-border);

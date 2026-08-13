@@ -57,12 +57,12 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
         let dir = root.join("zsh").to_string_lossy().into_owned();
         return ShellIntegration {
             // `-l`: a Finder-launched app's PTY isn't a login shell by
-            // default, unlike Terminal.app/iTerm2's own default profile — so
+            // default, unlike the defaults of interactive terminal apps — so
             // without this, `.zprofile` (where Homebrew's and nvm's own
             // installers put PATH setup, not `.zshrc`) never runs, and tools
             // installed through them silently vanish from every pane
             // (2026-08-12, reported as `node: command not found` from inside
-            // a pane's Claude Code). panecrew.zshenv sources the user's real
+            // a pane's TUI agent). panecrew.zshenv sources the user's real
             // `.zprofile` itself — see the comment there for why zsh's own
             // automatic lookup can't be relied on once ZDOTDIR points here.
             args: vec!["-l".into()],
@@ -220,7 +220,7 @@ mod tests {
     /// The whole point of the `-l` flag added in `for_shell` (2026-08-12): a
     /// pane's zsh must read the user's real `.zprofile` — where Homebrew's
     /// and nvm's own installers put PATH setup, not `.zshrc` — same as it
-    /// already does in Terminal.app/iTerm2. Run through a real PTY, same
+    /// already does in Terminal.app. Run through a real PTY, same
     /// reasoning as the bash test above: the ZDOTDIR hand-off only proves
     /// itself once zsh has actually walked its own startup-file chain.
     #[test]

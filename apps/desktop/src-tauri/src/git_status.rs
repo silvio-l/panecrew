@@ -1,4 +1,4 @@
-//! Read-only git status for the explorer's change decorations (VS Code calls
+//! Read-only git status for the explorer's change decorations (reference editors call
 //! these "SCM decorations": a modified/untracked file's name is colored, and
 //! the color propagates up to its ancestor folders).
 //!

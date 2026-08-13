@@ -1,5 +1,5 @@
 // Die Wahl der Grid-Geometrie: ein segmentierter Streifen aus sieben Knöpfen,
-// rechtsbündig über dem Raster (dort, wo VS Code seine Editor-Layout-Aktionen
+// rechtsbündig über dem Raster (dort, wo der Referenz-Editor seine Layout-Aktionen
 // führt). Bewusst schmal und gedimmt — der Bildschirm gehört den Terminals,
 // und dies ist eine Einstellung, kein Werkzeug, das man ständig braucht.
 //

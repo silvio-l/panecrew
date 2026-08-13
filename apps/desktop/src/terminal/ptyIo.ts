@@ -21,7 +21,7 @@ export function createChunkDecoder(): (bytes: ArrayBuffer | number[]) => string 
 /**
  * Fallengelassene Dateipfade als Terminal-Eingabe. Pfade mit Leerraum werden
  * POSIX-konform in einfache Anführungszeichen gesetzt (enthaltene ' werden
- * korrekt ausgebrochen). In einem TUI-Prompt (Claude Code) landen die
+ * korrekt ausgebrochen). In einem TUI-Prompt (Ink-basierter Agent) landen die
  * Anführungszeichen als reine Zeichen — das ist der gewollte Kompromiss, weil
  * derselbe Text in einer Shell sonst in mehrere Argumente zerfiele. Die
  * Quotierung ist POSIX-Syntax; für Windows-Shells ist sie unverifiziert

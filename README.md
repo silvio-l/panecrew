@@ -4,8 +4,7 @@ A cross-platform desktop app (macOS + Windows) for running multiple real, simult
 terminal sessions across different projects at once — a grid of live panes, not a tab-switcher —
 paired with a single file explorer that automatically follows whichever pane currently has focus.
 
-Tool-agnostic by design: hosts any CLI coding agent (Claude Code, Codex, Gemini CLI, plain shells)
-equally well.
+Tool-agnostic by design: hosts any CLI coding agent — or a plain shell — equally well.
 
 ## Status
 

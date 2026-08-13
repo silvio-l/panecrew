@@ -62,7 +62,7 @@ export function routeCompletionKey(
 
   // Pfeil rechts (am Zeilenende) und Ctrl+F übernehmen den Geistertext — die
   // fish-Bindungen. Tab bleibt hier bewusst außen vor: PaneCrew hat, anders
-  // als Warp, keinen eigenen Zeileneditor und könnte die echte Tab-Completion
+  // als Terminals mit eigenem Zeileneditor, keinen solchen und könnte die echte Tab-Completion
   // der Shell nicht ersetzen, sondern nur verdrängen.
   if (bare && event.key === "ArrowRight") return suggestion.accept();
   if (

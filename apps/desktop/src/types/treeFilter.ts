@@ -2,7 +2,7 @@ import type { TreeNode } from "./project";
 
 // Reine Filterlogik für die pane-lokale Explorer-Suche — clientseitig über
 // den bereits geladenen Baum, kein neuer Backend-Call (Ergänzung zur globalen,
-// noch funktionslosen Suche in der Titelzeile). Nach VS-Code-Vorbild: gezeigt
+// noch funktionslosen Suche in der Titelzeile). Nach dem Vorbild des Referenz-Editors: gezeigt
 // wird nur der Pfad zu Treffern, nicht ganze Geschwister-Listen, die selbst
 // nicht treffen — auch wenn ein Elternordner zufällig ebenfalls passt, werden
 // seine Kinder trotzdem weiter gefiltert statt komplett durchgereicht.

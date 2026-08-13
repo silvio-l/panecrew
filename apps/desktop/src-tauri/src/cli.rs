@@ -13,7 +13,7 @@ use clap::Parser;
 ///
 /// No explicit `name` override here: the compiled binary is currently called
 /// `desktop` (the Cargo package name, matching the `apps/desktop` scaffold
-/// folder), not `panecrew` — CLAUDE.md's brand section wants the eventual CLI
+/// folder), not `panecrew` — the project's brand guidelines want the eventual CLI
 /// binary to be lowercase `panecrew`, but renaming it is its own separate,
 /// larger decision (Cargo package rename + `tauri.conf.json`'s
 /// `mainBinaryName`), not something to fold into this doc silently. Leaving

@@ -16,7 +16,7 @@ PANECREW_USER_ZDOTDIR=${ZDOTDIR:-$HOME}
 
 # Spawned with -l (shell_integration.rs) so PATH setup living in .zprofile —
 # where Homebrew's and nvm's own installers put it, not .zshrc — takes effect
-# here too, same as it already does in Terminal.app/iTerm2's own default
+# here too, same as it already does in Terminal.app's own default
 # login shell. Sourced explicitly, because zsh's own automatic .zprofile
 # lookup happens as a separate step AFTER this file returns, by which point
 # ZDOTDIR below has already been flipped to PaneCrew's own directory — zsh

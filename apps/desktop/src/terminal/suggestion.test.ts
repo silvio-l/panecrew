@@ -71,7 +71,7 @@ describe("computeGhost", () => {
   });
 
   it("zeigt nichts im Alternate-Screen-Puffer", () => {
-    // Das Gate für Vollbild-Programme: vim, Claude Code und jedes andere
+    // Das Gate für Vollbild-Programme: vim, TUI-Agenten und jedes andere
     // Ink-TUI malen hier ihre eigene Eingabezeile.
     expect(ghostOf("pnpm t", { bufferType: "alternate" })).toBe("");
   });

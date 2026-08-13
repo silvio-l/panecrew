@@ -7,9 +7,9 @@
  * two questions — which project is this pane, and which pane is live. Refuses
  * the editor-shell-with-terminal-drawer default.
  *
- * OWN-WORLD: VS Code's token grammar — warm-dark grounds (#1E1E1E family),
+ * OWN-WORLD: the reference editor's token grammar — warm-dark grounds (#1E1E1E family),
  * 1px hairline borders, 13px system-UI chrome type, ui-monospace terminal
- * text — softened by Warp's polish: gentle pane radii, relaxed terminal
+ * text — softened by modern-terminal polish: gentle pane radii, relaxed terminal
  * line-height, one accent reserved exclusively for focus. (The contract wrote
  * that accent as blue; the user moved it to the brand's amber on 2026-08-05 —
  * derivation in theme.css above --pc-focusBorder.)
@@ -20,9 +20,9 @@
  *
  * FIRST VIEWPORT: 2×2 grid of live terminals owning the clear majority of the
  * window; on the left a compact, permanently visible explorer panel — the
- * file tree directly, no icon rail, no overlay — styled 1:1 after VS Code's
+ * file tree directly, no icon rail, no overlay — styled 1:1 after the reference editor's
  * current explorer (folder chevrons, type-colored file icons, muted tree
- * foreground with brighter active entry); a slim VS-Code-style title bar
+ * foreground with brighter active entry); a slim workbench-style title bar
  * (macOS titleBarStyle Overlay — native traffic lights kept, left padding
  * reserved for them, drag region) with app identity left, a centered
  * non-functional command-palette/search placeholder ("Suchen oder Befehl
@@ -34,7 +34,7 @@
  * luminous glow, comp-2 material quality — the user revoked their own approval
  * of the glow on 2026-08-05; the accent border alone carries the focus now.)
  *
- * FORM: Canon path, user-pinned (VS Code grammar, Warp warmth); no seed
+ * FORM: Canon path, user-pinned (workbench grammar, terminal warmth); no seed
  * rolled. Comp-Konsolidierung (Nutzer-Freigabe 2026-08-04): Optik/Material
  * aus mocks/comp-2-overlay-explorer.png, Explorer-Struktur und dünne
  * Pane-Header aus mocks/comp-3-zero-chrome.png.

@@ -388,7 +388,7 @@ export function usePtyTerminal(
       if (routeCompletionKey(event, suggestion)) return false;
 
       // Shift+Enter: weicher Zeilenumbruch statt Absenden. Ink-basierte CLI-
-      // Tools (claude) lesen den blanken Linefeed als Zeilenumbruch im Prompt,
+      // Tools lesen den blanken Linefeed als Zeilenumbruch im Prompt,
       // während \r (Enter) abschickt.
       if (
         event.key === "Enter" &&
@@ -412,7 +412,7 @@ export function usePtyTerminal(
         return false;
       }
 
-      // Ctrl+Shift+C/V — die VS-Code-Bindings auf Windows/Linux. Cmd+C/Cmd+V
+      // Ctrl+Shift+C/V — die verbreiteten Editor-Bindings auf Windows/Linux. Cmd+C/Cmd+V
       // (macOS) und Ctrl+C (SIGINT) bleiben bewusst unangetastet: die
       // Cmd-Varianten bedient xterm.js selbst über die nativen copy/paste-
       // ClipboardEvents seiner Helper-Textarea.
@@ -507,7 +507,7 @@ export function usePtyTerminal(
 // Hardware-beschleunigtes Rendern statt xterms DOM-Default. Der DOM-Renderer
 // baut jede Zelle als eigenen Knoten auf; bei bis zu vier Panes, die
 // gleichzeitig Ausgabe schreiben (ein Build, ein `pnpm install`, ein Token für
-// Token streamender CLI-Agent), ist genau das der Grund, aus dem VS Code sein
+// Token streamender CLI-Agent), ist genau das der Grund, aus dem der Referenz-Editor sein
 // integriertes Terminal auf @xterm/addon-webgl umgestellt hat.
 //
 // Der Aufruf gehört zwingend HINTER terminal.open(): `WebglAddon.activate()`

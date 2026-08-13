@@ -6,7 +6,7 @@
 #
 # Why this isn't just `pnpm tauri icon <master.png>`: that command alone
 # produces a *full-bleed* .icns, which is wrong for macOS — real macOS apps
-# (VS Code, Warp, Terminal.app measured 2026-08-04) bake ~10% transparent
+# (measured across common editor and terminal apps, 2026-08-04) bake ~10% transparent
 # margin + rounded superellipse (n=5) corners directly into the icon artwork
 # instead of relying on OS auto-masking. So .icns is rebuilt separately from
 # a padded/masked variant of the same master via iconutil; every other

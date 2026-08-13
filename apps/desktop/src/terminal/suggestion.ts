@@ -87,7 +87,7 @@ const MAX_CANDIDATES = 12;
  * anzeigen".
  *
  * Das Alternate-Screen-Gate steht bewusst hier und nicht nur im Aufrufer:
- * Vollbild-Programme (vim, jedes Ink-basierte CLI-Tool wie Claude Code)
+ * Vollbild-Programme (vim, jedes Ink-basierte CLI-Tool)
  * malen ihre eigene Eingabezeile über dieselbe Bildschirmfläche. Eine
  * Ergänzung dort wäre nicht nur nutzlos, sondern läge sichtbar im fremden
  * Layout.
