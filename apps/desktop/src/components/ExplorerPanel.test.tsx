@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Tooltip } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,6 +11,12 @@ import type { Project, TreeNode } from "../types/project";
 // Rückgabewert angewiesen ist — geprüft wird jeweils NUR, mit welchen
 // Argumenten `invoke` aufgerufen wurde.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
+// ExplorerPanel hängt seit Ticket 05 über `useSettings` am
+// `settings:changed`-Live-Reload — ohne Mock griffe der echte Tauri
+// `listen()` nach internem Bridge-Zustand, den es unter jsdom nicht gibt.
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({
   revealItemInDir: vi.fn(() => Promise.resolve()),
 }));
@@ -310,5 +316,42 @@ describe("ExplorerPanel", () => {
         to: "/Users/dev/projects/storefront/notes.md",
       });
     });
+  });
+
+  it("löscht ohne Rückfrage, wenn explorer.confirmBeforeDelete auf false steht (Ticket 05)", async () => {
+    vi.mocked(invoke).mockImplementation((cmd) => {
+      if (cmd === "settings_get_schema") return Promise.resolve([]);
+      if (cmd === "settings_get_values") {
+        return Promise.resolve({ "explorer.confirmBeforeDelete": false });
+      }
+      return Promise.resolve();
+    });
+
+    renderPanel([{ name: "readme.md", isDirectory: false }]);
+
+    // `useSettings` lädt asynchron über IPC — erst abwarten, sonst greift
+    // beim Klick noch der Default (`true`, s. useSettings-Doku oben). Der
+    // `act`-Flush danach lässt die bereits aufgelöste Antwort tatsächlich
+    // noch als State-Update ankommen, bevor geklickt wird.
+    await vi.waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("settings_get_values");
+    });
+    await act(() => Promise.resolve());
+
+    const row = mountedRows()[0];
+    if (!row) throw new Error("Baumzeile nicht gefunden");
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Löschen" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("explorer_delete", {
+        path: "/Users/dev/projects/storefront/readme.md",
+      });
+    });
+
+    // Wieder auf den Datei-weiten Default zurück, damit ein späterer Lauf
+    // (anderer Testfile-Prozess, `--watch`) nicht an dieser Überschreibung hängen bleibt.
+    vi.mocked(invoke).mockImplementation(() => Promise.resolve());
   });
 });

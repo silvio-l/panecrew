@@ -20,10 +20,26 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(() => Promise.resolve()),
+  // `settings_get_schema`/`settings_get_values` bekommen einen expliziten
+  // Leer-Default: ExplorerPanel hängt seit Ticket 05 über `useSettings` am
+  // Kommandosurface (live "explorer.confirmBeforeDelete"), ein generisches
+  // `Promise.resolve()` (also `undefined`) würde dessen Zustand kaputt
+  // machen, statt schlicht "noch nichts überschrieben".
+  invoke: vi.fn((cmd: string) => {
+    if (cmd === "settings_get_schema") return Promise.resolve([]);
+    if (cmd === "settings_get_values") return Promise.resolve({});
+    return Promise.resolve();
+  }),
   Channel: class {
     onmessage: (payload: number[]) => void = () => undefined;
   },
+}));
+
+// ExplorerPanel/useSettings abonniert `settings:changed` fürs Live-Reload
+// (Ticket 05) — ohne Mock griffe der echte Tauri-`listen()` nach internem
+// Bridge-Zustand, den es unter jsdom nicht gibt.
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => undefined)),
 }));
 
 // Greift in die xterm-Attrappe hinein: der Tastatur-Handler der Pane wird nur
@@ -315,6 +331,17 @@ describe("App", () => {
       "pty_spawn",
       expect.anything(),
     );
+  });
+
+  it("öffnet über das Zahnrad in der Titelleiste das Settings-Fenster (Ticket 03)", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Einstellungen" }));
+
+    // Das Fenster-Singleton (show/focus vs. neu bauen) lebt vollständig in
+    // settings_window.rs::show — die Titelleiste selbst kennt nur den einen
+    // Befehl.
+    expect(invokeMock).toHaveBeenCalledWith("settings_open_window");
   });
 
   it("überspringt den Picker, wenn ein CLI-Startprojekt vorliegt", async () => {

@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "../theme.css";
+
+/* Eigenes Dokument, eigener Tailwind-Durchlauf — wie about.css: das
+   Settings-Fenster teilt sich keinen Bundle mit dem Hauptfenster. */
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--pc-app-background);
+  color: var(--pc-foreground);
+  font-family: var(--pc-chrome-fontFamily);
+  -webkit-font-smoothing: antialiased;
+}

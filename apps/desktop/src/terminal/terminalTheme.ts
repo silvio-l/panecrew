@@ -30,9 +30,11 @@ export function readTerminalOptions(): {
 }
 
 /**
- * Bewusst ohne MutationObserver auf data-theme: es gibt noch keinen
- * Theme-Umschalter, den er beobachten könnte — dann ist er hinzuzufügen,
- * nicht jetzt auf Vorrat. Die Auswahlfarbe kommt aus dem eigenen
+ * Der Theme-Umschalter existiert jetzt (Settings-System, `appearance.theme`)
+ * — `usePtyTerminal.ts` beobachtet `data-theme` per MutationObserver und
+ * ruft diese Funktion bei jedem Wechsel erneut auf, um bereits laufende
+ * xterm-Instanzen nachzuziehen (sie lesen die Tokens sonst nur einmal, bei
+ * Konstruktion). Die Auswahlfarbe kommt aus dem eigenen
  * Marken-Amber-Token --pc-terminal-selectionBackground, nicht aus dem
  * neutralen Listen-Token und nicht direkt aus --pc-focusBorder (Nutzerwunsch
  * 2026-08-12: Auswahl soll optisch als PaneCrew-Amber erkennbar sein — die

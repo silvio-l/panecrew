@@ -4,9 +4,9 @@
   // echten Gebrauch gekommen und steht deshalb nicht mehr hier. Seit dem
   // Über-Fenster (Links auf GitHub) gilt dasselbe für @tauri-apps/plugin-opener.
 
-  // Knip erkennt splash.html/about.html/harness.html als weitere Vite-
-  // Einstiege, liest aber deren <script src> nicht — ohne diese Einträge
-  // gelten die Module als tot. harness.html selbst ist NICHT in
+  // Knip erkennt splash.html/about.html/harness.html/settings.html als
+  // weitere Vite-Einstiege, liest aber deren <script src> nicht — ohne diese
+  // Einträge gelten die Module als tot. harness.html selbst ist NICHT in
   // vite.config.ts' rollupOptions.input registriert (ADR-0001, Ticket 01) —
   // das eine hält es aus dem Produktions-Bundle, das andere hier aus Knips
   // Totcode-Liste.
@@ -14,5 +14,6 @@
     "src/splash/splash.ts",
     "src/about/main.tsx",
     "src/harness/main.tsx",
+    "src/settings/main.tsx",
   ]
 }

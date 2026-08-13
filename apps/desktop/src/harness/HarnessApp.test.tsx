@@ -18,6 +18,13 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
+// ExplorerPanel hängt seit Ticket 05 über `useSettings` am
+// `settings:changed`-Live-Reload — ohne Mock griffe der echte Tauri
+// `listen()` nach internem Bridge-Zustand, den es unter jsdom nicht gibt.
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
+
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
     onDragDropEvent: vi.fn(() => Promise.resolve(() => undefined)),

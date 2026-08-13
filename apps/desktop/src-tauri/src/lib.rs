@@ -1,25 +1,37 @@
 pub mod about;
 pub mod cli;
+pub mod config_core;
+pub mod config_manifest;
+pub mod config_registry;
 pub mod explorer_fs;
 pub mod external_editor;
 pub mod git_status;
+pub mod json_store;
 pub mod launch;
 pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
 pub mod session_store;
+pub mod settings_commands;
+pub mod settings_store;
+pub mod settings_window;
 pub mod shell_history;
 pub mod shell_integration;
 pub mod splash;
 pub mod updater;
+pub mod windows;
 
 use about::PendingUpdateCheck;
 use cli::Cli;
+use config_registry::ConfigRegistry;
 use launch::LaunchProject;
-use pty_commands::{PtyState, ShellIntegrationDir};
+use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
+use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
-use tauri::Manager;
+use std::sync::Mutex;
+use tauri::{Manager, RunEvent};
+use windows::QuittingFlag;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,22 +40,38 @@ pub fn run() {
     let launch_cwd = std::env::current_dir().unwrap_or_default();
     let launch_project = launch::resolve_launch_project(cli.project.as_deref(), &launch_cwd);
 
+    // Registered once at startup, before any command can read/write a
+    // setting — core settings go through the exact same public
+    // `ConfigRegistry::register` API an extension's manifest parsing will
+    // use later (`config_manifest.rs`), so this call can never fail in
+    // practice; a failure here would mean two core entries collided, which
+    // is a programming error worth surfacing loudly rather than swallowing.
+    let mut config_registry = ConfigRegistry::new();
+    config_core::register_core_settings(&mut config_registry)
+        .expect("core settings must register without namespace/duplicate conflicts");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(PtyState::default())
+        .manage(WindowPtyRegistry::default())
         .manage(LaunchProject(launch_project))
         .manage(RevealGate::default())
         .manage(PendingUpdateCheck::default())
+        .manage(ConfigRegistryState(Mutex::new(config_registry)))
+        .manage(QuittingFlag::default())
         .menu(menu::build)
         .on_menu_event(|app, event| match event.id().as_ref() {
             menu::ABOUT => about::show(app, false),
             menu::CHECK_UPDATES => about::show(app, true),
             _ => {}
         })
-        .on_window_event(about::on_window_event)
+        .on_window_event(|window, event| {
+            about::on_window_event(window, event);
+            windows::on_window_event(window, event);
+        })
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
             // panes can't race on the same three files. A failure is
@@ -93,7 +121,26 @@ pub fn run() {
             about::about_take_update_request,
             about::about_visible,
             updater::updater_is_homebrew_install,
+            settings_commands::settings_get_schema,
+            settings_commands::settings_get_values,
+            settings_commands::settings_set_value,
+            settings_commands::settings_reset_value,
+            settings_commands::settings_read_raw,
+            settings_commands::settings_write_raw,
+            settings_commands::settings_open_window,
+            windows::window_open_new,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            // Ticket 27, landmine 3: the only reliable "the whole app is
+            // quitting, not just one window closing" signal Tauri exposes.
+            // Fired once, before any of the per-window `CloseRequested`
+            // events below it in the same quit sequence — setting the flag
+            // here is what lets `windows::on_window_event` tell the two
+            // cases apart.
+            if let RunEvent::ExitRequested { .. } = event {
+                app_handle.state::<QuittingFlag>().set();
+            }
+        });
 }

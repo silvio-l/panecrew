@@ -571,6 +571,28 @@ export function usePtyTerminal(
     };
   }, [tabId, cwd, backend]);
 
+  // Ticket 05 (Settings-System, Live-Reload): ein Theme-Wechsel setzt nur
+  // CSS-Custom-Properties neu — eine bereits laufende xterm-Instanz hat ihr
+  // `ITheme` aber oben nur EINMAL, bei Konstruktion, gelesen und würde ohne
+  // dies auf dem alten Theme hängen bleiben, obwohl das restliche Chrome
+  // längst umgeschaltet hat. Eigener, von der konkreten Änderungsquelle
+  // entkoppelter Effekt (MutationObserver statt eines `settings:changed`-
+  // Listeners): funktioniert unabhängig davon, WAS `data-theme` gerade
+  // gesetzt hat, und bleibt über den Wechsel der Terminal-Instanz im Effekt
+  // oben hinweg gültig (deshalb kein `terminal`-Closure-Zugriff, sondern
+  // `terminalRef.current` erst zur Feuerzeit gelesen).
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const terminal = terminalRef.current;
+      if (terminal) terminal.options.theme = readTerminalTheme();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
   const copySelection = useCallback(() => {
     const terminal = terminalRef.current;
     if (terminal) copySelectionFrom(terminal);

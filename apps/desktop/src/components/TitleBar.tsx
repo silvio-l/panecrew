@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { setLanguage, SUPPORTED_LANGUAGES } from "../i18n";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
@@ -185,6 +186,10 @@ export function TitleBar({ zoom }: { zoom: number }) {
           <button
             type="button"
             aria-label={t("titleBar.settings")}
+            // `settings_open_window` ist selbst schon das Singleton (Ticket 03,
+            // settings_window.rs::show): ein zweiter Klick bei bereits offenem
+            // Fenster holt es nur nach vorn, öffnet nie ein zweites.
+            onClick={() => void invoke("settings_open_window")}
             className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <GearIcon />

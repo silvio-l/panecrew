@@ -23,6 +23,7 @@ import { isPathOrDescendant, remapRenamedPath } from "../explorer/filePath";
 import { searchProjectTree } from "../explorer/searchTree";
 import { vscodeIsInstalled } from "../explorer/vscodeDetection";
 import { isMacPlatform } from "../shortcuts/platform";
+import { useSettings } from "../settings/useSettings";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
 
@@ -150,6 +151,13 @@ export function ExplorerPanel({
   onEntryDeleted: (relPath: string) => void;
 }) {
   const { t } = useTranslation();
+  // Ticket 05 (Live-Reload): derselbe `useSettings`, den auch der Settings-
+  // Editor nutzt — sein `values`-Stand hängt am `settings:changed`-Event, ein
+  // Umschalten dieser Einstellung wirkt also sofort, ohne dass der Explorer
+  // neu gemountet werden muss. Fehlt der Wert (noch nicht geladen), gilt der
+  // registrierte Default (`true`) — nie ungefragt löschen, solange unklar ist.
+  const { values: settingsValues } = useSettings();
+  const confirmBeforeDelete = settingsValues["explorer.confirmBeforeDelete"] !== false;
   // AUFgeklappte Ordner sind seit dem Umbau auf Lazy-Loading (2026-08-13) die
   // Quelle der Wahrheit, nicht mehr ein „eingeklappt"-Set gegen die Menge
   // ALLER Ordnerpfade gerechnet: Lazy-Loading kennt „alle Ordner des
@@ -471,10 +479,7 @@ export function ExplorerPanel({
     return null;
   };
 
-  const confirmDelete = () => {
-    if (pendingDelete === null) return;
-    const { path } = pendingDelete;
-    setPendingDelete(null);
+  const performDelete = (path: string) => {
     void invoke("explorer_delete", { path: `${project.path}/${path}` })
       .then(() => {
         setExpanded((prev) => {
@@ -496,6 +501,13 @@ export function ExplorerPanel({
       });
   };
 
+  const confirmDelete = () => {
+    if (pendingDelete === null) return;
+    const { path } = pendingDelete;
+    setPendingDelete(null);
+    performDelete(path);
+  };
+
   const menuActions: RowMenuHandlers = {
     onReveal: (row) => {
       void revealItemInDir(`${project.path}/${row.path}`).catch((error: unknown) => {
@@ -510,8 +522,13 @@ export function ExplorerPanel({
       );
     },
     onStartRename: (row) => setRenamingPath(row.path),
-    onRequestDelete: (row) =>
-      setPendingDelete({ path: row.path, isFolder: row.isFolder, name: row.node.name }),
+    onRequestDelete: (row) => {
+      if (confirmBeforeDelete) {
+        setPendingDelete({ path: row.path, isFolder: row.isFolder, name: row.node.name });
+      } else {
+        performDelete(row.path);
+      }
+    },
     onCopyPath: (row) => {
       void navigator.clipboard
         .writeText(`${project.path}/${row.path}`)

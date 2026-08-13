@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./i18n";
+import { initThemeApplier } from "./theme/applyTheme";
+
+initThemeApplier();
 
 // Perf-Diagnose (2026-08-12): meldet jeden Main-Thread-Block >50ms mit Dauer
 // und Quelle in die Konsole — der Unterschied zwischen "wartet auf IPC" und
