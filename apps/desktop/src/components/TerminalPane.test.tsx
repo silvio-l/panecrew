@@ -1,25 +1,44 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneTabsProps } from "./PaneTabs";
 import { TerminalPane } from "./TerminalPane";
 
-// Tests zur TUI-Runde 2026-08-13 (Drop-Ziel-HUD + Kopiert-Bestätigung).
+// Tests zur TUI-Runde 2026-08-13 (Drop-Ziel-HUD + Kopiert-Bestätigung) plus
+// den Fokus-/Kopier-Fehlern vom selben Tag (Tab-Wechsel, Tastatur-Kopieren).
 // `usePtyTerminal` ist komplett gemockt: hier geht es um die HUD-Schicht ÜBER
-// der Terminalfläche, nicht um PTY-Verdrahtung — die deckt App.test.tsx ab.
+// der Terminalfläche und die Verdrahtung zum Hook, nicht um die PTY selbst —
+// die deckt App.test.tsx ab. `focus` und `copySelection` sind modulweite
+// `vi.fn()`, damit sie über einen `rerender()` hinweg dieselbe Instanz
+// bleiben (der Mock-Factory-Aufruf unten liefert sonst bei jedem Render neue
+// Spione, ein `rerender` verlöre also die bisherige Aufrufhistorie).
 const copySelection = vi.fn();
+const focus = vi.fn();
+// Der Callback, den TerminalPane.tsx als "Kopiert"-Quittung an den Hook
+// reicht (Tastatur-Kopieren hat keinen eigenen UI-Weg zurück zur Pane) —
+// eingefangen statt selbst aufgerufen, weil erst der Fix ihn überhaupt
+// erzeugt.
+let capturedOnCopied: (() => void) | undefined;
 
 vi.mock("../terminal/usePtyTerminal", () => ({
-  usePtyTerminal: () => ({
-    containerRef: { current: null },
-    copySelection,
-    paste: vi.fn(),
-    clear: vi.fn(),
-    focus: vi.fn(),
-    hasSelection: () => true,
-    insertDroppedPaths: vi.fn(),
-    spawning: false,
-  }),
+  usePtyTerminal: (
+    _tabId: string,
+    _cwd: string,
+    _onSelectTerminalTabByNumber: (number: number) => void,
+    onCopied: () => void,
+  ) => {
+    capturedOnCopied = onCopied;
+    return {
+      containerRef: { current: null },
+      copySelection,
+      paste: vi.fn(),
+      clear: vi.fn(),
+      focus,
+      hasSelection: () => true,
+      insertDroppedPaths: vi.fn(),
+      spawning: false,
+    };
+  },
 }));
 
 const paneTabs: PaneTabsProps = {
@@ -34,57 +53,43 @@ const paneTabs: PaneTabsProps = {
   onSelectFile: vi.fn(),
 };
 
-const renderPane = (dropTarget: boolean) =>
-  render(
-    <Tooltip.Provider>
-      <TerminalPane
-        paneId="pane-1"
-        tabId="tab-1"
-        projectPath="/tmp/projekt"
-        projectName="projekt"
-        focused
-        active
-        dropTarget={dropTarget}
-        tabs={paneTabs}
-        dropTargets={{
-          register: vi.fn(),
-          unregister: vi.fn(),
-          paneAtPoint: vi.fn(() => null),
-          insertInto: vi.fn(),
-        }}
-        onClose={vi.fn()}
-        onFocus={vi.fn()}
-      />
-    </Tooltip.Provider>,
-  );
+const paneElement = (dropTarget: boolean, active: boolean) => (
+  <Tooltip.Provider>
+    <TerminalPane
+      paneId="pane-1"
+      tabId="tab-1"
+      projectPath="/tmp/projekt"
+      projectName="projekt"
+      focused
+      active={active}
+      dropTarget={dropTarget}
+      tabs={paneTabs}
+      dropTargets={{
+        register: vi.fn(),
+        unregister: vi.fn(),
+        paneAtPoint: vi.fn(() => null),
+        insertInto: vi.fn(),
+      }}
+      onClose={vi.fn()}
+      onFocus={vi.fn()}
+    />
+  </Tooltip.Provider>
+);
+
+const renderPane = (dropTarget: boolean, active = true) =>
+  render(paneElement(dropTarget, active));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  capturedOnCopied = undefined;
+});
 
 describe("TerminalPane", () => {
   it("zeigt das Drop-Ziel-HUD nur, solange ein Datei-Drag über der Pane schwebt", () => {
     const { rerender } = renderPane(true);
     expect(screen.getByText("Pfad einfügen")).toBeInTheDocument();
 
-    rerender(
-      <Tooltip.Provider>
-        <TerminalPane
-          paneId="pane-1"
-          tabId="tab-1"
-          projectPath="/tmp/projekt"
-          projectName="projekt"
-          focused
-          active
-          dropTarget={false}
-          tabs={paneTabs}
-          dropTargets={{
-          register: vi.fn(),
-          unregister: vi.fn(),
-          paneAtPoint: vi.fn(() => null),
-          insertInto: vi.fn(),
-        }}
-          onClose={vi.fn()}
-          onFocus={vi.fn()}
-        />
-      </Tooltip.Provider>,
-    );
+    rerender(paneElement(false, true));
     expect(screen.queryByText("Pfad einfügen")).not.toBeInTheDocument();
   });
 
@@ -100,6 +105,29 @@ describe("TerminalPane", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Kopieren" }));
 
     expect(copySelection).toHaveBeenCalledOnce();
+    expect(screen.getByRole("status")).toHaveTextContent("Kopiert");
+  });
+
+  it("holt den Fokus zurück ins Terminal, sobald dessen Tab aktiv wird", () => {
+    const { rerender } = renderPane(false, false);
+    expect(focus).not.toHaveBeenCalled();
+
+    // Genau das Szenario aus dem Bugreport: der Tab wechselt (z. B. per
+    // Tastatur), ohne dass die Maus je über das Terminal gefahren ist — bis
+    // hierher der einzige Weg, der bislang `focus()` auslöste.
+    rerender(paneElement(false, true));
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("quittiert Kopieren per Tastenkombination genauso wie über das Kontextmenü", () => {
+    renderPane(false);
+    expect(screen.queryByRole("status")).not.toHaveTextContent("Kopiert");
+
+    if (!capturedOnCopied) {
+      throw new Error("TerminalPane hat keinen onCopied-Callback übergeben");
+    }
+    act(() => capturedOnCopied?.());
+
     expect(screen.getByRole("status")).toHaveTextContent("Kopiert");
   });
 });

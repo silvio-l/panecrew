@@ -87,6 +87,13 @@ export function usePtyTerminal(
   // neu laufen, sonst stürbe die PTY bei jedem Tab-Öffnen/-Schließen der
   // Geschwister-Tabs neu.
   onSelectTerminalTabByNumber: (number: number) => void,
+  // Quittiert einen tatsächlich stattgefundenen Kopiervorgang zurück an
+  // TerminalPane.tsx' Live-Region. Nur für die Wege nötig, die dort sonst
+  // spurlos blieben: Ctrl+Shift+C unten UND natives Cmd+C, das komplett an
+  // dieser Komponente vorbei über xterms Helper-Textarea läuft (siehe deren
+  // `copy`-Listener weiter unten). Der Kontextmenü-Weg (`copySelection`)
+  // braucht ihn nicht — TerminalPane.tsx ruft ihn dort selbst auf.
+  onCopied: () => void,
 ): PtyTerminal {
   const backend = usePtyBackend();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -95,6 +102,13 @@ export function usePtyTerminal(
   useEffect(() => {
     selectTabRef.current = onSelectTerminalTabByNumber;
   }, [onSelectTerminalTabByNumber]);
+  // Selber Grund wie `selectTabRef`: der Haupteffekt hängt nur an
+  // [tabId, cwd, backend] und darf nicht bei jedem Render (der Callback ist
+  // in TerminalPane.tsx nicht memoisiert) neu laufen.
+  const onCopiedRef = useRef(onCopied);
+  useEffect(() => {
+    onCopiedRef.current = onCopied;
+  }, [onCopied]);
   // Die eigentliche Einfüge-Handlung braucht `writeText` (kennt `tabId` UND
   // den `sessionReady`-Schutz) und `suggestion.reset()` — beides lebt nur als
   // lokale Variable im Effekt unten. `insertDroppedPaths` (der öffentliche,
@@ -134,6 +148,18 @@ export function usePtyTerminal(
     fitAddon.fit();
     terminal.focus();
     terminalRef.current = terminal;
+
+    // Natives Cmd+C (macOS) schreibt in die Zwischenablage über xterms
+    // eigenes `copy`-ClipboardEvent auf seiner versteckten Helper-Textarea —
+    // an app-eigenem Code komplett vorbei (Begründung beim Ctrl+Shift+C-Zweig
+    // unten). Ohne diesen Listener bliebe die "Kopiert"-Quittung ausschließlich
+    // dem Kontextmenü und Ctrl+Shift+C vorbehalten. `hasSelection()` filtert
+    // ein `copy` ohne Markierung heraus (System-Standardaktion feuert das
+    // Event trotzdem, kopiert dabei aber nichts).
+    const handleNativeCopy = () => {
+      if (terminal.hasSelection()) onCopiedRef.current();
+    };
+    terminal.textarea?.addEventListener("copy", handleNativeCopy);
 
     // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `tabId`
     // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
@@ -421,7 +447,7 @@ export function usePtyTerminal(
       if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey) {
         const key = event.key.toLowerCase();
         if (key === "c") {
-          copySelectionFrom(terminal);
+          if (copySelectionFrom(terminal)) onCopiedRef.current();
           return false;
         }
         if (key === "v") {
@@ -473,6 +499,10 @@ export function usePtyTerminal(
       // bekäme den Einwurf also nicht mit.
       suggestion.reset();
       writeText(`${text} `);
+      // Ohne dieses focus() bleibt der DOM-Fokus da stehen, wo der Drag
+      // begann (Explorer-Zeile bzw. gar nirgends bei einem Finder-Drop) —
+      // weitertippen ("<pfad> was ist hier kaputt?") liefe ins Leere.
+      terminal.focus();
     };
 
     return () => {
@@ -480,6 +510,7 @@ export function usePtyTerminal(
       disposed = true;
       cancelScheduledFlush();
       insertRef.current = null;
+      terminal.textarea?.removeEventListener("copy", handleNativeCopy);
       resizeObserver.disconnect();
       directories.dispose();
       subdirectories.dispose();
@@ -565,9 +596,14 @@ function loadAcceleratedRenderer(terminal: Terminal): void {
 // per readText() ist der einzige Pfad mit Plattform-Risiko im WKWebView — es
 // betrifft ausschließlich den Kontextmenü-Eintrag, nicht die Tastatur, weil
 // natives Cmd+V als ClipboardEvent an xterms Textarea ankommt.
-function copySelectionFrom(terminal: Terminal): void {
+// Rückgabewert (statt void) berichtet dem Ctrl+Shift+C-Zweig oben, ob
+// wirklich etwas kopiert wurde — ohne Markierung soll die "Kopiert"-Live-
+// Region der Pane nicht anspringen.
+function copySelectionFrom(terminal: Terminal): boolean {
   const selection = terminal.getSelection();
-  if (selection) void navigator.clipboard.writeText(selection).catch(noop);
+  if (!selection) return false;
+  void navigator.clipboard.writeText(selection).catch(noop);
+  return true;
 }
 
 // terminal.paste() statt eigener \x1b[200~-Klammerung: xterm.js setzt die

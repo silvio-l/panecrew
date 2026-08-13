@@ -87,6 +87,28 @@ export function TerminalPane({
     const target = tabs.terminalTabs.find((tab) => tab.number === number);
     if (target) tabs.onSelectTerminalTab(target.tabId);
   };
+  // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
+  // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
+  // ohne dieses Readout bleibt "hat das jetzt geklappt?" eine Vertrauensfrage.
+  // Vor dem Hook-Aufruf definiert, weil der Hook selbst sie braucht: Kopieren
+  // per Tastenkombination (Ctrl/Cmd+C) läuft komplett innerhalb von xterm.js
+  // ab und hat sonst keinen Weg zurück zu dieser Live-Region.
+  const [copiedFlash, setCopiedFlash] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  const notifyCopied = () => {
+    setCopiedFlash(true);
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(
+      () => setCopiedFlash(false),
+      COPY_FLASH_MS,
+    );
+  };
   const {
     containerRef,
     copySelection,
@@ -96,27 +118,11 @@ export function TerminalPane({
     hasSelection,
     insertDroppedPaths,
     spawning,
-  } = usePtyTerminal(tabId, projectPath, selectTerminalTabByNumber);
+  } = usePtyTerminal(tabId, projectPath, selectTerminalTabByNumber, notifyCopied);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
-  // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
-  // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
-  // ohne dieses Readout bleibt "hat das jetzt geklappt?" eine Vertrauensfrage.
-  const [copiedFlash, setCopiedFlash] = useState(false);
-  const copiedTimer = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
-    },
-    [],
-  );
   const copyWithFeedback = () => {
     copySelection();
-    setCopiedFlash(true);
-    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
-    copiedTimer.current = window.setTimeout(
-      () => setCopiedFlash(false),
-      COPY_FLASH_MS,
-    );
+    notifyCopied();
   };
 
   useEffect(() => {
@@ -124,6 +130,14 @@ export function TerminalPane({
     dropTargets.register(paneId, insertDroppedPaths);
     return () => dropTargets.unregister(paneId);
   }, [active, paneId, dropTargets, insertDroppedPaths]);
+
+  // Tab-Wechsel mountet keinen neuen Terminal-Tab (PaneGrid.tsx hält alle
+  // gleichzeitig gemountet, nur ausgeblendet) — ohne diesen Effekt bleibt der
+  // DOM-Fokus im vorher aktiven Tab hängen, auch wenn der Wechsel per
+  // Tastatur kam und die Maus das Terminal nie berührt hat.
+  useEffect(() => {
+    if (active) focus();
+  }, [active, focus]);
 
   return (
     <section
@@ -326,17 +340,27 @@ export function TerminalPane({
           )}
           {/* Dauerhaft gemountete Live-Region (nur ihr Inhalt kommt und
               geht): eine erst beim Kopieren eingehängte role="status"-Region
-              würde von Screenreadern unzuverlässig angekündigt. */}
+              würde von Screenreadern unzuverlässig angekündigt.
+              Dieselbe Chip-Sprache wie das Drop-Ziel-HUD oben (Rahmen +
+              Terminalschrift + Tracking-Ausgleich), aber als BESTÄTIGUNG statt
+              Einladung deutlich kräftiger gefasst: voll deckender statt
+              45%-Amber-Rahmen, Vordergrundtext statt gedimmtem
+              Beschreibungston — das ursprüngliche Readout ging in der übrigen
+              Chrome unter (Nutzer-Feedback 2026-08-13). Kein Fade-in/Glow:
+              Erscheinen/Verschwinden bleiben der harte 0ms-Schnitt aus
+              COPY_FLASH_MS oben, die Mikroanimation IST diese Zeitlichkeit. */}
           <div
             role="status"
             className="pointer-events-none absolute top-2 right-2 z-10"
           >
             {copiedFlash && (
               <span
-                className="flex items-center gap-1 rounded-(--pc-paneControl-radius) border border-(--pc-pane-border) bg-(--pc-pane-background)/90 py-0.5 pl-1.5 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] uppercase text-(--pc-descriptionForeground)"
-                style={{ paddingRight: "calc(0.375rem - 0.25em)" }}
+                className="flex items-center gap-1.5 rounded-(--pc-paneControl-radius) border border-(--pc-pane-activeBorder) bg-(--pc-pane-background)/90 py-1 pl-2 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] uppercase text-(--pc-foreground)"
+                style={{ paddingRight: "calc(0.5rem - 0.25em)" }}
               >
-                <span aria-hidden="true">✓</span>
+                <span aria-hidden="true" className="text-(--pc-pane-activeBorder)">
+                  ✓
+                </span>
                 {t("terminalPane.copied")}
               </span>
             )}
