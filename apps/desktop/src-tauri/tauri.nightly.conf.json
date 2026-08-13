@@ -34,6 +34,15 @@
       }
     ]
   },
+  "bundle": {
+    "icon": [
+      "icons/nightly/32x32.png",
+      "icons/nightly/128x128.png",
+      "icons/nightly/128x128@2x.png",
+      "icons/nightly/icon.icns",
+      "icons/nightly/icon.ico"
+    ]
+  },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDMzk0ODIwQUI5N0NBQjgKUldTNHlwZXJJRWc1UENaU2YzWjFKZytwMFVTdGNBVnk0ZldyeHlXYnBxdUo3OURkUEhBcG05dlEK",
