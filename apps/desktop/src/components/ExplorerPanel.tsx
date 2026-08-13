@@ -1120,11 +1120,11 @@ function RefreshIcon() {
 // reiner Chrome-Icon-Ton (er färbt hier nebenan schon die Git-Dateiicons) und
 // kollidiert deshalb nicht mit der ANSI-Palette echter Terminalausgabe.
 //
-// Das Rot trägt hier das Icon, nicht die Schrift: gemessen kommt #d94e54 auf
-// --pc-explorer-background (#262d58) nur auf 3,2:1 und verfehlt damit die
+// Das Rot trägt hier das Icon, nicht die Schrift: gemessen kommt #cc3e44 auf
+// --pc-explorer-background (#1a1e35) nur auf 3,4:1 und verfehlt damit die
 // 4,5:1, die dieses Theme für Normalsatz führt (theme.css). Als Grafikobjekt
 // liegt derselbe Wert über dessen 3:1-Grenze. Der Vorspann steht deshalb in
-// --pc-explorer-foreground (7,1:1 dark / 15,6:1 light) — das hebt ihn zugleich
+// --pc-explorer-foreground (8,9:1 dark / 15,6:1 light) — das hebt ihn zugleich
 // vom bewusst leisen Leer-Platzhalter ab, der im gedämpften Ton bleibt.
 //
 // Padding/Grundschriftgröße sind die des Platzhalters, damit der Block in

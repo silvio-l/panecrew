@@ -105,14 +105,14 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Global (Fallback-Basis nach VS-Code-Muster). descriptionForeground ist
-     seit dem Indigo-Umbau (2026-08-13, „1a") leicht in die Grund-Achse getönt
-     und angehoben: das neutrale #8c8c8c fiel auf dem gesättigten
-     Explorer-Grund #262d58 auf 3,9:1 und damit unter die 4,5:1 für
-     Normalsatz; #9599b1 misst dort 4,7:1 (App-Grund 5,3:1, Glaskapsel
-     4,6:1). */
+  /* Global (Fallback-Basis nach VS-Code-Muster). Zwischen den beiden
+     Indigo-Fassungen des 2026-08-13 stand hier kurz ein angehobenes,
+     getöntes #9599b1 — nötig nur, weil die erste Fassung einen hellen
+     Explorer-Grund (#262d58) trug, auf dem #8c8c8c auf 3,9:1 fiel. Auf der
+     dunklen Endfassung hält der neutrale Ton alle Grenzen wieder selbst
+     (4,9:1 auf dem Explorer, 5,3:1 auf dem Fenstergrund). */
   --pc-foreground: #bfbfbf;
-  --pc-descriptionForeground: #9599b1;
+  --pc-descriptionForeground: #8c8c8c;
 
   /*
    * DER EINE AKZENT — seit 2026-08-05 Amber statt Blau (Nutzerentscheidung:
@@ -149,17 +149,16 @@
    * Das Alpha ist beim Rechnen leicht zu übersehen und war hier zwei Commits
    * lang falsch dokumentiert: der opake Hexwert sagt nichts über die sichtbare
    * Fläche, gemessen werden muss die Komposition über dem Grund. Auf dem
-   * Indigo-Grund #1f2547 (seit 2026-08-13):
+   * Indigo-Grund #14172b (seit 2026-08-13, dunkle Fassung):
    *
-   *   focusBorder  #e59656 bei cc (80 %)  →  #bd7f53  =  4,5:1
-   *   pane.activeBorder #e59656 opak, auf Pane-Grund #12162a:  7,5:1
+   *   focusBorder  #e59656 bei cc (80 %)  →  #bb7d4d  =  5,2:1
+   *   pane.activeBorder #e59656 opak, auf Pane-Grund #0d1020:  7,9:1
    *
-   * Das Alpha stieg beim Indigo-Umbau von b3 (70 %) auf cc: der hellere,
-   * gesättigte Grund hätte die alte Komposition auf 3,8:1 gedrückt — noch
-   * über der 3:1-Untergrenze für nicht-textliche Fokusindikatoren
-   * (WCAG 1.4.11), aber unter den 4,4:1, die diese Palette seit dem
-   * Blau-Altwert (#3994bcb3, komponiert 3,3:1) bewusst als Verbesserung
-   * hält. Gleiche sichtbare Stärke, neuer Grund, deshalb neues Alpha.
+   * Das Alpha stieg beim Indigo-Umbau von b3 (70 %) auf cc; auf der dunklen
+   * Endfassung des Grundes käme zwar auch b3 wieder auf 4,2:1, aber cc bleibt
+   * bewusst stehen: die Palette hält ihre Fokus-Sichtbarkeit seit dem
+   * Blau-Altwert (#3994bcb3, komponiert 3,3:1) in jeder Runde mindestens und
+   * senkt sie nicht wieder ab, nur weil der Grund es gerade erlaubte.
    */
   --pc-focusBorder: #e59656cc;
 
@@ -168,13 +167,17 @@
    * die charm-Linie der Website gilt vollständig auch in der App,
    * .impeccable/direction-contract-desktop.md) ist das nicht mehr die
    * neutrale #121314-Content-Plane, auf der die Panes nur per Border saßen,
-   * sondern die gesättigte Indigo-Markenfläche der Website-Familie
-   * (#1f2547 = deren „indigo-deep", der App-Fenster-Grund des Prototyps).
-   * Die Panes liegen als DUNKLERE Terminal-Fenster (#12162a) darauf — dieselbe
-   * Schichtung, die die Website zeigt: indigo Grund, dunkle Terminals darin,
-   * getrennt durch den 8px-Gap des Workspaces statt nur durch Hairlines.
+   * sondern eine Indigo-Markenfläche in der Achse der Website-Familie. Die
+   * erste Fassung übernahm deren #1f2547 wörtlich; Nutzer-Feedback vom
+   * selben Tag („dieser helle Blauton gefällt mir gar nicht — die App
+   * sollte weiterhin eher dunkel sein") hat die Familie auf die heutige
+   * DUNKLE Lage gedrückt: #14172b liegt in der Helligkeit zwischen den
+   * beiden alten Neutralflächen (#121314/#191a1b), trägt aber deren
+   * Indigo-Hue. Die Schichtung der Website bleibt: die Panes liegen als
+   * noch dunklere Terminal-Fenster (#0d1020) auf dem Grund, getrennt durch
+   * den 8px-Gap des Workspaces statt nur durch Hairlines.
    */
-  --pc-app-background: #1f2547;
+  --pc-app-background: #14172b;
 
   /*
    * Glas-Material (app-weit, nicht an eine Komponente gebunden) — Apples
@@ -195,7 +198,7 @@
    * arbeitet, sobald Inhalt die Kapsel unterläuft. (Der hier bis 2026-08-13
    * als Beleg genannte Fokus-Glow ist seit 2026-08-05 weg.) Seit dem
    * Indigo-Umbau ist der Ton in die Grund-Achse gedreht: effektiv hebt die
-   * Platte den Grund #1f2547 auf ≈#292f55, dieselben ~+10 Kanalwerte wie die
+   * Platte den Grund #14172b auf ≈#20243e, dieselben ~+12 Kanalwerte wie die
    * frühere Neutralfassung.
    *
    * Die Zahlen sind an echten macOS-26-Fenstern ausgemessen, nicht geschätzt —
@@ -219,7 +222,7 @@
    * Grund kann die Fläche nicht heller werden als ihr Untergrund, dort ist die
    * Kante das einzige, was die Erhebung überhaupt trägt.
    */
-  --pc-glass-background: rgba(58, 66, 110, 0.36);
+  --pc-glass-background: rgba(52, 58, 96, 0.36);
   --pc-glass-border: rgba(255, 255, 255, 0.055);
   --pc-glass-sheen: rgba(255, 255, 255, 0.015);
   --pc-glass-topLight: rgba(255, 255, 255, 0.012);
@@ -227,7 +230,7 @@
 
   /* Hairline schwebender Chrome-Ränder (Tooltip, Kontextmenü) — seit dem
      Glas-Umbau nicht mehr der Rand der Titelzeile selbst. */
-  --pc-titleBar-border: #3a3f5c;
+  --pc-titleBar-border: #31365a;
 
   /*
    * Command Center: Feldfläche transparent wie in VS Code, nur Rahmen malt.
@@ -236,19 +239,19 @@
    * Dateinamen (Inhalt, also hell), unseres nur eine Aufforderung
    * ("Suchen oder Befehl ausführen"). Auf Inhaltshelligkeit gesetzt las sich
    * der Platzhalter wie ein bereits eingegebener Wert. Der Ton ist derselbe
-   * wie --pc-descriptionForeground (angehoben beim Indigo-Umbau, Herleitung
-   * dort); auf der Glaskapsel über #1f2547 misst er 4,6:1.
+   * wie --pc-descriptionForeground; auf der Glaskapsel über #14172b misst
+   * er 4,5:1.
    */
   --pc-titleBar-searchBackground: transparent;
-  --pc-titleBar-searchBorder: #454b6b;
-  --pc-titleBar-searchForeground: #9599b1;
+  --pc-titleBar-searchBorder: #3b4166;
+  --pc-titleBar-searchForeground: #8c8c8c;
 
   /* Explorer (VS-Code-nahe Baum-Optik). Der Grund ist seit dem Indigo-Umbau
-     die hellere Nachbarfläche der Website-Familie (#262d58, dort der
-     Seitengrund) — dieselbe Rolle, die vorher #191a1b gegenüber #121314
-     spielte: sichtbar über dem Fenstergrund, ohne eigene Kante zu brauchen. */
-  --pc-explorer-background: #262d58;
-  --pc-explorer-border: #3a3f5c;
+     die hellere Nachbarfläche der Familie — dieselbe Rolle, die vorher
+     #191a1b gegenüber #121314 spielte: sichtbar über dem Fenstergrund, ohne
+     eigene Kante zu brauchen. */
+  --pc-explorer-background: #1a1e35;
+  --pc-explorer-border: #31365a;
   --pc-explorer-foreground: #bfbfbf;
   --pc-explorerHeader-foreground: #bfbfbf;
   --pc-list-hoverBackground: #ffffff14;
@@ -268,8 +271,8 @@
    * genau diesen Fall schon führt (--pc-titleBar-searchBorder, hier ohne
    * dessen Transparenz).
    */
-  --pc-widget-background: #262d58;
-  --pc-widget-border: #454b6b;
+  --pc-widget-background: #1a1e35;
+  --pc-widget-border: #3b4166;
 
   /*
    * Abdunklung hinter einem modalen Dialog (heute: die Rückfrage vor dem
@@ -279,8 +282,8 @@
    * ist das Gegenteil, nämlich weggenommenes Licht über fremdem Inhalt.
    *
    * Der Dark-Wert ist deutlich kräftiger als der Light-Wert, und das ist keine
-   * Symmetriepanne: der Grund darunter (dunkles Indigo, #1f2547/#12162a) ist
-   * bereits sehr dunkel, ein Schwarzschleier kann ihn kaum noch senken.
+   * Symmetriepanne: der Grund darunter (dunkles Indigo, #14172b/#0d1020) ist
+   * bereits fast schwarz, ein Schwarzschleier kann ihn kaum noch senken.
    * Sichtbar abgedunkelt wird hier
    * in Wahrheit der helle INHALT — Terminaltext #eceff1 fällt bei 0,5 auf
    * #767879 und damit von 15,8:1 auf 4,4:1 gegen den abgedunkelten Grund:
@@ -327,12 +330,7 @@
   --pc-icon-yellow: #cbcb41;
   --pc-icon-orange: #e37933;
   --pc-icon-green: #8dc149;
-  /* Einzige Abweichung von Setis Dark-Spalte (#cc3e44): der gesättigte
-     Indigo-Explorer-Grund drückte das Original auf 2,7:1 und damit unter die
-     3:1-Grenze für Grafikobjekte; #d94e54 misst 3,2:1 — gleiche Hue-Lage,
-     nur angehoben. Alle anderen Seti-Töne halten die Grenze auch auf
-     #262d58 (schwächster: gray mit 3,2:1). */
-  --pc-icon-red: #d94e54;
+  --pc-icon-red: #cc3e44;
   --pc-icon-purple: #a074c4;
   --pc-icon-gray: #6d8086;
 
@@ -340,46 +338,43 @@
    * Git-Deko im Explorer (VS-Code-Kategorie 41,
    * `gitDecoration.modifiedResourceForeground`/`.untrackedResourceForeground`).
    *
-   * Eigenes Tokenpaar statt der --pc-icon-*-Töne: die Deko färbt hier den
-   * DATEINAMEN, ist also Normalsatz und muss die 4,5:1 halten, die dieser
-   * Block weiter unten für Normalsatz festlegt — als bloße Icon-Fläche (3:1)
-   * tun die Icon-Töne das auch dort noch, wo sie es als Text nicht mehr tun.
-   * Ein eigener Slot macht diesen Unterschied überhaupt erst ausdrückbar,
-   * und seit dem Indigo-Umbau trennt er sich auch im Dark-Block real vom
-   * Icon-Wert: --pc-icon-orange (#e37933) fiel auf dem neuen Explorer-Grund
-   * auf 4,41:1, der Deko-Wert ist deshalb eine Stufe heller.
+   * Eigenes Tokenpaar statt der --pc-icon-*-Töne, obwohl der Dark-Block
+   * dieselben Werte trägt: die Deko färbt hier den DATEINAMEN, ist also
+   * Normalsatz und muss die 4,5:1 halten, die dieser Block weiter unten für
+   * Normalsatz festlegt — als bloße Icon-Fläche (3:1) taten die Icon-Töne das
+   * auch dort noch, wo sie es als Text nicht mehr tun (siehe Light-Block).
+   * Ein eigener Slot macht diesen Unterschied überhaupt erst ausdrückbar.
    *
-   * Gemessen auf --pc-explorer-background (#262d58): Orange #e8823f 4,81:1,
-   * Grün 6,17:1. Bewusst als eigener Hexwert und nicht als var()-Verweis auf
+   * Gemessen auf --pc-explorer-background (#1a1e35): Orange 5,50:1,
+   * Grün 7,69:1. Bewusst als eigener Hexwert und nicht als var()-Verweis auf
    * --pc-icon-orange/-green — diese Datei aliast nirgends ein Token auf ein
    * anderes, jeder Slot trägt seinen Wert selbst; die beiden var()-Vorkommen
    * weiter oben stehen in zusammengesetzten Werten (Schatten/Verlauf), nicht
    * in einer Token-Definition.
    */
-  --pc-gitDecoration-modifiedResourceForeground: #e8823f;
+  --pc-gitDecoration-modifiedResourceForeground: #e37933;
   --pc-gitDecoration-untrackedResourceForeground: #8dc149;
 
   /* Terminal-Panes — seit dem Indigo-Umbau die dunkelste Fläche der App
-     (#12162a, das Terminal-Innere der Website-Familie): die Panes sitzen als
-     dunkle Fenster auf dem helleren Fenstergrund, wie die Terminals der
-     Website auf deren Indigo. */
-  --pc-pane-background: #12162a;
-  --pc-pane-border: #3a3f5c;
+     (#0d1020): die Panes sitzen als dunkle Fenster auf dem helleren
+     Fenstergrund, wie die Terminals der Website auf deren Indigo. */
+  --pc-pane-background: #0d1020;
+  --pc-pane-border: #31365a;
   /* Der eine Akzent, Herleitung im Block über --pc-focusBorder. Seit dem
      Wegfall des Glows ist dieser Rahmen das erste Fokussignal der Pane. */
   --pc-pane-activeBorder: #e59656;
-  --pc-paneHeader-foreground: #9599b1;
+  --pc-paneHeader-foreground: #8c8c8c;
   --pc-paneHeader-activeForeground: #e59656;
-  --pc-paneHeader-border: #3a3f5c;
+  --pc-paneHeader-border: #31365a;
 
   /*
    * Terminal-Inhalt — 1:1 auf xterm.js ITheme abbildbar.
    *
    * Eigene Palette, aus dem Grund hergeleitet (2026-08-05, damals #121314;
-   * seit 2026-08-13 liegt der Grund auf #12162a — alle Kontraste unten sind
+   * seit 2026-08-13 liegt der Grund auf #0d1020 — alle Kontraste unten sind
    * auf dem neuen Grund nachgemessen, die Buntwerte halten die Grenzen
-   * unverändert: schwächster Normalwert Rot 4,53:1, schwächster Bright-Wert
-   * BrightBlue 7,02:1); vorher
+   * unverändert: schwächster Normalwert Rot 4,78:1, schwächster Bright-Wert
+   * BrightBlue 7,41:1); vorher
    * standen hier VS Codes unveränderte Engine-Defaults, deren Helligkeiten
    * quer über die Farben um den Faktor 3 auseinanderliefen (OKLCH-L von 0,53
    * bei Rot bis 0,87 bei Gelb) — genau das las sich neben dem eigenen Chrome
@@ -393,7 +388,7 @@
    *    H ~266 und deutlich mehr Chroma; die hellen Neutralen bleiben auf der
    *    alten Achse stehen — bei C 0,005 liegt der Hue-Unterschied unter der
    *    Wahrnehmungsschwelle —, nur ansiBlack als einziger dunkler Wert ist
-   *    in die neue Achse gezogen (#0b0e1e statt #0c0d0f), damit er dunkler
+   *    in die neue Achse gezogen (#070a16 statt #0c0d0f), damit er dunkler
    *    als der Grund bleibt statt neben ihm zu stehen. White und
    *    BrightWhite waren früher beide #e5e5e5, also nicht unterscheidbar;
    *    Programme, die auf den Unterschied setzen, zeigten nichts.
@@ -414,23 +409,19 @@
    * 6. Gelb meidet das Marken-Amber (#fcad43, H 70): H 100 ist messingfarben
    *    statt orange-golden, die Marke bleibt allein der Marke.
    */
-  --pc-terminal-background: #12162a;
+  --pc-terminal-background: #0d1020;
   --pc-terminal-foreground: #c5c8ca;
   --pc-terminal-cursor: #ced1d5;
   /*
    * Inline-Vervollständigung (Geistertext hinter dem Cursor). Weder
    * focusBorder noch eine ANSI-Farbe: der Akzent gehört laut Direction
    * Contract allein dem Fokus, und Rot/Gelb/Grün haben im Terminalinhalt
-   * feste Bedeutung. Deshalb ein neutraler gedimmter Ton — 5,3:1 auf
-   * #12162a, klar unter dem Inhaltston #c5c8ca (10,6:1) und damit lesbar als
-   * Vorschlag statt als bereits Getipptes. (Bis zum Indigo-Umbau war das
-   * wörtlich descriptionForeground; dessen Anhebung auf #9599b1 macht der
-   * Geistertext nicht mit — er liegt auf dem dunkleren Terminal-Grund, wo
-   * #8c8c8c die Grenzen weiter hält, und mehr Helligkeit näherte ihn dem
-   * echten Inhalt an.)
+   * feste Bedeutung. Deshalb der neutrale Chrome-Ton descriptionForeground —
+   * 5,6:1 auf #0d1020, klar unter dem Inhaltston #c5c8ca (10,3:1) und damit
+   * lesbar als Vorschlag statt als bereits Getipptes.
    */
   --pc-terminal-ghostForeground: #8c8c8c;
-  --pc-terminal-ansiBlack: #0b0e1e;
+  --pc-terminal-ansiBlack: #070a16;
   --pc-terminal-ansiRed: #d9544b;
   --pc-terminal-ansiGreen: #32a85f;
   --pc-terminal-ansiYellow: #b9a624;
