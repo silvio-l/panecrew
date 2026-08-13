@@ -5,15 +5,31 @@ import type {
   ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DropdownMenu } from "radix-ui";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { ContextMenu, DropdownMenu } from "radix-ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useTranslation } from "react-i18next";
-import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { Trans, useTranslation } from "react-i18next";
+import {
+  CHROME_FOCUS_RING,
+  CHROME_MENU_CONTENT_CLASS,
+  CHROME_MENU_ITEM_CLASS,
+  CHROME_MENU_SEPARATOR_CLASS,
+  ChromeTooltip,
+} from "./ChromeTooltip";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { FileIcon, FolderIcon } from "./explorerIcons";
 import { HudReadout } from "./HudReadout";
+import { isPathOrDescendant, remapRenamedPath } from "../explorer/filePath";
+import { vscodeIsInstalled } from "../explorer/vscodeDetection";
+import { isMacPlatform } from "../shortcuts/platform";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
 import { filterTree } from "../types/treeFilter";
+
+// Dieselbe Dauer wie TerminalPane.tsx' Kopier-Bestätigung (Ticket 24 nennt
+// deren Kontextmenü ausdrücklich als Vorbild) — ein zweiter, abweichender
+// Wert für dieselbe Geste hätte keine erkennbare Begründung.
+const COPY_FLASH_MS = 1200;
 
 // Dauerhaft sichtbares, kompaktes Explorer-Panel (Struktur aus Komposition 3):
 // nur der Dateibaum, kein Icon-Rail, kein Overlay. Die STRUKTUR (Chevron-
@@ -65,6 +81,8 @@ export function ExplorerPanel({
   onStartPathDrag,
   draggingPath,
   onConsumeDragClick,
+  onEntryRenamed,
+  onEntryDeleted,
 }: {
   project: Project;
   width: number;
@@ -108,6 +126,15 @@ export function ExplorerPanel({
   /** Ob der jetzt eintreffende Klick noch zum eben beendeten Ziehen gehört —
    * dann öffnet er keine Datei und klappt keinen Ordner. */
   onConsumeDragClick: () => boolean;
+  /** Meldet eine tatsächlich vollzogene Umbenennung nach oben (beide Pfade
+   * projekt-relativ) — App gleicht damit `selectedFile` und den offenen
+   * Editor-Puffer ab (Ticket 24: eine Umbenennung darf weder die Auswahl
+   * noch einen ungespeicherten Stand unter der alten Adresse zurücklassen). */
+  onEntryRenamed: (oldRelPath: string, newRelPath: string) => void;
+  /** Meldet eine tatsächlich vollzogene Löschung nach oben (projekt-relativ) —
+   * derselbe Abgleich wie bei `onEntryRenamed`, nur schließend statt
+   * umziehend. */
+  onEntryDeleted: (relPath: string) => void;
 }) {
   const { t } = useTranslation();
   // Jeder Ordnerpfad des Baums — die Bezugsmenge, gegen die sich „eingeklappt"
@@ -238,6 +265,148 @@ export function ExplorerPanel({
   // „12/384" etwas aus (wie viel vom Projekt gerade sichtbar ist).
   const totalEntries = useMemo(() => countNodes(project.tree), [project.tree]);
 
+  // Ob VS Code überhaupt installiert ist, ändert sich nicht innerhalb einer brandlint-ok: funktionale Erkennung des real installierten Editors
+  // Session — einmal ermittelt (gecacht in `vscodeDetection.ts`), reicht ein
+  // Panel-weiter State statt einer erneuten Rust-Anfrage pro Rechtsklick.
+  const [vscodeInstalled, setVscodeInstalled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void vscodeIsInstalled().then((installed) => {
+      if (!cancelled) setVscodeInstalled(installed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Der Baumpfad der Zeile, die GERADE umbenannt wird — `null` heißt: keine.
+  // Ein einzelner Zustand statt eines Flags pro Zeile, aus demselben Grund
+  // wie `draftKind`: höchstens eine Zeile kann gleichzeitig umbenannt werden,
+  // ein zweiter Rechtsklick-„Umbenennen" ersetzt schlicht den ersten.
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  // Der Baumpfad der Zeile, deren Kontextmenü gerade offen ist — die einzige
+  // Hervorhebung, die ein rechtsgeklickter ORDNER bekommen kann (`selected`
+  // verlangt `!isFolder`, s. `TreeRow`).
+  const [contextTargetPath, setContextTargetPath] = useState<string | null>(
+    null,
+  );
+  const [pendingDelete, setPendingDelete] = useState<{
+    path: string;
+    isFolder: boolean;
+    name: string;
+  } | null>(null);
+  // Bestätigung nach Copy Path/Copy Relative Path — dieselbe „900ms-Flash"-
+  // Mechanik wie TerminalPane.tsx' Kopier-Bestätigung, nur im Fußzeilen-
+  // Readout statt als eigener schwebender Chip: der Explorer hat mit
+  // `TreeStatusReadout` bereits eine Fläche, die genau diese Rolle spielt
+  // (kurzlebige, textuelle Rückmeldung am unteren Panelrand), ein zweiter
+  // Toast-Mechanismus wäre hier verfrüht (das ist Ticket 28).
+  const [copyFlash, setCopyFlash] = useState<string | null>(null);
+  const copyFlashTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copyFlashTimer.current !== null) window.clearTimeout(copyFlashTimer.current);
+    },
+    [],
+  );
+  const flashCopied = (message: string) => {
+    setCopyFlash(message);
+    if (copyFlashTimer.current !== null) window.clearTimeout(copyFlashTimer.current);
+    copyFlashTimer.current = window.setTimeout(() => setCopyFlash(null), COPY_FLASH_MS);
+  };
+
+  // Verschiebt jeden Klapp-Zustand-Eintrag, der GENAU `oldPath` war oder
+  // darunter lag, auf die entsprechende Adresse unter `newPath` — sonst
+  // erschiene ein umbenannter, vorher eingeklappter Ordner nach dem
+  // Aktualisieren plötzlich aufgeklappt (er stünde unter seinem neuen Namen
+  // nicht mehr im `collapsed`-Set).
+  const remapCollapsedOnRename = (oldPath: string, newPath: string) => {
+    setCollapsed((prev) => {
+      const next = new Set<string>();
+      for (const entry of prev) next.add(remapRenamedPath(entry, oldPath, newPath));
+      return next;
+    });
+  };
+
+  const commitRename = async (
+    relPath: string,
+    newRelPath: string,
+  ): Promise<string | null> => {
+    try {
+      await invoke("explorer_rename", {
+        from: `${project.path}/${relPath}`,
+        to: `${project.path}/${newRelPath}`,
+      });
+    } catch (cause) {
+      return typeof cause === "string" ? cause : String(cause);
+    }
+    remapCollapsedOnRename(relPath, newRelPath);
+    setRenamingPath(null);
+    onRefresh();
+    onEntryRenamed(relPath, newRelPath);
+    return null;
+  };
+
+  const confirmDelete = () => {
+    if (pendingDelete === null) return;
+    const { path } = pendingDelete;
+    setPendingDelete(null);
+    void invoke("explorer_delete", { path: `${project.path}/${path}` })
+      .then(() => {
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          for (const entry of prev) {
+            if (isPathOrDescendant(entry, path)) next.delete(entry);
+          }
+          return next;
+        });
+        onRefresh();
+        onEntryDeleted(path);
+      })
+      .catch((error: unknown) => {
+        // Dasselbe stille Fallback wie `FileEditor.tsx`s `openPath`-Fehler:
+        // kein eigener Fehlerdialog für einen seltenen Fall (Berechtigung,
+        // Datei gerade anderswo gesperrt) — die Rückfrage ist schon
+        // geschlossen, ein zweiter modaler Unterbruch wäre hier zu viel.
+        console.error("PaneCrew: Eintrag konnte nicht gelöscht werden", error);
+      });
+  };
+
+  const menuActions: RowMenuHandlers = {
+    onReveal: (row) => {
+      void revealItemInDir(`${project.path}/${row.path}`).catch((error: unknown) => {
+        console.error("PaneCrew: Eintrag konnte nicht angezeigt werden", error);
+      });
+    },
+    onOpenInVSCode: (row) => {
+      void invoke("vscode_open", { path: `${project.path}/${row.path}` }).catch(
+        (error: unknown) => {
+          console.error("PaneCrew: VS Code konnte nicht geöffnet werden", error); // brandlint-ok: reale Fehlermeldung der Editor-Öffnen-Funktion
+        },
+      );
+    },
+    onStartRename: (row) => setRenamingPath(row.path),
+    onRequestDelete: (row) =>
+      setPendingDelete({ path: row.path, isFolder: row.isFolder, name: row.node.name }),
+    onCopyPath: (row) => {
+      void navigator.clipboard
+        .writeText(`${project.path}/${row.path}`)
+        .then(() => flashCopied(t("explorer.contextMenu.pathCopied")))
+        .catch(() => {
+          /* Zwischenablage ohne Berechtigung — kein Feedback ist hier
+             ehrlicher als ein Erfolgs-Flash, der nicht stattgefunden hat. */
+        });
+    },
+    onCopyRelativePath: (row) => {
+      void navigator.clipboard
+        .writeText(row.path)
+        .then(() => flashCopied(t("explorer.contextMenu.relativePathCopied")))
+        .catch(() => {
+          // Dasselbe stille Fallback wie bei `onCopyPath` oben.
+        });
+    },
+  };
+
   return (
     <aside
       style={{ width }}
@@ -346,19 +515,13 @@ export function ExplorerPanel({
             <DropdownMenu.Content
               align="end"
               sideOffset={4}
-              className="z-30 min-w-44 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg"
+              className={`min-w-44 ${CHROME_MENU_CONTENT_CLASS}`}
             >
-              <DropdownMenu.Item
-                onSelect={collapseAll}
-                className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
-              >
+              <DropdownMenu.Item onSelect={collapseAll} className={CHROME_MENU_ITEM_CLASS}>
                 <CollapseAllIcon />
                 {t("explorer.collapseAll")}
               </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onSelect={onCollapse}
-                className="flex h-7 cursor-default select-none items-center gap-2 rounded px-2 outline-none data-[highlighted]:bg-(--pc-list-hoverBackground)"
-              >
+              <DropdownMenu.Item onSelect={onCollapse} className={CHROME_MENU_ITEM_CLASS}>
                 <SidebarIcon />
                 {t("explorer.hideExplorer")}
               </DropdownMenu.Item>
@@ -452,15 +615,58 @@ export function ExplorerPanel({
               }}
               draggingPath={draggingPath}
               onConsumeDragClick={onConsumeDragClick}
+              menu={menuActions}
+              vscodeInstalled={vscodeInstalled}
+              renamingPath={renamingPath}
+              onCommitRename={commitRename}
+              onDiscardRename={() => setRenamingPath(null)}
+              contextTargetPath={contextTargetPath}
+              onContextMenuOpenChange={(path, open) =>
+                setContextTargetPath(open ? path : null)
+              }
             />
           )}
           {/* Nur unter einem echten Baum: unter Fehler- und Leerzuständen
               gäbe es nichts zu zählen, und ein Readout „0/0" sähe wie ein
               weiterer Fehler aus. */}
           {project.treeError === null && project.tree.length > 0 && (
-            <TreeStatusReadout visible={rows.length} total={totalEntries} />
+            <TreeStatusReadout
+              visible={rows.length}
+              total={totalEntries}
+              flash={copyFlash}
+            />
           )}
         </>
+      )}
+      {/* Rückfrage vor dem Löschen — dieselbe `ConfirmDialog`, die `App.tsx`
+          für ungespeicherte Änderungen einsetzt. Datei/Ordner-Unterscheidung
+          nur im Beschreibungstext: ein gelöschter Ordner nimmt seinen ganzen
+          Inhalt mit, das muss die Rückfrage sagen, bevor der Klick auf
+          „Löschen" das entschieden hat. */}
+      {pendingDelete !== null && (
+        <ConfirmDialog
+          title={t("explorer.deleteDialog.title", { name: pendingDelete.name })}
+          description={
+            // Derselbe `<bold>`-Interpolationsplatzhalter wie in
+            // UnsavedChangesDialog.tsx: der Name trägt die volle Hervorhebung,
+            // unabhängig davon, wo ihn die jeweilige Übersetzung im Satz setzt.
+            <Trans
+              i18nKey={
+                pendingDelete.isFolder
+                  ? "explorer.deleteDialog.descriptionFolder"
+                  : "explorer.deleteDialog.descriptionFile"
+              }
+              values={{ name: pendingDelete.name }}
+              components={{
+                bold: <span className="font-medium text-(--pc-foreground)" />,
+              }}
+            />
+          }
+          confirmLabel={t("explorer.deleteDialog.confirm")}
+          cancelLabel={t("explorer.deleteDialog.cancel")}
+          onConfirm={confirmDelete}
+          onClose={() => setPendingDelete(null)}
+        />
       )}
     </aside>
   );
@@ -477,17 +683,34 @@ export function ExplorerPanel({
 function TreeStatusReadout({
   visible,
   total,
+  flash,
 }: {
   visible: number;
   total: number;
+  /** Kurzlebige Bestätigung nach Copy Path/Copy Relative Path — verdrängt das
+   * Zähl-Readout für `COPY_FLASH_MS`. Bewusst NICHT über `HudReadout`: dessen
+   * eigene Regel ist „sichtbar sind nur Ziffern, nie Prosa", und dieser Text
+   * ist Prosa — er gehört deshalb in die Systemschrift des Chrome, wie jede
+   * andere Meldung im Panel auch. Der Wechsel selbst ist ein harter Schnitt
+   * (kein Fade), wie es die Direktive gegen weiche Zustandsübergänge verlangt. */
+  flash: string | null;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex h-5 shrink-0 items-center border-t border-(--pc-explorer-border) px-3">
-      <HudReadout
-        value={`${String(visible)}/${String(total)}`}
-        srText={t("explorer.visibleCount", { visible, total })}
-      />
+      {flash !== null ? (
+        <span
+          role="status"
+          className="truncate text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground)"
+        >
+          {flash}
+        </span>
+      ) : (
+        <HudReadout
+          value={`${String(visible)}/${String(total)}`}
+          srText={t("explorer.visibleCount", { visible, total })}
+        />
+      )}
     </div>
   );
 }
@@ -529,6 +752,13 @@ function TreeList({
   onStartPathDrag,
   draggingPath,
   onConsumeDragClick,
+  menu,
+  vscodeInstalled,
+  renamingPath,
+  onCommitRename,
+  onDiscardRename,
+  contextTargetPath,
+  onContextMenuOpenChange,
 }: {
   rows: readonly FlatRow[];
   selected: string;
@@ -544,6 +774,17 @@ function TreeList({
   ) => void;
   draggingPath: string | null;
   onConsumeDragClick: () => boolean;
+  menu: RowMenuHandlers;
+  vscodeInstalled: boolean;
+  /** Der Baumpfad der GENAU einen Zeile, die gerade umbenannt wird, sonst
+   * `null` — siehe `ExplorerPanel`. */
+  renamingPath: string | null;
+  onCommitRename: (relPath: string, newRelPath: string) => Promise<string | null>;
+  onDiscardRename: () => void;
+  /** Der Baumpfad der Zeile, deren Kontextmenü gerade offen ist, sonst
+   * `null` — siehe `ExplorerPanel`. */
+  contextTargetPath: string | null;
+  onContextMenuOpenChange: (path: string, open: boolean) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Der React Compiler überspringt diese Komponente — um eine API herum, die
@@ -651,6 +892,13 @@ function TreeList({
               dragging={draggingPath === row.path}
               onConsumeDragClick={onConsumeDragClick}
               onKeyDown={moveRowFocus}
+              menu={menu}
+              vscodeInstalled={vscodeInstalled}
+              isRenaming={renamingPath === row.path}
+              onCommitRename={onCommitRename}
+              onDiscardRename={onDiscardRename}
+              isContextTarget={contextTargetPath === row.path}
+              onContextMenuOpenChange={onContextMenuOpenChange}
             />
           );
         })}
@@ -1295,6 +1543,20 @@ function WarningIcon() {
   );
 }
 
+/** Die Aktionen des Zeilen-Kontextmenüs (Ticket 24) — ein Objekt statt sieben
+ * Einzel-Props, aus demselben Grund, aus dem `onStartPathDrag` schon vor
+ * dieser Runde durchgereicht wurde: `TreeRow` kennt weder `project.path` noch
+ * die Rust-Commands dahinter, jede Funktion hier ist in `ExplorerPanel` schon
+ * fertig auf `row` gebunden. */
+interface RowMenuHandlers {
+  onReveal: (row: FlatRow) => void;
+  onOpenInVSCode: (row: FlatRow) => void;
+  onStartRename: (row: FlatRow) => void;
+  onRequestDelete: (row: FlatRow) => void;
+  onCopyPath: (row: FlatRow) => void;
+  onCopyRelativePath: (row: FlatRow) => void;
+}
+
 interface TreeRowProps {
   row: FlatRow;
   /** Platz der Zeile in der ausgerollten Liste. Steht als `data-row-index` in
@@ -1326,13 +1588,32 @@ interface TreeRowProps {
     index: number,
     event: ReactKeyboardEvent<HTMLButtonElement>,
   ) => void;
+  menu: RowMenuHandlers;
+  /** Ob „In VS Code öffnen" überhaupt einen Eintrag bekommt — nur einmal pro brandlint-ok: funktionaler Menüeintrag-Name
+   * Panel ermittelt (`vscodeDetection.ts`), hier nur durchgereicht. */
+  vscodeInstalled: boolean;
+  /** Ob GENAU diese Zeile gerade umbenannt wird — ersetzt dann den Namen
+   * durch `RenameField` statt den Klick-/Tasten-Knopf zu rendern. */
+  isRenaming: boolean;
+  /** Baut die Umbenennung tatsächlich (Tauri-Aufruf liegt in `ExplorerPanel`,
+   * die hier gebrauchten absoluten Pfade kennt nur sie). `null` bei Erfolg,
+   * sonst der Rust-Fehlertext — dieselbe Vertragsform wie `NewEntryRow`s
+   * `onCreated`, nur mit Rückmeldung statt Exception, weil `RenameField` den
+   * Fehler selbst anzeigt und offen bleiben muss. */
+  onCommitRename: (relPath: string, newRelPath: string) => Promise<string | null>;
+  onDiscardRename: () => void;
+  /** Ob GENAU diese Zeile gerade das Ziel eines offenen Kontextmenüs ist —
+   * die einzige Hervorhebung, die ein rechtsgeklickter ORDNER bekommen kann
+   * (`selected` verlangt `!isFolder`, s. u.). */
+  isContextTarget: boolean;
+  onContextMenuOpenChange: (path: string, open: boolean) => void;
 }
 
 // Reine Darstellung einer einzelnen ausgerollten Zeile — seit der
 // Virtualisierung rekursiert hier nichts mehr, welche Zeilen es gibt,
 // entscheidet `flattenTree`.
 function TreeRow({
-  row: { node, path, depth, isFolder, isOpen, ancestorGuides, isLast },
+  row,
   index,
   offset,
   selected,
@@ -1344,7 +1625,16 @@ function TreeRow({
   dragging,
   onConsumeDragClick,
   onKeyDown,
+  menu,
+  vscodeInstalled,
+  isRenaming,
+  onCommitRename,
+  onDiscardRename,
+  isContextTarget,
+  onContextMenuOpenChange,
 }: TreeRowProps) {
+  const { node, path, depth, isFolder, isOpen, ancestorGuides, isLast } = row;
+  const { t } = useTranslation();
   const isSelected = !isFolder && selected === path;
   // Nur Dateien: geöffnet und geändert werden kann im Editor genau eine, und
   // Ordner tragen hier bewusst keine hochgereichte Sammel-Aussage wie bei der
@@ -1367,22 +1657,61 @@ function TreeRow({
   // steht nur auf Ordnerzeilen — und die erreichen diesen Zustand nie.
   const decorationColor = isSelected ? undefined : decoration;
 
+  // Die umbenannte Zeile ist ein eigener, kleinerer Zweig statt eines
+  // Zustands INNERHALB des Knopfs unten: ein `<input>` in einem `<button>`
+  // ist ungültiges HTML (Button darf kein weiteres interaktives Element
+  // enthalten) — dieselbe Entscheidung, aus der `NewEntryRow` schon ein
+  // `<div>` statt eines Knopfs ist. Die Ast-Konnektoren bleiben trotzdem
+  // stehen (`TreeRowGuides`, s. u.): eine Zeile, die mitten im Baum umbenannt
+  // wird, soll nicht kurz aus ihrer Einrückung herausfallen.
+  if (isRenaming) {
+    return (
+      <div
+        style={{
+          paddingLeft: 10 + depth * 12,
+          transform: `translateY(${String(offset)}px)`,
+        }}
+        className="absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-(length:--pc-chrome-fontSize)"
+      >
+        <TreeRowGuides ancestorGuides={ancestorGuides} depth={depth} isLast={isLast} />
+        {isFolder ? (
+          <Chevron open={isOpen} />
+        ) : (
+          <span aria-hidden="true" className="w-2.5 shrink-0" />
+        )}
+        {isFolder ? <FolderIcon open={isOpen} /> : <FileIcon kind={node.kind} />}
+        <RenameField
+          name={node.name}
+          isFolder={isFolder}
+          relPath={path}
+          depth={depth}
+          onDiscard={onDiscardRename}
+          onCommit={onCommitRename}
+        />
+      </div>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      data-row-index={index}
-      onClick={() => {
-        // Ein Klick, der nur das Ende eines Ziehens ist, tut hier nichts.
-        // Ohne diese Klammer öffnete jeder erfolgreiche Drop die gezogene
-        // Datei nebenbei auch noch im Editor — das Pointer-Capture führt den
-        // Klick zur Zeile zurück, auch wenn über einer Pane losgelassen wurde
-        // (`useExplorerPathDrag.ts`).
-        if (onConsumeDragClick()) return;
-        if (isFolder) onToggleFolder(path);
-        else onSelectFile(path);
-      }}
-      onPointerDown={(event) => onStartPathDrag(event, path)}
-      onKeyDown={(event) => onKeyDown(index, event)}
+    <ContextMenu.Root
+      onOpenChange={(open) => onContextMenuOpenChange(path, open)}
+    >
+      <ContextMenu.Trigger asChild>
+        <button
+          type="button"
+          data-row-index={index}
+          onClick={() => {
+            // Ein Klick, der nur das Ende eines Ziehens ist, tut hier nichts.
+            // Ohne diese Klammer öffnete jeder erfolgreiche Drop die gezogene
+            // Datei nebenbei auch noch im Editor — das Pointer-Capture führt den
+            // Klick zur Zeile zurück, auch wenn über einer Pane losgelassen wurde
+            // (`useExplorerPathDrag.ts`).
+            if (onConsumeDragClick()) return;
+            if (isFolder) onToggleFolder(path);
+            else onSelectFile(path);
+          }}
+          onPointerDown={(event) => onStartPathDrag(event, path)}
+          onKeyDown={(event) => onKeyDown(index, event)}
       // Absolut statt im Fluss: die Zeile sitzt auf ihrem ausgerechneten Platz
       // im Platzhalter voller Höhe. `translateY` und nicht `top`, weil es die
       // Zeile beim Scrollen ohne Layout-Durchgang verschiebt. Die
@@ -1408,57 +1737,12 @@ function TreeRow({
       } ${
         isSelected
           ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-list-activeSelectionForeground)"
-          : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
+          : isContextTarget
+            ? "bg-(--pc-list-hoverBackground) text-(--pc-explorer-foreground)"
+            : "text-(--pc-explorer-foreground) hover:bg-(--pc-list-hoverBackground)"
       }`}
     >
-      {/* Ast-Konnektoren in ├/└-Geometrie (TUI-Direktive 2026-08-13) — als
-            1px-Hairlines GEZEICHNET statt als Box-Drawing-Glyphen gesetzt:
-            Zeichen müssten die 22px-Zeilenbox exakt füllen, um lückenlos zu
-            stapeln, Hairlines stapeln von selbst lückenlos und bleiben auf
-            jeder Zoomstufe scharf. Drei Bausteine pro Zeile:
-            1. Durchlauf-Vertikalen der Vorfahren-Ebenen — nur wo der Ast dort
-               wirklich weiterläuft (`ancestorGuides`, sonst Linie ins Leere).
-            2. Die eigene Vertikale auf Ebene depth-1: voll (├) oder bis zur
-               Zeilenmitte (└, `isLast`) — 11.5px, damit sie die Horizontale
-               (10.5–11.5) gerade einschließt statt 0.5px vor ihr zu enden.
-            3. Der 6px-Stichel zur Zeile, mittig bei calc(50% - 0.5px): auf
-               Retina ein ganzer Gerätepixel, exakt auf der optischen Mitte
-               der 22px-Zeile.
-
-            x = 15 + Ebene * 12 trifft die Mitte des Chevrons des jeweiligen
-            Elternordners (dessen paddingLeft 10 + 12 pro Ebene, Chevron 10
-            breit); der Stichel endet 1px vor der Inhaltskante (10 + Tiefe*12).
-
-            Farbe ist --pc-widget-border, nicht --pc-explorer-border: theme.css
-            hält fest, dass Letzterer im Light-Theme fast verschwindet, sobald
-            unter ihm nicht die erwartete Nachbarfläche liegt. Genau dieser Fall
-            ist hier — die Linie steht auf dem Panelgrund selbst. */}
-      {ancestorGuides.map((continues, level) =>
-        continues ? (
-          <span
-            key={level}
-            aria-hidden="true"
-            style={{ left: 15 + level * 12 }}
-            className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
-          />
-        ) : null,
-      )}
-      {depth > 0 && (
-        <>
-          <span
-            aria-hidden="true"
-            style={{ left: 15 + (depth - 1) * 12 }}
-            className={`pointer-events-none absolute top-0 w-px bg-(--pc-widget-border) ${
-              isLast ? "h-[11.5px]" : "bottom-0"
-            }`}
-          />
-          <span
-            aria-hidden="true"
-            style={{ left: 15 + (depth - 1) * 12, width: 6, top: "calc(50% - 0.5px)" }}
-            className="pointer-events-none absolute h-px bg-(--pc-widget-border)"
-          />
-        </>
-      )}
+      <TreeRowGuides ancestorGuides={ancestorGuides} depth={depth} isLast={isLast} />
       {isFolder ? (
         <Chevron open={isOpen} />
       ) : (
@@ -1492,7 +1776,257 @@ function TreeRow({
           colored={decorationColor !== undefined}
         />
       )}
-    </button>
+        </button>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        {/* Textmenü ohne Icons, exakt das Vorbild aus TerminalPane.tsx
+            (Ticket 24 nennt es ausdrücklich) — nicht das Icon+Label-Muster
+            der Kopfzeile daneben. „Löschen" bekommt keine eigene Rottönung:
+            --pc-icon-red hält als Fließtext nicht die 4,5:1 (nur als
+            Grafikobjekt 3:1, s. `ConfirmDialog.tsx`s `WarningIcon`-Kommentar),
+            und ein Text-only-Menü hat kein Icon, an dem das Rot hängen
+            könnte. */}
+        <ContextMenu.Content className={`min-w-48 ${CHROME_MENU_CONTENT_CLASS}`}>
+          <ContextMenu.Item
+            onSelect={() => menu.onReveal(row)}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t(
+              isMacPlatform()
+                ? "explorer.contextMenu.revealInFinder"
+                : "explorer.contextMenu.revealInExplorer",
+            )}
+          </ContextMenu.Item>
+          {vscodeInstalled && (
+            <ContextMenu.Item
+              onSelect={() => menu.onOpenInVSCode(row)}
+              className={CHROME_MENU_ITEM_CLASS}
+            >
+              {t("explorer.contextMenu.openInVSCode")}
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
+          <ContextMenu.Item
+            onSelect={() => menu.onStartRename(row)}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("explorer.contextMenu.rename")}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            onSelect={() => menu.onRequestDelete(row)}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("explorer.contextMenu.delete")}
+          </ContextMenu.Item>
+          <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
+          <ContextMenu.Item
+            onSelect={() => menu.onCopyPath(row)}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("explorer.contextMenu.copyPath")}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            onSelect={() => menu.onCopyRelativePath(row)}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("explorer.contextMenu.copyRelativePath")}
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
+  );
+}
+
+// Dieselben drei Hairline-Bausteine wie zuvor inline in `TreeRow` — jetzt
+// eigene Komponente, weil `RenameField`-Zweig (s. o.) sie unverändert
+// mitbraucht: eine umbenannte Zeile soll nicht kurz aus ihrer Einrückung
+// herausfallen. Ast-Konnektoren in ├/└-Geometrie (TUI-Direktive 2026-08-13) —
+// als 1px-Hairlines GEZEICHNET statt als Box-Drawing-Glyphen gesetzt: Zeichen
+// müssten die 22px-Zeilenbox exakt füllen, um lückenlos zu stapeln, Hairlines
+// stapeln von selbst lückenlos und bleiben auf jeder Zoomstufe scharf. Drei
+// Bausteine pro Zeile:
+// 1. Durchlauf-Vertikalen der Vorfahren-Ebenen — nur wo der Ast dort
+//    wirklich weiterläuft (`ancestorGuides`, sonst Linie ins Leere).
+// 2. Die eigene Vertikale auf Ebene depth-1: voll (├) oder bis zur
+//    Zeilenmitte (└, `isLast`) — 11.5px, damit sie die Horizontale
+//    (10.5–11.5) gerade einschließt statt 0.5px vor ihr zu enden.
+// 3. Der 6px-Stichel zur Zeile, mittig bei calc(50% - 0.5px): auf Retina ein
+//    ganzer Gerätepixel, exakt auf der optischen Mitte der 22px-Zeile.
+//
+// x = 15 + Ebene * 12 trifft die Mitte des Chevrons des jeweiligen
+// Elternordners (dessen paddingLeft 10 + 12 pro Ebene, Chevron 10 breit); der
+// Stichel endet 1px vor der Inhaltskante (10 + Tiefe*12).
+//
+// Farbe ist --pc-widget-border, nicht --pc-explorer-border: theme.css hält
+// fest, dass Letzterer im Light-Theme fast verschwindet, sobald unter ihm
+// nicht die erwartete Nachbarfläche liegt. Genau dieser Fall ist hier — die
+// Linie steht auf dem Panelgrund selbst.
+function TreeRowGuides({
+  ancestorGuides,
+  depth,
+  isLast,
+}: {
+  ancestorGuides: readonly boolean[];
+  depth: number;
+  isLast: boolean;
+}) {
+  return (
+    <>
+      {ancestorGuides.map((continues, level) =>
+        continues ? (
+          <span
+            key={level}
+            aria-hidden="true"
+            style={{ left: 15 + level * 12 }}
+            className="pointer-events-none absolute inset-y-0 w-px bg-(--pc-widget-border)"
+          />
+        ) : null,
+      )}
+      {depth > 0 && (
+        <>
+          <span
+            aria-hidden="true"
+            style={{ left: 15 + (depth - 1) * 12 }}
+            className={`pointer-events-none absolute top-0 w-px bg-(--pc-widget-border) ${
+              isLast ? "h-[11.5px]" : "bottom-0"
+            }`}
+          />
+          <span
+            aria-hidden="true"
+            style={{ left: 15 + (depth - 1) * 12, width: 6, top: "calc(50% - 0.5px)" }}
+            className="pointer-events-none absolute h-px bg-(--pc-widget-border)"
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+// Ersetzt den Namen einer bestehenden Zeile durch ein Eingabefeld — dieselben
+// Regeln wie `NewEntryRow`s Feld weiter unten (BLUR VERWIRFT, ER COMMITTET
+// NICHT; Enter committet, Escape verwirft, der Rust-Fehlertext bleibt
+// unübersetzt stehen), nur ohne dessen Icon-Lücke davor: die steht hier schon
+// in der Zeile selbst (`TreeRow`s isRenaming-Zweig).
+//
+// Vorselektiert ist bei Dateien NUR der Basisname, nicht die Endung (VS-Code- brandlint-ok: funktionaler Verweis auf reales Editor-Verhalten
+// Konvention, vom Nutzer für dieses Ticket ausdrücklich gewünscht) — wer
+// umbenennt, ändert fast immer den Namen, nicht den Dateityp, und ein
+// versehentlicher erster Tastendruck soll die Endung nicht mitlöschen. Ordner
+// und Punktdateien (".env") haben keine Endung in diesem Sinn, dort ist der
+// GANZE Name vorselektiert.
+function RenameField({
+  name,
+  isFolder,
+  relPath,
+  depth,
+  onDiscard,
+  onCommit,
+}: {
+  name: string;
+  isFolder: boolean;
+  /** Projekt-relativer Pfad des umzubenennenden Eintrags — dieselbe
+   * Konvention wie überall im Baum. */
+  relPath: string;
+  /** Nur für die Positionierung der Fehlermeldung (s. u.) gebraucht. */
+  depth: number;
+  onDiscard: () => void;
+  onCommit: (relPath: string, newRelPath: string) => Promise<string | null>;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Verhindert einen zweiten Commit-Versuch, während der erste noch auf die
+  // Antwort des Backends wartet — dasselbe Muster wie `NewEntryRow`s `pending`.
+  const pending = useRef(false);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    const dot = name.lastIndexOf(".");
+    const selectionEnd = isFolder || dot <= 0 ? name.length : dot;
+    input.setSelectionRange(0, selectionEnd);
+    // Nur beim Einhängen — danach darf der Nutzer frei innerhalb des Felds
+    // markieren, ohne dass ein erneuter Lauf das rückgängig macht.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const commit = async () => {
+    const trimmed = value.trim();
+    // Leer oder unverändert: nichts zu tun, kein Fehler — derselbe stille
+    // Ausstieg wie ein Blur.
+    if (trimmed === "" || trimmed === name) {
+      onDiscard();
+      return;
+    }
+    if (trimmed.includes("/") || trimmed.includes("\\")) {
+      setError(t("explorer.nameContainsPathError"));
+      return;
+    }
+    if (pending.current) return;
+    pending.current = true;
+    const parent = relPath.includes("/")
+      ? relPath.slice(0, relPath.lastIndexOf("/"))
+      : "";
+    const newRelPath = parent === "" ? trimmed : `${parent}/${trimmed}`;
+    const failure = await onCommit(relPath, newRelPath);
+    if (failure !== null) {
+      setError(failure);
+      pending.current = false;
+      return;
+    }
+    // Bei Erfolg tut dieses Feld nichts weiter: `onCommit` hat den
+    // Umbenennen-Zustand in `ExplorerPanel` bereits beendet (spiegelbildlich
+    // zu `NewEntryRow`s `onCreated`, das ebenfalls erst NACH dem Erfolg läuft).
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onDiscard();
+    }
+  };
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        aria-label={t("explorer.contextMenu.renameFieldAria", { name })}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setError(null);
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={onDiscard}
+        className={`w-full min-w-0 rounded-sm border bg-(--pc-widget-background) px-1 py-px font-(family-name:--pc-terminal-fontFamily) text-(--pc-explorer-foreground) outline-none ${
+          error === null
+            ? "border-(--pc-widget-border) focus:border-(--pc-focusBorder)"
+            : "border-(--pc-icon-red)"
+        }`}
+      />
+      {error !== null && (
+        // Schwebend statt im Fluss: diese Zeile steht absolut positioniert
+        // zwischen den übrigen (virtualisierten) Baumzeilen — ein Fehlertext
+        // IM Fluss würde die feste Zeilenhöhe sprengen und die Zeile darunter
+        // überlagern. Dieselbe Materialsprache wie ein Kontextmenü (Rahmen,
+        // Panelgrund, Schatten), eine Ebene darunter (z-20 < z-30).
+        <p
+          role="alert"
+          style={{ left: -(10 + depth * 12) }}
+          className="absolute top-full z-20 mt-0.5 max-w-72 rounded-sm border border-(--pc-icon-red) bg-(--pc-explorer-background) px-1.5 py-1 text-(length:--pc-chrome-fontSizeSmall) leading-relaxed text-(--pc-explorer-foreground) shadow-lg"
+        >
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

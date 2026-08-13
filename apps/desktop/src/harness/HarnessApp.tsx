@@ -97,6 +97,8 @@ export function HarnessApp({
                 onStartPathDrag={() => undefined}
                 draggingPath={null}
                 onConsumeDragClick={() => false}
+                onEntryRenamed={() => undefined}
+                onEntryDeleted={() => undefined}
               />
             )}
             <main className="flex min-w-0 flex-1 flex-col p-2">

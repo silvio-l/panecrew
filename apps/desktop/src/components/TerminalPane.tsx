@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
-import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import {
+  CHROME_FOCUS_RING,
+  CHROME_MENU_CONTENT_CLASS,
+  CHROME_MENU_ITEM_CLASS,
+  CHROME_MENU_SEPARATOR_CLASS,
+  ChromeTooltip,
+} from "./ChromeTooltip";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
@@ -381,7 +387,7 @@ export function TerminalPane({
               event.preventDefault();
               focus();
             }}
-            className="z-30 min-w-40 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) p-1 text-(length:--pc-chrome-fontSize) text-(--pc-foreground) shadow-lg"
+            className={`min-w-40 ${CHROME_MENU_CONTENT_CLASS}`}
           >
             <TerminalMenuItem
               onSelect={copyWithFeedback}
@@ -392,7 +398,7 @@ export function TerminalPane({
             <TerminalMenuItem onSelect={paste}>
               {t("terminalPane.paste")}
             </TerminalMenuItem>
-            <ContextMenu.Separator className="my-1 h-px bg-(--pc-titleBar-border)" />
+            <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
             <TerminalMenuItem onSelect={clear}>
               {t("terminalPane.clear")}
             </TerminalMenuItem>
@@ -416,7 +422,7 @@ function TerminalMenuItem({
     <ContextMenu.Item
       disabled={disabled}
       onSelect={onSelect}
-      className="flex h-7 cursor-default select-none items-center rounded px-2 outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-(--pc-list-hoverBackground) data-[disabled]:text-(--pc-descriptionForeground) data-[disabled]:opacity-50"
+      className={CHROME_MENU_ITEM_CLASS}
     >
       {children}
     </ContextMenu.Item>

@@ -1,9 +1,26 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Tooltip } from "radix-ui";
+import { invoke } from "@tauri-apps/api/core";
 import { ExplorerPanel } from "./ExplorerPanel";
 import type { GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
+
+// Dasselbe Muster wie About.test.tsx: ein einzelner, überall erfolgreich
+// auflösender Mock reicht, weil kein Test hier auf einen konkreten
+// Rückgabewert angewiesen ist — geprüft wird jeweils NUR, mit welchen
+// Argumenten `invoke` aufgerufen wurde.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: vi.fn(() => Promise.resolve()),
+}));
+// VS Code selbst ist nicht Gegenstand dieser Tests — ohne diesen Mock riefe brandlint-ok: funktionaler Test-Mock für reale Editor-Erkennung
+// `vscodeIsInstalled()` denselben `invoke`-Mock auf und das Kontextmenü
+// bekäme abhängig von der Testreihenfolge mal den Eintrag "In VS Code brandlint-ok: funktionaler UI-Text im Testkommentar
+// öffnen", mal nicht.
+vi.mock("../explorer/vscodeDetection", () => ({
+  vscodeIsInstalled: () => Promise.resolve(false),
+}));
 
 // Die Virtualisierung des Dateibaums. Bewusst direkt an `ExplorerPanel` und
 // nicht über `App` wie der Rest der Explorer-Tests: hier soll ein Baum mit
@@ -48,6 +65,8 @@ const renderPanel = (
         onStartPathDrag={() => undefined}
         draggingPath={null}
         onConsumeDragClick={() => false}
+        onEntryRenamed={() => undefined}
+        onEntryDeleted={() => undefined}
       />
     </Tooltip.Provider>,
   );
@@ -233,5 +252,42 @@ describe("ExplorerPanel", () => {
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ top: expect.any(Number) as number }),
     );
+  });
+
+  it("öffnet per Rechtsklick das Kontextmenü und committet eine Umbenennung über explorer_rename", async () => {
+    renderPanel([{ name: "readme.md" }]);
+
+    const row = mountedRows()[0];
+    if (!row) throw new Error("Baumzeile nicht gefunden");
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menuitem", { name: "Umbenennen" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Löschen" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Pfad kopieren" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Relativen Pfad kopieren" }),
+    ).toBeInTheDocument();
+    // VS Code ist laut Mock nicht installiert — der Eintrag darf gar nicht brandlint-ok: funktionaler Test-Assert für reales Menü
+    // erst erscheinen (der Menüaufbau prüft das serverseitig, nicht per CSS).
+    expect(
+      screen.queryByRole("menuitem", { name: "In VS Code öffnen" }), // brandlint-ok: funktionaler UI-Text-Assert
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Umbenennen" }));
+
+    const input = screen.getByRole("textbox", { name: "„readme.md“ umbenennen" });
+    fireEvent.change(input, { target: { value: "notes.md" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Die Zusammensetzung projekt-relativ → absolut ist genau das, was
+    // `commitRename` in ExplorerPanel.tsx leistet — hier über das tatsächlich
+    // beim Backend ankommende Argumentpaar nachgewiesen, nicht über die
+    // Implementierung selbst.
+    await vi.waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("explorer_rename", {
+        from: "/Users/dev/projects/storefront/readme.md",
+        to: "/Users/dev/projects/storefront/notes.md",
+      });
+    });
   });
 });

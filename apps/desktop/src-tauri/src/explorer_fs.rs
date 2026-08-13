@@ -1,7 +1,7 @@
-//! Read-only directory tree for the explorer.
+//! Directory tree + file operations for the explorer.
 //!
-//! Stateless read, like `path_probe.rs`: no persistent handle to manage, so
-//! this stays a plain function annotated `#[tauri::command]` rather than a
+//! Stateless, like `path_probe.rs`: no persistent handle to manage, so this
+//! stays a set of plain functions annotated `#[tauri::command]` rather than a
 //! manager/commands split. `kind`/`FileKind` is deliberately absent from
 //! `RawTreeNode` — that's a presentational concern the frontend derives from
 //! the filename (see `types/project.ts`), not something Rust needs to know.
@@ -64,6 +64,49 @@ pub fn explorer_create_file(path: String) -> Result<(), String> {
 pub fn explorer_create_directory(path: String) -> Result<(), String> {
     std::fs::create_dir(&path)
         .map_err(|error| format!("Ordner konnte nicht angelegt werden: {error}"))
+}
+
+/// Renames/moves a file or directory from `from` to `to`, refusing to
+/// clobber an existing target — `std::fs::rename` has no atomic
+/// rename-if-absent, so this accepts the same TOCTOU race
+/// `explorer_create_file`'s comment already accepts for its own
+/// existence check.
+///
+/// The one exception is a case-only rename on a case-insensitive filesystem
+/// (macOS's default): there, `to` already "exists" as `from` itself under a
+/// different spelling, and `try_exists` alone would reject a rename like
+/// `Foo.ts` → `foo.ts` that changes nothing on disk but the letter case. This
+/// is resolved by canonicalizing both sides — if `to` happens to exist AND
+/// resolves to the very same entry as `from`, that's not a collision, it's
+/// the rename itself.
+#[tauri::command(async)]
+pub fn explorer_rename(from: String, to: String) -> Result<(), String> {
+    let from_path = Path::new(&from);
+    let to_path = Path::new(&to);
+
+    let same_entry = std::fs::canonicalize(from_path)
+        .and_then(|from_real| {
+            std::fs::canonicalize(to_path).map(|to_real| from_real == to_real)
+        })
+        .unwrap_or(false);
+
+    if !same_entry && to_path.try_exists().unwrap_or(false) {
+        return Err("Am Zielpfad existiert bereits ein Eintrag".to_string());
+    }
+
+    std::fs::rename(from_path, to_path)
+        .map_err(|error| format!("Umbenennen fehlgeschlagen: {error}"))
+}
+
+/// Moves a file or directory to the system trash (Finder's Trash on macOS,
+/// the Recycle Bin on Windows) rather than deleting it outright — the
+/// explorer is the one place in the app that can remove a project file the
+/// user never explicitly asked PaneCrew to touch, and an accidental delete
+/// here should stay recoverable through the normal OS mechanism. The `trash`
+/// crate figures out file-vs-directory itself; nothing here needs to.
+#[tauri::command(async)]
+pub fn explorer_delete(path: String) -> Result<(), String> {
+    trash::delete(&path).map_err(|error| format!("Löschen fehlgeschlagen: {error}"))
 }
 
 /// The mini editor loads a whole file into one `<textarea>` — refusing
@@ -646,6 +689,116 @@ mod tests {
             false,
             FileStamp { modified_ms: 0, len: 0 },
         );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn renames_a_file() {
+        let fixture = Fixture::new("rename-file", &["old.txt"]);
+        let from = fixture.0.join("old.txt");
+        let to = fixture.0.join("new.txt");
+
+        explorer_rename(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+        )
+        .expect("should rename");
+
+        assert!(!from.exists());
+        assert!(to.exists());
+    }
+
+    #[test]
+    fn renames_a_directory() {
+        let fixture = Fixture::new("rename-dir", &["old/inside.txt"]);
+        let from = fixture.0.join("old");
+        let to = fixture.0.join("new");
+
+        explorer_rename(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+        )
+        .expect("should rename");
+
+        assert!(to.join("inside.txt").exists());
+    }
+
+    #[test]
+    fn refuses_to_rename_onto_an_existing_different_target() {
+        let fixture = Fixture::new("rename-collision", &["source.txt", "target.txt"]);
+        let from = fixture.0.join("source.txt");
+        let to = fixture.0.join("target.txt");
+        std::fs::write(&to, "already here").expect("fixture write");
+
+        let result = explorer_rename(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+        );
+
+        assert!(result.is_err());
+        assert!(from.exists());
+        assert_eq!(std::fs::read_to_string(&to).expect("readable"), "already here");
+    }
+
+    #[test]
+    fn allows_a_case_only_rename_on_a_case_insensitive_filesystem() {
+        let fixture = Fixture::new("rename-case-only", &["Foo.txt"]);
+        let from = fixture.0.join("Foo.txt");
+        let to = fixture.0.join("foo.txt");
+
+        // Only meaningful proof on a case-insensitive filesystem (macOS's
+        // default) — elsewhere `from` and `to` are simply two different,
+        // non-colliding paths, and this test degenerates into a no-op rename.
+        let result = explorer_rename(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+        );
+
+        assert!(result.is_ok(), "case-only rename should not be treated as a collision");
+        assert!(to.exists());
+    }
+
+    #[test]
+    fn refuses_to_rename_a_missing_source() {
+        let fixture = Fixture::new("rename-missing-source", &[]);
+        let from = fixture.0.join("nope.txt");
+        let to = fixture.0.join("new.txt");
+
+        let result = explorer_rename(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deletes_a_file_to_trash() {
+        let fixture = Fixture::new("delete-file", &["gone.txt"]);
+        let path = fixture.0.join("gone.txt");
+
+        explorer_delete(path.to_string_lossy().into_owned()).expect("should delete");
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn deletes_a_non_empty_directory_to_trash() {
+        let fixture = Fixture::new("delete-dir", &["gone/inside.txt"]);
+        let path = fixture.0.join("gone");
+
+        explorer_delete(path.to_string_lossy().into_owned()).expect("should delete");
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn errors_deleting_a_missing_path_instead_of_panicking() {
+        let fixture = Fixture::new("delete-missing", &[]);
+        let path = fixture.0.join("nope.txt");
+
+        let result = explorer_delete(path.to_string_lossy().into_owned());
 
         assert!(result.is_err());
     }

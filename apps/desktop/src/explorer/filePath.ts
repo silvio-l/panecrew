@@ -18,3 +18,27 @@ export function fileNameFromPath(path: string): string {
   const segments = path.split(/[/\\]/).filter(Boolean);
   return segments.at(-1) ?? path;
 }
+
+/** True für `path === ancestor` UND für jeden Pfad darunter — die Frage, die
+ * eine Explorer-Löschung an jeden anderswo gehaltenen Pfad stellt ("betrifft
+ * mich das?"), ob der nun eine einzelne Datei oder ein ganzer Ordner war. */
+export function isPathOrDescendant(path: string, ancestor: string): boolean {
+  return path === ancestor || path.startsWith(`${ancestor}/`);
+}
+
+/** Rechnet `path` über eine Explorer-Umbenennung von `oldPath` nach `newPath`
+ * hinweg um — unverändert, falls `path` weder der umbenannte Eintrag selbst
+ * noch ein Pfad darunter ist (ein Ordner wurde umbenannt, `path` lag darin).
+ * Dieselbe Präfix-Ersetzung, die `fileEditorState.ts`s `renamePath` für den
+ * Editor-Puffer vornimmt — hier für jeden anderen Ort, der einen
+ * projekt-relativen oder absoluten Pfad hält (Baum-Klappzustand, Datei-
+ * Auswahl). */
+export function remapRenamedPath(
+  path: string,
+  oldPath: string,
+  newPath: string,
+): string {
+  if (path === oldPath) return newPath;
+  if (path.startsWith(`${oldPath}/`)) return newPath + path.slice(oldPath.length);
+  return path;
+}

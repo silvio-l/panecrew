@@ -168,6 +168,42 @@ export function saveFailed(
   };
 }
 
+/** Trägt einen Puffer über eine Explorer-Umbenennung hinweg (Ticket 24) mit,
+ * OHNE ihn neu von der Platte zu lesen: `explorer_rename` verschiebt nur den
+ * Dateinamen, der Inhalt bleibt exakt, was er war — ein Neuladen würde also
+ * bestenfalls nichts ändern und schlimmstenfalls einen ungespeicherten Stand
+ * lautlos verwerfen. Wirkt auf `oldPath` selbst UND auf jeden Pfad darunter
+ * (ein Ordner wurde umbenannt, diese Datei lag darin) — beides dieselbe
+ * Präfix-Ersetzung. Jeder andere offene Pfad bleibt unverändert. */
+export function renamePath(
+  state: FileEditorState,
+  oldPath: string,
+  newPath: string,
+): FileEditorState {
+  if (state.status === "idle") return state;
+  if (state.path !== oldPath && !state.path.startsWith(`${oldPath}/`)) {
+    return state;
+  }
+  return { ...state, path: newPath + state.path.slice(oldPath.length) };
+}
+
+/** Schließt einen offenen Puffer, dessen Pfad unter einem soeben gelöschten
+ * Eintrag liegt (die Datei selbst oder ein Ordner, der sie enthielt) — die
+ * Datei existiert danach nicht mehr, ein weiterhin offener Editor darauf
+ * wäre eine Fläche ohne Gegenstück auf der Platte. Anders als bei
+ * `renamePath` gibt es hier nichts zu erhalten: ein ungespeicherter Stand
+ * ginge so oder so verloren, die Löschung selbst hat ihn bereits entschieden. */
+export function closeIfUnder(
+  state: FileEditorState,
+  deletedPath: string,
+): FileEditorState {
+  if (state.status === "idle") return state;
+  if (state.path !== deletedPath && !state.path.startsWith(`${deletedPath}/`)) {
+    return state;
+  }
+  return IDLE_STATE;
+}
+
 /** Genau dann true, wenn ein Wechsel (andere Datei, Projekt, Pane schließen)
  * einen ungespeicherten Stand kosten würde. */
 export function wouldLoseWork(state: FileEditorState): boolean {

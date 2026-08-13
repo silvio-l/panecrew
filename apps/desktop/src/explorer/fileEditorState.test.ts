@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   IDLE_STATE,
   closeFile,
+  closeIfUnder,
   edit,
   loadFailed,
   loadSucceeded,
+  renamePath,
   saveFailed,
   saveSucceeded,
   startLoading,
@@ -201,5 +203,57 @@ describe("fileEditorState", () => {
     expect(
       wouldLoseWork(saveFailed(startSaving(edit(ready(), "geändert")), "a.txt", "Fehler", false)),
     ).toBe(true);
+  });
+
+  it("renamePath ersetzt den Pfad, wenn er genau dem umbenannten Eintrag entspricht", () => {
+    expect(renamePath(ready(), "a.txt", "b.txt")).toEqual({
+      ...ready(),
+      path: "b.txt",
+    });
+  });
+
+  it("renamePath trägt einen Pfad UNTER einem umbenannten Ordner mit", () => {
+    const insideFolder = loadSucceeded(startLoading("src/old/App.tsx"), "src/old/App.tsx", {
+      text: "hello",
+      crlf: false,
+      stamp: STAMP,
+    });
+
+    expect(renamePath(insideFolder, "src/old", "src/new")).toEqual({
+      ...insideFolder,
+      path: "src/new/App.tsx",
+    });
+  });
+
+  it("renamePath lässt einen unbeteiligten Pfad unverändert", () => {
+    const state = ready();
+    expect(renamePath(state, "other.txt", "renamed.txt")).toBe(state);
+  });
+
+  it("renamePath an idle ist ein No-Op", () => {
+    expect(renamePath(IDLE_STATE, "a.txt", "b.txt")).toBe(IDLE_STATE);
+  });
+
+  it("closeIfUnder schließt einen Puffer, dessen Pfad genau der gelöschte Eintrag ist", () => {
+    expect(closeIfUnder(ready(), "a.txt")).toEqual(IDLE_STATE);
+  });
+
+  it("closeIfUnder schließt einen Puffer UNTER einem gelöschten Ordner", () => {
+    const insideFolder = loadSucceeded(startLoading("src/old/App.tsx"), "src/old/App.tsx", {
+      text: "hello",
+      crlf: false,
+      stamp: STAMP,
+    });
+
+    expect(closeIfUnder(insideFolder, "src/old")).toEqual(IDLE_STATE);
+  });
+
+  it("closeIfUnder lässt einen unbeteiligten Puffer unverändert", () => {
+    const state = ready();
+    expect(closeIfUnder(state, "other.txt")).toBe(state);
+  });
+
+  it("closeIfUnder an idle ist ein No-Op", () => {
+    expect(closeIfUnder(IDLE_STATE, "a.txt")).toBe(IDLE_STATE);
   });
 });

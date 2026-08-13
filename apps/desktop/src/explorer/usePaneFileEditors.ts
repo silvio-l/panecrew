@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   IDLE_STATE,
   closeFile,
+  closeIfUnder,
   edit,
   loadFailed,
   loadSucceeded,
+  renamePath as renamePathTransition,
   saveFailed,
   saveSucceeded,
   startLoading,
@@ -64,6 +66,14 @@ export interface PaneFileEditors {
    * wiederverwendet (jede Neuzuweisung erzeugt eine frische), Vergessen ist
    * also reine Aufräumarbeit, keine Korrektheitsfrage. */
   forget: (paneId: string) => void;
+  /** Trägt jeden offenen Puffer (über ALLE Panes hinweg) über eine Explorer-
+   * Umbenennung (Ticket 24) hinweg mit — siehe `fileEditorState.ts`s
+   * `renamePath`. `oldPath`/`newPath` sind absolute Pfade. */
+  renamePath: (oldPath: string, newPath: string) => void;
+  /** Schließt jeden offenen Puffer (über ALLE Panes hinweg), der unter einem
+   * soeben gelöschten Explorer-Eintrag lag — siehe `fileEditorState.ts`s
+   * `closeIfUnder`. `deletedPath` ist ein absoluter Pfad. */
+  closeUnder: (deletedPath: string) => void;
 }
 
 /**
@@ -168,5 +178,27 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     });
   };
 
-  return { editorFor, forget };
+  const renamePath = (oldPath: string, newPath: string) => {
+    setStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([paneId, state]) => [
+          paneId,
+          renamePathTransition(state, oldPath, newPath),
+        ]),
+      ),
+    );
+  };
+
+  const closeUnder = (deletedPath: string) => {
+    setStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([paneId, state]) => [
+          paneId,
+          closeIfUnder(state, deletedPath),
+        ]),
+      ),
+    );
+  };
+
+  return { editorFor, forget, renamePath, closeUnder };
 }
