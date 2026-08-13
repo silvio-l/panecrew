@@ -40,6 +40,12 @@ export interface RotationStep {
 export interface FocusRotation {
   active: boolean;
   intervalMs: RotationIntervalMs;
+  /** Restzeit bis zum nächsten Rotationsschritt (Nutzer-Feedback
+   * 2026-08-13: "zählt dann auch immer entsprechend runter auf Null" — reine
+   * Anzeige-Bewegung, treibt die Rotation selbst nicht an, die läuft weiter
+   * über den `setInterval` unten). Entspricht `intervalMs`, solange die
+   * Rotation nicht aktiv ist. */
+  remainingMs: number;
   /** Start/Stopp — der Klick auf den Rotations-Punkt im HUD. */
   toggle: () => void;
   /** Wechselt zum nächsten Preset in `ROTATION_INTERVALS_MS`, rundum. */
@@ -89,6 +95,7 @@ export function useFocusRotation({
 }): FocusRotation {
   const [active, setActive] = useState(initialActive);
   const [intervalMs, setIntervalMs] = useState<RotationIntervalMs>(initialIntervalMs);
+  const [remainingMs, setRemainingMs] = useState<number>(initialIntervalMs);
 
   useEffect(() => {
     onConfigChange?.({ active, intervalMs });
@@ -109,11 +116,32 @@ export function useFocusRotation({
     if (maximizedPaneId === null && active) setActive(false);
   }
 
+  // Derselbe Render-Zeit-Anpassung-Trick wie oben bei `lastMaximizedPaneId`,
+  // hier um den Countdown (Nutzer-Feedback 2026-08-13) bei jedem neuen
+  // Rotationsschritt/Intervallwechsel wieder beim vollen Intervall
+  // aufzusetzen, ohne dafür `setRemainingMs` synchron im Effekt-Body
+  // aufzurufen (react-hooks/set-state-in-effect).
+  const runningCycleKey =
+    active && maximizedPaneId !== null
+      ? `${maximizedPaneId} ${activeTabId ?? ""} ${intervalMs}`
+      : null;
+  const [lastCycleKey, setLastCycleKey] = useState(runningCycleKey);
+  if (runningCycleKey !== lastCycleKey) {
+    setLastCycleKey(runningCycleKey);
+    setRemainingMs(intervalMs);
+  }
+
   useEffect(() => {
     if (!active || maximizedPaneId === null) return;
     const sequence = flatten(occupiedPanesInOrder);
     if (sequence.length < 2) return;
-    const timer = window.setInterval(() => {
+    // Zwei Timer auf demselben Anker (`startedAt`): der Rotations-Timer
+    // schaltet exakt bei `intervalMs` weiter, der Tick-Timer treibt
+    // dazwischen nur die sichtbare Restzeit im HUD (Nutzer-Feedback
+    // 2026-08-13) — eine reine Anzeige-Bewegung ohne Einfluss auf den
+    // tatsächlichen Rotationszeitpunkt.
+    const startedAt = Date.now();
+    const rotateTimer = window.setInterval(() => {
       const currentIndex = sequence.findIndex(
         (step) => step.paneId === maximizedPaneId && step.tabId === activeTabId,
       );
@@ -121,7 +149,13 @@ export function useFocusRotation({
       const next = sequence[nextIndex];
       if (next !== undefined) onRotate(next);
     }, intervalMs);
-    return () => window.clearInterval(timer);
+    const tickTimer = window.setInterval(() => {
+      setRemainingMs(Math.max(0, intervalMs - (Date.now() - startedAt)));
+    }, 200);
+    return () => {
+      window.clearInterval(rotateTimer);
+      window.clearInterval(tickTimer);
+    };
   }, [active, intervalMs, maximizedPaneId, activeTabId, occupiedPanesInOrder, onRotate]);
 
   const toggle = useCallback(() => setActive((current) => !current), []);
@@ -137,5 +171,5 @@ export function useFocusRotation({
     setActive((current) => (current ? false : current));
   }, []);
 
-  return { active, intervalMs, toggle, cycleInterval, notifyInput };
+  return { active, intervalMs, remainingMs, toggle, cycleInterval, notifyInput };
 }

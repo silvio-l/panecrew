@@ -257,6 +257,72 @@ describe("useFocusRotation", () => {
     });
   });
 
+  it("remainingMs zählt bei aktiver Rotation sichtbar bis auf 0 herunter", () => {
+    const { result } = setup();
+    expect(result.current.remainingMs).toBe(8000);
+
+    act(() => {
+      result.current.toggle();
+    });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(result.current.remainingMs).toBe(5000);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current.remainingMs).toBe(0);
+  });
+
+  it("remainingMs startet nach einem Rotationsschritt wieder beim vollen Intervall", () => {
+    // Simuliert `App.tsx`s echte Verdrahtung wie der "rotiert nach
+    // Aktivierung..."-Test oben: `onRotate`s Ergebnis kommt als neue
+    // `maximizedPaneId`/`activeTabId`-Props zurück, was den Rotations-Effekt
+    // (und damit auch den Countdown-Anker) frisch aufsetzt.
+    const onRotate = vi.fn();
+    const { result, rerender } = renderHook<FocusRotation, Props>(
+      (props) => useFocusRotation(props),
+      {
+        initialProps: {
+          maximizedPaneId: "pane-a",
+          activeTabId: "pane-a:tab-1",
+          occupiedPanesInOrder: THREE_SINGLE_TAB_PANES,
+          onRotate,
+        },
+      },
+    );
+    act(() => {
+      result.current.toggle();
+    });
+    act(() => {
+      vi.advanceTimersByTime(8000);
+    });
+    rerender({
+      maximizedPaneId: "pane-b",
+      activeTabId: "pane-b:tab-1",
+      occupiedPanesInOrder: THREE_SINGLE_TAB_PANES,
+      onRotate,
+    });
+    expect(result.current.remainingMs).toBe(8000);
+  });
+
+  it("remainingMs springt beim Stoppen zurück auf das volle Intervall", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.toggle();
+    });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(result.current.remainingMs).toBe(5000);
+
+    act(() => {
+      result.current.notifyInput();
+    });
+    expect(result.current.remainingMs).toBe(8000);
+  });
+
   it("rotiert nicht mit einer einzelnen Pane mit nur einem Tab", () => {
     const { result, onRotate } = setup({
       occupiedPanesInOrder: [{ paneId: "pane-a", tabIds: ["pane-a:tab-1"] }],

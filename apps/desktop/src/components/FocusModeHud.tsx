@@ -35,7 +35,12 @@ export function FocusModeHud({
   rotation: FocusRotation;
 }) {
   const { t } = useTranslation();
-  const seconds = Math.round(rotation.intervalMs / 1000);
+  const intervalSeconds = Math.round(rotation.intervalMs / 1000);
+  // Läuft die Rotation, zählt die Anzeige sichtbar auf 0 runter statt nur den
+  // Preset-Wert stehen zu lassen (Nutzer-Feedback 2026-08-13: "sieht man
+  // gleich, wie lange das noch dauert") — Klickziel/Aria bleibt trotzdem der
+  // Intervall-Preset, das Zählen ist reine Anzeige-Bewegung.
+  const seconds = rotation.active ? Math.ceil(rotation.remainingMs / 1000) : intervalSeconds;
 
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -70,10 +75,15 @@ export function FocusModeHud({
           {rotation.active ? <PauseGlyph /> : <PlayGlyph />}
         </button>
       </ChromeTooltip>
-      <ChromeTooltip label={t("focusMode.intervalAria", { seconds })}>
+      {/* Aria/Tooltip nennen weiter den gewählten Intervall-Preset (das,
+          was ein Klick verändert) — nur die sichtbare Ziffer zählt bei
+          laufender Rotation runter, sonst würde die Ansage bei jedem Tick
+          fälschlich ein neues Intervall verkünden statt der bloßen
+          Restzeit. */}
+      <ChromeTooltip label={t("focusMode.intervalAria", { seconds: intervalSeconds })}>
         <button
           type="button"
-          aria-label={t("focusMode.intervalAria", { seconds })}
+          aria-label={t("focusMode.intervalAria", { seconds: intervalSeconds })}
           onClick={rotation.cycleInterval}
           className={`rounded-(--pc-paneControl-radius) px-1 py-0.5 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.2em] text-(--pc-paneHeader-activeForeground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
