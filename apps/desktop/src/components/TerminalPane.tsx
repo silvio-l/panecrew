@@ -183,6 +183,12 @@ export function TerminalPane({
     wasActive.current = active;
   }, [active, focus]);
 
+  // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
+  // Pane-Aufblitz): `onTabAttentionFlash` meldet den Chip-Aufblitz
+  // zusätzlich hierher, `paneFlashKey` löst denselben `pc-attention-flash`
+  // einmalig über die ganze `<section>`.
+  const [paneFlashKey, setPaneFlashKey] = useState(0);
+
   return (
     <section
       aria-label={t("terminalPane.terminalAria", { projectName })}
@@ -216,10 +222,26 @@ export function TerminalPane({
       // wechselt — und weil ihn jede Pane trägt, nur eben in zwei Tönen,
       // springt die Breite beim Fokuswechsel nicht (ein Rahmen, der nur bei
       // Fokus da ist, verschöbe das Terminal darin um 1px).
-      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
+      className={`group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
+      {paneFlashKey > 0 && (
+        // z-20, NICHT -z-10 wie am Chip: die eigentliche Terminalfläche
+        // darunter (xterm.js' Canvas, `containerRef` weiter unten) ist ein
+        // eigener, `position:absolute`, aber nicht selbst stack-context-
+        // bildender Container mit opakem Hintergrund — ein negativer
+        // z-index läge in derselben Malreihenfolge VOR dieser Fläche
+        // (CSS2.1 Anhang E, Schritt 2 vs. 6) und bliebe hinter ihr komplett
+        // unsichtbar, sichtbar höchstens im 24px-Kopf. Der Chip-eigene Flash
+        // nutzt -z-10 bewusst umgekehrt: dort soll die eigene, lesbare
+        // Chip-Zahl darüber bleiben.
+        <span
+          key={paneFlashKey}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out]"
+        />
+      )}
       {/* Zweites Fokussignal: der Projektname der aktiven Pane steht im
           Akzent, die der übrigen im gedimmten Header-Ton. Bei einer einzelnen
           Pane war das nicht unterscheidbar — mit sieben Templates und bis zu
@@ -269,7 +291,7 @@ export function TerminalPane({
         <span className="min-w-0 shrink truncate font-(family-name:--pc-terminal-fontFamily)">
           {projectName}
         </span>
-        <PaneTabs {...tabs} />
+        <PaneTabs {...tabs} onTabAttentionFlash={() => setPaneFlashKey((key) => key + 1)} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
         {focusModeHud}
         <FocusModeButton maximized={maximized} onToggle={onToggleFocusMode} />

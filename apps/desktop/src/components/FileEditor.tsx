@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
@@ -85,6 +86,10 @@ export function FileEditor({
   focusModeHud: ReactNode;
 }) {
   const { t } = useTranslation();
+  // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
+  // Pane-Aufblitz) — dieselbe Mechanik wie TerminalPane.tsx, VOR dem
+  // frühen `return` unten, da Hooks nicht bedingt aufgerufen werden dürfen.
+  const [paneFlashKey, setPaneFlashKey] = useState(0);
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
   // bedingungslos und stellt die Bedingung damit genau einmal — hier.
   if (state.status === "idle") return null;
@@ -150,10 +155,24 @@ export function FileEditor({
       // TerminalPane.tsx' Kopf) — der Schließen-Knopf dieser Fläche bleibt
       // bewusst dauerhaft sichtbar (Begründung dort), reagiert also NICHT auf
       // diese Gruppe.
-      className={`group/pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
+      className={`group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
+      {paneFlashKey > 0 && (
+        // z-20, NICHT -z-10 wie am Chip: hier gibt es zwar keine xterm-
+        // Fläche, aber dasselbe Argument wie TerminalPane.tsx gilt für die
+        // Textarea/den Editorinhalt darunter — ein negativer z-index läge in
+        // der Malreihenfolge vor jedem normalen Inhalt (CSS2.1 Anhang E,
+        // Schritt 2 vs. 3/6) und bliebe darunter unsichtbar. Gleiche
+        // Begründung wie dort, aus Konsistenzgründen dupliziert statt
+        // extrahiert (zwei Zeilen, kein gemeinsamer Zustand).
+        <span
+          key={paneFlashKey}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out]"
+        />
+      )}
       {/* Header-Hairline im gedimmten Amber bei Fokus — Schaltung und
           Begründung 1:1 wie in TerminalPane.tsx' Header (inkl. der seit dem
           Widerruf der 0ms-Zustandswechsel-Regel ergänzten `transition-colors`,
@@ -185,7 +204,7 @@ export function FileEditor({
         <span className="min-w-0 shrink truncate font-(family-name:--pc-terminal-fontFamily)">
           {projectName}
         </span>
-        <PaneTabs {...tabs} />
+        <PaneTabs {...tabs} onTabAttentionFlash={() => setPaneFlashKey((key) => key + 1)} />
         <div aria-hidden="true" className="min-w-0 flex-1" />
         {focusModeHud}
         <FocusModeButton maximized={maximized} onToggle={onToggleFocusMode} />

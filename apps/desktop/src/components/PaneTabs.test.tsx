@@ -131,30 +131,30 @@ describe("PaneTabs", () => {
 
   describe("Needs-Attention: Ungelesen-Punkt", () => {
     // Umbau 2026-08-13 (Nutzer-Neuspezifikation, s. Kopfkommentar von
-    // PaneTabs.tsx, Umbau-Absatz): persistent statt transient — reportet erst
-    // NACH dem Start-Ruhefenster (terminalActivity.ts' UNREAD_BOOT_GRACE_MS),
-    // deshalb hier `vi.useFakeTimers()` + `vi.advanceTimersByTime`, wie schon
-    // in terminalActivity.test.ts. `resetTerminalActivityForTests` statt
-    // einzelner `disposeTerminalActivity`-Aufrufe: löscht zusätzlich
-    // `viewedTabId` (terminalActivity.ts), das an keinem einzelnen Tab-
-    // Eintrag hängt und sonst aus früheren Tests dieser Datei durchsickern
-    // würde — jeder vorherige Test in dieser Datei rendert mit dem
-    // `baseProps`-Default (`activeTerminalTabId: "tab-1", paneFocused: true`)
-    // und setzt darüber unbemerkt `viewedTabId = "tab-1"`.
+    // PaneTabs.tsx, Umbau-Absatz): persistent statt transient. Der
+    // allererste Burst eines frischen Tab-Eintrags gilt als Shell-Start-
+    // Prompt und wird konsumiert, ohne zu markieren (terminalActivity.ts'
+    // `firstBurstConsumed`) — deshalb meldet jeder Test hier zuerst einen
+    // "Freipass"-Burst, bevor der eigentlich zu prüfende Burst kommt.
+    // `resetTerminalActivityForTests` statt einzelner
+    // `disposeTerminalActivity`-Aufrufe: löscht zusätzlich `viewedTabId`
+    // (terminalActivity.ts), das an keinem einzelnen Tab-Eintrag hängt und
+    // sonst aus früheren Tests dieser Datei durchsickern würde — jeder
+    // vorherige Test in dieser Datei rendert mit dem `baseProps`-Default
+    // (`activeTerminalTabId: "tab-1", paneFocused: true`) und setzt darüber
+    // unbemerkt `viewedTabId = "tab-1"`.
     beforeEach(() => {
       resetTerminalActivityForTests();
-      vi.useFakeTimers();
     });
     afterEach(() => {
-      vi.useRealTimers();
       resetTerminalActivityForTests();
     });
 
-    it("zeigt den Punkt für einen Hintergrund-Tab einer unfokussierten Pane, erst nach dem Start-Ruhefenster", () => {
+    it("zeigt den Punkt für einen Hintergrund-Tab einer unfokussierten Pane, ab dem zweiten Burst", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }));
 
       act(() => {
-        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1); // Freipass (Start-Prompt)
         reportLineAdvance("tab-2", 1);
       });
 
@@ -167,7 +167,7 @@ describe("PaneTabs", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: true }));
 
       act(() => {
-        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1);
         reportLineAdvance("tab-2", 1);
       });
 
@@ -178,11 +178,12 @@ describe("PaneTabs", () => {
     });
 
     it("löscht den Punkt erst, wenn der Tab tatsächlich geöffnet wird — nicht durch Zeitablauf", () => {
+      vi.useFakeTimers();
       const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
       const { rerender } = renderTabs(props);
 
       act(() => {
-        vi.advanceTimersByTime(1000);
+        reportLineAdvance("tab-2", 1);
         reportLineAdvance("tab-2", 1);
       });
       expect(
@@ -198,6 +199,7 @@ describe("PaneTabs", () => {
       expect(
         screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
       ).toBeInTheDocument();
+      vi.useRealTimers();
 
       rerender(
         <Tooltip.Provider>
@@ -209,6 +211,45 @@ describe("PaneTabs", () => {
         screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+    });
+
+    it("re-armiert den Punkt nach dem Ansehen erneut, sobald neue Hintergrund-Aktivität die Schwelle wieder erreicht", () => {
+      // Regressionstest zum Fund 2026-08-13 ("Ich habe alle angeklickt...
+      // aber danach passierte nichts") — genau das Szenario, das der Nutzer
+      // beschrieben hat: Punkt sehen, Tab öffnen (löscht ihn), Tab
+      // verlassen, neue Aktivität, Punkt muss zurückkommen.
+      const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
+      const { rerender } = renderTabs(props);
+
+      act(() => {
+        reportLineAdvance("tab-2", 1); // Freipass
+        reportLineAdvance("tab-2", 1); // markiert unread
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+      ).toBeInTheDocument();
+
+      // Tab 2 öffnen (fokussierte Pane) — löscht den Punkt.
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTerminalTabId="tab-2" />
+        </Tooltip.Provider>,
+      );
+      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+
+      // Zurück zu Tab 1, tab-2 bekommt neue Hintergrund-Aktivität.
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTerminalTabId="tab-1" />
+        </Tooltip.Provider>,
+      );
+      act(() => {
+        reportLineAdvance("tab-2", 1);
+      });
+
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+      ).toBeInTheDocument();
     });
   });
 

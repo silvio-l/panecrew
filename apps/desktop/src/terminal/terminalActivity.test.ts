@@ -189,20 +189,44 @@ describe("unread / markTabViewed", () => {
     resetTerminalActivityForTests();
   });
 
-  it("wird erst unread, nachdem sowohl das Idle- als auch das Start-Ruhefenster abgelaufen sind", () => {
-    // Frischer Eintrag, sofort aktiv — aber noch innerhalb des Start-
-    // Ruhefensters (jede frisch gespawnte Shell druckt sofort ihren Prompt,
-    // s. Kommentar an UNREAD_BOOT_GRACE_MS).
+  it("unterdrückt nur den allerersten Burst eines frischen Eintrags (Shell-Start-Prompt)", () => {
+    // Frischer Eintrag: der erste Burst ist der Start-Prompt der Shell, kein
+    // verpasstes Ereignis (s. Kommentar an `firstBurstConsumed`).
     reportLineAdvance("tab-a", 1);
     expect(isTabUnread("tab-a")).toBe(false);
 
+    // Zweiter Burst — auch direkt im Anschluss, ohne jedes Zeitfenster
+    // dazwischen — zählt als echte, verpasste Aktivität.
     vi.advanceTimersByTime(1500);
-    expect(isTerminalActive("tab-a")).toBe(false);
-    expect(isTabUnread("tab-a")).toBe(false);
-
-    // Neuer Burst, jetzt außerhalb des Start-Ruhefensters.
     reportLineAdvance("tab-a", 1);
     expect(isTabUnread("tab-a")).toBe(true);
+  });
+
+  it("re-armiert nach dem Ansehen, auch wenn der Tab dabei durchgehend aktiv (streamend) bleibt", () => {
+    // Fund 2026-08-13 ("danach passierte nichts"): ein Tab, der beim
+    // Verlassen mitten in einem ununterbrochenen Stream steckt, verlässt den
+    // `active`-Zweig nie von selbst — die Ungelesen-Prüfung darf trotzdem
+    // nicht auf einen erneuten "aktiv"-Wechsel angewiesen sein.
+    reportLineAdvance("tab-a", 1); // Start-Prompt, konsumiert den Freipass
+    markTabViewed("tab-a"); // Nutzer sieht sich tab-a live an
+    expect(isTerminalActive("tab-a")).toBe(true);
+
+    // Durchgehender Nachschub OHNE Idle-Lücke — active bleibt ununterbrochen
+    // true, kein Rückfall auf inaktiv zwischendurch.
+    vi.advanceTimersByTime(500);
+    reportLineAdvance("tab-a", 1);
+    vi.advanceTimersByTime(500);
+    reportLineAdvance("tab-a", 1);
+    expect(isTerminalActive("tab-a")).toBe(true);
+    expect(isTabUnread("tab-a")).toBe(false); // noch der angesehene Tab
+
+    // Nutzer wechselt zu einem anderen Tab, tab-a streamt unverändert weiter.
+    markTabViewed("tab-b");
+    vi.advanceTimersByTime(500);
+    reportLineAdvance("tab-a", 1);
+
+    expect(isTerminalActive("tab-a")).toBe(true); // Stream reißt nie ab
+    expect(isTabUnread("tab-a")).toBe(true); // re-armiert trotzdem
   });
 
   it("verfällt NICHT durch Zeitablauf, anders als active", () => {
@@ -245,9 +269,9 @@ describe("unread / markTabViewed", () => {
     markTabViewed("tab-a");
     resetTerminalActivityForTests();
 
-    reportLineAdvance("tab-a", 1); // frischer Eintrag nach dem Reset
-    vi.advanceTimersByTime(1500); // Idle- UND Start-Ruhefenster vorbei
-    reportLineAdvance("tab-a", 1);
+    reportLineAdvance("tab-a", 1); // frischer Eintrag nach dem Reset, konsumiert dessen eigenen Freipass
+    vi.advanceTimersByTime(1500);
+    reportLineAdvance("tab-a", 1); // zweiter Burst
     // Ohne Rücksetzen bliebe "tab-a" weiterhin der angesehene Tab und
     // unterdrückte unread dauerhaft — genau das Leck-Risiko, gegen das
     // dieser Test wacht.

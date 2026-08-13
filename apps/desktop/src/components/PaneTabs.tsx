@@ -215,6 +215,22 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // diesen Tab gerade tatsächlich geöffnet"-Signal wiederverwendet, statt eine
 // zweite, abweichende Definition von "angesehen" einzuführen.
 //
+// Nachtrag 2026-08-13, noch später (Nutzer-Zusatzwunsch: "wäre es glaube ich
+// ganz cool, wenn einmal der Slot selbst, also das Pane, kurz mit aufleuchtet,
+// plus das betroffene Tab, so dass man es halt auch wirklich wahrnimmt"): der
+// `pc-attention-flash`-Aufblitz oben (Punkt 2) bleibt nicht mehr auf den Chip
+// beschränkt — `onTabAttentionFlash` (optional, s. `PaneTabsProps`) meldet
+// denselben false→true-Übergang zusätzlich nach außen. TerminalPane.tsx und
+// FileEditor.tsx (BEIDE, nicht nur eine — welche der beiden gerade sichtbar
+// ist, hängt an `showingFile`, s. `viewedTabId`-Kommentar in
+// terminalActivity.ts) fangen ihn lokal auf und waschen ihre eigene
+// `<section>` mit demselben Keyframe, statt eine zweite, eigene Animation zu
+// erfinden — dieselbe "vorhandenes Muster wiederverwenden"-Linie wie der
+// Chip-Flash selbst. Absichtlich NICHT über den Pane-Rahmen (`border-color`):
+// der trägt bereits den Fokus, ein zweites Signal in derselben Fläche wäre
+// als "diese Pane hat jetzt den Fokus" lesbar, nicht als "hier kam etwas
+// rein" — bleibt bei reiner Flächenfarbe wie am Chip.
+//
 // Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
 // als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
 // selbst als bevorzugte von zwei genannten Optionen) — bewusst NICHT als
@@ -262,6 +278,11 @@ export interface PaneTabsProps {
    * (leeres/unverändertes Eingabefeld committen, s. `TerminalTabRenameField`). */
   onRenameTerminalTab: (tabId: string, label: string | null) => void;
   onSelectFile: () => void;
+  /** Optional: meldet den false→true-Übergang von `unread` zusätzlich zum
+   * eigenen Chip-Aufblitz nach außen — TerminalPane.tsx/FileEditor.tsx
+   * nutzen das für den Pane-weiten Aufblitz (s. Kopfkommentar dieser Datei,
+   * Nachtrag zum Pane-Aufblitz). Ohne Angabe passiert nichts zusätzlich. */
+  onTabAttentionFlash?: (tabId: string) => void;
 }
 
 export function PaneTabs({
@@ -276,6 +297,7 @@ export function PaneTabs({
   onCloseTerminalTab,
   onRenameTerminalTab,
   onSelectFile,
+  onTabAttentionFlash,
 }: PaneTabsProps) {
   const { t } = useTranslation();
   // Höchstens EIN Umbenennen-Feld gleichzeitig offen, über die ganze Leiste
@@ -326,6 +348,9 @@ export function PaneTabs({
           // anklickbar zu bleiben.
           closable={terminalTabs.length > 1}
           renaming={tab.tabId === renamingTabId}
+          onAttentionFlash={
+            onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
+          }
           onSelect={() => onSelectTerminalTab(tab.tabId)}
           onClose={() => onCloseTerminalTab(tab.tabId)}
           onStartRename={() => setRenamingTabId(tab.tabId)}
@@ -371,6 +396,7 @@ function TerminalTabChip({
   paneFocused,
   closable,
   renaming,
+  onAttentionFlash,
   onSelect,
   onClose,
   onStartRename,
@@ -384,6 +410,7 @@ function TerminalTabChip({
   paneFocused: boolean;
   closable: boolean;
   renaming: boolean;
+  onAttentionFlash?: () => void;
   onSelect: () => void;
   onClose: () => void;
   onStartRename: () => void;
@@ -416,9 +443,10 @@ function TerminalTabChip({
   useEffect(() => {
     if (isUnread && !wasUnreadRef.current) {
       setFlashKey((key) => key + 1);
+      onAttentionFlash?.();
     }
     wasUnreadRef.current = isUnread;
-  }, [isUnread]);
+  }, [isUnread, onAttentionFlash]);
   const needsAttentionLabel = isUnread ? t("paneTabs.unreadActivityLabel") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt

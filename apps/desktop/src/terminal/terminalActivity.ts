@@ -62,17 +62,6 @@ let lineThreshold = DEFAULT_LINE_THRESHOLD;
 // pro Pane.
 let viewedTabId: string | null = null;
 
-// Start-Ruhefenster ab Entstehung eines Eintrags (Pane-Mount/Tab-Öffnen):
-// jede frisch gespawnte Shell druckt sofort ihren eigenen Prompt — das ist
-// echter PTY-Durchsatz und würde ohne dieses Fenster JEDEN Hintergrund-Tab
-// beim App-Start (Sitzungs-Restore mit mehreren Panes) sofort als ungelesen
-// markieren, obwohl der Nutzer schlicht noch keine Gelegenheit hatte,
-// überhaupt etwas zu verpassen. `getOrCreateEntry` läuft bereits beim ersten
-// Hook-Mount (über `subscribe`), also deutlich vor dem ersten echten
-// PTY-Output — 1s deckt selbst eine langsame Shell-Init komfortabel ab, ohne
-// echte spätere Aktivität zu verschlucken.
-const UNREAD_BOOT_GRACE_MS = 1000;
-
 export function setActivityIdleMs(value: number): void {
   if (Number.isFinite(value) && value > 0) idleMs = value;
 }
@@ -96,8 +85,20 @@ interface ActivityEntry {
   listeners: Set<() => void>;
   /** Persistenter Ungelesen-Zustand, s. Kommentar an `viewedTabId` oben. */
   unread: boolean;
-  /** Erzeugungszeitpunkt dieses Eintrags — Grundlage für `UNREAD_BOOT_GRACE_MS`. */
-  createdAt: number;
+  /** Ungelesen-Akkumulator — bewusst UNABHÄNGIG von `pendingLines`/`active`
+   * oben, s. Kopfkommentar an `reportLineAdvance` (Fund 2026-08-13: "danach
+   * passierte nichts"). Verfällt auf 0 nach `idleMs` ohne Nachschub, aus
+   * demselben Grund wie `pendingLines`. */
+  unreadPendingLines: number;
+  /** Der allererste Zeilen-Burst eines frischen Eintrags ist der
+   * Shell-Start-Prompt, kein verpasstes Ereignis — wird einmalig konsumiert,
+   * ohne `unread` zu setzen, dann nie wieder geprüft. Ersetzt ein früheres
+   * zeitbasiertes Start-Ruhefenster (`createdAt`/1s ab Entstehung des
+   * Eintrags), das bei einem langsam startenden Shell — mehrere Panes
+   * spawnen beim Sitzungs-Restore gleichzeitig ihre PTY — schon abgelaufen
+   * sein konnte, BEVOR der erste echte Output überhaupt ankam, und den Boot-
+   * Prompt dadurch fälschlich als ungelesen markierte. */
+  firstBurstConsumed: boolean;
 }
 
 const entries = new Map<string, ActivityEntry>();
@@ -111,7 +112,8 @@ function getOrCreateEntry(tabId: string): ActivityEntry {
       windowTimer: 0,
       listeners: new Set(),
       unread: false,
-      createdAt: Date.now(),
+      unreadPendingLines: 0,
+      firstBurstConsumed: false,
     };
     entries.set(tabId, entry);
   }
@@ -141,6 +143,29 @@ export function reportLineAdvance(
 ): void {
   if (linesAdvanced <= 0) return;
   const entry = getOrCreateEntry(tabId);
+
+  // Ungelesen-Erkennung läuft VOR und UNABHÄNGIG vom active/idle-Zweig
+  // unten — der hat für einen bereits aktiven Tab einen frühen `return`.
+  // Ohne diese Trennung bliebe ein durchgehend streamender Hintergrund-Tab
+  // (dessen `active`-Fenster nie abreißt) für immer im "schon aktiv"-Zweig
+  // gefangen, und `unread` würde nach einem `markTabViewed` nie wieder
+  // gesetzt, egal wie viel neuer Output noch ankommt (Nutzer-Fund
+  // 2026-08-13: "danach passierte nichts").
+  if (tabId !== viewedTabId && !entry.unread) {
+    entry.unreadPendingLines += linesAdvanced;
+    if (entry.unreadPendingLines >= lineThreshold) {
+      entry.unreadPendingLines = 0;
+      if (entry.firstBurstConsumed) {
+        entry.unread = true;
+        notify(entry);
+      } else {
+        // S. Kommentar an `firstBurstConsumed`: der allererste Burst ist der
+        // Shell-Start-Prompt, kein verpasstes Ereignis.
+        entry.firstBurstConsumed = true;
+      }
+    }
+  }
+
   window.clearTimeout(entry.windowTimer);
 
   if (entry.active) {
@@ -150,6 +175,7 @@ export function reportLineAdvance(
     entry.windowTimer = window.setTimeout(() => {
       entry.active = false;
       entry.pendingLines = 0;
+      entry.unreadPendingLines = 0;
       notify(entry);
     }, idleMs);
     return;
@@ -161,22 +187,18 @@ export function reportLineAdvance(
     entry.pendingLines = 0;
     entry.windowTimer = window.setTimeout(() => {
       entry.active = false;
+      entry.unreadPendingLines = 0;
       notify(entry);
     }, idleMs);
-    // Ungelesen nur auf einem frischen Burst-Beginn setzen (nicht bei jeder
-    // Zeile), und nur außerhalb des Start-Ruhefensters, auf jedem Tab außer
-    // dem einen gerade angesehenen — s. Kommentar an `viewedTabId` oben.
-    if (tabId !== viewedTabId && Date.now() - entry.createdAt >= UNREAD_BOOT_GRACE_MS) {
-      entry.unread = true;
-    }
     notify(entry);
   } else {
-    // Schwelle noch nicht erreicht: der Zähler verfällt, wenn innerhalb des
+    // Schwelle noch nicht erreicht: die Zähler verfallen, wenn innerhalb des
     // Zeitfensters kein weiterer Nachschub kommt — sonst würde ein einzelner
     // Streuling von vor Minuten einen viel späteren, unabhängigen Burst zu
     // Unrecht mit auffüllen.
     entry.windowTimer = window.setTimeout(() => {
       entry.pendingLines = 0;
+      entry.unreadPendingLines = 0;
     }, idleMs);
   }
 }
@@ -215,7 +237,13 @@ export function isTerminalActive(tabId: string): boolean {
 export function markTabViewed(tabId: string): void {
   viewedTabId = tabId;
   const entry = entries.get(tabId);
-  if (entry?.unread) {
+  if (!entry) return;
+  // Alles bis hierhin gilt als gesehen, auch ein noch unter der Schwelle
+  // liegender Teil-Akkumulator — sonst würde ein späterer, eigentlich
+  // unabhängiger Rest-Burst fälschlich mit bereits gesehenem Output
+  // zusammengezählt.
+  entry.unreadPendingLines = 0;
+  if (entry.unread) {
     entry.unread = false;
     notify(entry);
   }
