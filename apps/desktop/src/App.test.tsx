@@ -1807,6 +1807,72 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     });
   });
 
+  it("stellt mehrere Terminal-Tabs samt aktivem Index wieder her, ohne einen davon zu killen", async () => {
+    // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{}]` ab (genau
+    // ein Tab) — die interessante Schleife in `restoreSlot` (App.tsx), die
+    // für einen dritten Parameter `terminalTabCount > 1` weitere Tabs via
+    // `openTerminalTab` nachlegt und danach mit `switchToTerminalTab` auf den
+    // gespeicherten `active_tab.index` zurückschaltet, war ungetestet.
+    // `openTerminalTab` aktiviert dabei immer den zuletzt geöffneten Tab —
+    // nach der Schleife stünde Tab 3 aktiv, ohne die abschließende Korrektur.
+    // `index: 0` prüft genau diese Korrektur, nicht den ohnehin trivialen
+    // Fall "letzter geöffneter Tab bleibt aktiv".
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}, {}, {}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    // Alle drei Terminal-Tabs sind gleichzeitig gemountet ("hidden but
+    // mounted", s. Kopfkommentar zu `usePtyTerminal`), jeder mit demselben
+    // projektbezogenen `aria-label` — anders als bei den Ein-Tab-Restore-
+    // Tests oben liefert `findByLabelText` hier also drei Treffer, nicht
+    // einen.
+    expect(await screen.findAllByLabelText("Terminal storefront")).toHaveLength(3);
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(
+          ([cmd, args]) =>
+            cmd === "pty_spawn" &&
+            (args as { cwd: string }).cwd === "/Users/dev/projects/storefront",
+        ),
+      ).toHaveLength(3);
+    });
+    const spawnedTabIds = invokeMock.mock.calls
+      .filter(([cmd]) => cmd === "pty_spawn")
+      .map(([, args]) => (args as { tabId: string }).tabId);
+    expect(new Set(spawnedTabIds).size).toBe(3);
+
+    // Ohne die abschließende `switchToTerminalTab`-Korrektur stünde hier Tab
+    // 3 aktiv (der zuletzt von `openTerminalTab` angelegte) statt des
+    // gespeicherten Index 0.
+    expect(screen.getByRole("button", { name: "Terminal 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
+    ).toHaveLength(0);
+  });
+
   it("öffnet die zuletzt ausgewählte Datei der wiederhergestellten Pane erneut", async () => {
     invokeMock.mockImplementation((cmd, args) => {
       if (cmd === "session_load") {
