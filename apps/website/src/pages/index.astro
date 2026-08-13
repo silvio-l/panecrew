@@ -1,0 +1,1036 @@
+---
+// PaneCrew marketing landing page — Prototype 6 "Charmline".
+// Direction contract: ../../../.impeccable/direction-contract-website.md
+// Ported verbatim from the approved artifact prototype; keep this
+// page's structure/copy/behavior in sync with that contract, not with
+// apps/desktop's own "no-glow"/theming rules (the website has its own).
+const siteUrl = "https://panecrew.dev";
+const title = "PaneCrew — A pane for every agent";
+const description =
+  "PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta name="description" content={description}>
+<link rel="canonical" href={siteUrl}>
+<meta property="og:type" content="website">
+<meta property="og:title" content={title}>
+<meta property="og:description" content={description}>
+<meta property="og:url" content={siteUrl}>
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content={title}>
+<meta name="twitter:description" content={description}>
+<style is:global>
+  /* ============================================================
+     PaneCrew landing prototype 6 — "Charmline"
+     Warm, structured landing-page DNA translated into PaneCrew's
+     indigo/amber/cyan/cream world. 25% Assembly DNA (pane fly-in,
+     explorer dock, calm narration). 5% new: a hands-on
+     focus-follow demo the visitor drives themselves.
+     Self-contained, system fonts only.
+     ============================================================ */
+  :root {
+    /* saturated indigo brand ground (from the icon world, #1F243C ref) */
+    --indigo-hi: #333c72;
+    --indigo: #262d58;
+    --indigo-deep: #1f2547;
+    --line-dark: rgba(255, 253, 245, 0.12);
+    /* terminal interiors */
+    --term: #12162a;
+    --term-bar: #1b2038;
+    --term-line: rgba(255, 253, 245, 0.09);
+    /* cream product surfaces */
+    --cream: #fffdf5;
+    --cream-2: #f8f3e4;
+    --ink: #23283f;
+    --ink-dim: #5b5f75;
+    /* amber brand accent */
+    --amber: #e59656;
+    --amber-deep: #b95f10;
+    --amber-text: #c9741f;
+    /* cyan second accent (explorer / follow) */
+    --cyan: #29a9ac;
+    --cyan-bright: #5acfd3;
+    /* ANSI as real content */
+    --ansi-green: #7ccb6e;
+    --ansi-yellow: #e5c07b;
+    --ansi-blue: #6ea8dc;
+    /* type */
+    --display: "Arial Rounded MT Bold", "SF Pro Rounded", ui-rounded, "Segoe UI", system-ui, sans-serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
+    --lift: 0.15s ease;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
+    background-color: var(--indigo);
+    color: var(--cream);
+    font-family: var(--sans); font-size: 16.5px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(229, 150, 86, 0.4); }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+  img, svg { max-width: 100%; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 26px; }
+
+  /* ---------- eyebrow ornament (terminal-true ASCII corners) ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--amber);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .eyebrow::before { content: "╭──"; letter-spacing: 0; color: rgba(229, 150, 86, 0.55); }
+  .eyebrow::after { content: "──╮"; letter-spacing: 0; color: rgba(229, 150, 86, 0.55); }
+  .eyebrow.left { justify-content: flex-start; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: relative; z-index: 20;
+    display: flex; align-items: center; gap: 26px;
+    max-width: 1120px; margin: 0 auto; padding: 20px 26px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo svg { width: 26px; height: 26px; }
+  .logo b {
+    font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: -0.01em;
+  }
+  .nav-links { display: flex; gap: 22px; margin-left: 8px; }
+  .nav-links a {
+    text-decoration: none; font-size: 14.5px; color: rgba(255, 253, 245, 0.82);
+    transition: color var(--lift);
+  }
+  .nav-links a:hover { color: var(--cream); }
+  .nav-cta {
+    margin-left: auto; text-decoration: none;
+    font-family: var(--mono); font-size: 13px;
+    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
+    border-radius: 999px; padding: 7px 16px;
+    transition: transform var(--lift), background var(--lift);
+  }
+  .nav-cta:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); }
+
+  /* ---------- hero with bokeh clouds ---------- */
+  .hero { position: relative; padding: 40px 0 110px; }
+  .bokeh { position: absolute; inset: -120px 0 auto 0; height: 640px; pointer-events: none; overflow: hidden; }
+  .bokeh i {
+    position: absolute; border-radius: 50%; filter: blur(52px);
+  }
+  .bokeh .b1 { width: 480px; height: 420px; left: -140px; top: -60px; background: rgba(252, 173, 67, 0.34); }
+  .bokeh .b2 { width: 560px; height: 460px; right: -160px; top: -120px; background: rgba(90, 207, 211, 0.22); }
+  .bokeh .b3 { width: 420px; height: 380px; left: 30%; top: -180px; background: rgba(255, 243, 222, 0.15); }
+  .bokeh .b4 { width: 320px; height: 300px; right: 22%; top: 60px; background: rgba(252, 173, 67, 0.16); }
+  .spark {
+    position: absolute; font-size: 20px; color: #ffe9c8;
+    text-shadow: 0 0 0 transparent; opacity: 0.9; pointer-events: none;
+    animation: twinkle 5s ease-in-out infinite;
+  }
+  @keyframes twinkle { 0%, 100% { opacity: 0.35; transform: scale(0.85); } 50% { opacity: 0.95; transform: scale(1); } }
+
+  .hero-grid {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 54px; align-items: center;
+    padding-top: 44px;
+  }
+  .hero-copy .pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
+    color: rgba(255, 253, 245, 0.85);
+    border-radius: 999px; padding: 4px 12px;
+  }
+  .hero-copy h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(42px, 5.4vw, 68px); line-height: 1.02; letter-spacing: -0.015em;
+    margin-bottom: 20px; text-wrap: balance;
+  }
+  .hero-copy h1 .am {
+    background: linear-gradient(115deg, #fef2de 0%, #ffd394 52%, #fcad43 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-copy p { color: rgba(255, 253, 245, 0.85); max-width: 460px; margin-bottom: 12px; text-wrap: pretty; }
+  .hero-copy .avail { font-size: 13.5px; color: rgba(255, 253, 245, 0.6); margin-bottom: 26px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: var(--display); font-weight: 700; font-size: 16px;
+    background: linear-gradient(180deg, #ffd394, #fcad43);
+    color: #3a2405; text-decoration: none;
+    border-radius: 999px; padding: 12px 26px;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.28);
+    transition: transform var(--lift), box-shadow var(--lift);
+  }
+  .btn:hover { transform: translateY(-3px); box-shadow: 0 7px 0 rgba(0, 0, 0, 0.28); }
+  .btn.ghost {
+    background: transparent; color: var(--cream);
+    border: 1px solid var(--line-dark); box-shadow: none;
+  }
+  .btn.ghost:hover { border-color: rgba(255, 253, 245, 0.4); }
+  .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ---------- the app window (assembly stage) ---------- */
+  .app {
+    background: var(--indigo-deep);
+    border: 1px solid rgba(255, 253, 245, 0.14);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 30px 70px rgba(10, 12, 26, 0.55);
+  }
+  .app-bar {
+    display: flex; align-items: center; gap: 7px;
+    height: 34px; padding: 0 12px;
+    background: rgba(255, 253, 245, 0.05);
+    border-bottom: 1px solid var(--line-dark);
+  }
+  .tl { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .tl.r { background: #e0655f; } .tl.y { background: #e8bf5a; } .tl.g { background: #6cc26a; }
+  .app-bar svg { width: 15px; height: 15px; margin-left: 8px; }
+  .app-bar span { font-family: var(--mono); font-size: 11px; color: rgba(255, 253, 245, 0.55); }
+  .app-body {
+    display: grid; grid-template-columns: 30% 1fr; gap: 7px;
+    padding: 8px; height: 350px;
+  }
+
+  .xpl {
+    background: rgba(255, 253, 245, 0.05);
+    border: 1px solid var(--term-line); border-radius: 8px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.95;
+    color: rgba(255, 253, 245, 0.68);
+    padding: 10px 0; overflow: hidden;
+  }
+  .xpl .hd {
+    font-size: 8.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--cyan-bright); padding: 0 12px 5px; line-height: 1.6;
+  }
+  .xpl .proj { color: var(--amber); font-weight: 700; padding: 0 12px; white-space: nowrap; }
+  .xpl ul { list-style: none; }
+  .xpl li { padding: 0 12px 0 22px; white-space: nowrap; }
+  .xpl li.hl { background: rgba(90, 207, 211, 0.14); color: var(--cream); }
+  .xpl.swap { animation: xswap 0.28s ease; }
+  @keyframes xswap { 0% { opacity: 0.25; transform: translateX(-5px); } 100% { opacity: 1; transform: none; } }
+
+  .field { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; }
+  .hpane {
+    background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
+    color: rgba(255, 253, 245, 0.62);
+    padding: 28px 10px 6px; overflow: hidden; position: relative;
+    transition: border-color 0.2s ease;
+  }
+  .hpane::before {
+    content: attr(data-title);
+    position: absolute; top: 0; left: 0; right: 0; height: 22px;
+    display: flex; align-items: center; padding: 0 10px;
+    background: var(--term-bar); border-bottom: 1px solid var(--term-line);
+    color: rgba(255, 253, 245, 0.45); font-size: 9.5px; white-space: nowrap;
+  }
+  .hpane.focused { border-color: var(--amber); }
+  .hpane.focused::before { color: var(--amber); }
+  .g { color: var(--ansi-green); } .y { color: var(--ansi-yellow); }
+  .c { color: var(--cyan-bright); } .b { color: var(--ansi-blue); }
+  .w { color: var(--cream); }
+  .cursor {
+    display: inline-block; width: 6px; height: 11px; vertical-align: -2px;
+    background: var(--amber); animation: blink 1.06s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* assembly fly-in (load choreography, hero only) */
+  .assemble .hpane {
+    animation: flyin 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: var(--fd, 0.1s);
+  }
+  .assemble .xpl {
+    animation: dockin 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: 1.15s;
+  }
+  @keyframes flyin {
+    from { transform: translate(var(--fx, -40%), var(--fy, -60%)) rotate(var(--fr, -8deg)) scale(0.82); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes dockin {
+    from { transform: translateX(-120%); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  /* ---------- section headers ---------- */
+  .sect-head { text-align: center; padding: 96px 26px 46px; }
+  .sect-head h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(34px, 4.6vw, 54px); letter-spacing: -0.015em; line-height: 1.05;
+    text-wrap: balance;
+  }
+  .sect-head p { color: rgba(255, 253, 245, 0.75); max-width: 560px; margin: 14px auto 0; text-wrap: pretty; }
+
+  /* ---------- crew cards (card gallery) ---------- */
+  .crew-row {
+    display: grid; grid-template-columns: 3fr 2fr; gap: 24px;
+    margin-bottom: 24px;
+  }
+  .crew-row.rev { grid-template-columns: 2fr 3fr; }
+  .card {
+    background: var(--cream); color: var(--ink);
+    border-radius: 16px; overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 10px 26px rgba(10, 12, 26, 0.3);
+    transition: transform var(--lift), box-shadow var(--lift);
+  }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(10, 12, 26, 0.38); }
+  .card-vis {
+    margin: 12px 12px 0; border-radius: 10px;
+    background: var(--term); border: 1px solid rgba(255, 253, 245, 0.06);
+    min-height: 168px; position: relative; overflow: hidden;
+    display: flex; align-items: stretch;
+  }
+  .card-body { padding: 16px 20px 20px; }
+  .sticker {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(26px, 2.6vw, 32px); letter-spacing: -0.01em; line-height: 1.1;
+    background: linear-gradient(180deg, #e59656 8%, #b95f10 88%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 0 rgba(31, 36, 60, 0.14));
+    display: inline-block; margin-bottom: 8px;
+  }
+  .card .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+    background: #f6ead4; border: 1px solid #e8cfa4; color: #8a5a1a;
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .badge svg { width: 10px; height: 10px; flex: none; }
+  .badge.cy { background: #ddf2f2; border-color: #a8dcdc; color: #17696b; }
+  .card p { font-size: 14.5px; color: var(--ink-dim); text-wrap: pretty; }
+
+  /* card visuals: small terminal mocks */
+  .mock {
+    font-family: var(--mono); font-size: 11px; line-height: 1.85;
+    color: rgba(255, 253, 245, 0.62); padding: 30px 14px 10px; width: 100%;
+    position: relative;
+  }
+  .mock::before {
+    content: attr(data-title);
+    position: absolute; top: 0; left: 0; right: 0; height: 24px;
+    display: flex; align-items: center; padding: 0 12px;
+    background: var(--term-bar); border-bottom: 1px solid var(--term-line);
+    color: rgba(255, 253, 245, 0.45); font-size: 10px;
+  }
+  .minigrid {
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 6px; padding: 10px; width: 100%;
+  }
+  .minigrid .mp {
+    background: rgba(255, 253, 245, 0.045); border: 1px solid var(--term-line);
+    border-radius: 6px; padding: 6px 8px;
+    font-family: var(--mono); font-size: 9.5px; line-height: 1.7;
+    color: rgba(255, 253, 245, 0.55); overflow: hidden; white-space: nowrap;
+  }
+  .minigrid .mp b { display: block; font-weight: 400; color: rgba(255, 253, 245, 0.4); font-size: 8.5px; margin-bottom: 2px; }
+  .minigrid .mp.amb { border-color: rgba(229, 150, 86, 0.65); }
+  .tabsvis { padding: 12px; width: 100%; display: flex; flex-direction: column; gap: 0; }
+  .tabrow { display: flex; gap: 4px; }
+  .tab {
+    font-family: var(--mono); font-size: 10px; padding: 5px 12px;
+    border: 1px solid var(--term-line); border-bottom: none;
+    border-radius: 7px 7px 0 0; color: rgba(255, 253, 245, 0.45);
+  }
+  .tab.on { background: rgba(255, 253, 245, 0.07); color: var(--amber); border-color: rgba(229, 150, 86, 0.5); }
+  .tabpane {
+    border: 1px solid var(--term-line); border-radius: 0 7px 7px 7px;
+    background: rgba(255, 253, 245, 0.03); flex: 1; padding: 8px 10px;
+    font-family: var(--mono); font-size: 10px; line-height: 1.8; color: rgba(255, 253, 245, 0.6);
+  }
+  .swatches { display: flex; gap: 8px; padding: 8px 12px 0; }
+  .sw { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(255, 253, 245, 0.2); }
+
+  /* ---------- tool wall (honest "industrial grade" slot) ---------- */
+  .toolwall { text-align: center; padding: 30px 26px 10px; }
+  .wall {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline;
+    gap: 18px 34px; max-width: 860px; margin: 30px auto 0;
+  }
+  .wall span { color: rgba(255, 253, 245, 0.9); white-space: nowrap; }
+  .wall .lg { font-family: var(--display); font-weight: 700; font-size: 25px; letter-spacing: -0.01em; }
+  .wall .md { font-family: var(--mono); font-size: 17px; opacity: 0.8; }
+  .wall .sm { font-family: var(--mono); font-size: 14px; opacity: 0.6; }
+  .toolwall .kicker {
+    margin-top: 34px; font-family: var(--mono); font-size: 13px; color: var(--amber);
+  }
+
+  /* ---------- look closer (alternating rows) ---------- */
+  .closer-row {
+    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 50px; align-items: center;
+    margin-bottom: 90px;
+  }
+  .closer-row.rev { grid-template-columns: 0.85fr 1.15fr; }
+  .closer-row.rev .closer-vis { order: 2; }
+  .closer-copy h3 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -0.015em; line-height: 1.08;
+    margin-bottom: 14px;
+    background: linear-gradient(115deg, #fef2de 0%, #ffd394 52%, #fcad43 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    display: inline-block;
+  }
+  .closer-copy p { color: rgba(255, 253, 245, 0.8); text-wrap: pretty; margin-bottom: 10px; }
+  .closer-copy .hint { font-family: var(--mono); font-size: 12.5px; color: var(--cyan-bright); }
+
+  /* the live demo (the 5% novelty) */
+  .demo {
+    background: var(--indigo-deep);
+    border: 1px solid rgba(255, 253, 245, 0.14); border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(10, 12, 26, 0.5);
+    overflow: hidden;
+  }
+  .demo .app-body { height: 330px; }
+  .dpane {
+    all: unset; display: block; cursor: pointer;
+    background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
+    color: rgba(255, 253, 245, 0.62);
+    padding: 28px 10px 6px; overflow: hidden; position: relative;
+    transition: border-color 0.2s ease, transform var(--lift);
+    box-sizing: border-box; width: 100%; height: 100%;
+  }
+  .dpane::before {
+    content: attr(data-title);
+    position: absolute; top: 0; left: 0; right: 0; height: 22px;
+    display: flex; align-items: center; padding: 0 10px;
+    background: var(--term-bar); border-bottom: 1px solid var(--term-line);
+    color: rgba(255, 253, 245, 0.45); font-size: 9.5px; white-space: nowrap;
+  }
+  .dpane:hover { transform: translateY(-1px); }
+  .dpane:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .dpane.focused { border-color: var(--amber); }
+  .dpane.focused::before { color: var(--amber); }
+
+  /* ---------- open source ("we love open source" slot, honest version) ---------- */
+  .oss-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .oss-grid .card-vis { min-height: 132px; }
+  .heart {
+    background: linear-gradient(115deg, #fef2de 0%, #ffd394 52%, #fcad43 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  @media (max-width: 940px) {
+    .oss-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- install CTA ---------- */
+  .install { text-align: center; padding: 40px 26px 140px; position: relative; }
+  .install h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(34px, 4.6vw, 54px); letter-spacing: -0.015em; margin-bottom: 14px; text-wrap: balance;
+  }
+  .install p { color: rgba(255, 253, 245, 0.75); margin-bottom: 30px; max-width: 520px; margin-left: auto; margin-right: auto; text-wrap: pretty; }
+  .brew {
+    display: inline-flex; align-items: center; gap: 12px;
+    font-family: var(--mono); font-size: 15px;
+    background: rgba(18, 22, 42, 0.75); border: 1px solid rgba(229, 150, 86, 0.5);
+    color: var(--cream); border-radius: 999px; padding: 14px 26px;
+    transition: transform var(--lift), border-color var(--lift);
+  }
+  .brew:hover { transform: translateY(-2px); border-color: var(--amber); }
+  .brew .soon {
+    color: var(--amber); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+
+  /* ---------- wave + cream footer ---------- */
+  .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
+  footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
+  .foot {
+    max-width: 1120px; margin: 0 auto; padding: 0 26px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .glyph-tile {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: #1f243c; display: flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .glyph-tile svg { width: 21px; height: 21px; }
+  .foot b { font-family: var(--display); font-weight: 700; font-size: 17px; }
+  .foot .cp { color: var(--ink-dim); font-size: 13.5px; }
+  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+
+  /* ---------- reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .cursor, .spark { animation: none; }
+    .assemble .hpane, .assemble .xpl { animation: none; }
+    .xpl.swap { animation: none; }
+    .card:hover, .btn:hover, .brew:hover, .nav-cta:hover, .dpane:hover { transform: none; }
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 940px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .hero-copy { order: -1; text-align: center; }
+    .hero-copy .pills, .hero-ctas { justify-content: center; }
+    .hero-copy p { margin-left: auto; margin-right: auto; }
+    .crew-row, .crew-row.rev { grid-template-columns: 1fr; }
+    .closer-row, .closer-row.rev { grid-template-columns: 1fr; gap: 26px; }
+    .closer-row.rev .closer-vis { order: 0; }
+  }
+  @media (max-width: 560px) {
+    .nav-links { display: none; }
+    .app-body { grid-template-columns: 1fr; height: auto; }
+    .xpl { display: none; }
+    .demo .app-body { height: auto; grid-template-columns: 1fr; }
+    .demo .xpl { display: block; }
+    .field { grid-template-rows: none; }
+    .hpane, .dpane { min-height: 110px; }
+    .demo .field { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- shared brand glyph (real geometry from apps/desktop/src-tauri/icons/source/panecrew-mark.svg) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="mkChev" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
+      <stop offset="0" stop-color="#FEF2DE"/><stop offset="0.35" stop-color="#FFE9C8"/>
+      <stop offset="0.56" stop-color="#FFD394"/><stop offset="0.8" stop-color="#FEBE63"/>
+      <stop offset="1" stop-color="#FCAD43"/>
+    </radialGradient>
+    <linearGradient id="mkBlock" gradientUnits="userSpaceOnUse" x1="106" y1="0" x2="569" y2="0">
+      <stop offset="0" stop-color="#FBB84E"/><stop offset="0.5" stop-color="#FEE0B6"/>
+      <stop offset="1" stop-color="#FFF5E2"/>
+    </linearGradient>
+    <g id="mkGlyph">
+      <path fill="url(#mkChev)" d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"/>
+      <path fill="url(#mkBlock)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z"/>
+    </g>
+    <!-- mini pane-grid glyph: the sticker/ornament stand-in -->
+    <g id="mkPanes">
+      <rect x="1" y="1" width="6" height="6" rx="1.4"/>
+      <rect x="9" y="1" width="6" height="6" rx="1.4"/>
+      <rect x="1" y="9" width="6" height="6" rx="1.4"/>
+      <rect x="9" y="9" width="6" height="6" rx="1.4"/>
+    </g>
+  </defs>
+</svg>
+
+<nav class="nav" aria-label="Main">
+  <a class="logo" href="#top">
+    <svg viewBox="0 0 1600 1600" aria-hidden="true"><use href="#mkGlyph"/></svg>
+    <b>PaneCrew</b>
+  </a>
+  <div class="nav-links">
+    <a href="#crew">The crew</a>
+    <a href="#demo">Live demo</a>
+    <a href="#oss">Open source</a>
+    <a href="#install">Install</a>
+  </div>
+  <a class="nav-cta" href="#install">get panecrew</a>
+</nav>
+
+<main id="top">
+  <!-- ================= HERO ================= -->
+  <header class="hero">
+    <div class="bokeh" aria-hidden="true">
+      <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i>
+      <span class="spark" style="left:12%; top:40px;">✦</span>
+      <span class="spark" style="left:46%; top:-10px; animation-delay:1.2s; font-size:14px;">✦</span>
+      <span class="spark" style="right:18%; top:70px; animation-delay:2.3s;">✧</span>
+      <span class="spark" style="right:7%; top:220px; animation-delay:3.1s; font-size:13px;">✦</span>
+      <span class="spark" style="left:5%; top:260px; animation-delay:1.8s; font-size:15px;">✧</span>
+    </div>
+
+    <div class="wrap hero-grid">
+      <!-- the assembly stage: panes fly in, explorer docks, focus cycles -->
+      <div class="app assemble" id="heroApp" aria-label="PaneCrew app window: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
+        <div class="app-bar" aria-hidden="true">
+          <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
+          <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
+          <span>PaneCrew</span>
+        </div>
+        <div class="app-body">
+          <aside class="xpl" id="heroXpl" aria-hidden="true">
+            <p class="hd">explorer · follows focus</p>
+            <p class="proj">▾ orbit-api</p>
+            <ul>
+              <li>▸ node_modules</li>
+              <li>▾ src</li>
+              <li class="hl">&nbsp;&nbsp;router.ts</li>
+              <li>&nbsp;&nbsp;handlers.ts</li>
+              <li>package.json</li>
+              <li>README.md</li>
+            </ul>
+          </aside>
+          <div class="field">
+            <div class="hpane" data-p="0" data-title="orbit-api — claude" style="--fx:-70%; --fy:-90%; --fr:-11deg; --fd:0.1s" aria-hidden="true"><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div>&gt; refactor the router</div>
+              <div><span class="g">●</span> editing <span class="c">src/router.ts</span></div>
+              <div><span class="g">✓</span> 14 tests passed</div>
+              <div><span class="w">›</span> <span class="cursor"></span></div>
+            </div>
+            <div class="hpane" data-p="1" data-title="dashboard — codex" style="--fx:75%; --fy:-80%; --fr:9deg; --fd:0.25s" aria-hidden="true"><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div>$ codex "usage chart"</div><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div><span class="y">⚠</span> 2 type errors</div>
+              <div>fixing imports…</div>
+            </div>
+            <div class="hpane" data-p="2" data-title="cli-tools — gemini" style="--fx:-80%; --fy:85%; --fr:7deg; --fd:0.4s" aria-hidden="true"><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div>$ gemini review --staged</div><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div><span class="b">ℹ</span> reviewing 6 files</div>
+              <div><span class="g">✓</span> no blockers</div>
+            </div>
+            <div class="hpane" data-p="3" data-title="panecrew — zsh" style="--fx:80%; --fy:90%; --fr:-8deg; --fd:0.55s" aria-hidden="true">
+              <div>$ pnpm tauri dev</div>
+              <div><span class="g">✓</span> ready in 412 ms</div>
+              <div><span class="c">Info</span> watching…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-copy">
+        <div class="pills">
+          <span class="tag">macOS</span><span class="tag">Windows</span><span class="tag">terminal-native</span>
+        </div>
+        <h1>A <span class="am">pane</span> for every agent.</h1>
+        <p>PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
+        <p class="avail">In development for macOS and Windows. Dogfooded daily.</p>
+        <div class="hero-ctas">
+          <a class="btn" href="#install">Get PaneCrew</a>
+          <a class="btn ghost" href="#demo">See it follow ↓</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= CREW CARDS ================= -->
+  <section id="crew" aria-label="Features">
+    <div class="sect-head">
+      <p class="eyebrow">meet the crew</p>
+      <h2>One app. Six crew members.</h2>
+      <p>These aren't plugins bolted on later — they're what PaneCrew is. Every card below is one facet of the same window.</p>
+    </div>
+
+    <div class="wrap">
+      <div class="crew-row">
+        <article class="card">
+          <div class="card-vis">
+            <div class="minigrid" aria-hidden="true">
+              <div class="mp amb"><b>orbit-api — claude</b><span class="g">✓</span> tests green<br><span class="w">›</span> <span class="cursor"></span></div><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div class="mp"><b>dashboard — codex</b><span class="y">⚠</span> 2 type errors<br>fixing imports…</div><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div class="mp"><b>cli-tools — gemini</b><span class="b">ℹ</span> reviewing 6 files</div><!-- brandlint-ok: functional demo pane, real supported tool -->
+              <div class="mp"><b>panecrew — zsh</b>$ pnpm tauri dev<br><span class="g">✓</span> ready</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Grid</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>2×2</span>
+              <span class="badge">real PTY</span>
+            </div>
+            <p>Up to four real, PTY-backed terminals side by side across different projects — all visible at once. A grid, not a tab switcher.</p>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-vis">
+            <div class="mock" data-title="explorer" aria-hidden="true">
+              <div><span class="c">▾ dashboard</span> <span style="opacity:.5">← focus moved</span></div>
+              <div>&nbsp;&nbsp;▾ src/charts</div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="w" style="background:rgba(90,207,211,.16); padding:0 4px;">usage.tsx</span></div>
+              <div>&nbsp;&nbsp;vite.config.ts</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Sidekick</h3>
+            <div class="pills">
+              <span class="badge cy"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>follows focus</span>
+            </div>
+            <p>One file explorer for the whole grid. Click a pane — the tree is already showing that project. View, edit, move on.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="crew-row rev">
+        <article class="card">
+          <div class="card-vis">
+            <div class="tabsvis" aria-hidden="true">
+              <div class="tabrow">
+                <span class="tab">&gt;_ terminal</span>
+                <span class="tab on">router.ts</span>
+              </div>
+              <div class="tabpane">
+                <span class="b">export</span> <span class="c">const</span> routes = [<br>
+                &nbsp;&nbsp;{'{'} path: <span class="g">"/usage"</span>, handler: usage {'}'},<br>
+                ];
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Flip</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>terminal ⇄ file</span>
+            </div>
+            <p>Mini-tabs flip a pane between its terminal and the file you just opened — no window juggling, no second editor.</p>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-vis">
+            <div class="mock" data-title="panecrew — restoring" aria-hidden="true">
+              <div>$ panecrew</div>
+              <div><span class="g">✓</span> layout restored <span style="opacity:.5">(2×2)</span></div>
+              <div><span class="g">✓</span> orbit-api · dashboard · cli-tools · panecrew</div>
+              <div><span class="g">✓</span> 4 sessions back where you left them</div>
+              <div><span class="w">›</span> <span class="cursor"></span></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Recall</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>session restore</span>
+            </div>
+            <p>Quit, restart, continue. Projects, layout and sessions come back exactly the way you left them.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="crew-row">
+        <article class="card">
+          <div class="card-vis">
+            <div class="mock" data-title="settings — appearance" aria-hidden="true">
+              <div class="swatches">
+                <span class="sw" style="background:linear-gradient(135deg,#262d58,#e59656)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#1d1f21,#7ccb6e)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#272822,#e5c07b)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#002b36,#5acfd3)"></span>
+              </div>
+              <div style="padding-top:8px">$ import theme from Open VSX… <span class="g">✓</span></div><!-- brandlint-ok: functional demo, real planned theme-import source -->
+              <div>extensions: sandboxed · permission-gated</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Wardrobe</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>themes</span>
+              <span class="badge">extensions</span>
+            </div>
+            <p>Bring your VS Code theme — imported straight from Open VSX. Underneath: a sandboxed extension system with rights you confirm once, at install.</p><!-- brandlint-ok: functional product claim, real planned theme-import format -->
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-vis">
+            <div class="mock" data-title="zsh" aria-hidden="true">
+              <div>$ panecrew ~/code/orbit-api</div>
+              <div><span class="c">→</span> opening grid…</div>
+              <div><span class="g">✓</span> pane 1: orbit-api</div>
+              <div><span class="w">›</span> <span class="cursor"></span></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Launch</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>CLI</span>
+            </div>
+            <p>Straight from your shell into a working grid. The project picker is there when you want it — optional when you don't.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TOOL WALL (honest logo-wall slot) ================= -->
+  <section class="toolwall" aria-label="Compatible tools">
+    <div class="sect-head" style="padding-bottom:0">
+      <p class="eyebrow">crew-agnostic</p>
+      <h2>Any CLI is crew.</h2>
+      <p>No adapters, no integrations, no favourites — every pane is a real terminal.</p>
+    </div>
+    <div class="wall" aria-label="Tools that run in PaneCrew">
+      <span class="lg">Claude Code</span><!-- brandlint-ok: functional list of supported CLI tools -->
+      <span class="md">codex</span><!-- brandlint-ok: functional list of supported CLI tools -->
+      <span class="lg">Gemini CLI</span><!-- brandlint-ok: functional list of supported CLI tools -->
+      <span class="sm">zsh</span>
+      <span class="md">bash</span>
+      <span class="sm">fish</span>
+      <span class="lg">PowerShell</span>
+      <span class="sm">nushell</span>
+      <span class="md">ssh</span>
+      <span class="sm">vim</span>
+      <span class="md">git</span>
+      <span class="sm">htop</span>
+      <span class="md">cargo</span>
+      <span class="sm">pnpm</span>
+    </div>
+    <p class="kicker">$ if it runs in a terminal, it runs in PaneCrew</p>
+  </section>
+
+  <!-- ================= LOOK CLOSER ================= -->
+  <section aria-label="Details">
+    <div class="sect-head">
+      <p class="eyebrow">look closer</p>
+      <h2>Don't take our word for it.</h2>
+    </div>
+
+    <div class="wrap">
+      <!-- 5% novelty: the visitor drives the focus-follow -->
+      <div class="closer-row" id="demo">
+        <div class="closer-vis">
+          <div class="demo app" aria-label="Interactive demo: choose a pane and the explorer follows">
+            <div class="app-bar" aria-hidden="true">
+              <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
+              <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
+              <span>PaneCrew — live demo</span>
+            </div>
+            <div class="app-body">
+              <aside class="xpl" id="demoXpl">
+                <p class="hd">explorer · follows focus</p>
+                <p class="proj">▾ orbit-api</p>
+                <ul>
+                  <li>▸ node_modules</li>
+                  <li>▾ src</li>
+                  <li class="hl">&nbsp;&nbsp;router.ts</li>
+                  <li>&nbsp;&nbsp;handlers.ts</li>
+                  <li>package.json</li>
+                  <li>README.md</li>
+                </ul>
+              </aside>
+              <div class="field">
+                <button class="dpane focused" data-p="0" data-title="orbit-api — claude" aria-label="Focus pane: orbit-api with Claude Code"><!-- brandlint-ok: functional interactive demo, real supported tool -->
+                  <div>&gt; refactor the router</div>
+                  <div><span class="g">●</span> editing <span class="c">src/router.ts</span></div>
+                  <div><span class="g">✓</span> 14 tests passed</div>
+                </button>
+                <button class="dpane" data-p="1" data-title="dashboard — codex" aria-label="Focus pane: dashboard with Codex"><!-- brandlint-ok: functional interactive demo, real supported tool -->
+                  <div>$ codex "usage chart"</div><!-- brandlint-ok: functional interactive demo, real supported tool -->
+                  <div><span class="y">⚠</span> 2 type errors</div>
+                  <div>fixing imports…</div>
+                </button>
+                <button class="dpane" data-p="2" data-title="cli-tools — gemini" aria-label="Focus pane: cli-tools with Gemini CLI"><!-- brandlint-ok: functional interactive demo, real supported tool -->
+                  <div>$ gemini review --staged</div><!-- brandlint-ok: functional interactive demo, real supported tool -->
+                  <div><span class="b">ℹ</span> reviewing 6 files</div>
+                  <div><span class="g">✓</span> no blockers</div>
+                </button>
+                <button class="dpane" data-p="3" data-title="panecrew — zsh" aria-label="Focus pane: panecrew with zsh">
+                  <div>$ pnpm tauri dev</div>
+                  <div><span class="g">✓</span> ready in 412 ms</div>
+                  <div><span class="c">Info</span> watching…</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="closer-copy">
+          <h3>Try the follow.</h3>
+          <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In the app it works exactly like this, except the terminals are real.</p>
+          <p>That's the whole trick: focus a pane, and the files you need are already in front of you. No tool we tried gets this right — so we built it.</p>
+          <p class="hint">↖ hover or tap a pane</p>
+        </div>
+      </div>
+
+      <div class="closer-row rev">
+        <div class="closer-vis">
+          <div class="app" aria-hidden="true">
+            <div class="app-bar">
+              <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
+              <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
+              <span>panecrew — dev driver</span>
+            </div>
+            <div style="padding:14px 16px; font-family:var(--mono); font-size:11.5px; line-height:1.9; color:rgba(255,253,245,.62);">
+              <div>$ pnpm tauri dev</div>
+              <div><span class="c">Info</span> compiling panecrew v0.1</div>
+              <div><span class="g">✓</span> frontend ready in 412 ms</div>
+              <div><span class="g">✓</span> window up — grid restored</div>
+              <div><span class="w">›</span> <span style="opacity:.55">this page was written in here</span> <span class="cursor"></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="closer-copy">
+          <h3>Built inside itself.</h3>
+          <p>PaneCrew is developed in PaneCrew — a grid of agents building the app they run in, every day. Rough edges don't survive that arrangement for long.</p>
+          <p>No git magic, either: panes just <code style="font-family:var(--mono); font-size:14px; color:var(--cyan-bright);">cd</code> into folders you already have checked out. Your repos stay yours.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= OPEN SOURCE ================= -->
+  <section id="oss" aria-label="Open source">
+    <div class="sect-head">
+      <p class="eyebrow">mit licensed</p>
+      <h2>We <span class="heart">♥</span> open source.</h2>
+      <p>PaneCrew is MIT-licensed — the grid, the explorer, the extension host, all of it. No open-core split, no asterisks.</p>
+    </div>
+
+    <div class="wrap oss-grid">
+      <article class="card">
+        <div class="card-vis">
+          <div class="mock" data-title="LICENSE" aria-hidden="true">
+            <div>$ head -1 LICENSE</div>
+            <div><span class="w">MIT License</span></div>
+            <div><span class="w">›</span> <span class="cursor"></span></div>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3 class="sticker">MIT</h3>
+          <div class="pills">
+            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>one license</span>
+          </div>
+          <p>One permissive license for the whole app. Fork it, ship it, build on it — the license won't get in your way.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-vis">
+          <div class="mock" data-title="extension registry" aria-hidden="true">
+            <div>registry.json</div>
+            <div><span class="g">+</span> <span class="c">"your-extension"</span></div>
+            <div><span class="g">✓</span> reviewed → merged → listed</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3 class="sticker">On GitHub</h3>
+          <div class="pills">
+            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>extensions</span>
+          </div>
+          <p>The extension registry is a JSON file in a repo. Getting listed is a pull request; builds ship from authors' own releases. No marketplace middleman.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-vis">
+          <div class="mock" data-title="zsh" aria-hidden="true">
+            <div>$ git push public main</div>
+            <div><span class="c">→</span> ships with v0.1</div>
+            <div><span class="w">›</span> <span class="cursor"></span></div>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3 class="sticker">In the open</h3>
+          <div class="pills">
+            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>with v0.1</span>
+          </div>
+          <p>The source goes public with the first release. No star counts to show off yet — just an app that's dogfooded daily and decisions kept on the record.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ================= INSTALL ================= -->
+  <section class="install" id="install">
+    <p class="eyebrow">shipping</p>
+    <h2>v0.1 is assembling.</h2>
+    <p>macOS first — notarized direct download and Homebrew. Windows next. Built in the open, dogfooded daily.</p>
+    <span class="brew">
+      <span>$ brew install panecrew</span>
+      <span class="soon">soon</span>
+    </span>
+  </section>
+</main>
+
+<!-- wave into cream footer -->
+<svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
+  <path fill="#fffdf5" d="M0 52 C 180 18 360 76 560 50 C 760 24 900 72 1100 48 C 1260 30 1360 52 1440 36 L 1440 80 L 0 80 Z"/>
+</svg>
+<footer>
+  <div class="foot">
+    <span class="glyph-tile" aria-hidden="true">
+      <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
+    </span>
+    <b>PaneCrew</b>
+    <span class="cp">© 2026 PaneCrew</span>
+    <span class="r">panes: 4 · explorers: 1</span>
+  </div>
+</footer>
+
+<script is:inline>
+(function () {
+  'use strict';
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var projects = [
+    { name: 'orbit-api', files: ['▸ node_modules', '▾ src', ['router.ts', true], ['handlers.ts', false], 'package.json', 'README.md'] },
+    { name: 'dashboard', files: ['▸ node_modules', '▾ src/charts', ['usage.tsx', true], ['legend.tsx', false], 'vite.config.ts', 'index.html'] },
+    { name: 'cli-tools', files: ['▾ bin', ['release.ts', true], ['publish.ts', false], '▸ test', 'justfile', 'deno.json'] },
+    { name: 'panecrew', files: ['▾ apps/desktop', ['src-tauri/', true], ['src/App.tsx', false], '▸ docs', 'CLAUDE.md', 'pnpm-lock.yaml'] } // brandlint-ok: self-referential demo (this repo's own real file tree)
+  ];
+
+  function renderExplorer(el, idx, animate) {
+    var p = projects[idx];
+    var html = '<p class="hd">explorer · follows focus</p>' +
+      '<p class="proj">▾ ' + p.name + '</p><ul>';
+    p.files.forEach(function (f) {
+      if (typeof f === 'string') {
+        html += '<li>' + f + '</li>';
+      } else {
+        html += '<li' + (f[1] ? ' class="hl"' : '') + '>&nbsp;&nbsp;' + f[0] + '</li>';
+      }
+    });
+    html += '</ul>';
+    el.innerHTML = html;
+    if (animate && !reduced) {
+      el.classList.remove('swap');
+      void el.offsetWidth;
+      el.classList.add('swap');
+    }
+  }
+
+  /* ---- hero: auto focus-cycle after assembly ---- */
+  var heroApp = document.getElementById('heroApp');
+  var heroXpl = document.getElementById('heroXpl');
+  var heroPanes = Array.prototype.slice.call(heroApp.querySelectorAll('.hpane'));
+  var heroIdx = 0, heroTimer = null;
+
+  function heroFocus(idx, animate) {
+    heroIdx = idx;
+    heroPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
+    renderExplorer(heroXpl, idx, animate);
+  }
+
+  heroFocus(0, false);
+
+  if (!reduced) {
+    var startCycle = function () {
+      if (heroTimer) return;
+      heroTimer = setInterval(function () {
+        heroFocus((heroIdx + 1) % 4, true);
+      }, 3400);
+    };
+    var stopCycle = function () {
+      if (heroTimer) { clearInterval(heroTimer); heroTimer = null; }
+    };
+    // wait for the assembly choreography before cycling
+    setTimeout(function () {
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) { e.isIntersecting ? startCycle() : stopCycle(); });
+        }, { threshold: 0.25 }).observe(heroApp);
+      } else {
+        startCycle();
+      }
+    }, 2300);
+  }
+
+  /* ---- live demo: the visitor drives the focus ---- */
+  var demoXpl = document.getElementById('demoXpl');
+  var demoPanes = Array.prototype.slice.call(document.querySelectorAll('.dpane'));
+
+  function demoFocus(idx) {
+    demoPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
+    renderExplorer(demoXpl, idx, true);
+  }
+
+  demoPanes.forEach(function (p, i) {
+    p.addEventListener('pointerenter', function () { demoFocus(i); });
+    p.addEventListener('click', function () { demoFocus(i); });
+    p.addEventListener('focus', function () { demoFocus(i); });
+  });
+})();
+</script>
+</body>
+</html>
