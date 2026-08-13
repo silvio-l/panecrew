@@ -16,8 +16,7 @@ use std::process::Command;
 
 #[cfg(target_os = "macos")]
 fn is_installed() -> bool {
-    let mut candidates =
-        vec![PathBuf::from("/Applications/Visual Studio Code.app")]; // brandlint-ok: funktionale Nennung, realer App-Bundle-Name für die Installationsprüfung
+    let mut candidates = vec![PathBuf::from("/Applications/Visual Studio Code.app")]; // brandlint-ok: funktionale Nennung, realer App-Bundle-Name für die Installationsprüfung
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(PathBuf::from(home).join("Applications/Visual Studio Code.app")); // brandlint-ok: funktionale Nennung, realer App-Bundle-Name für die Installationsprüfung
     }
@@ -28,7 +27,8 @@ fn is_installed() -> bool {
 fn is_installed() -> bool {
     let mut candidates = Vec::new();
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        candidates.push(PathBuf::from(local_app_data).join("Programs\\Microsoft VS Code\\Code.exe")); // brandlint-ok: funktionale Nennung, realer Installationspfad für die Installationsprüfung
+        candidates
+            .push(PathBuf::from(local_app_data).join("Programs\\Microsoft VS Code\\Code.exe")); // brandlint-ok: funktionale Nennung, realer Installationspfad für die Installationsprüfung
     }
     if let Ok(program_files) = std::env::var("ProgramFiles") {
         candidates.push(PathBuf::from(program_files).join("Microsoft VS Code\\Code.exe")); // brandlint-ok: funktionale Nennung, realer Installationspfad für die Installationsprüfung
@@ -42,7 +42,11 @@ fn is_installed() -> bool {
 }
 
 fn is_on_path() -> bool {
-    let finder = if cfg!(target_os = "windows") { "where" } else { "which" };
+    let finder = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
     Command::new(finder)
         .arg("code")
         .output()
@@ -72,7 +76,9 @@ pub fn vscode_is_installed() -> bool {
 #[tauri::command]
 pub fn vscode_open(path: String) -> Result<(), String> {
     let result = if cfg!(target_os = "macos") {
-        Command::new("open").args(["-a", "Visual Studio Code", &path]).spawn() // brandlint-ok: funktionale Nennung, realer App-Name für Launch Services
+        Command::new("open")
+            .args(["-a", "Visual Studio Code", &path]) // brandlint-ok: funktionale Nennung, realer App-Name für Launch Services
+            .spawn()
     } else {
         Command::new("code").arg(&path).spawn()
     };

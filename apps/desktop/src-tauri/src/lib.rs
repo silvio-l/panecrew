@@ -1,21 +1,14 @@
 pub mod about;
 pub mod cli;
-pub mod config_core;
-pub mod config_manifest;
-pub mod config_registry;
 pub mod explorer_fs;
 pub mod external_editor;
 pub mod git_status;
-pub mod json_store;
 pub mod launch;
 pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
 pub mod session_store;
-pub mod settings_commands;
-pub mod settings_store;
-pub mod settings_window;
 pub mod shell_history;
 pub mod shell_integration;
 pub mod splash;
@@ -23,12 +16,9 @@ pub mod updater;
 
 use about::PendingUpdateCheck;
 use cli::Cli;
-use config_registry::ConfigRegistry;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir};
-use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
-use std::sync::Mutex;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,16 +27,6 @@ pub fn run() {
     let cli = Cli::parse_args(std::env::args_os());
     let launch_cwd = std::env::current_dir().unwrap_or_default();
     let launch_project = launch::resolve_launch_project(cli.project.as_deref(), &launch_cwd);
-
-    // Registered once at startup, before any command can read/write a
-    // setting — core settings go through the exact same public
-    // `ConfigRegistry::register` API an extension's manifest parsing will
-    // use later (`config_manifest.rs`), so this call can never fail in
-    // practice; a failure here would mean two core entries collided, which
-    // is a programming error worth surfacing loudly rather than swallowing.
-    let mut config_registry = ConfigRegistry::new();
-    config_core::register_core_settings(&mut config_registry)
-        .expect("core settings must register without namespace/duplicate conflicts");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -57,7 +37,6 @@ pub fn run() {
         .manage(LaunchProject(launch_project))
         .manage(RevealGate::default())
         .manage(PendingUpdateCheck::default())
-        .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .menu(menu::build)
         .on_menu_event(|app, event| match event.id().as_ref() {
             menu::ABOUT => about::show(app, false),
@@ -114,13 +93,6 @@ pub fn run() {
             about::about_take_update_request,
             about::about_visible,
             updater::updater_is_homebrew_install,
-            settings_commands::settings_get_schema,
-            settings_commands::settings_get_values,
-            settings_commands::settings_set_value,
-            settings_commands::settings_reset_value,
-            settings_commands::settings_read_raw,
-            settings_commands::settings_write_raw,
-            settings_commands::settings_open_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
