@@ -19,6 +19,16 @@ node_modules/
 dist/
 dist-ssr/
 
+# Python (tools/promo-pipeline)
+__pycache__/
+*.pyc
+
+# Promo-Pipeline: Storyboard, das die Capture-Stage zur Laufzeit an den
+# Demo-Harness ausliefert (tools/promo-pipeline/capture.py) — generiert pro
+# Lauf, kein Quelltext.
+apps/desktop/public/harness-storyboards/*
+!apps/desktop/public/harness-storyboards/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
