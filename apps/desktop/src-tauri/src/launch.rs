@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use tauri::State;
+use tauri::{State, Window};
 
 /// Managed Tauri state: the resolved launch project, if any. Resolved once at
 /// startup in `run()`, not re-checked per call — a path that stops existing
@@ -34,8 +34,18 @@ pub fn resolve_launch_project(cli_project: Option<&Path>, launch_cwd: &Path) -> 
     Some(absolute.to_string_lossy().into_owned())
 }
 
+/// Ticket 27, landmine 4: a second/third window mounts the exact same
+/// frontend bootstrap as "main" and would otherwise silently pull the
+/// CLI-launched project into ITS OWN slot 0 too — `LaunchProject` is a single,
+/// process-wide value with no concept of "already consumed", so without this
+/// gate every open window would race to claim it. Only "main" gets it; any
+/// other window's own startup just falls through to its own persisted/empty
+/// state.
 #[tauri::command]
-pub fn get_launch_project(launch: State<LaunchProject>) -> Option<String> {
+pub fn get_launch_project(window: Window, launch: State<LaunchProject>) -> Option<String> {
+    if window.label() != "main" {
+        return None;
+    }
     launch.0.clone()
 }
 

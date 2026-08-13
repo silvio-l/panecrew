@@ -69,6 +69,14 @@ pub struct PersistedPane {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct PersistedWindow {
+    /// Stable window identity (Ticket 27), the native `WebviewWindow` label.
+    /// Mandatory, no `#[serde(default)]`: a pre-Ticket-27 file has no way to
+    /// supply one, and guessing (e.g. always "main") would silently collapse
+    /// a multi-window session down to one window on the first save after
+    /// upgrade. Same hard-cutover stance as the v1→v2 schema change above —
+    /// a session file predating this field fails to deserialize and the app
+    /// starts at the picker, exactly like a missing file.
+    pub label: String,
     pub template: String,
     pub slots: Vec<Option<PersistedPane>>,
     /// Grid-track ratios for the template's cut lines (not its topology —
@@ -78,6 +86,16 @@ pub struct PersistedWindow {
     pub split_ratios: Vec<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximized_pane_id: Option<String>,
+    /// Rotation-mode config (Ticket 19) — whether it was running and at
+    /// which interval, so a restored focus-mode window resumes the same
+    /// rotation instead of silently dropping it. `None`/absent means
+    /// inactive, not "unknown"; there is no separate default-interval
+    /// constant here because the frontend's own `ROTATION_INTERVALS_MS`
+    /// preset list already owns that value, this field only round-trips it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation_active: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation_interval_ms: Option<u32>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Default)]
@@ -181,6 +199,52 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
     write_session(&dir, &state)
 }
 
+/// Per-window save (Ticket 27): each open window is its own webview process
+/// context and only knows its own grid state, not the others' — a naive
+/// `session_save` of a full `SessionState` built from one window would throw
+/// every other open window's entry out of the file. This reads the file,
+/// replaces the entry whose `label` matches (or appends one if this window
+/// hasn't saved before), and writes the merged result back — same
+/// read-modify-write-atomically pattern the rest of this module already
+/// uses, just scoped to one array entry instead of the whole document.
+///
+/// `expanded_folders`/`explorer_width` are deliberately left exactly as read:
+/// Ticket 27's own acceptance criteria only asks for per-window grid state
+/// (template/panes/focus-mode/split-ratios) — those two fields predate
+/// multi-window and stay window-agnostic globals, not this command's job to
+/// touch.
+#[tauri::command(async)]
+pub fn session_save_window(app: AppHandle, window: PersistedWindow) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))?;
+    let mut state = read_session(&dir).unwrap_or_default();
+    match state.windows.iter_mut().find(|w| w.label == window.label) {
+        Some(existing) => *existing = window,
+        None => state.windows.push(window),
+    }
+    write_session(&dir, &state)
+}
+
+/// Counterpart to `session_save_window`, for the window-close path (Ticket
+/// 27, landmine 3): removes exactly one window's entry by label rather than
+/// requiring the caller to reconstruct and resend the other windows' state.
+/// A label not present in the file is not an error — the window may never
+/// have autosaved (e.g. closed within the same tick it was opened).
+#[tauri::command(async)]
+pub fn session_remove_window(app: AppHandle, label: String) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))?;
+    let Some(mut state) = read_session(&dir) else {
+        return Ok(());
+    };
+    state.windows.retain(|w| w.label != label);
+    write_session(&dir, &state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +328,7 @@ mod tests {
         let state = SessionState {
             windows: vec![
                 PersistedWindow {
+                    label: "main".to_string(),
                     template: "split".to_string(),
                     slots: vec![
                         Some(PersistedPane {
@@ -284,12 +349,17 @@ mod tests {
                     ],
                     split_ratios: vec![0.35, 0.65],
                     maximized_pane_id: Some("pane-1".to_string()),
+                    rotation_active: Some(true),
+                    rotation_interval_ms: Some(15_000),
                 },
                 PersistedWindow {
+                    label: "main-2".to_string(),
                     template: "quad".to_string(),
                     slots: vec![None, None, None, None],
                     split_ratios: Vec::new(),
                     maximized_pane_id: None,
+                    rotation_active: None,
+                    rotation_interval_ms: None,
                 },
             ],
             expanded_folders: HashMap::from([(
@@ -313,10 +383,13 @@ mod tests {
         let kept_path = project.to_string_lossy().into_owned();
         let state = SessionState {
             windows: vec![PersistedWindow {
+                label: "main".to_string(),
                 template: "single".to_string(),
                 slots: vec![terminal_only_pane(&kept_path)],
                 split_ratios: Vec::new(),
                 maximized_pane_id: None,
+                rotation_active: None,
+                rotation_interval_ms: None,
             }],
             expanded_folders: HashMap::from([
                 (kept_path.clone(), vec!["src".to_string()]),
@@ -344,10 +417,13 @@ mod tests {
             .into_owned();
         let state = SessionState {
             windows: vec![PersistedWindow {
+                label: "main".to_string(),
                 template: "quad".to_string(),
                 slots: vec![terminal_only_pane(&gone), None],
                 split_ratios: Vec::new(),
                 maximized_pane_id: None,
+                rotation_active: None,
+                rotation_interval_ms: None,
             }],
             expanded_folders: HashMap::new(),
             explorer_width: None,
@@ -369,10 +445,13 @@ mod tests {
             &fixture.0,
             &SessionState {
                 windows: vec![PersistedWindow {
+                    label: "main".to_string(),
                     template: "single".to_string(),
                     slots: vec![terminal_only_pane(&path_string)],
                     split_ratios: Vec::new(),
                     maximized_pane_id: None,
+                    rotation_active: None,
+                    rotation_interval_ms: None,
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
@@ -384,10 +463,13 @@ mod tests {
             &fixture.0,
             &SessionState {
                 windows: vec![PersistedWindow {
+                    label: "main".to_string(),
                     template: "quad".to_string(),
                     slots: vec![None, None, None, None],
                     split_ratios: Vec::new(),
                     maximized_pane_id: None,
+                    rotation_active: None,
+                    rotation_interval_ms: None,
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
@@ -408,10 +490,13 @@ mod tests {
             &fixture.0,
             &SessionState {
                 windows: vec![PersistedWindow {
+                    label: "main".to_string(),
                     template: "quad".to_string(),
                     slots: vec![None, None, None, None],
                     split_ratios: Vec::new(),
                     maximized_pane_id: None,
+                    rotation_active: None,
+                    rotation_interval_ms: None,
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
@@ -436,10 +521,13 @@ mod tests {
             &nested,
             &SessionState {
                 windows: vec![PersistedWindow {
+                    label: "main".to_string(),
                     template: "quad".to_string(),
                     slots: vec![None, None, None, None],
                     split_ratios: Vec::new(),
                     maximized_pane_id: None,
+                    rotation_active: None,
+                    rotation_interval_ms: None,
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
@@ -449,5 +537,97 @@ mod tests {
 
         assert!(nested.is_dir());
         assert!(session_path(&nested).is_file());
+    }
+
+    fn empty_quad_window(label: &str) -> PersistedWindow {
+        PersistedWindow {
+            label: label.to_string(),
+            template: "quad".to_string(),
+            slots: vec![None, None, None, None],
+            split_ratios: Vec::new(),
+            maximized_pane_id: None,
+            rotation_active: None,
+            rotation_interval_ms: None,
+        }
+    }
+
+    /// Ticket 27, landmine 2: two windows saving via `session_save_window` in
+    /// sequence must not clobber each other's entry the way a naive
+    /// full-array `session_save` from a single window would.
+    #[test]
+    fn session_save_window_merges_by_label_instead_of_overwriting_the_whole_file() {
+        let fixture = Fixture::new("save-window-merge");
+
+        session_save_window_for_test(&fixture.0, empty_quad_window("main"))
+            .expect("first window save");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main-2"))
+            .expect("second window save");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+        let mut labels: Vec<&str> = read_back.windows.iter().map(|w| w.label.as_str()).collect();
+        labels.sort_unstable();
+        assert_eq!(labels, vec!["main", "main-2"]);
+    }
+
+    /// A second save under the SAME label replaces that window's own entry
+    /// in place rather than appending a duplicate.
+    #[test]
+    fn session_save_window_replaces_its_own_prior_entry_by_label() {
+        let fixture = Fixture::new("save-window-replace");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("first save");
+
+        let mut updated = empty_quad_window("main");
+        updated.template = "split".to_string();
+        session_save_window_for_test(&fixture.0, updated).expect("second save");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.windows.len(), 1);
+        assert_eq!(read_back.windows[0].template, "split");
+    }
+
+    /// Ticket 27, landmine 3's counterpart: closing one window must remove
+    /// only that window's entry, leaving sibling windows' sessions intact.
+    #[test]
+    fn session_remove_window_drops_only_the_matching_label() {
+        let fixture = Fixture::new("remove-window");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main"))
+            .expect("first window save");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main-2"))
+            .expect("second window save");
+
+        session_remove_window_for_test(&fixture.0, "main-2").expect("remove");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.windows.len(), 1);
+        assert_eq!(read_back.windows[0].label, "main");
+    }
+
+    #[test]
+    fn session_remove_window_on_a_missing_file_is_a_harmless_no_op() {
+        let fixture = Fixture::new("remove-window-missing-file");
+
+        session_remove_window_for_test(&fixture.0, "main").expect("should not error");
+
+        assert_eq!(read_session(&fixture.0), None);
+    }
+
+    /// The real commands take an `AppHandle` to resolve the app-data dir;
+    /// these test-only wrappers exercise the exact same merge logic against
+    /// a fixture directory directly, without needing a live Tauri app.
+    fn session_save_window_for_test(dir: &Path, window: PersistedWindow) -> Result<(), String> {
+        let mut state = read_session(dir).unwrap_or_default();
+        match state.windows.iter_mut().find(|w| w.label == window.label) {
+            Some(existing) => *existing = window,
+            None => state.windows.push(window),
+        }
+        write_session(dir, &state)
+    }
+
+    fn session_remove_window_for_test(dir: &Path, label: &str) -> Result<(), String> {
+        let Some(mut state) = read_session(dir) else {
+            return Ok(());
+        };
+        state.windows.retain(|w| w.label != label);
+        write_session(dir, &state)
     }
 }

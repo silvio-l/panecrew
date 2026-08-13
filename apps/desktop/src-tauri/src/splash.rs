@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, Window};
 
 /// Das Hauptfenster startet unsichtbar und wird erst freigegeben, wenn beide
 /// Seiten so weit sind: das Splash-Video ist durchgelaufen UND das Frontend des
@@ -50,8 +50,16 @@ pub fn splash_finished(app: AppHandle, gate: State<'_, RevealGate>) {
     signal(&app, &gate, |signals| signals.splash_finished = true);
 }
 
+/// Ticket 27, landmine 4: every window's frontend mounts the same bootstrap
+/// and would otherwise all race to flip this same process-wide flag — a
+/// second window's own mount has nothing to do with whether "main" is ready
+/// to be revealed from behind the splash, so it must not participate in that
+/// gate at all.
 #[tauri::command]
-pub fn main_ready(app: AppHandle, gate: State<'_, RevealGate>) {
+pub fn main_ready(window: Window, app: AppHandle, gate: State<'_, RevealGate>) {
+    if window.label() != "main" {
+        return;
+    }
     signal(&app, &gate, |signals| signals.main_ready = true);
 }
 
