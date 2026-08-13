@@ -133,7 +133,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
             type="button"
             aria-label={t("titleBar.language")}
             onClick={() => setLanguage(nextLanguage)}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(length:--pc-chrome-fontSizeSmall) font-semibold uppercase text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             {i18n.language}
           </button>
@@ -143,7 +143,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
           <button
             type="button"
             aria-label={t("titleBar.settings")}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
           >
             <GearIcon />
           </button>

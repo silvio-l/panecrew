@@ -57,7 +57,7 @@ export function ProjectPicker({
         // stabil, wenn die Erklärzeile darunter mitrendert (die sonst in den
         // Namen einginge und ihn bei jeder Slot-Breite anders lauten ließe).
         aria-label={t("projectPicker.choose")}
-        className={`flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--pc-pane-border) px-4 py-3 text-center text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--pc-pane-border) px-4 py-3 text-center text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
       >
         <FolderPlusIcon />
         <span className="text-(length:--pc-chrome-fontSize) font-medium">

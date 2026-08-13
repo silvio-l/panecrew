@@ -233,7 +233,7 @@ export function ExplorerPanel({
           type="button"
           aria-expanded={!rootCollapsed}
           onClick={() => setRootCollapsed((prev) => !prev)}
-          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pl-2 pr-1 text-left hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pl-2 pr-1 text-left transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
           <Chevron open={!rootCollapsed} />
           {/* Das Akzent-Echo der fokussierten Pane. Liest deren eigenes Token
@@ -298,7 +298,7 @@ export function ExplorerPanel({
               <button
                 type="button"
                 aria-label={t("explorer.moreActions")}
-                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
               >
                 <MoreIcon />
               </button>
@@ -997,7 +997,7 @@ function HeaderAction({
         aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
-        className={`flex size-6 shrink-0 items-center justify-center rounded-md focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
+        className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-[opacity,color,background-color] focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
       >
         {children}
       </button>
@@ -1020,7 +1020,7 @@ export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
           type="button"
           aria-label={t("explorer.showExplorer")}
           onClick={onExpand}
-          className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          className={`flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
           <SidebarIcon />
         </button>
@@ -1120,11 +1120,11 @@ function RefreshIcon() {
 // reiner Chrome-Icon-Ton (er färbt hier nebenan schon die Git-Dateiicons) und
 // kollidiert deshalb nicht mit der ANSI-Palette echter Terminalausgabe.
 //
-// Das Rot trägt hier das Icon, nicht die Schrift: gemessen kommt #cc3e44 auf
-// --pc-explorer-background (#191a1b) nur auf 3,6:1 und verfehlt damit die
+// Das Rot trägt hier das Icon, nicht die Schrift: gemessen kommt #d94e54 auf
+// --pc-explorer-background (#262d58) nur auf 3,2:1 und verfehlt damit die
 // 4,5:1, die dieses Theme für Normalsatz führt (theme.css). Als Grafikobjekt
 // liegt derselbe Wert über dessen 3:1-Grenze. Der Vorspann steht deshalb in
-// --pc-explorer-foreground (9,5:1 dark / 15,6:1 light) — das hebt ihn zugleich
+// --pc-explorer-foreground (7,1:1 dark / 15,6:1 light) — das hebt ihn zugleich
 // vom bewusst leisen Leer-Platzhalter ab, der im gedämpften Ton bleibt.
 //
 // Padding/Grundschriftgröße sind die des Platzhalters, damit der Block in
@@ -1442,7 +1442,7 @@ function Chevron({ open }: { open: boolean }) {
       height="10"
       viewBox="0 0 10 10"
       aria-hidden="true"
-      className={`shrink-0 text-(--pc-descriptionForeground) ${open ? "rotate-90" : ""}`}
+      className={`shrink-0 text-(--pc-descriptionForeground) transition-transform duration-100 ${open ? "rotate-90" : ""}`}
     >
       <path
         d="M3.5 1.8 6.7 5 3.5 8.2"

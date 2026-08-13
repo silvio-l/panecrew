@@ -115,7 +115,7 @@ export function UnsavedChangesDialog({
               <button
                 type="button"
                 onClick={onConfirm}
-                className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-widget-border) px-3 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+                className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-widget-border) px-3 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
               >
                 {/* Benennt die Folge, nicht den Weg: „Fortfahren"/„OK"
                     verschwiegen genau das, was hier auf dem Spiel steht. */}
@@ -134,7 +134,7 @@ export function UnsavedChangesDialog({
                 // hier dauerhaft an einem Knopf. Der Auswahl-Ton sagt genau
                 // das Richtige, nämlich „das ist die Antwort, auf der du
                 // gerade stehst".
-                className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-widget-border) bg-(--pc-list-activeSelectionBackground) px-3 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
+                className={`flex h-7 shrink-0 items-center rounded-md border border-(--pc-widget-border) bg-(--pc-list-activeSelectionBackground) px-3 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
               >
                 {t("unsavedDialog.cancel")}
               </button>

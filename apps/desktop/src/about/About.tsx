@@ -186,7 +186,7 @@ export function About() {
           type="button"
           aria-label={t("about.close")}
           onClick={() => void getCurrentWindow().close()}
-          className="absolute left-3 top-3 z-10 flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
+          className="absolute left-3 top-3 z-10 flex size-6 items-center justify-center rounded-md text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
         >
           <CloseIcon />
         </button>
@@ -224,7 +224,7 @@ export function About() {
               onClick={runCheck}
               disabled={update.phase === "checking"}
               aria-busy={update.phase === "checking"}
-              className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
+              className="flex h-8 items-center rounded-md border border-(--pc-pane-border) bg-(--pc-explorer-background) px-3.5 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--pc-focusBorder) disabled:opacity-50"
             >
               {t("about.checkForUpdates")}
             </button>
@@ -357,7 +357,7 @@ function QuietButton({
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      className="rounded-sm text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) underline decoration-current/35 underline-offset-3 hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-(--pc-focusBorder)"
+      className="rounded-sm text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) underline decoration-current/35 underline-offset-3 transition-colors hover:text-(--pc-foreground) focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-(--pc-focusBorder)"
     >
       {children}
     </button>

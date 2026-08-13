@@ -9,15 +9,16 @@ body,
 }
 
 /*
- * Motion-Regel (2026-08-13, „Synthwave-Terminal-Ästhetik", docs/decisions.md):
- * Zustandswechsel im Chrome — Hover, Fokus, Auf/Zu, Aktiv/Inaktiv — schalten
- * HART, ohne CSS-Transition. Vorher trugen ~25 Stellen Tailwinds
- * transition-colors/-opacity/-transform (150ms ease); die sind bewusst
- * entfernt, nicht vergessen. Wer eine Transition neu einführt, braucht einen
- * Grund, der keine Zustandsrückmeldung ist (z. B. eine räumliche Geste) —
- * Zustands-Feedback bleibt instant. Ebenso verboten: box-shadow/text-shadow
- * als Leucht-/Halo-Effekt (versetzte Tiefenschatten an schwebenden Overlays
- * sind davon unberührt) und jede kinetische Typografie (Typing-/Rolltext).
+ * Motion-Regel (2026-08-13, „1a"-Entscheidung, docs/decisions.md → charm-Linie
+ * auch in der App; ersetzt die 0ms-Regel der Synthwave-Spec vom selben Tag):
+ * HOVER-Feedback im Chrome wechselt kurz und knackig — Tailwinds
+ * transition-colors/-opacity (150ms ease) an den interaktiven Elementen sind
+ * bewusst wieder da (dieselben ~25 Stellen, die die 0ms-Fassung entfernt
+ * hatte). ZUSTANDSWECHSEL dagegen bleiben hart: der Pane-Fokusrahmen, aktive
+ * Tabs, Auf/Zu von Overlays schalten instant — Fokus ist Arbeitssignal, kein
+ * Schmuck. Unverändert verboten: box-shadow/text-shadow als Leucht-/Halo-
+ * Effekt (versetzte Tiefenschatten an schwebenden Overlays sind davon
+ * unberührt) und jede kinetische Typografie (Typing-/Rolltext).
  */
 body {
   overflow: hidden;

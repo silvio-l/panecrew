@@ -122,7 +122,7 @@ export function PaneTabs({
           type="button"
           aria-label={t("paneTabs.openTerminalTab")}
           onClick={onOpenTerminalTab}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
           <PlusIcon />
         </button>
@@ -183,7 +183,7 @@ function TerminalTabChip({
           onClick={onSelect}
           aria-pressed={active}
           aria-label={label}
-          className={`flex h-full items-center gap-1 rounded-(--pc-paneControl-radius) pl-1.5 pr-4 text-(length:--pc-chrome-fontSizeSmall) font-medium ${
+          className={`flex h-full items-center gap-1 rounded-(--pc-paneControl-radius) pl-1.5 pr-4 text-(length:--pc-chrome-fontSizeSmall) font-medium transition-colors ${
             active
               ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
               : "text-(--pc-paneHeader-foreground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
@@ -203,7 +203,7 @@ function TerminalTabChip({
               onClose();
             }}
             aria-label={t("paneTabs.closeTerminalTab", { number })}
-            className={`absolute inset-y-0 right-0.5 my-auto flex size-3.5 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) group-hover/tab:opacity-100 focus-visible:opacity-100 ${CHROME_FOCUS_RING}`}
+            className={`absolute inset-y-0 right-0.5 my-auto flex size-3.5 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) group-hover/tab:opacity-100 focus-visible:opacity-100 ${CHROME_FOCUS_RING}`}
           >
             <CloseIcon />
           </button>
@@ -229,7 +229,7 @@ function PaneTab({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex h-5 max-w-32 min-w-0 shrink items-center gap-1 rounded-(--pc-paneControl-radius) px-1.5 text-(length:--pc-chrome-fontSizeSmall) font-medium ${
+      className={`flex h-5 max-w-32 min-w-0 shrink items-center gap-1 rounded-(--pc-paneControl-radius) px-1.5 text-(length:--pc-chrome-fontSizeSmall) font-medium transition-colors ${
         active
           ? "bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
           : "text-(--pc-paneHeader-foreground) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
