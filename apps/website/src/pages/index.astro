@@ -118,6 +118,19 @@ const description =
        uncoordinated one-offs (.kicker, .hint, .xpl .hd). */
     --reveal-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
     --label-track: 0.09em;
+    /* page-width scale (2026-08-14, reference-site-derived): no single fixed
+       content box anymore. The reference direction lays the whole page on a
+       12-column body grid and lets each section pick its own span (2/-2 for
+       showcases, 3/-3 for reading-width blocks) — translated here into
+       two proportional spans that keep growing with the viewport instead
+       of stopping at the old uniform 1120px cap. "wide" ≈ that reference's
+       2/-2 showcase span (~82% of a 1920px viewport), "mid" ≈ 3/-3. Genuinely
+       narrow content (section intros, the install copy) keeps its own
+       small max-width — that's the same reference's own exception pattern,
+       not a third span. */
+    --page-gut: clamp(22px, 3.2vw, 64px);
+    --span-wide: min(calc(1140px + 23vw), calc(100% - 2 * var(--page-gut)));
+    --span-mid: min(calc(880px + 16vw), calc(100% - 2 * var(--page-gut)));
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; font-size: 100%; }
@@ -135,11 +148,26 @@ const description =
     overflow-x: hidden;
   }
   ::selection { background: rgba(229, 150, 86, 0.4); }
+  /* film-grain overlay (reference-site technique: fixed full-viewport noise
+     at low opacity, mix-blend-mode overlay) — tactile texture across the
+     whole page, indigo ground and cream footer alike. Static texture, not
+     light: no blur, no halo, nothing animated, so both the no-glow rule and
+     prefers-reduced-motion are untouched. Inline SVG feTurbulence tile
+     instead of a <canvas>-based one: zero JS, one paint. */
+  .grain {
+    position: fixed; inset: 0; z-index: 80; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 240px 240px;
+    opacity: 0.16; mix-blend-mode: overlay;
+  }
   a { color: inherit; }
   :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
   img, svg { max-width: 100%; }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 26px; }
+  /* every .wrap is a showcase section (hero, crew cards, closer rows,
+     oss grid) — they all ride the wide span; the gutters live inside the
+     span math, so no extra padding here. */
+  .wrap { width: var(--span-wide); margin: 0 auto; }
 
   /* ---------- eyebrow ornament (terminal-true ASCII corners) ---------- */
   .eyebrow {
@@ -156,7 +184,7 @@ const description =
   .nav {
     position: relative; z-index: 20;
     display: flex; align-items: center; gap: 26px;
-    max-width: 1120px; margin: 0 auto; padding: 20px 26px;
+    width: var(--span-wide); margin: 0 auto; padding: 20px 0;
   }
   .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
   .logo svg { width: 26px; height: 26px; }
@@ -225,7 +253,7 @@ const description =
      instruments (this + the seam's via pads) down to one shared state. */
   .nav-pinrow {
     position: sticky; top: 12px; z-index: 30; height: 0;
-    max-width: 1120px; margin: 0 auto; padding: 0 26px;
+    width: var(--span-wide); margin: 0 auto;
     display: flex; justify-content: flex-end;
     pointer-events: none;
   }
@@ -286,7 +314,12 @@ const description =
 
   .hero-grid {
     position: relative; z-index: 2;
-    display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 54px; align-items: center;
+    /* on the wide span the copy column keeps a fixed reading width and
+       the app mockup takes all remaining room — the showcase grows with
+       the viewport, the text measure doesn't (the same reference's own
+       split-row pattern: asymmetric spans, not two equal halves). */
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 500px);
+    gap: clamp(54px, 5vw, 100px); align-items: center;
     padding-top: 44px;
   }
   .hero-copy .pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -295,6 +328,8 @@ const description =
     background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
     color: rgba(255, 253, 245, 0.85);
     border-radius: 999px; padding: 4px 12px;
+    /* hard-edge sticker shadow, zero blur — see .badge */
+    box-shadow: 2px 2px 0 rgba(10, 12, 26, 0.35);
   }
   .hero-copy h1 {
     font-family: var(--display); font-weight: 700;
@@ -347,7 +382,10 @@ const description =
   .app-bar span { font-family: var(--mono); font-size: 11px; color: rgba(255, 253, 245, 0.55); }
   .app-body {
     display: grid; grid-template-columns: 30% 20px 1fr; gap: 7px;
-    padding: 8px; height: 350px; position: relative;
+    /* scales with the wide-span layout: a mockup that stays 350px tall
+       while its column grows past ~900px wide reads as a squashed
+       letterbox, not an app window. */
+    padding: 8px; height: clamp(350px, 26vw, 470px); position: relative;
   }
   .pinrail { display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 6px 0; }
 
@@ -422,7 +460,7 @@ const description =
   }
   @keyframes tracePulseFlow { to { stroke-dashoffset: -38; } }
   /* section-seam channel: one vertical bus route running just outside the
-     1120px content column, jogging sideways at each big section boundary
+     wide content span, jogging sideways at each big section boundary
      (45° chamfers via the same chamferedLine math as the focus trace).
      Round 2 (2026-08-14, user: "kann man fast gar nicht erkennen... zu weit
      außen"): anchored to the actual reading column instead of the raw
@@ -434,7 +472,9 @@ const description =
   main { position: relative; }
   .seam-svg {
     position: absolute; top: 0;
-    left: max(6px, calc(50% - 560px - 40px));
+    /* anchored to the wide span's left edge (minus its own 40px offset),
+       tracking the proportional column instead of the old fixed 1120px. */
+    left: max(6px, calc((100% - var(--span-wide)) / 2 - 40px));
     width: 48px; height: 100%;
     pointer-events: none; overflow: visible;
   }
@@ -633,8 +673,10 @@ const description =
        box is fully determined by the fixed-height .demo-stage wrapper
        around it, so the next row began flush against this one with no
        gap. Restore the same 90px rhythm on the wrapper itself. */
-    .demo-stage { height: 175vh; margin-bottom: 90px; }
-    .demo-stage .demo-sticky { position: sticky; top: max(64px, calc(50vh - 230px)); }
+    .demo-stage { height: 122vh; margin-bottom: 90px; }
+    /* -280px, was -230px: the demo window is taller on wide viewports now
+       (app-body clamps up to 440px), so the centering offset grows with it. */
+    .demo-stage .demo-sticky { position: sticky; top: max(48px, calc(50vh - 280px)); }
   }
   /* continuous scroll-progress fill under the demo title bar — without
      it, the only visible feedback was the four discrete pane jumps,
@@ -693,8 +735,8 @@ const description =
 
   /* ---------- crew cards (card gallery) ---------- */
   .crew-row {
-    display: grid; grid-template-columns: 3fr 2fr; gap: 24px;
-    margin-bottom: 24px;
+    display: grid; grid-template-columns: 3fr 2fr; gap: clamp(24px, 1.8vw, 34px);
+    margin-bottom: clamp(24px, 1.8vw, 34px);
   }
   .crew-row.rev { grid-template-columns: 2fr 3fr; }
   .card {
@@ -719,7 +761,9 @@ const description =
   .card-vis {
     margin: 12px 12px 0; border-radius: 10px;
     background: var(--term); border: 1px solid rgba(255, 253, 245, 0.06);
-    min-height: 168px; position: relative; overflow: hidden;
+    /* grows a little with the wide span so bigger cards don't carry
+       letterboxed mini-mocks */
+    min-height: clamp(168px, 11vw, 216px); position: relative; overflow: hidden;
     display: flex; align-items: stretch;
   }
   .card-body { padding: 16px 20px 20px; }
@@ -738,6 +782,11 @@ const description =
   }
   .badge svg { width: 10px; height: 10px; flex: none; }
   .badge.cy { background: #ddf2f2; border-color: #a8dcdc; color: #17696b; }
+  /* hard-edge "sticker" shadow (reference-site technique: solid offset
+     color, zero blur radius) — tactile pop on the card pills without any
+     halo. */
+  .badge { box-shadow: 2px 2px 0 rgba(138, 90, 26, 0.18); }
+  .badge.cy { box-shadow: 2px 2px 0 rgba(23, 105, 107, 0.18); }
   .card p { font-size: 0.90625rem; color: var(--ink-dim); text-wrap: pretty; }
   .card .more { display: inline-block; margin-top: 8px; font-size: 0.90625rem; font-weight: 600; color: var(--amber-text); text-decoration: none; transition: transform var(--lift); }
   .card .more:hover { text-decoration: underline; transform: translateX(3px); }
@@ -788,7 +837,9 @@ const description =
   .toolwall { text-align: center; padding: 30px 26px 10px; }
   .wall {
     display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline;
-    gap: 20px 38px; max-width: 980px; margin: 30px auto 0;
+    /* mid span — wider than a reading measure, narrower than the
+       showcases: a wall of chips, not a paragraph and not a hero. */
+    gap: 20px 38px; width: min(var(--span-mid), 100%); margin: 30px auto 0;
   }
   .wall span {
     display: inline-flex; align-items: center; gap: 9px;
@@ -808,10 +859,13 @@ const description =
 
   /* ---------- look closer (alternating rows) ---------- */
   .closer-row {
-    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 50px; align-items: center;
+    /* same asymmetric-span idea as .hero-grid: the visual takes the
+       growth, the copy keeps a fixed reading measure. */
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 500px);
+    gap: clamp(50px, 4.5vw, 90px); align-items: center;
     margin-bottom: 90px;
   }
-  .closer-row.rev { grid-template-columns: 0.85fr 1.15fr; }
+  .closer-row.rev { grid-template-columns: minmax(320px, 500px) minmax(0, 1fr); }
   .closer-row.rev .closer-vis { order: 2; }
   .closer-copy h3 {
     font-family: var(--display); font-weight: 700;
@@ -832,7 +886,7 @@ const description =
       0 24px 60px rgba(10, 12, 26, 0.5);
     overflow: hidden;
   }
-  .demo .app-body { height: 330px; }
+  .demo .app-body { height: clamp(330px, 24vw, 440px); }
   .dpane {
     all: unset; display: block; cursor: pointer;
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
@@ -892,7 +946,7 @@ const description =
   .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
   footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
   .foot {
-    max-width: 1120px; margin: 0 auto; padding: 0 26px;
+    width: var(--span-wide); margin: 0 auto;
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   }
   .glyph-tile {
@@ -971,6 +1025,9 @@ const description =
 </style></noscript>
 </head>
 <body>
+
+<!-- film-grain overlay (static texture, see .grain in the stylesheet) -->
+<div class="grain" aria-hidden="true"></div>
 
 <!-- shared brand glyph (real geometry from apps/desktop/src-tauri/icons/source/panecrew-mark.svg) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
