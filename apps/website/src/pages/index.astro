@@ -220,8 +220,34 @@ const description =
   }
 
   /* ---------- hero with bokeh clouds ---------- */
-  .hero { position: relative; padding: 40px 0 110px; }
-  .bokeh { position: absolute; inset: -120px 0 auto 0; height: 640px; pointer-events: none; overflow: hidden; }
+  /* fills the opening viewport (nav sits above, in normal flow, so the
+     pair together read as "full screen" without fighting a sticky nav)
+     and centers hero-grid inside that taller box — previously the hero's
+     height was purely content-driven and fell well short of the window,
+     so the crew heading was already visible on load. Capped at 900px:
+     hero-grid's own content doesn't grow past its intrinsic size, so an
+     uncapped 100vh on a tall external monitor would center a fixed-size
+     terminal mockup + headline in a large empty void either way — the cap
+     lets extra window height show more of the next section instead. */
+  .hero {
+    position: relative; padding: 40px 0 110px;
+    min-height: min(100vh, 900px); min-height: min(100svh, 900px);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .bokeh {
+    /* bottom:0 (not a fixed height) so the glow always reaches the actual
+       bottom of .hero, whatever height the viewport-driven min-height above
+       resolves to — a fixed height here left a bare, atmosphere-less gap
+       on tall viewports before the crew section. */
+    position: absolute; inset: -120px 0 0 0;
+    pointer-events: none; overflow: hidden;
+    /* fade the whole glow stack (image + circles + sparks) to nothing
+       before it hits overflow's hard clip — the previous flat cutoff at
+       .bokeh's box edge is what read as an abrupt seam into the crew
+       section below. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 58%, transparent 92%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 58%, transparent 92%);
+  }
   /* dense, generated atmosphere plate (ComfyUI/SDXL, local-ai-srv, 2026-08-14)
      underneath the sharp CSS glow circles — the circles alone read as too
      thin against a denser reference; this gives the field real internal
@@ -230,8 +256,8 @@ const description =
      -140/-160px) already keeps the brightest paint away from center. */
   .bokeh::before {
     content: ""; position: absolute; inset: 0;
-    background: url("/hero-atmosphere.webp") center 62% / cover no-repeat;
-    opacity: 0.24;
+    background: url("/hero-atmosphere.webp") center 30% / cover no-repeat;
+    opacity: 0.28;
   }
   .bokeh i {
     position: absolute; border-radius: 50%; filter: blur(52px);
@@ -456,6 +482,29 @@ const description =
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: none; }
   }
+
+  /* generated companion plate to the hero atmosphere (same ComfyUI/SDXL
+     pass, local-ai-srv) — much quieter, no bright cores, meant to keep the
+     card-grid section from reading as flat indigo once the hero's own
+     richer atmosphere fades out above it. Layered as a low-opacity
+     background (not a hard section background-color) so it blends into
+     the shared body gradient instead of cutting a new hard edge at the
+     section boundary; content stacks above via z-index, same pattern as
+     .hero-grid over .bokeh. */
+  #crew { position: relative; }
+  #crew::before {
+    content: ""; position: absolute; inset: 0; z-index: 0;
+    background: url("/crew-atmosphere.webp") center top / cover no-repeat;
+    opacity: 0.4;
+    /* eases in from transparent at the top boundary — mirrors .bokeh's own
+       fade-out, so the seam dissolves from both sides instead of the
+       hero's atmosphere hard-cutting into this one — and fades out again
+       before the section's own bottom edge, so the same hard-cut doesn't
+       just reappear one boundary later going into the toolwall section. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 82%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 82%, transparent 100%);
+  }
+  #crew .sect-head, #crew > .wrap { position: relative; z-index: 1; }
 
   /* ---------- section headers ---------- */
   .sect-head { text-align: center; padding: 96px 26px 46px; }
