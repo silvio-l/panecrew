@@ -244,9 +244,10 @@ const description =
   .app-bar svg { width: 15px; height: 15px; margin-left: 8px; }
   .app-bar span { font-family: var(--mono); font-size: 11px; color: rgba(255, 253, 245, 0.55); }
   .app-body {
-    display: grid; grid-template-columns: 30% 1fr; gap: 7px;
-    padding: 8px; height: 350px;
+    display: grid; grid-template-columns: 30% 20px 1fr; gap: 7px;
+    padding: 8px; height: 350px; position: relative;
   }
+  .pinrail { display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 6px 0; }
 
   .xpl {
     background: rgba(255, 253, 245, 0.05);
@@ -267,6 +268,33 @@ const description =
   @keyframes xswap { 0% { opacity: 0.25; transform: translateX(-5px); } 100% { opacity: 1; transform: none; } }
 
   .field { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; }
+
+  /* ---------- focus pin-header + circuit trace ----------
+     Shared signature with the desktop app's "Fokus-Leiterbahn": a pin per
+     open pane at the explorer/grid seam, one powered (amber) at a time, and
+     a chamfered bus-route trace that redraws itself to the newly focused
+     pane on every focus change. Geometry/timing constants (6px chamfer,
+     2px/ms signal speed, 180–350ms clamp) are ported verbatim from
+     apps/desktop/src/components/traceGeometry.ts so the motif reads as the
+     same brand mechanism, not a lookalike. */
+  .pin {
+    width: 8px; height: 8px; flex: none; padding: 0; margin: 0;
+    border: 1px solid var(--term-line); background: var(--indigo-deep);
+    transition: background var(--lift), border-color var(--lift);
+  }
+  .pin.on { background: var(--amber); border-color: var(--amber); }
+  /* 20px hit target around the 8px pad — the pad itself stays in connector
+     proportion, the button holds the minimum touch-target size (mirrors
+     FocusPinHeader.tsx's own size-4-around-size-2 comment). */
+  .pin-btn {
+    all: unset; box-sizing: border-box; width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .pin-btn:hover .pin:not(.on) { border-color: var(--amber); }
+  .pin-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 2px; }
+  .trace-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+  .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2; }
+  .trace-svg rect { fill: var(--amber); }
   .hpane {
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
     font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
@@ -546,6 +574,7 @@ const description =
     .nav-links { display: none; }
     .app-body { grid-template-columns: 1fr; height: auto; }
     .xpl { display: none; }
+    .pinrail, .trace-svg { display: none; }
     .demo .app-body { height: auto; grid-template-columns: 1fr; }
     .demo .xpl { display: block; }
     .field { grid-template-rows: none; }
@@ -665,6 +694,12 @@ const description =
               <li>README.md</li>
             </ul>
           </aside>
+          <div class="pinrail" aria-hidden="true">
+            <span class="pin" data-pin="0"></span>
+            <span class="pin" data-pin="1"></span>
+            <span class="pin" data-pin="2"></span>
+            <span class="pin" data-pin="3"></span>
+          </div>
           <div class="field">
             <div class="hpane" data-p="0" data-title="orbit-api — claude" style="--fx:-70%; --fy:-90%; --fr:-11deg; --fd:0.1s" aria-hidden="true"><!-- brandlint-ok: functional demo pane, real supported tool -->
               <div>&gt; refactor the router</div>
@@ -688,6 +723,10 @@ const description =
               <div><span class="c">Info</span> watching…</div>
             </div>
           </div>
+          <svg class="trace-svg" aria-hidden="true">
+            <path id="heroTracePath"></path>
+            <rect id="heroTracePad" width="8" height="4"></rect>
+          </svg>
         </div>
       </div>
 
@@ -881,7 +920,7 @@ const description =
       <!-- 5% novelty: the visitor drives the focus-follow -->
       <div class="closer-row" id="demo">
         <div class="closer-vis">
-          <div class="demo app" aria-label="Interactive demo: choose a pane and the explorer follows">
+          <div class="demo app" id="demoApp" aria-label="Interactive demo: choose a pane and the explorer follows">
             <div class="app-bar" aria-hidden="true">
               <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
               <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
@@ -900,6 +939,12 @@ const description =
                   <li>README.md</li>
                 </ul>
               </aside>
+              <div class="pinrail" role="group" aria-label="Focus pins">
+                <button type="button" class="pin-btn" data-pin="0" aria-pressed="true" aria-label="Focus pin 1 — orbit-api"><span class="pin on" aria-hidden="true"></span></button>
+                <button type="button" class="pin-btn" data-pin="1" aria-pressed="false" aria-label="Focus pin 2 — dashboard"><span class="pin" aria-hidden="true"></span></button>
+                <button type="button" class="pin-btn" data-pin="2" aria-pressed="false" aria-label="Focus pin 3 — cli-tools"><span class="pin" aria-hidden="true"></span></button>
+                <button type="button" class="pin-btn" data-pin="3" aria-pressed="false" aria-label="Focus pin 4 — panecrew"><span class="pin" aria-hidden="true"></span></button>
+              </div>
               <div class="field">
                 <button class="dpane focused" data-p="0" data-title="orbit-api — claude" aria-label="Focus pane: orbit-api with Claude Code"><!-- brandlint-ok: functional interactive demo, real supported tool -->
                   <div>&gt; refactor the router</div>
@@ -922,6 +967,10 @@ const description =
                   <div><span class="c">Info</span> watching…</div>
                 </button>
               </div>
+              <svg class="trace-svg" aria-hidden="true">
+                <path id="demoTracePath"></path>
+                <rect id="demoTracePad" width="8" height="4"></rect>
+              </svg>
             </div>
           </div>
         </div>
@@ -929,7 +978,7 @@ const description =
           <h3>Try the follow.</h3>
           <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In the app it works exactly like this, except the terminals are real.</p>
           <p>That's the whole trick: focus a pane, and the files you need are already in front of you. No tool we tried gets this right — so we built it.</p>
-          <p class="hint">↖ hover or tap a pane</p>
+          <p class="hint">↖ hover a pane, or click a pin</p>
         </div>
       </div>
 
@@ -1086,16 +1135,115 @@ const description =
     }
   }
 
+  /* ---- focus pin-header + circuit trace geometry ----
+     Ported from apps/desktop/src/components/traceGeometry.ts: same
+     45°-chamfered bus route, same 2px/ms signal-propagation speed clamped
+     to 180–350ms. Pure math, no framework — the site measures its own
+     fixed layout with getBoundingClientRect the same way the app measures
+     its live grid. */
+  function simplifyPoints(points) {
+    var deduped = [];
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i], last = deduped[deduped.length - 1];
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 0.5) continue;
+      deduped.push(p);
+    }
+    var out = [];
+    for (var j = 0; j < deduped.length; j++) {
+      var point = deduped[j];
+      var a = out[out.length - 2], b = out[out.length - 1];
+      if (a && b) {
+        var cross = (b.x - a.x) * (point.y - b.y) - (b.y - a.y) * (point.x - b.x);
+        var dot = (b.x - a.x) * (point.x - b.x) + (b.y - a.y) * (point.y - b.y);
+        if (Math.abs(cross) < 0.5 && dot > 0) out.pop();
+      }
+      out.push(point);
+    }
+    return out;
+  }
+
+  function chamferedLine(points, chamfer) {
+    if (points.length < 3) return points.slice();
+    var out = [points[0]];
+    for (var i = 1; i < points.length - 1; i++) {
+      var prev = points[i - 1], vertex = points[i], next = points[i + 1];
+      var inLen = Math.hypot(vertex.x - prev.x, vertex.y - prev.y);
+      var outLen = Math.hypot(next.x - vertex.x, next.y - vertex.y);
+      var cut = Math.min(chamfer, inLen / 2, outLen / 2);
+      out.push(
+        { x: vertex.x - (vertex.x - prev.x) / inLen * cut, y: vertex.y - (vertex.y - prev.y) / inLen * cut },
+        { x: vertex.x + (next.x - vertex.x) / outLen * cut, y: vertex.y + (next.y - vertex.y) / outLen * cut }
+      );
+    }
+    out.push(points[points.length - 1]);
+    return out;
+  }
+
+  function pathD(points, chamfer) {
+    var line = chamferedLine(points, chamfer);
+    if (line.length < 2) return '';
+    return line.map(function (p, i) { return (i === 0 ? 'M ' : 'L ') + p.x.toFixed(2) + ' ' + p.y.toFixed(2); }).join(' ');
+  }
+
+  function pathLength(points, chamfer) {
+    var line = chamferedLine(points, chamfer);
+    var total = 0;
+    for (var i = 1; i < line.length; i++) total += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y);
+    return total;
+  }
+
+  function traceDurationMs(len) {
+    return Math.round(Math.min(350, Math.max(180, len / 2)));
+  }
+
+  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl) {
+    return function draw(idx, animate) {
+      var pinEl = pins[idx], paneEl = panes[idx];
+      if (!appBodyEl || !pinEl || !paneEl || !pathEl || !padEl) return;
+      var origin = appBodyEl.getBoundingClientRect();
+      var pinRect = pinEl.getBoundingClientRect();
+      var paneRect = paneEl.getBoundingClientRect();
+      if (paneRect.width <= 0 || paneRect.height <= 0) return;
+      var pin = { x: pinRect.left + pinRect.width / 2 - origin.left, y: pinRect.top + pinRect.height / 2 - origin.top };
+      var paneLeft = paneRect.left - origin.left;
+      var paneTop = paneRect.top - origin.top;
+      var paneWidth = paneRect.width;
+      var channelY = paneTop - 4;
+      var padX = paneLeft + Math.min(16, paneWidth / 2);
+      var points = simplifyPoints([pin, { x: pin.x, y: channelY }, { x: padX, y: channelY }, { x: padX, y: paneTop }]);
+      var d = pathD(points, 6);
+      var len = pathLength(points, 6);
+      pathEl.setAttribute('d', d);
+      padEl.setAttribute('x', String(padX - 4));
+      padEl.setAttribute('y', String(paneTop - 4));
+      pathEl.style.strokeDasharray = String(len);
+      pathEl.style.strokeDashoffset = '0';
+      if (animate && !reduced && len > 0 && typeof pathEl.animate === 'function') {
+        pathEl.animate(
+          [{ strokeDashoffset: String(len) }, { strokeDashoffset: '0' }],
+          { duration: traceDurationMs(len), easing: 'linear' }
+        );
+      }
+    };
+  }
+
   /* ---- hero: auto focus-cycle after assembly ---- */
   var heroApp = document.getElementById('heroApp');
   var heroXpl = document.getElementById('heroXpl');
   var heroPanes = Array.prototype.slice.call(heroApp.querySelectorAll('.hpane'));
-  var heroIdx = 0, heroTimer = null;
+  var heroPins = Array.prototype.slice.call(heroApp.querySelectorAll('.pin'));
+  var heroDrawTrace = makeTraceDrawer(
+    heroApp.querySelector('.app-body'), heroPins, heroPanes,
+    document.getElementById('heroTracePath'), document.getElementById('heroTracePad')
+  );
+  var heroIdx = 0, heroTimer = null, heroTraceReady = false;
 
   function heroFocus(idx, animate) {
     heroIdx = idx;
     heroPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
+    heroPins.forEach(function (p, i) { p.classList.toggle('on', i === idx); });
     renderExplorer(heroXpl, idx, animate);
+    if (heroTraceReady) heroDrawTrace(idx, animate);
   }
 
   heroFocus(0, false);
@@ -1103,6 +1251,9 @@ const description =
   if (!reduced) {
     var startCycle = function () {
       if (heroTimer) return;
+      // first activation: the assembly choreography is done by now, draw
+      // the trace instantly instead of animating from a mid-flight pane
+      if (!heroTraceReady) { heroTraceReady = true; heroDrawTrace(heroIdx, false); }
       heroTimer = setInterval(function () {
         heroFocus((heroIdx + 1) % 4, true);
       }, 3400);
@@ -1120,21 +1271,51 @@ const description =
         startCycle();
       }
     }, 2300);
+  } else {
+    heroTraceReady = true;
+    heroDrawTrace(0, false);
   }
 
   /* ---- live demo: the visitor drives the focus ---- */
+  var demoApp = document.getElementById('demoApp');
   var demoXpl = document.getElementById('demoXpl');
   var demoPanes = Array.prototype.slice.call(document.querySelectorAll('.dpane'));
+  var demoPins = Array.prototype.slice.call(demoApp.querySelectorAll('.pin-btn'));
+  var demoDrawTrace = makeTraceDrawer(
+    demoApp.querySelector('.app-body'), demoPins, demoPanes,
+    document.getElementById('demoTracePath'), document.getElementById('demoTracePad')
+  );
 
   function demoFocus(idx) {
     demoPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
+    demoPins.forEach(function (p, i) {
+      var on = i === idx;
+      p.setAttribute('aria-pressed', String(on));
+      var dot = p.querySelector('.pin');
+      if (dot) dot.classList.toggle('on', on);
+    });
     renderExplorer(demoXpl, idx, true);
+    demoDrawTrace(idx, true);
   }
 
   demoPanes.forEach(function (p, i) {
     p.addEventListener('pointerenter', function () { demoFocus(i); });
     p.addEventListener('click', function () { demoFocus(i); });
     p.addEventListener('focus', function () { demoFocus(i); });
+  });
+  demoPins.forEach(function (p, i) {
+    p.addEventListener('click', function () { demoFocus(i); });
+  });
+  demoDrawTrace(0, false);
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (heroTraceReady) heroDrawTrace(heroIdx, false);
+      var demoFocusedIdx = demoPanes.findIndex(function (p) { return p.classList.contains('focused'); });
+      demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
+    }, 120);
   });
 })();
 </script>
