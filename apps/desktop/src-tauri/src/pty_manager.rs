@@ -45,6 +45,148 @@ pub struct PtyHandle {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
+    /// Windows-only job object the spawned process was assigned to at spawn
+    /// time — see `WinJob` for why `kill()` needs this instead of just
+    /// signaling the direct pid. `None` when job creation/assignment itself
+    /// failed (degrades to single-pid kill, same as the unix path degrades
+    /// when `process_group_leader()` comes back empty).
+    #[cfg(windows)]
+    job: Option<WinJob>,
+}
+
+/// Windows equivalent of a unix process group for `kill()`'s purposes: a job
+/// object the spawned shell is assigned to right after spawn. Windows adds
+/// every process a job-object member later creates to the same job
+/// automatically (unless that child explicitly opts out), so
+/// `TerminateJobObject` reaches a foreground dev server / CLI agent the
+/// shell started, not just the shell's own pid — the same gap `kill()`
+/// closes on unix via `killpg`.
+///
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` is set so the OS itself tears down
+/// every process still in the job if this handle is ever dropped without an
+/// explicit `terminate()` (e.g. a panic mid-kill), instead of leaking them.
+///
+/// Implemented to spec, not executable-verified — no Windows machine
+/// available in this environment to run it against a real job object.
+#[cfg(windows)]
+struct WinJob(winapi::shared::ntdef::HANDLE);
+
+// The raw HANDLE is never touched concurrently — `PtyHandle::kill()` only
+// ever calls `terminate()` through the same `&self` that guards it (no
+// interior mutability needed, `TerminateJobObject`/`CloseHandle` are
+// themselves thread-safe Win32 calls), so `Send`/`Sync` are safe to assert
+// by hand for a type winapi's raw pointer typedef doesn't derive them for.
+#[cfg(windows)]
+unsafe impl Send for WinJob {}
+#[cfg(windows)]
+unsafe impl Sync for WinJob {}
+
+#[cfg(windows)]
+impl WinJob {
+    /// `None` on any failure along the way (job creation, setting the
+    /// kill-on-close limit, or assignment) — callers fall back to a
+    /// single-pid kill rather than failing the whole spawn over a
+    /// best-effort group-kill mechanism.
+    fn wrap(raw_handle: winapi::shared::ntdef::HANDLE) -> Option<Self> {
+        use std::mem::{size_of, zeroed};
+        use std::ptr::null_mut;
+        use winapi::um::handleapi::CloseHandle;
+        use winapi::um::jobapi2::{
+            AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        };
+        use winapi::um::winnt::{
+            JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- raw Win32 job-object setup, no memory sharing beyond the handle itself.
+        unsafe {
+            let job = CreateJobObjectW(null_mut(), null_mut());
+            if job.is_null() {
+                return None;
+            }
+
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let set_ok = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &mut info as *mut _ as *mut _,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if set_ok == 0 {
+                CloseHandle(job);
+                return None;
+            }
+
+            if AssignProcessToJobObject(job, raw_handle) == 0 {
+                CloseHandle(job);
+                return None;
+            }
+
+            Some(Self(job))
+        }
+    }
+
+    /// Terminates every process the job has accumulated — the spawned shell
+    /// plus any descendant it created, foreground or background.
+    fn terminate(&self) {
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- raw Win32 call, no memory/pointer manipulation beyond the owned job handle.
+        unsafe {
+            winapi::um::jobapi2::TerminateJobObject(self.0, 1);
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WinJob {
+    fn drop(&mut self) {
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- releasing our own owned handle.
+        unsafe {
+            winapi::um::handleapi::CloseHandle(self.0);
+        }
+    }
+}
+
+/// Unix equivalent of `WinJob::terminate` above: SIGKILLs the whole process
+/// group `pid` leads, not just `pid` itself.
+///
+/// The spawned process becomes its own session AND process-group leader via
+/// `setsid()` at spawn time (`portable-pty`'s `unix.rs::spawn_command`), so
+/// its own pid doubles as its pgid — negating it targets the whole group
+/// (`killpg` semantics), reaching anything it forked that stayed in that
+/// group rather than getting one of its own via job control.
+///
+/// A normal interactive shell's job control, though, moves ownership of the
+/// controlling terminal to whichever job is currently in the foreground —
+/// in its OWN, separate process group, distinct from the shell's. That
+/// group is `master.process_group_leader()` (`tcgetpgrp` on the pty), and
+/// is signaled too, so a foreground dev server / CLI agent the shell
+/// launched actually dies along with the shell instead of being silently
+/// reparented to init.
+///
+/// Signals are sent best-effort: `ESRCH` (the group is already gone — an
+/// already-dying pane, or one with no foreground job of its own) is an
+/// expected race here, not a caller-visible error.
+#[cfg(unix)]
+fn kill_process_group(pid: u32, master: &Mutex<Box<dyn MasterPty + Send>>) {
+    let pgid = pid as libc::pid_t;
+
+    if let Ok(master) = master.lock() {
+        if let Some(fg_pgid) = master.process_group_leader() {
+            if fg_pgid != pgid {
+                // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- raw signal delivery, no memory/pointer manipulation.
+                unsafe {
+                    libc::kill(-fg_pgid, libc::SIGKILL);
+                }
+            }
+        }
+    }
+
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- raw signal delivery, no memory/pointer manipulation.
+    unsafe {
+        libc::kill(-pgid, libc::SIGKILL);
+    }
 }
 
 pub fn spawn<F>(opts: SpawnOptions, on_output: F) -> anyhow::Result<PtyHandle>
@@ -80,6 +222,17 @@ where
         cmd.env(key, value);
     }
     let child = pair.slave.spawn_command(cmd)?;
+
+    // Must happen right after spawn, before the child has a chance to fork
+    // anything of its own — Windows only adds a process to a job
+    // automatically at ITS OWN creation time, so a descendant spawned
+    // before this assignment landed would never join it. `None` on failure
+    // (see `WinJob::wrap`) degrades `kill()` to a single-pid kill rather
+    // than failing the spawn itself.
+    #[cfg(windows)]
+    let job = child
+        .as_raw_handle()
+        .and_then(|handle| WinJob::wrap(handle as winapi::shared::ntdef::HANDLE));
 
     let mut reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
@@ -156,6 +309,8 @@ where
         writer: Mutex::new(writer),
         master: Mutex::new(pair.master),
         child: Mutex::new(child),
+        #[cfg(windows)]
+        job,
     })
 }
 
@@ -178,9 +333,37 @@ impl PtyHandle {
         Ok(())
     }
 
+    /// Terminates the whole process group/job the spawned shell leads (see
+    /// `kill_process_group`/`WinJob` above), not just the shell's own pid —
+    /// a foreground child it started (dev server, CLI agent, anything with
+    /// its own process group under normal job control) is terminated too,
+    /// instead of being silently reparented and left running. Reaps the
+    /// direct child afterward so it doesn't sit as a zombie/defunct entry
+    /// until the app itself exits.
     pub fn kill(&self) -> anyhow::Result<()> {
         let mut child = self.child.lock().unwrap();
-        child.kill()?;
+
+        #[cfg(unix)]
+        match child.process_id() {
+            Some(pid) => kill_process_group(pid, &self.master),
+            // No pid to derive a pgid from (shouldn't happen for a real PTY
+            // child) — fall back to portable-pty's own single-pid kill.
+            None => child.kill()?,
+        }
+
+        #[cfg(windows)]
+        match &self.job {
+            Some(job) => job.terminate(),
+            // Job creation/assignment failed at spawn time — fall back to
+            // portable-pty's own single-pid kill.
+            None => child.kill()?,
+        }
+
+        // The signal above already made the process dead or dying, so this
+        // returns near-instantly; it's what actually reaps it (`wait()`
+        // reuses the cached exit status if something already reaped it via
+        // `try_wait()`, so calling this unconditionally is safe).
+        child.wait()?;
         Ok(())
     }
 
@@ -406,5 +589,105 @@ mod tests {
             Duration::from_secs(5),
         );
         assert!(exited, "expected killed child process to have exited");
+    }
+
+    // unix-only: relies on `kill -0` as an existence probe and on unix
+    // process-group semantics (a non-interactive shell's backgrounded job
+    // staying in its parent's group) to set up the scenario — the Windows
+    // equivalent (`WinJob`) has no test machine to run against, see the
+    // ticket note on that type.
+    #[cfg(unix)]
+    mod group_kill_tests {
+        use super::*;
+
+        /// A PTY child that forks a grandchild staying in its own process
+        /// group — a background job under a *non-interactive* `sh -c`,
+        /// which has job control off and so never `setpgid`s a child into a
+        /// group of its own. This is the exact shape `kill_process_group`
+        /// must reach beyond the direct child: `wait` keeps the direct
+        /// child (this `sh`) itself alive until killed, matching a real
+        /// pane with a running foreground job.
+        struct Fixture {
+            handle: PtyHandle,
+            output: Arc<Mutex<Vec<u8>>>,
+        }
+
+        impl Fixture {
+            fn spawn_with_backgrounded_grandchild() -> Self {
+                let (handle, output) =
+                    spawn_sh(Some("sleep 30 & echo GRANDCHILD_PID=$!; wait"));
+                Self { handle, output }
+            }
+
+            fn grandchild_pid(&self) -> u32 {
+                let printed = wait_for(
+                    || {
+                        String::from_utf8_lossy(&self.output.lock().unwrap())
+                            .contains("GRANDCHILD_PID=")
+                    },
+                    Duration::from_secs(5),
+                );
+                assert!(printed, "expected the script to print the backgrounded sleep's pid");
+
+                let text = String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned();
+                text.lines()
+                    .find_map(|line| line.trim().strip_prefix("GRANDCHILD_PID="))
+                    .and_then(|pid| pid.trim().parse::<u32>().ok())
+                    .expect("expected a parseable pid after GRANDCHILD_PID=")
+            }
+        }
+
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                // Best-effort: most tests already kill the handle
+                // themselves before dropping it, this only matters if an
+                // assertion panics first and would otherwise leak a real
+                // `sleep 30` OS process for the rest of its 30s.
+                let _ = self.handle.kill();
+            }
+        }
+
+        fn is_process_alive(pid: u32) -> bool {
+            // `kill -0` sends no signal, only checks whether the pid could
+            // be signaled — same existence probe `pty_commands.rs`'s own
+            // tests use.
+            std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        }
+
+        #[test]
+        fn kill_terminates_the_whole_process_group_not_just_the_direct_child() {
+            let fixture = Fixture::spawn_with_backgrounded_grandchild();
+            let grandchild_pid = fixture.grandchild_pid();
+
+            assert!(
+                is_process_alive(grandchild_pid),
+                "sanity check: the backgrounded grandchild should be running before the kill"
+            );
+
+            fixture.handle.kill().expect("kill should succeed");
+
+            let grandchild_died = wait_for(
+                || !is_process_alive(grandchild_pid),
+                Duration::from_secs(5),
+            );
+            assert!(
+                grandchild_died,
+                "expected killing the pane to also terminate a foreground grandchild that \
+                 stayed in the shell's process group, not just the shell itself"
+            );
+
+            let shell_reaped = wait_for(
+                || fixture.handle.has_exited().unwrap_or(false),
+                Duration::from_secs(5),
+            );
+            assert!(
+                shell_reaped,
+                "expected the killed shell to have been reaped, not left as a zombie"
+            );
+        }
     }
 }

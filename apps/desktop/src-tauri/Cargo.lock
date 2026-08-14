@@ -831,6 +831,7 @@ dependencies = [
  "clap-markdown",
  "flate2",
  "glob",
+ "libc",
  "notify",
  "notify-debouncer-full",
  "portable-pty",
@@ -846,6 +847,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "trash",
+ "winapi",
 ]
 
 [[package]]

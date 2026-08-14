@@ -42,6 +42,18 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 notify-debouncer-full = "0.7.0"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 
+# pty_manager.rs::PtyHandle::kill(): killing just the shell's own pid leaves
+# a foreground child it started (dev server, CLI agent, ...) reparented and
+# still running instead of terminated -- neither portable-pty's own
+# Child/ChildKiller API nor sysinfo (walk-then-kill is racy, and would
+# still miss a job-controlled child in its own process group) expose real
+# killpg/job-object group-kill semantics, so these two are raw OS calls.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["jobapi2", "winnt", "handleapi"] }
+
 [dev-dependencies]
 # Only reachable from `cargo run --example gen-cli-docs` (examples get
 # dev-dependencies, a `[[bin]]` would not): regenerates docs/cli.md from the
