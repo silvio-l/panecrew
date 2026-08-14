@@ -299,8 +299,11 @@ export function completionInsert(
   const insert = name.startsWith(prefix)
     ? `${name.slice(prefix.length)}/`
     : `${"\x7f".repeat(prefix.length)}${name}/`;
-  // Ohne Anführungszeichen liest die Shell ein Leerzeichen als Argumentgrenze.
-  return quoted ? insert : insert.replace(/ /g, "\\ ");
+  // Ohne Anführungszeichen liest die Shell ein Leerzeichen als Argumentgrenze;
+  // ein Backslash im Namen muss zuerst selbst escapt werden, sonst würde er
+  // sich mit einem nachfolgenden Escape-Backslash zu einem anderen Zeichen
+  // verbinden (CodeQL js/incomplete-sanitization).
+  return quoted ? insert : insert.replace(/\\/g, "\\\\").replace(/ /g, "\\ ");
 }
 
 function blankRunAfter(rowText: string, x: number): number {

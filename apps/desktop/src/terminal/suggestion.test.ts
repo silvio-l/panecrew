@@ -358,6 +358,14 @@ describe("completionInsert", () => {
     expect(completionInsert("My", "My Notes", false)).toBe("\\ Notes/");
     expect(completionInsert("My", "My Notes", true)).toBe(" Notes/");
   });
+
+  it("maskiert Backslashes vor den Leerzeichen, statt sie zu verschlucken", () => {
+    // CodeQL js/incomplete-sanitization: ohne vorheriges Backslash-Escaping
+    // würde ein Name wie "a\ b" ("a\", " b" maskiert zu "a\\ b") als
+    // "a<Space>b" statt "a\<Space>b" bei der Shell ankommen.
+    expect(completionInsert("", "a\\ b", false)).toBe("a\\\\\\ b/");
+    expect(completionInsert("", "a\\ b", true)).toBe("a\\ b/");
+  });
 });
 
 describe("rememberCommand", () => {
