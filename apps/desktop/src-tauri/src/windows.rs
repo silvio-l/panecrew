@@ -127,10 +127,20 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     .background_color(
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
     .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
     .accept_first_mouse(ACCEPT_FIRST_MOUSE)
     .hidden_title(true);
+
+    // `title_bar_style`/`TitleBarStyle::Overlay` model macOS's inset-traffic-
+    // light chrome and only exist on `WebviewWindowBuilder` when compiled for
+    // macOS (verified against a real Windows CI build failure, 2026-08-14:
+    // E0599 "no method named `title_bar_style`"). `tauri.conf.json`'s own
+    // `titleBarStyle: "Overlay"` is JSON and silently ignored on non-macOS
+    // targets, which is why only *this* runtime-builder call needed gating.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
 
     if let Some(opener) = opener {
         if let Ok(position) = opener.outer_position() {
@@ -161,7 +171,8 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
 /// against yet — so restored windows simply center, same as the very first
 /// "main" window Tauri itself creates from `tauri.conf.json`.
 pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), String> {
-    WebviewWindowBuilder::new(
+    #[allow(unused_mut)] // only reassigned under the macOS-only cfg block below
+    let mut builder = WebviewWindowBuilder::new(
         app,
         label,
         WebviewUrl::App(format!("index.html?window={label}").into()),
@@ -172,15 +183,22 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
     .background_color(
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
     .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
     .accept_first_mouse(ACCEPT_FIRST_MOUSE)
-    .hidden_title(true)
-    .center()
-    .visible(false)
-    .build()
-    .map(|_| ())
-    .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"))
+    .hidden_title(true);
+
+    // See the matching comment in `window_open_new` above.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
+
+    builder
+        .center()
+        .visible(false)
+        .build()
+        .map(|_| ())
+        .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"))
 }
 
 /// `setup()`-time counterpart to `window_open_new` (Ticket 27): without this,
