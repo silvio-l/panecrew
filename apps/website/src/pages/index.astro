@@ -400,8 +400,27 @@ const description =
   .pin-btn:hover .pin:not(.on) { border-color: var(--amber); }
   .pin-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 2px; }
   .trace-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
-  .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2; }
+  .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2.5; }
   .trace-svg rect { fill: var(--amber); }
+  /* "Tron power lane" pass (2026-08-14, user: "wirkt noch nicht wie eine
+     tron strom lane") — same dashed-channel-under-solid-overlay language
+     already established for the page seam (#seamPath/#seamPathLive), plus
+     a genuinely moving element: a short bright dash chases along the
+     route on an infinite loop, since a focus-trace (unlike the seam) has
+     no continuous scroll signal to charge it — the loop stands in for
+     "current is flowing". No blur/box-shadow anywhere — the no-glow rule
+     stays absolute; "energized" reads through motion and a hot-core color
+     step (amber conduit, cream spark), not a halo — a same-color dash on
+     top of the solid amber line would have been invisible. */
+  .trace-svg path.trace-base { stroke-width: 1.5; stroke-opacity: 0.3; stroke-dasharray: 2 5; }
+  .trace-svg path.trace-pulse { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .trace-svg path.trace-pulse {
+      display: block; stroke: var(--cream); stroke-width: 2px; stroke-linecap: round;
+      stroke-dasharray: 4 34; animation: tracePulseFlow 1.5s linear infinite;
+    }
+  }
+  @keyframes tracePulseFlow { to { stroke-dashoffset: -38; } }
   /* section-seam channel: one vertical bus route running just outside the
      1120px content column, jogging sideways at each big section boundary
      (45° chamfers via the same chamferedLine math as the focus trace).
@@ -609,7 +628,12 @@ const description =
      are shorter regardless.
      Mobile and reduced-motion keep the plain in-flow layout. */
   @media (min-width: 941px) and (prefers-reduced-motion: no-preference) {
-    .demo-stage { height: 175vh; }
+    /* the inner .closer-row's own margin-bottom: 90px (see below) never
+       actually spends scroll space here — it's inside .demo-sticky, whose
+       box is fully determined by the fixed-height .demo-stage wrapper
+       around it, so the next row began flush against this one with no
+       gap. Restore the same 90px rhythm on the wrapper itself. */
+    .demo-stage { height: 175vh; margin-bottom: 90px; }
     .demo-stage .demo-sticky { position: sticky; top: max(64px, calc(50vh - 230px)); }
   }
   /* continuous scroll-progress fill under the demo title bar — without
@@ -1113,7 +1137,9 @@ const description =
             </div>
           </div>
           <svg class="trace-svg" aria-hidden="true">
+            <path id="heroTraceBase" class="trace-base"></path>
             <path id="heroTracePath"></path>
+            <path id="heroTracePulse" class="trace-pulse"></path>
             <rect id="heroTracePad" width="8" height="4"></rect>
           </svg>
         </div>
@@ -1365,7 +1391,9 @@ const description =
                 </button>
               </div>
               <svg class="trace-svg" aria-hidden="true">
+                <path id="demoTraceBase" class="trace-base"></path>
                 <path id="demoTracePath"></path>
+                <path id="demoTracePulse" class="trace-pulse"></path>
                 <rect id="demoTracePad" width="8" height="4"></rect>
               </svg>
             </div>
@@ -1611,7 +1639,7 @@ const description =
     return Math.round(Math.min(350, Math.max(180, len / 2)));
   }
 
-  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl) {
+  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, pulseEl) {
     return function draw(idx, animate) {
       var pinEl = pins[idx], paneEl = panes[idx];
       if (!appBodyEl || !pinEl || !paneEl || !pathEl || !padEl) return;
@@ -1629,6 +1657,8 @@ const description =
       var d = pathD(points, 6);
       var len = pathLength(points, 6);
       pathEl.setAttribute('d', d);
+      if (baseEl) baseEl.setAttribute('d', d);
+      if (pulseEl) pulseEl.setAttribute('d', d);
       padEl.setAttribute('x', String(padX - 4));
       padEl.setAttribute('y', String(paneTop - 4));
       pathEl.style.strokeDasharray = String(len);
@@ -1649,7 +1679,8 @@ const description =
   var heroPins = Array.prototype.slice.call(heroApp.querySelectorAll('.pin'));
   var heroDrawTrace = makeTraceDrawer(
     heroApp.querySelector('.app-body'), heroPins, heroPanes,
-    document.getElementById('heroTracePath'), document.getElementById('heroTracePad')
+    document.getElementById('heroTracePath'), document.getElementById('heroTracePad'),
+    document.getElementById('heroTraceBase'), document.getElementById('heroTracePulse')
   );
   var heroIdx = 0, heroTimer = null, heroTraceReady = false;
 
@@ -1718,7 +1749,8 @@ const description =
   var demoPins = Array.prototype.slice.call(demoApp.querySelectorAll('.pin-btn'));
   var demoDrawTrace = makeTraceDrawer(
     demoApp.querySelector('.app-body'), demoPins, demoPanes,
-    document.getElementById('demoTracePath'), document.getElementById('demoTracePad')
+    document.getElementById('demoTracePath'), document.getElementById('demoTracePad'),
+    document.getElementById('demoTraceBase'), document.getElementById('demoTracePulse')
   );
 
   var demoCur = 0;
