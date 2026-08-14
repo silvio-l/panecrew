@@ -187,29 +187,52 @@ const description =
   }
   .nav-gh svg { width: 17px; height: 17px; }
   .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
-  /* scroll-spy pin header: the app's J1 pin rail applied to the page's own
-     chrome — one powered pin per visible section, in a thin sticky capsule
-     under the nav (the nav itself is not sticky; the rail is the part that
-     travels). Each pin doubles a .nav-links anchor as a compact jump path,
-     same precedent as the demo pins doubling the panes' click targets. */
+  /* HUD readout — one small reusable instrument-strip component, seeded
+     from the footer's pre-existing "panes: 4 · explorers: 1" idiom. Bare
+     .hud-readout is inline text (app-bar strips, footer); the --badge
+     modifier adds the floating capsule chrome (nav readout). Sharp
+     corners on purpose — a precision instrument, not a friendly pill. */
+  .hud-readout {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em;
+    color: rgba(255, 253, 245, 0.7); white-space: nowrap;
+  }
+  .hud-readout .hb { color: rgba(255, 253, 245, 0.3); }
+  .hud-readout--badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 10px;
+    background: rgba(31, 37, 71, 0.85); /* --indigo-deep at capsule alpha */
+    border: 1px solid var(--line-dark); border-radius: 5px;
+    color: rgba(255, 253, 245, 0.85);
+  }
+  .hud-readout--badge .hud-idx { color: var(--amber); font-weight: 600; }
+  .hud-readout--badge .hud-label { letter-spacing: var(--label-track); color: var(--cyan-bright); }
+  .hud-idx.tick { animation: hudTick 0.22s var(--reveal-ease); }
+  @keyframes hudTick { from { opacity: 0.35; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+  /* nav readout: read-only echo of the scroll-spy state (.nav-links already
+     provides the real jump targets), sitting in the same sticky capsule
+     position the pin rail used to occupy. Consolidates two "where am I"
+     instruments (this + the seam's via pads) down to one shared state. */
   .nav-pinrow {
     position: sticky; top: 12px; z-index: 30; height: 0;
     max-width: 1120px; margin: 0 auto; padding: 0 26px;
     display: flex; justify-content: flex-end;
     pointer-events: none;
   }
-  .nav-pins {
-    pointer-events: auto;
-    display: inline-flex; align-items: center; gap: 2px;
-    padding: 3px 9px;
-    background: rgba(31, 37, 71, 0.85); /* --indigo-deep at capsule alpha */
-    border: 1px solid var(--line-dark); border-radius: 999px;
-  }
-  .nav-pins .pin-btn { width: 24px; height: 24px; }
 
   /* ---------- hero with bokeh clouds ---------- */
   .hero { position: relative; padding: 40px 0 110px; }
   .bokeh { position: absolute; inset: -120px 0 auto 0; height: 640px; pointer-events: none; overflow: hidden; }
+  /* dense, generated atmosphere plate (ComfyUI/SDXL, local-ai-srv, 2026-08-14)
+     underneath the sharp CSS glow circles — the circles alone read as too
+     thin against a denser reference; this gives the field real internal
+     structure without turning into a halo behind the h1/app column: opacity
+     stays low and .bokeh's own edge-weighted layout (b1/b2 bleeding off
+     -140/-160px) already keeps the brightest paint away from center. */
+  .bokeh::before {
+    content: ""; position: absolute; inset: 0;
+    background: url("/hero-atmosphere.webp") center 62% / cover no-repeat;
+    opacity: 0.24;
+  }
   .bokeh i {
     position: absolute; border-radius: 50%; filter: blur(52px);
   }
@@ -336,25 +359,41 @@ const description =
   .trace-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
   .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2; }
   .trace-svg rect { fill: var(--amber); }
-  /* section-seam channel: one quiet vertical bus route down the page's left
-     margin, jogging sideways at each big section boundary (45° chamfers via
-     the same chamferedLine math as the focus trace). Pure board-channel
-     ornament — no focus semantics, so it stays dim (unpowered copper, not
-     the powered flat amber) and static: drawn once from measured section
-     tops, redrawn only on resize. Lives in the 26px .wrap gutter, so it
-     never overlaps content; hidden < 560px with the rest of the motif. */
+  /* section-seam channel: one vertical bus route running just outside the
+     1120px content column, jogging sideways at each big section boundary
+     (45° chamfers via the same chamferedLine math as the focus trace).
+     Round 2 (2026-08-14, user: "kann man fast gar nicht erkennen... zu weit
+     außen"): anchored to the actual reading column instead of the raw
+     viewport edge, and contrast now comes from SHAPE, not just opacity — a
+     dashed "unpowered copper" channel underneath a solid "live" overlay,
+     the same shape-over-hue principle already pinned for the desktop app's
+     pane-focus vs. active-tab signal. Hidden < 560px with the rest of the
+     motif. */
   main { position: relative; }
   .seam-svg {
-    position: absolute; top: 0; left: 0; width: 34px; height: 100%;
+    position: absolute; top: 0;
+    left: max(6px, calc(50% - 560px - 40px));
+    width: 48px; height: 100%;
     pointer-events: none; overflow: visible;
   }
-  .seam-svg path { fill: none; stroke: var(--amber); stroke-opacity: 0.3; stroke-width: 1.5; }
-  /* live charge overlay: a second, brighter trace on identical geometry
-     whose stroke-dashoffset tracks scroll progress (see updateSeamCharge
-     in the script below) — the quiet #seamPath stays untouched so the
-     already-approved static ornament never disappears. */
-  .seam-svg path#seamPathLive { stroke-opacity: 0.85; stroke-width: 2; }
-  .seam-svg rect { fill: var(--amber); fill-opacity: 0.3; }
+  .seam-svg path#seamPath {
+    fill: none; stroke: var(--amber); stroke-opacity: 0.55; stroke-width: 1.5;
+    stroke-dasharray: 2 5;
+  }
+  /* live charge overlay: a second, solid trace on identical geometry whose
+     stroke-dashoffset tracks scroll progress (see updateSeamCharge in the
+     script below) — the dashed #seamPath stays untouched underneath, so
+     "charged" reads as solid-over-dashed, not just brighter-over-dimmer. */
+  .seam-svg path#seamPathLive { fill: none; stroke: var(--amber); stroke-opacity: 0.95; stroke-width: 2; }
+  /* latching section pads: outline until the charge reaches them, then
+     flip to filled — a functional readout of scroll progress through the
+     page's own sections, not decoration. */
+  .seam-svg rect.seam-via {
+    width: 7px; height: 7px;
+    fill: none; stroke: var(--amber); stroke-opacity: 0.6; stroke-width: 1.5;
+    transition: fill var(--lift), fill-opacity var(--lift), stroke-opacity var(--lift);
+  }
+  .seam-svg rect.seam-via.charged { fill: var(--amber); fill-opacity: 0.95; stroke-opacity: 1; }
   .hpane {
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
     font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
@@ -770,25 +809,31 @@ const description =
   </div>
 </nav>
 
-<!-- scroll-spy pin rail: exactly one pin powered, following the section in
-     view (IntersectionObserver, band around the viewport center). The pins
-     double the .nav-links anchors as a second, compact jump path. -->
+<!-- nav readout: decorative echo of scroll-spy state, driven entirely by
+     JS (navSpySet). The real jump targets are .nav-links; this is a
+     read-only "where am I" instrument, not a second control. -->
 <div class="nav-pinrow">
-  <div class="nav-pins" role="group" aria-label="Section pins">
-    <button type="button" class="pin-btn" data-target="crew" aria-pressed="true" aria-label="Jump to section: The crew"><span class="pin on" aria-hidden="true"></span></button>
-    <button type="button" class="pin-btn" data-target="demo" aria-pressed="false" aria-label="Jump to section: Live demo"><span class="pin" aria-hidden="true"></span></button>
-    <button type="button" class="pin-btn" data-target="oss" aria-pressed="false" aria-label="Jump to section: Open source"><span class="pin" aria-hidden="true"></span></button>
-    <button type="button" class="pin-btn" data-target="install" aria-pressed="false" aria-label="Jump to section: Install"><span class="pin" aria-hidden="true"></span></button>
+  <div class="hud-readout hud-readout--badge" aria-hidden="true">
+    <span class="hb">[</span><span class="hud-idx" id="navIdx">01</span><span class="hb">/04</span>
+    <span class="hb">·</span>
+    <span class="hud-label" id="navLabel">CREW</span><span class="hb">]</span>
   </div>
 </div>
 
 <main id="top">
-  <!-- section-seam channel (decorative): geometry filled in by drawSeam() -->
+  <!-- section-seam channel (decorative): geometry filled in by drawSeam();
+       the 6 via pads are the crew/toolwall/details/oss/install stops plus
+       one terminus, each latching from outline to filled as scroll charge
+       reaches it (updateSeamCharge). -->
   <svg class="seam-svg" aria-hidden="true">
     <path id="seamPath"></path>
     <path id="seamPathLive"></path>
-    <rect id="seamViaA" width="4" height="4"></rect>
-    <rect id="seamViaB" width="4" height="4"></rect>
+    <rect class="seam-via"></rect>
+    <rect class="seam-via"></rect>
+    <rect class="seam-via"></rect>
+    <rect class="seam-via"></rect>
+    <rect class="seam-via"></rect>
+    <rect class="seam-via"></rect>
   </svg>
   <!-- ================= HERO ================= -->
   <header class="hero">
@@ -808,6 +853,7 @@ const description =
           <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
           <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
           <span>PaneCrew</span>
+          <span class="hud-readout"><span class="hb">2×2</span> · 4 panes · 1 explorer</span>
         </div>
         <div class="app-body">
           <aside class="xpl" id="heroXpl" aria-hidden="true">
@@ -1436,30 +1482,28 @@ const description =
   });
   demoDrawTrace(0, false);
 
-  /* ---- chrome: scroll-spy nav pins ----
-     Same one-powered-pin rule as the app's pin header, driven by which
-     section currently crosses the viewport-center band. State changes are
-     plain class/color toggles (fine under reduced motion); the click-scroll
-     inherits scroll-behavior from CSS, which reduced motion sets to auto. */
-  var navPinBtns = Array.prototype.slice.call(document.querySelectorAll('.nav-pins .pin-btn'));
-  var spyTargets = navPinBtns.map(function (b) { return document.getElementById(b.getAttribute('data-target')); });
+  /* ---- chrome: scroll-spy nav readout ----
+     Which section currently crosses the viewport-center band, mirrored
+     into the HUD readout as an index + label. State changes are plain
+     text/class toggles (fine under reduced motion). */
+  var spyIds = ['crew', 'demo', 'oss', 'install'];
+  var spyLabels = ['CREW', 'DEMO', 'OSS', 'INSTALL'];
+  var spyTargets = spyIds.map(function (id) { return document.getElementById(id); });
+  var navIdxEl = document.getElementById('navIdx');
+  var navLabelEl = document.getElementById('navLabel');
 
   function navSpySet(idx) {
-    navPinBtns.forEach(function (b, i) {
-      var on = i === idx;
-      b.setAttribute('aria-pressed', String(on));
-      var dot = b.querySelector('.pin');
-      if (dot) dot.classList.toggle('on', on);
-    });
+    if (idx < 0 || !navIdxEl || !navLabelEl) return;
+    navIdxEl.textContent = String(idx + 1).padStart(2, '0');
+    navLabelEl.textContent = spyLabels[idx];
+    if (!reduced) {
+      navIdxEl.classList.remove('tick');
+      void navIdxEl.offsetWidth;
+      navIdxEl.classList.add('tick');
+    }
   }
 
-  navPinBtns.forEach(function (b, i) {
-    b.addEventListener('click', function () {
-      if (spyTargets[i]) spyTargets[i].scrollIntoView();
-    });
-  });
-
-  if ('IntersectionObserver' in window && navPinBtns.length) {
+  if ('IntersectionObserver' in window && spyTargets.length) {
     var spy = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
         if (e.isIntersecting) navSpySet(spyTargets.indexOf(e.target));
@@ -1495,9 +1539,9 @@ const description =
      load/resize because the section tops move with layout. */
   var seamPath = document.getElementById('seamPath');
   var seamPathLive = document.getElementById('seamPathLive');
-  var seamViaA = document.getElementById('seamViaA');
-  var seamViaB = document.getElementById('seamViaB');
+  var seamViaEls = Array.prototype.slice.call(document.querySelectorAll('.seam-svg rect.seam-via'));
   var seamStartY = 0, seamEndY = 0, seamLen = 0;
+  var seamViaMeta = []; // { el, t } — t is this via's own scroll-fraction threshold
 
   function drawSeam() {
     if (!seamPath) return;
@@ -1512,52 +1556,73 @@ const description =
     for (var s = 0; s < stops.length; s++) { if (!stops[s]) return; }
     var originTop = mainEl.getBoundingClientRect().top;
     var ys = stops.map(function (el) { return el.getBoundingClientRect().top - originTop; });
-    var xA = 13, xB = 23;
+    var xA = 14, xB = 36;
     var pts = [{ x: xA, y: ys[0] + 26 }];
+    var viaPts = [{ x: xA, y: ys[0] + 26 }]; // one via per stop, plus the terminus below
     for (var i = 1; i < ys.length; i++) {
-      pts.push({ x: (i % 2) ? xA : xB, y: ys[i] });
-      pts.push({ x: (i % 2) ? xB : xA, y: ys[i] });
+      var jogX = (i % 2) ? xA : xB, contX = (i % 2) ? xB : xA;
+      pts.push({ x: jogX, y: ys[i] });
+      viaPts.push({ x: jogX, y: ys[i] });
+      pts.push({ x: contX, y: ys[i] });
     }
-    pts.push({ x: pts[pts.length - 1].x, y: ys[ys.length - 1] + 64 });
+    var lastX = pts[pts.length - 1].x, termY = ys[ys.length - 1] + 64;
+    pts.push({ x: lastX, y: termY });
+    viaPts.push({ x: lastX, y: termY });
     var line = simplifyPoints(pts);
     var d = pathD(line, 6);
     seamPath.setAttribute('d', d);
     if (seamPathLive) seamPathLive.setAttribute('d', d);
-    seamViaA.setAttribute('x', String(line[0].x - 2));
-    seamViaA.setAttribute('y', String(line[0].y - 2));
-    var end = line[line.length - 1];
-    seamViaB.setAttribute('x', String(end.x - 2));
-    seamViaB.setAttribute('y', String(end.y - 2));
 
     // cache the route's own absolute document-Y range + length for the
     // scroll-linked charge below — mapped against the route's own span,
     // not scrollY/documentHeight, or the route would already read "full"
     // somewhere in the footer, well past its own last via.
     var mainTopAbs = originTop + window.scrollY;
-    seamStartY = mainTopAbs + line[0].y;
-    seamEndY = mainTopAbs + end.y;
+    seamStartY = mainTopAbs + viaPts[0].y;
+    seamEndY = mainTopAbs + viaPts[viaPts.length - 1].y;
     seamLen = pathLength(line, 6);
+
+    // latching via pads: each one's own threshold is its own Y position
+    // within the route's span, so it flips to filled exactly when the
+    // charge visually reaches it.
+    seamViaMeta = [];
+    for (var v = 0; v < seamViaEls.length && v < viaPts.length; v++) {
+      var el = seamViaEls[v];
+      el.setAttribute('x', String(viaPts[v].x - 3.5));
+      el.setAttribute('y', String(viaPts[v].y - 3.5));
+      var viaAbsY = mainTopAbs + viaPts[v].y;
+      var vt = (seamEndY > seamStartY) ? (viaAbsY - seamStartY) / (seamEndY - seamStartY) : 0;
+      seamViaMeta.push({ el: el, t: vt });
+    }
   }
 
   drawSeam();
   window.addEventListener('load', drawSeam);
 
   /* ---- chrome: seam charge (scroll-linked) ----
-     A second, brighter path on the seam's identical geometry "powers up"
-     as the visitor scrolls through its own Y-range — the quiet #seamPath
-     ornament is untouched, this is purely an overlay. Reads only
-     window.scrollY in the scroll handler (no getBoundingClientRect there)
-     to avoid layout thrashing; rAF-gated to at most one write per frame. */
+     A second, solid path on the seam's identical geometry "powers up" as
+     the visitor scrolls through its own Y-range — the dashed #seamPath
+     channel is untouched, this is purely an overlay — plus each via pad
+     latches from outline to filled once the charge reaches its own Y, the
+     functional "where am I" readout the nav used to attempt with a
+     capsule of loose dots. Reads only window.scrollY in the scroll
+     handler (no getBoundingClientRect there) to avoid layout thrashing;
+     rAF-gated to at most one write per frame. */
   var seamTicking = false;
   function updateSeamCharge() {
     seamTicking = false;
-    if (!seamPathLive || !seamLen || seamEndY <= seamStartY) return;
+    if (!seamLen || seamEndY <= seamStartY) return;
     var t = (window.scrollY - seamStartY) / (seamEndY - seamStartY);
     if (t < 0) t = 0; if (t > 1) t = 1;
-    seamPathLive.style.strokeDasharray = String(seamLen);
-    seamPathLive.style.strokeDashoffset = String(seamLen * (1 - t));
+    if (seamPathLive) {
+      seamPathLive.style.strokeDasharray = String(seamLen);
+      seamPathLive.style.strokeDashoffset = String(seamLen * (1 - t));
+    }
+    for (var i = 0; i < seamViaMeta.length; i++) {
+      seamViaMeta[i].el.classList.toggle('charged', t >= seamViaMeta[i].t);
+    }
   }
-  if (seamPathLive && !reduced) {
+  if (!reduced) {
     window.addEventListener('scroll', function () {
       if (!seamTicking) { seamTicking = true; requestAnimationFrame(updateSeamCharge); }
     }, { passive: true });
