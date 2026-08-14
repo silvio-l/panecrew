@@ -1,88 +1,89 @@
 # Changelog
 
-Jeder Eintrag hier ist **Voraussetzung fürs Release-CI**, nicht nur Doku: Ein
-Tag-Push (`app-v*` für Stable, der rollierende `nightly-latest` für Nightly)
-löst lokal `tools/changelog-gate/check.py` aus, das den Eintrag ganz oben
-gegen den echten `git diff` seit dem letzten Kanal-Tag prüft — fehlt ein
-betroffenes Modul in der Coverage-Liste, oder passt der Diff-Hash nicht mehr
-zum tatsächlichen Diff (weil seither neuer Code dazukam), schlägt der
-Release-Push fehl. Kein Autogenerator: der Freitext muss inhaltlich
-geschrieben werden. Mechanismus und Begründung: `docs/decisions.md` →
-"Auto-Update via GitHub Releases", Punkt 5.
+Every entry here is a **prerequisite for the release CI**, not just docs: a
+tag push (`app-v*` for Stable, the rolling `nightly-latest` for Nightly)
+locally triggers `tools/changelog-gate/check.py`, which checks the topmost
+entry against the real `git diff` since the last channel tag — if the
+coverage list is missing an affected module, or the diff hash no longer
+matches the actual diff (because new code landed since), the release push
+fails. Not an autogenerator: the prose has to be written by hand, with real
+content. Mechanism and rationale: `docs/decisions.md` →
+"Auto-Update via GitHub Releases", point 5.
 
-Diese Datei enthält bewusst **nur den für Menschen geschriebenen Teil** —
-kurz, nutzerorientiert, ohne Dateipfade. Die für das Gate maschinell
-benötigten Metadaten (Coverage-Liste je Version, Diff-Hash, zuletzt
-veröffentlichter Commit je Kanal) stehen ausschließlich lokal in
-`tools/changelog-gate/release-state.json` (`tools/` ist komplett gitignored
-— dieser Stand landet nie auf GitHub, s. `docs/agents/release-process.md`).
+This file deliberately contains **only the human-written part** — short,
+user-facing, no file paths. The metadata the gate needs mechanically
+(coverage list per version, diff hash, last released commit per channel)
+lives exclusively in `tools/changelog-gate/release-state.json` (`tools/` is
+entirely gitignored — that state never reaches GitHub, see
+`docs/decisions.md`).
+
+**Bilingual since 2026-08-14**: this file (`CHANGELOG.md`) is the English
+edition, `CHANGELOG.de.md` the German one — identical in content, and the
+gate checks both against the same, language-independent state entry
+(coverage/diff hash track the code diff, not the wording). A new entry must
+be added to both files, with the same version heading.
 
 ## Format
 
-    ## [X.Y.Z] - JJJJ-MM-TT
-    ### Hinzugefügt / Geändert / Behoben
-    - Kurzer, für Menschen verständlicher Stichpunkt pro Änderung.
+    ## [X.Y.Z] - YYYY-MM-DD
+    ### Added / Changed / Fixed
+    - Short, human-readable bullet point per change.
 
-- Neueste Version steht oben (umgekehrt chronologisch); das Gate liest nur
-  die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
-  in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
-- Der Ablauf zum Anlegen eines neuen Eintrags (inkl. Coverage/Hash pflegen)
-  steht in `docs/agents/release-process.md`.
+- Newest version goes on top (reverse chronological); the gate only reads
+  the file's **first** `## [...]` version heading and looks up the matching
+  coverage/hash record for it in `release-state.json`.
 
 ## [0.1.0-nightly.3] - 2026-08-14
-### Behoben
-- Ein Klick auf „Installieren & Neustarten" konnte trotz zuvor erfolgreich
-  gefundenem Update mit „Konnte nicht geprüft werden" scheitern: der
-  Download-Link zeigte auf einen GitHub-API-Endpunkt mit engem anonymem
-  Anfrage-Limit statt auf den unlimitierten öffentlichen Download-Link. Die
-  Fehlermeldung im Über-Fenster und im Update-Banner unterscheidet jetzt
-  außerdem korrekt zwischen einer fehlgeschlagenen Prüfung und einer
-  fehlgeschlagenen Installation, mit Möglichkeit zum erneuten Versuch.
-- Eine per Tab-Vervollständigung eingefügte Datei-/Ordnerpfad-Ergänzung mit
-  Backslash vor einem Leerzeichen wurde im Terminal-Eingabefeld nicht mehr
-  korrekt escaped.
+### Fixed
+- Clicking "Install & Restart" could fail with "Could not be checked" even
+  after an update was successfully found: the download link pointed at a
+  GitHub API endpoint with a tight anonymous rate limit instead of the
+  unlimited public download link. The error message in the About window and
+  the update banner now also correctly distinguishes a failed check from a
+  failed install, with a retry option.
+- A file/folder path completion inserted via Tab, containing a backslash
+  before a space, was no longer escaped correctly in the terminal input.
 
 ## [0.1.0-nightly.2] - 2026-08-14
-### Hinzugefügt
-- Ein vollständiges Einstellungsfenster: Farbthema wählen, Zoomstufe und
-  Terminal-Schriftgröße live anpassen, Grid-Vorlage per Piktogramm auswählen.
-- Zusätzliche Fenster: ⌘N/Strg+N öffnet ein weiteres PaneCrew-Fenster, das
-  Position, Größe und offene Projekte eigenständig über einen Neustart hinweg
-  merkt.
-- Terminal-Tabs zeigen jetzt echte Marken-Icons des erkannten CLI-Tools,
-  lassen sich per Kontextmenü umbenennen/schließen und melden
-  Hintergrundaktivität über ein Ungelesen-Signal.
-- Panes und Terminal-Tabs lassen sich per Drag & Drop verschieben, tauschen
-  und in neue, leere Slots ziehen, mit Zeiger-Vorschau und sichtbarer
-  Ziel-Markierung.
+### Added
+- A complete settings window: pick a color theme, adjust zoom level and
+  terminal font size live, choose a grid layout by pictogram.
+- Additional windows: ⌘N/Ctrl+N opens another PaneCrew window, which
+  remembers its position, size, and open projects independently across a
+  restart.
+- Terminal tabs now show real brand icons of the detected CLI tool, can be
+  renamed/closed via context menu, and report background activity through
+  an unread indicator.
+- Panes and terminal tabs can be moved, swapped, and dragged into new, empty
+  slots via drag and drop, with a pointer preview and a visible drop target.
 
-### Geändert
-- Fokus-Modus rotiert jetzt zuverlässig automatisch durch Panes/Tabs, mit
-  Countdown-Anzeige im Pane-Header.
-- Der Datei-Explorer lädt Ordner jetzt sparsam pro Verzeichnis nach, statt
-  beim Öffnen den kompletten Projektbaum auf einmal einzulesen — spürbar
-  schneller bei großen Projekten.
-- Der Nightly-Kanal ist jetzt voll funktionsfähig: automatische
-  Update-Prüfung ist aktiv, jeder Nightly-Build bekommt eine eigene, stets
-  steigende Versionsnummer, und es wird nur noch für Apple-Silicon-Macs
-  gebaut (kein Rosetta-Hinweis mehr auf Apple-Chip-Geräten).
-- Kleinere Verbesserungen an der Marketing-Website (u. a. echte
-  Tool-Logos, SEO-Feintuning).
+### Changed
+- Focus mode now reliably auto-rotates through panes/tabs, with a countdown
+  shown in the pane header.
+- The file explorer now loads folders lazily per directory instead of
+  reading the entire project tree at once on open — noticeably faster on
+  large projects.
+- The nightly channel is now fully functional: automatic update checks are
+  active, every nightly build gets its own, strictly increasing version
+  number, and builds now target only Apple Silicon Macs (no more Rosetta
+  notice on Apple-chip machines).
+- Minor improvements to the marketing website (real tool logos, SEO
+  fine-tuning, among others).
 
-### Behoben
-- Ein per Drag zwischen Panes verschobener Terminal-Tab verlor dabei seine
-  laufende Sitzung — das passiert jetzt nicht mehr.
+### Fixed
+- A terminal tab dragged between panes used to lose its running session in
+  the process — that no longer happens.
 
 ## [0.1.0] - 2026-08-13
-Erster Release. PaneCrew kann ab jetzt:
+First release. PaneCrew can now:
 
-- Bis zu vier Projekte gleichzeitig in einem festen Grid öffnen, jedes mit
-  einem echten, unabhängigen Terminal.
-- Einen Datei-Explorer anzeigen, der automatisch dem gerade fokussierten
-  Terminal folgt.
-- Sitzungen (offene Projekte, Layout) über einen App-Neustart hinweg merken.
-- Direkt mit einem Projektpfad starten (`panecrew <pfad>`), ohne über die
-  Projektauswahl zu gehen.
-- Eigene und aus VS-Code importierte Farbthemen anzeigen. <!-- brandlint-ok: benennt die reale Importquelle des Theme-Mappers, keine Werbung -->
-- Sich selbst automatisch aktualisieren, über einen Stable- und einen
-  separat kennzeichneten Nightly-Kanal.
+- Open up to four projects at once in a fixed grid, each with a real,
+  independent terminal.
+- Show a file explorer that automatically follows whichever terminal
+  currently has focus.
+- Remember sessions (open projects, layout) across an app restart.
+- Launch directly with a project path (`panecrew <path>`), skipping the
+  project picker.
+- Display built-in and VS Code-imported color themes. <!-- brandlint-ok: names the theme mapper's real import source, not promotion -->
+- Update itself automatically, via a Stable channel and a separately
+  labeled Nightly channel.
