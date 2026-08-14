@@ -50,6 +50,7 @@ import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
+import { PaneDragGhost } from "./PaneDragGhost";
 import { TabDragGhost } from "./TabDragGhost";
 import { TerminalPane } from "./TerminalPane";
 
@@ -307,6 +308,20 @@ export function PaneGrid({
     };
   })();
 
+  // Die Kopfzeilen-Identität der gerade gezogenen PANE für deren eigene
+  // Zeiger-Plakette (`PaneDragGhost`) — dieselbe Ableitung wie der Header
+  // selbst (`projectNameFromPath`, TerminalPane.tsx). `null`, sobald der Zug
+  // endet oder die Quelle während des Zugs verschwindet: dann verschwindet
+  // die Plakette mit (dasselbe Muster wie `draggedTab` oben).
+  const draggedPaneName = (() => {
+    if (paneDrag.source === null) return null;
+    const sourcePane = state.slots.find(
+      (slot) => slot?.paneId === paneDrag.source,
+    );
+    if (!sourcePane) return null;
+    return projectNameFromPath(sourcePane.projectPath);
+  })();
+
   const views: (PaneView | null)[] = state.slots.map((slot, index) => {
     if (!slot) return null;
     const pane = slot;
@@ -546,20 +561,22 @@ export function PaneGrid({
         ),
       )}
     </div>
-    {/* Die Zeiger-Plakette des Tab-Zugs — `fixed`, entkommt also der
-        Grid-Geometrie; hier statt in App.tsx gerendert, weil der Zug
-        vollständig in diesem Baum lebt (s. Kommentar an `usePaneDrag` oben).
-        Bewusst als GESCHWISTER des Arbeitsraums, nicht als sein Kind: die
+    {/* Die Zeiger-Plaketten BEIDER Züge — `fixed`, entkommen also der
+        Grid-Geometrie; hier statt in App.tsx gerendert, weil die Züge
+        vollständig in diesem Baum leben (s. Kommentar an `usePaneDrag` oben).
+        Bewusst als GESCHWISTER des Arbeitsraums, nicht als seine Kinder: die
         `.pc-workspace > *`-Regeln (App.css) gelten jedem direkten Kind — die
         `pc-cell-in`-Mount-Animation überschriebe mit ihren transform-
         Keyframes 200ms lang genau das Inline-`translate3d`, über das der
-        Zieh-Hook die Plakette führt (und die Kinderliste des Arbeitsraums
+        Zieh-Hook die Plaketten führt (und die Kinderliste des Arbeitsraums
         bleibt so exakt die Slot-Liste, `useGridTransitions`' positionsweise
-        Zuordnung eingeschlossen). Als `position: fixed` nimmt sie am Layout
-        des Elternteils ohnehin nicht teil. Der Slot-Tausch braucht kein
-        Pendant: dort tritt die ganze gezogene Zelle sichtbar zurück
-        (opacity-50, `PaneCell`), die Quelle selbst IST das "in der
-        Hand"-Signal. */}
+        Zuordnung eingeschlossen). Als `position: fixed` nehmen sie am Layout
+        des Elternteils ohnehin nicht teil. Der Pane-Zug hatte ursprünglich
+        bewusst KEINE Plakette ("die Quelle selbst IST das 'in der
+        Hand'-Signal") — vom Nutzer nach der Release-Abnahme ausdrücklich
+        gekippt ("der Pane-Ghost sollte sichtbar sein beim Drag analog wie
+        auch beim tab-ghost"): beide Züge sprechen jetzt dieselbe Sprache,
+        Quelle gedämpft UND Abbild am Zeiger. */}
     {draggedTab !== null && tabDrag.ghostOrigin !== null && (
       <TabDragGhost
         ghostRef={tabDrag.ghostRef}
@@ -568,6 +585,16 @@ export function PaneGrid({
         origin={tabDrag.ghostOrigin}
         overTarget={
           tabDrag.targetPaneId !== null || tabDrag.targetEmptySlot !== null
+        }
+      />
+    )}
+    {draggedPaneName !== null && paneDrag.ghostOrigin !== null && (
+      <PaneDragGhost
+        ghostRef={paneDrag.ghostRef}
+        projectName={draggedPaneName}
+        origin={paneDrag.ghostOrigin}
+        overTarget={
+          paneDrag.targetPaneId !== null || paneDrag.targetEmptySlot !== null
         }
       />
     )}

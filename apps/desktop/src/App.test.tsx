@@ -2019,7 +2019,19 @@ describe("Grid / Mehrfach-Pane", () => {
 
     fireEvent.pointerDown(header, { button: 0, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(header, { clientX: 150, clientY: 50 });
+
+    // Politur-Runde (Nutzer-Befund "der Pane-Ghost sollte sichtbar sein beim
+    // Drag analog wie auch beim tab-ghost"): WÄHREND des Zugs hängt die
+    // Pane-Plakette am Zeiger und trägt die Kopfzeilen-Identität der
+    // gezogenen Pane — den Projektnamen, keine Tab-Nummer.
+    const paneGhost = container.querySelector("[data-pane-drag-ghost]");
+    expect(paneGhost).not.toBeNull();
+    expect(paneGhost).toHaveTextContent("storefront");
+
     fireEvent.pointerUp(header, { clientX: 150, clientY: 50 });
+
+    // Nach dem Drop ist die Plakette weg.
+    expect(container.querySelector("[data-pane-drag-ghost]")).toBeNull();
 
     // Slot-Reihenfolge im DOM ist die Slot-Reihenfolge des States
     // (PaneGrid.tsx' Invariante) — der Tausch ist hier direkt ablesbar.
@@ -2103,9 +2115,14 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.pointerDown(header, { button: 0, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(header, { clientX: 150, clientY: 50 });
     // Während des Schwebens: das Umzugs-Angebot des leeren Slots (nicht das
-    // "Neue Pane"-Angebot des Tab-Zugs — hier zieht die ganze Pane).
+    // "Neue Pane"-Angebot des Tab-Zugs — hier zieht die ganze Pane) und die
+    // Pane-Plakette am Zeiger mit der Kopfzeilen-Identität der Pane.
     expect(screen.getByText("Pane hierher")).toBeInTheDocument();
+    const paneGhost = container.querySelector("[data-pane-drag-ghost]");
+    expect(paneGhost).not.toBeNull();
+    expect(paneGhost).toHaveTextContent("storefront");
     fireEvent.pointerUp(header, { clientX: 150, clientY: 50 });
+    expect(container.querySelector("[data-pane-drag-ghost]")).toBeNull();
 
     // Nach dem Drop: Slot 0 zeigt wieder den Picker, die Pane-Zelle ist das
     // ZWEITE Grid-Kind — und es sind DIESELBEN DOM-Knoten mit der
