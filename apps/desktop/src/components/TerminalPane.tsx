@@ -169,8 +169,7 @@ export function TerminalPane({
   );
   const [selectionAvailable, setSelectionAvailable] = useState(false);
   const copyWithFeedback = () => {
-    copySelection();
-    notifyCopied();
+    if (copySelection()) notifyCopied();
   };
 
   useEffect(() => {

@@ -95,6 +95,10 @@ const renderPane = (dropTarget: boolean, active = true, focused = true) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: Kopieren gelingt. Der Fehlschlag-Fall (Bug 2026-08-14: Toast
+  // erschien früher unabhängig vom tatsächlichen Zwischenablage-Ergebnis)
+  // stellt sich unten selbst per `mockReturnValue(false)` ein.
+  copySelection.mockReturnValue(true);
   capturedOnCopied = undefined;
 });
 
@@ -120,6 +124,23 @@ describe("TerminalPane", () => {
 
     expect(copySelection).toHaveBeenCalledOnce();
     expect(screen.getByRole("status")).toHaveTextContent("Kopiert");
+  });
+
+  it("quittiert NICHT, wenn das Kopieren über das Kontextmenü tatsächlich fehlschlägt", () => {
+    // Regressionstest für den Bug vom 2026-08-14: die Quittung feuerte
+    // bisher unabhängig davon, ob wirklich etwas in der Zwischenablage
+    // gelandet ist (copySelection() lieferte gar kein Ergebnis zurück,
+    // copyWithFeedback() rief notifyCopied() unbedingt auf).
+    copySelection.mockReturnValue(false);
+    const { container } = renderPane(false);
+
+    const trigger = container.querySelector('div[data-state="closed"]');
+    if (!trigger) throw new Error("Kontextmenü-Trigger nicht gefunden");
+    fireEvent.contextMenu(trigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Kopieren" }));
+
+    expect(copySelection).toHaveBeenCalledOnce();
+    expect(screen.getByRole("status")).not.toHaveTextContent("Kopiert");
   });
 
   it("holt den Fokus zurück ins Terminal, sobald dessen Tab aktiv wird", () => {

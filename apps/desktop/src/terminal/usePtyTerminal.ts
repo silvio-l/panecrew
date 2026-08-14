@@ -15,6 +15,7 @@ import { DEFAULT_ZOOM, nextZoomLevel } from "../shortcuts/zoom";
 import { routeCompletionKey } from "./completionKeys";
 import { attachInlineSuggestion } from "./inlineSuggestion";
 import { macLineEditingBytes } from "./macLineEditingKeys";
+import { copyTextToClipboard, dedentText } from "./clipboard";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { createResizeGate } from "./resizeGate";
@@ -75,7 +76,9 @@ const COLS_RESIZE_DEBOUNCE_MS = 100;
 export interface PtyTerminal {
   /** Container, in den xterm.js sein DOM hängt. */
   containerRef: RefObject<HTMLDivElement | null>;
-  copySelection: () => void;
+  /** `true`, wenn wirklich etwas in der Zwischenablage gelandet ist — siehe
+   * copySelectionFrom(). */
+  copySelection: () => boolean;
   paste: () => void;
   clear: () => void;
   focus: () => void;
@@ -644,7 +647,7 @@ export function usePtyTerminal(
 
   const copySelection = useCallback(() => {
     const terminal = terminalRef.current;
-    if (terminal) copySelectionFrom(terminal);
+    return terminal ? copySelectionFrom(terminal) : false;
   }, []);
   const paste = useCallback(() => {
     const terminal = terminalRef.current;
@@ -709,18 +712,21 @@ function loadAcceleratedRenderer(terminal: Terminal): void {
   }
 }
 
-// Kopieren über navigator.clipboard.writeText (kaum eingeschränkt). Das Lesen
-// per readText() ist der einzige Pfad mit Plattform-Risiko im WKWebView — es
-// betrifft ausschließlich den Kontextmenü-Eintrag, nicht die Tastatur, weil
-// natives Cmd+V als ClipboardEvent an xterms Textarea ankommt.
-// Rückgabewert (statt void) berichtet dem Ctrl+Shift+C-Zweig oben, ob
-// wirklich etwas kopiert wurde — ohne Markierung soll die "Kopiert"-Live-
-// Region der Pane nicht anspringen.
+// Rückgabewert berichtet den Aufrufern (Mausauswahl, Kontextmenü,
+// Ctrl+Shift+C), ob wirklich etwas in der Zwischenablage gelandet ist —
+// copyTextToClipboard() meldet das synchron und verlässlich (siehe deren
+// eigener Kommentar für den vollen Befund: die alte navigator.clipboard.
+// writeText()-Variante hier gab unabhängig vom tatsächlichen Ergebnis
+// `true` zurück, deshalb feuerte die "Kopiert"-Quittung auch dann, wenn
+// WKWebView den Schreibversuch lautlos abgelehnt hatte). Dedent nur bei
+// mehrzeiliger Selektion — der Rand-Einzug verschachtelter CLI-/Box-UIs
+// (Nutzer-Wunsch 2026-08-14), nicht die absichtliche Einrückung einer
+// einzelnen kopierten Zeile.
 function copySelectionFrom(terminal: Terminal): boolean {
   const selection = terminal.getSelection();
   if (!selection) return false;
-  void navigator.clipboard.writeText(selection).catch(noop);
-  return true;
+  const text = selection.includes("\n") ? dedentText(selection) : selection;
+  return copyTextToClipboard(text);
 }
 
 // terminal.paste() statt eigener \x1b[200~-Klammerung: xterm.js setzt die
