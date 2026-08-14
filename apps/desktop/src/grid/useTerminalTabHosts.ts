@@ -24,6 +24,14 @@ import { useCallback, useState } from "react";
  * dieses Arguments ist für React ebenfalls Unmount+Remount — exakt der
  * Fehler, um den es hier geht.
  *
+ * ZWEITE HÄLFTE derselben Mechanik, außerhalb dieser Datei: die Portal-Liste
+ * in `PaneGrid.tsx` darf ihre Reihenfolge nicht von der Pane-Zugehörigkeit
+ * ableiten (`terminalTabSurfaceOrder`, dortiger Kommentar). Ein stabiler
+ * React-Elternteil allein genügt nicht — ein Positionswechsel in der
+ * Geschwisterliste reicht React schon, um das Kind mit `Placement` zu
+ * markieren, und unter StrictMode läuft dafür ein zusätzlicher
+ * Effekt-Zyklus, der `usePtyTerminal`s Cleanup (und damit `pty_kill`) auslöst.
+ *
  * REIHENFOLGE ist Teil des Vertrags: `syncOwnership` gehört in einen
  * LAYOUT-Effekt. Elternteil-Effekte feuern zwar nach Kind-Effekten, aber alle
  * Layout-Effekte feuern vor allen passiven — nur so hängt der Container schon

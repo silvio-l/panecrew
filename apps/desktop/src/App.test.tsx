@@ -1548,7 +1548,17 @@ describe("Grid / Mehrfach-Pane", () => {
     invokeMock.mockImplementation((cmd) =>
       cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
     );
-    const { container } = render(<App />);
+    // Bewusst UNTER StrictMode gerendert (anders als die übrigen Tests hier)
+    // — sonst deckt dieser Test genau die Hälfte der Ticket-32-Mechanik nicht
+    // ab, an der er 2026-08-14 vorbeigelaufen ist: React markiert beim
+    // Umsortieren einer keyed Liste ein Kind mit `Placement`, und für ein so
+    // markiertes Kind läuft unter StrictMode ein zusätzlicher Effekt-Zyklus
+    // (Cleanup + Setup bei unveränderten Dependencies). `usePtyTerminal`s
+    // Cleanup killt darin die PTY. Ohne StrictMode blieb dieser Test grün,
+    // während in der Dogfood-Dev-Instanz der gezogene Tab real seine Sitzung
+    // verlor. Gegenmaßnahme ist `terminalTabSurfaceOrder` (PaneGrid.tsx); der
+    // Zug HIN UND ZURÜCK unten ist der Teil, der sie prüft.
+    const { container } = render(<App />, { wrapper: StrictMode });
 
     clickPicker();
     await waitFor(() => {
@@ -1577,11 +1587,15 @@ describe("Grid / Mehrfach-Pane", () => {
         name: "Weiteren Terminal-Tab öffnen",
       }),
     );
-    await waitFor(() => {
-      expect(
-        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
-      ).toHaveLength(3);
-    });
+    await screen.findByRole("button", { name: "Terminal 2" });
+    // Ab hier zählt nur noch, was DIE ZÜGE auslösen. Absolute Zahlen taugen
+    // dafür unter StrictMode nicht: dessen Mount-Doppellauf spawnt jede
+    // Sitzung einmal zusätzlich und killt sie sofort wieder (der `cancelled`/
+    // `queueMicrotask`-Schutz in usePtyTerminal.ts greift nur, solange der
+    // Spawn noch unterwegs ist — unter jsdom löst der gemockte IPC schneller
+    // auf als in der echten App). Dieses Rauschen gehört zum Mounten, nicht
+    // zum Ziehen; der Nullpunkt hier trennt beides sauber.
+    invokeMock.mockClear();
 
     // Der Chip des neuen, jetzt aktiven Tabs. Eindeutig ungescoped: die
     // Leiste des inaktiven Tabs liegt hinter `visibility: hidden` und fällt
@@ -1631,9 +1645,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // der Ziel-Pane — verschoben, nicht neu gebaut.
     expect(targetCell.contains(movedSurface)).toBe(true);
     expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
-    expect(
-      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
-    ).toHaveLength(3);
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
     // Die Quell-Pane behält genau einen Tab, die Ziel-Pane hat jetzt zwei.
     expect(
       sections().filter((s) => s.dataset.paneId === sourcePaneId),
@@ -1641,7 +1653,42 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(
       sections().filter((s) => s.dataset.paneId === targetPaneId),
     ).toHaveLength(2);
-  });
+
+    // …und derselbe Tab wieder ZURÜCK. Der zweite Zug ist kein Zusatzkomfort
+    // im Test, sondern der Fall aus dem Fehlerbericht ("wenn ich das Tab dann
+    // aber wieder zurückschiebe, verliert es die PTY wieder"): welches Kind
+    // React beim Umsortieren mit `Placement` markiert, hängt an der
+    // Richtung — ein einzelner Zug kann ein unsichtbares Geschwister treffen
+    // statt des gezogenen Tabs. Erst beide Richtungen decken beide Fälle ab.
+    const chipBack = screen.getByRole("button", { name: "Terminal 2" });
+    expect(chipBack.closest("[data-pane-id]")).toBe(movedSurface);
+    const sourceRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
+    const nowhere = { left: 0, top: 0, right: 0, bottom: 0 } as DOMRect;
+    for (const section of sections()) {
+      const rect = section.dataset.paneId === sourcePaneId ? sourceRect : nowhere;
+      section.getBoundingClientRect = () => rect;
+    }
+    chipBack.setPointerCapture = vi.fn();
+    chipBack.releasePointerCapture = vi.fn();
+    chipBack.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chipBack, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chipBack, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(chipBack, { clientX: 150, clientY: 50 });
+
+    await waitFor(() => {
+      expect(movedSurface.dataset.paneId).toBe(sourcePaneId);
+    });
+    // Der Kern der Zusicherung, für beide Züge zusammen: seit dem Nullpunkt
+    // oben wurde keine einzige PTY gekillt und keine einzige gespawnt — die
+    // drei Sitzungen leben unverändert weiter, nur woanders aufgehängt.
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
+    // Eigenes Zeitbudget: als einziger Test hier rendert dieser den ganzen
+    // App-Baum unter StrictMode (jeder Render und jeder Effekt doppelt) und
+    // fährt zwei vollständige Zug-Gesten — die 5s des Standards reichen dafür
+    // auf einer ausgelasteten Maschine nicht, ohne dass etwas defekt wäre.
+  }, 25_000);
 
   it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
     openMock

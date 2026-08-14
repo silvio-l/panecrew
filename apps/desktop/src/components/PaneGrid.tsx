@@ -424,20 +424,16 @@ export function PaneGrid({
           aber ihre Kinder mounten in Baumreihenfolge — die Host-Flächen der
           Zellen sind dadurch schon per Ref eingetragen, wenn der Layout-
           Effekt oben die Container einhängt. */}
-      {views.flatMap((view) =>
-        view === null
-          ? []
-          : view.pane.terminalTabs.map((tab) =>
-              createPortal(
-                <TerminalTabSurface
-                  view={view}
-                  tabId={tab.tabId}
-                  dropTargets={dropTargets}
-                />,
-                hosts.containerFor(tab.tabId),
-                tab.tabId,
-              ),
-            ),
+      {terminalTabSurfaceOrder(views).map(({ view, tabId }) =>
+        createPortal(
+          <TerminalTabSurface
+            view={view}
+            tabId={tabId}
+            dropTargets={dropTargets}
+          />,
+          hosts.containerFor(tabId),
+          tabId,
+        ),
       )}
     </div>
     {/* Die Zeiger-Plakette des Tab-Zugs — `fixed`, entkommt also der
@@ -464,6 +460,60 @@ export function PaneGrid({
     )}
     </>
   );
+}
+
+/**
+ * Die REIHENFOLGE, in der die Tab-Portale oben gerendert werden — nach `tabId`
+ * sortiert, also bewusst NICHT nach Pane/Tab-Position.
+ *
+ * Das ist kein Kosmetik-Detail, sondern die zweite Hälfte der Ticket-32-
+ * Mechanik. Die erste Hälfte (`useTerminalTabHosts.ts`) sorgt dafür, dass ein
+ * Tab-Zug den React-Elternteil nicht wechselt. Die zweite ist, dass er auch
+ * die POSITION in der Geschwisterliste nicht wechselt:
+ *
+ * React markiert beim Rekonziliieren einer keyed Liste jedes Kind mit
+ * `Placement`, dessen alter Index unter den bereits „festgesetzten" Index
+ * (`lastPlacedIndex`) rutscht — bei `[a,b,c,d] → [a,b,d,c]` also `c`, obwohl
+ * gezogen wurde `d`. Unter `<React.StrictMode>` (main.tsx, Dev-Builds) läuft
+ * für ein so markiertes Kind ein zusätzlicher Effekt-Zyklus: Cleanup + Setup,
+ * mit UNVERÄNDERTEN Dependencies und erhaltenem State — es ist kein Unmount,
+ * aber `usePtyTerminal.ts`s Cleanup unterscheidet das nicht und ruft
+ * `terminal.dispose()` + `pty_kill`. Ergebnis vor diesem Fix: nach einem
+ * Tab-Zug stand in irgendeiner Pane statt der laufenden Sitzung (z. B. einem
+ * CLI-Agenten) eine frisch gespawnte Shell. Am Live-Instanz-Log A/B gemessen
+ * (2026-08-14): ohne StrictMode zwei Züge → null Effekt-Zyklen, mit StrictMode
+ * dieselben zwei Züge → je ein Cleanup+Respawn, und zwar an genau den Tabs,
+ * die `lastPlacedIndex` vorhersagt, nicht am gezogenen.
+ *
+ * Ein produktiver Build (StrictMode ist dort ein No-Op) war davon nie
+ * betroffen — die Dogfood-Dev-Instanz aber sehr wohl. Der Fix bleibt trotzdem
+ * der richtige: die Portal-Liste braucht ihre Reihenfolge gar nicht, weil die
+ * Portale an dieser Stelle kein DOM erzeugen (ihre Container hängen dort, wo
+ * `syncOwnership` sie hinhängt). Eine Reihenfolge, die niemand liest, darf
+ * auch nicht die Ursache eines `Placement` sein.
+ *
+ * `tabId` ist dafür der richtige Schlüssel: eine Tab-Identität, die sich über
+ * die Lebensdauer des Tabs nie ändert — schon gar nicht beim Zug. Damit ist
+ * die Liste allein eine Funktion der MENGE offener Tabs. Öffnen und Schließen
+ * sortieren nicht um (ein reines Einfügen/Entfernen lässt die Reihenfolge der
+ * übrigen Kinder monoton, setzt also kein `Placement`), und der Slot-Tausch
+ * (Ticket 20), der `views` selbst umsortiert, erreicht diese Liste gar nicht
+ * mehr.
+ *
+ * Die SICHTBARE Reihenfolge der Tabs steckt unverändert in `PaneTabs.tsx`
+ * (Chips) und in `ownership` oben (DOM-Reihenfolge innerhalb einer Host-
+ * Fläche) — beide bleiben absichtlich ungesortiert.
+ */
+function terminalTabSurfaceOrder(
+  views: readonly (PaneView | null)[],
+): { view: PaneView; tabId: string }[] {
+  return views
+    .flatMap((view) =>
+      view === null
+        ? []
+        : view.pane.terminalTabs.map((tab) => ({ view, tabId: tab.tabId })),
+    )
+    .sort((a, b) => (a.tabId < b.tabId ? -1 : a.tabId > b.tabId ? 1 : 0));
 }
 
 /** Eine Terminal-Tab-Fläche, gerendert ins stabile Container-`<div>` ihres
