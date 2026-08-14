@@ -300,11 +300,11 @@ mod tests {
 
     #[test]
     fn starting_a_watch_on_a_missing_root_fails_gracefully() {
-        // nosemgrep: rust.lang.security.temp-dir.temp-dir — test-only, no file is ever written
-        // here; the path is deliberately built to NOT exist (asserted below), so the predictable
-        // shared-tmp-dir race the rule guards against (symlink swap before a write/open) does not
-        // apply — there is no write/open at all, just a missing-path existence check.
-        let missing = std::env::temp_dir().join(format!(
+        // Test-only, no file is ever written here; the path is deliberately built to NOT exist
+        // (asserted below), so the predictable shared-tmp-dir race the rule guards against
+        // (symlink swap before a write/open) does not apply — no write/open, just a missing-path
+        // existence check.
+        let missing = std::env::temp_dir().join(format!( // nosemgrep: rust.lang.security.temp-dir.temp-dir
             "panecrew-explorer-watch-{}-does-not-exist",
             std::process::id()
         ));
