@@ -40,6 +40,16 @@
 // `prefers-reduced-motion: reduce` schaltet alles hier ab (die CSS-Seite
 // steckt in ihrer eigenen Media-Query); jsdom ohne `Element.animate` ebenso —
 // die Tests sehen exakt den unanimierten DOM.
+//
+// Performance (Ticket 09): `getBoundingClientRect()` ist ein Layout-Read —
+// erzwingt also ein Reflow, wenn davor noch DOM-Schreibzugriffe ausstehen.
+// Gemessen wird deshalb nur noch, wenn sich Template/Fokus-Modus/Reihenfolge
+// tatsächlich geändert haben (derselbe Vergleich, der auch übers Animieren
+// entscheidet) — nicht mehr bei jedem Commit dieses Hooks, unabhängig davon.
+// Die Schnappschüsse bleiben trotzdem für den nächsten FLIP korrekt: Layout-
+// Drift ohne einen solchen Wechsel (Fenster-Resize, Explorer ein-/ausklappen
+// oder per Drag in der Breite ändern) frischt ein `ResizeObserver` auf der
+// Werkbank selbst auf — ereignisgetrieben, kostet also nichts pro Commit.
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import type { TemplateId } from "./gridState";
 
@@ -162,10 +172,15 @@ function startCellAnimation(
 /**
  * Animiert die Zellen von `workspaceRef` bei jedem Wechsel von `template`,
  * `maximizedPaneId` oder der SLOT-REIHENFOLGE (`cellKeys`) von ihrem alten zu
- * ihrem neuen Rechteck. Andere Renders (Fokuswechsel, Tab-Wechsel)
- * aktualisieren nur die Schnappschüsse und animieren nichts — sonst „flösse"
- * das Grid bei jedem beliebigen Re-Render, sobald sich nebenbei die
- * Fenstergröße geändert hat.
+ * ihrem neuen Rechteck. Andere Renders (Fokuswechsel, Tab-Wechsel) lesen gar
+ * kein Layout (Ticket 09 — `getBoundingClientRect()` läuft nur noch, wenn
+ * sich Template/Fokus-Modus/Reihenfolge tatsächlich geändert haben) und
+ * animieren folgerichtig auch nichts — sonst „flösse" das Grid bei jedem
+ * beliebigen Re-Render, und jeder dieser Renders koste zusätzlich eine
+ * Layout-Messung pro Zelle. Layout-Drift ohne einen solchen Wechsel (Fenster-
+ * oder Explorer-Resize) frischt stattdessen der ResizeObserver/Window-
+ * Listener weiter unten die Schnappschüsse auf, ganz unabhängig vom Render-
+ * Rhythmus dieses Hooks.
  *
  * Die Schlüsselreihenfolge gehört seit Ticket 20 (Slot-Tausch per Drag&Drop)
  * in den Auslöser: ein Tausch ändert weder Template noch Fokus-Modus, die
@@ -184,26 +199,42 @@ export function useGridTransitions(
 ): void {
   const trigger = `${template}|${maximizedPaneId ?? ""}|${cellKeys.join(",")}`;
   const prevCells = useRef<ReadonlyMap<string, CellSnapshot>>(new Map());
-  const prevTrigger = useRef(trigger);
+  // `null`, nicht `trigger`: der ERSTE Commit muss als "Trigger geändert"
+  // zählen, sonst bliebe `prevCells` bis zum ersten echten Wechsel leer und
+  // der allererste FLIP hätte keinen First-Schnappschuss zum Animieren
+  // (Ticket 09 — die Messung unten hängt jetzt an genau diesem Vergleich).
+  const prevTrigger = useRef<string | null>(null);
   const running = useRef(new Map<string, Animation>());
   // Für den Resize-Listener unten: immer die Schlüssel des LETZTEN Commits —
   // im Haupteffekt nachgeführt (nicht im Render, Refs sind dort tabu).
   const latestKeys = useRef(cellKeys);
 
-  // Bewusst ohne Dependency-Array: die Schnappschüsse müssen NACH JEDEM
-  // Commit frisch sein, sonst startete der nächste FLIP von einem Rechteck,
-  // das es so nicht mehr gibt.
+  // Bewusst ohne Dependency-Array: läuft nach JEDEM Commit, damit `trigger`
+  // stets mit dem zuletzt gesehenen Wert verglichen wird — nicht, um bei
+  // jedem Commit zu messen (Ticket 09, s. u.).
   useLayoutEffect(() => {
     latestKeys.current = cellKeys;
     const workspace = workspaceRef.current;
     if (!workspace) return;
 
-    const shouldAnimate = trigger !== prevTrigger.current && animationsUsable();
+    // Performance-Gate (Ticket 09): `getBoundingClientRect()` läuft nur,
+    // wenn sich der Trigger selbst geändert hat — nicht mehr bei jedem
+    // Commit unabhängig davon, ob überhaupt animiert wird. Ein Re-Render
+    // ohne Template-/Fokus-/Reihenfolge-Wechsel (Fokuswechsel, Tab-Wechsel,
+    // Tippen im Terminal …) liest damit gar kein Layout mehr. Layout-Drift
+    // OHNE Trigger-Wechsel (Explorer ein-/ausklappen oder per Drag in der
+    // Breite ändern — ändert `pc-workspace`s Breite, ohne dass Template,
+    // Fokus-Modus oder Slot-Reihenfolge sich rühren) bleibt trotzdem
+    // korrekt erfasst: dafür sorgt der ResizeObserver im zweiten Effekt
+    // unten, der `prevCells` bei jeder tatsächlichen Größenänderung der
+    // Werkbank auffrischt — unabhängig vom Commit-Rhythmus dieses Effekts.
+    const triggerChanged = trigger !== prevTrigger.current;
     prevTrigger.current = trigger;
+    if (!triggerChanged) return;
 
     const next = snapshotCells(workspace, cellKeys);
 
-    if (shouldAnimate) {
+    if (animationsUsable()) {
       for (const [key, snap] of next) {
         const prev = prevCells.current.get(key);
         // Frisch gemountete Zelle: kein First-Rechteck — `pc-cell-in`
@@ -231,10 +262,17 @@ export function useGridTransitions(
     prevCells.current = next;
   });
 
-  // Eine reine Fenstergrößen-Änderung rendert dieses Grid nicht neu — die
-  // Schnappschüsse wären danach veraltet, und der nächste Template-Wechsel
-  // spielte seinen FLIP von den alten, falschen Rechtecken aus. Deshalb nach
-  // jedem Resize einmal frisch vermessen.
+  // Zwei Quellen für Layout-Drift, die dieses Grid NICHT über den Haupteffekt
+  // oben neu vermessen (der läuft nur bei Trigger-Wechsel, s. Kommentar
+  // dort): eine echte Fenstergrößen-Änderung, und jede sonstige Größen-
+  // änderung der Werkbank selbst (Explorer ein-/ausklappen, Explorer-Breite
+  // per Drag) — beide ändern Zellrechtecke, ohne Template, Fokus-Modus oder
+  // Slot-Reihenfolge zu berühren. Bliebe `prevCells` hier stehen, startete
+  // der nächste FLIP sichtbar vom veralteten Rechteck aus. Der
+  // ResizeObserver deckt beide Fälle einheitlich ab (eine Fenster-Resize
+  // ändert am Ende auch die Werkbank-Box) — der `window`-Listener bleibt
+  // zusätzlich bestehen, eine doppelte Auffrischung bei echtem Fenster-
+  // Resize ist folgenlos.
   useLayoutEffect(() => {
     const refresh = () => {
       const workspace = workspaceRef.current;
@@ -242,6 +280,21 @@ export function useGridTransitions(
       prevCells.current = snapshotCells(workspace, latestKeys.current);
     };
     window.addEventListener("resize", refresh);
-    return () => window.removeEventListener("resize", refresh);
+
+    // jsdom (Vitest) kennt von Haus aus keinen ResizeObserver — die meisten
+    // Tests steuern Layout-Drift ohnehin über direktes Rechteck-Stubbing,
+    // ein gezielter Test stubbt `ResizeObserver` selbst fürs Auffrisch-
+    // Verhalten (useGridTransitions.test.tsx).
+    let observer: ResizeObserver | undefined;
+    const workspace = workspaceRef.current;
+    if (workspace && typeof ResizeObserver === "function") {
+      observer = new ResizeObserver(refresh);
+      observer.observe(workspace);
+    }
+
+    return () => {
+      window.removeEventListener("resize", refresh);
+      observer?.disconnect();
+    };
   }, [workspaceRef]);
 }

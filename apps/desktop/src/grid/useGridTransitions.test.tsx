@@ -26,6 +26,12 @@ const animateCalls: AnimateCall[] = [];
 // hier nach. `hidden` steuert der Harness über den echten Inline-Style.
 const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
 
+// Zählt jeden `getBoundingClientRect()`-Aufruf — die einzige Möglichkeit, den
+// Ticket-09-Vertrag ("kein Layout-Read ohne Trigger-Wechsel") direkt zu
+// prüfen, statt ihn nur indirekt über ausbleibende `animate`-Aufrufe zu
+// erschließen.
+let rectReadCount = 0;
+
 function fakeAnimation(): Animation {
   return {
     cancel: () => undefined,
@@ -36,6 +42,7 @@ function fakeAnimation(): Animation {
 beforeEach(() => {
   animateCalls.length = 0;
   rects.clear();
+  rectReadCount = 0;
   HTMLElement.prototype.animate = function (
     this: HTMLElement,
     keyframes: Keyframe[] | PropertyIndexedKeyframes | null,
@@ -49,6 +56,7 @@ beforeEach(() => {
     return fakeAnimation();
   };
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    rectReadCount += 1;
     const r = rects.get(this.dataset.cellkey ?? "") ?? { x: 0, y: 0, w: 0, h: 0 };
     return {
       x: r.x,
@@ -276,5 +284,96 @@ describe("useGridTransitions", () => {
 
     // @ts-expect-error — jsdom bringt kein matchMedia mit, zurück zu undefined.
     delete window.matchMedia;
+  });
+
+  it("liest getBoundingClientRect nicht bei unverändertem Trigger, aber bei einer echten Änderung (Ticket 09)", () => {
+    rects.set("a", { x: 0, y: 0, w: 100, h: 100 });
+    const { rerender } = render(
+      <Harness cells={[{ key: "a" }]} template="single" maximized={null} />,
+    );
+    const afterMount = rectReadCount;
+    expect(afterMount).toBeGreaterThan(0);
+
+    // Gleicher Trigger, aber ein anderes Rechteck — genau der Fall, den der
+    // Hook früher trotzdem vermessen hat (Layout-Drift durch z. B. eine
+    // Fenster- oder Explorer-Größenänderung, hier direkt untergeschoben statt
+    // über einen echten Resize simuliert). Kein Trigger-Wechsel → kein Read.
+    rects.set("a", { x: 0, y: 0, w: 300, h: 300 });
+    rerender(
+      <Harness cells={[{ key: "a" }]} template="single" maximized={null} />,
+    );
+    expect(rectReadCount).toBe(afterMount);
+    expect(animateCalls).toHaveLength(0);
+
+    // Echter Trigger-Wechsel (Template) — jetzt wird wieder gemessen.
+    rerender(
+      <Harness cells={[{ key: "a" }]} template="split" maximized={null} />,
+    );
+    expect(rectReadCount).toBeGreaterThan(afterMount);
+  });
+
+  it("frischt die Schnappschüsse über einen ResizeObserver auf, auch ohne Trigger-Wechsel (z. B. Explorer ein-/ausklappen)", () => {
+    // jsdom kennt keinen ResizeObserver — dieser Test stubbt gezielt einen,
+    // der den Callback festhält, damit er wie eine echte Größenänderung der
+    // Werkbank ausgelöst werden kann, ohne einen React-Commit zu brauchen
+    // (genau das ist der Kanal: Explorer-Resize läuft zwar über React-State,
+    // aber der Hook selbst darf sich bei unverändertem Trigger nicht mehr
+    // messen — das Auffrischen muss also von außerhalb des Renders kommen).
+    class FakeResizeObserver {
+      static instances: FakeResizeObserver[] = [];
+      callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        FakeResizeObserver.instances.push(this);
+      }
+      observe = (): void => undefined;
+      unobserve = (): void => undefined;
+      disconnect = (): void => undefined;
+    }
+    window.ResizeObserver = FakeResizeObserver;
+
+    rects.set("a", { x: 0, y: 0, w: 100, h: 100 });
+    rects.set("b", { x: 110, y: 0, w: 100, h: 100 });
+    const { rerender } = render(
+      <Harness
+        cells={[{ key: "a" }, { key: "b" }]}
+        template="split"
+        maximized={null}
+      />,
+    );
+
+    // Layout-Drift ohne Trigger-Wechsel — der ResizeObserver-Callback feuert,
+    // wie er es bei einer echten Größenänderung der Werkbank täte.
+    rects.set("a", { x: 0, y: 0, w: 300, h: 100 });
+    rects.set("b", { x: 310, y: 0, w: 100, h: 100 });
+    FakeResizeObserver.instances.forEach((observer) =>
+      observer.callback([], observer),
+    );
+
+    // Jetzt ein echter Trigger-Wechsel: der FLIP MUSS von den soeben
+    // aufgefrischten Rechtecken ausgehen (b bei x=310), nicht vom veralteten
+    // Mount-Rechteck (x=110) — sonst springt die Zelle beim Animationsstart
+    // sichtbar auf einen Stand, der so nie zu sehen war.
+    rects.set("a", { x: 0, y: 0, w: 210, h: 45 });
+    rects.set("b", { x: 0, y: 55, w: 210, h: 45 });
+    rerender(
+      <Harness
+        cells={[{ key: "a" }, { key: "b" }]}
+        template="quad"
+        maximized={null}
+      />,
+    );
+
+    const b = animateCalls.find((call) => call.key === "b");
+    expect(b?.keyframes[0]?.transform).toBe(
+      `translate(310px, -55px) scale(${100 / 210}, ${100 / 45})`,
+    );
+
+    // Aufräumen, damit andere Tests wieder den echten jsdom-Zustand (kein
+    // ResizeObserver) sehen — wie beim matchMedia-Stub oben ist die
+    // Eigenschaft in den DOM-Typen nicht optional, `delete` braucht daher
+    // dieselbe Unterdrückung.
+    // @ts-expect-error — jsdom hat keinen ResizeObserver, zurück zu undefined.
+    delete window.ResizeObserver;
   });
 });
