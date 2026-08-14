@@ -13,17 +13,20 @@
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
-import { useRef, type CSSProperties } from "react";
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState, Pane } from "../grid/gridState";
 import { useGridTransitions } from "../grid/useGridTransitions";
+import { usePaneDrag } from "../grid/usePaneDrag";
 import type { FocusRotation } from "../grid/useFocusRotation";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
+import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
 import { TerminalPane } from "./TerminalPane";
 
@@ -37,6 +40,7 @@ export function PaneGrid({
   dragTargetPaneId,
   onAssignProject,
   onClosePane,
+  onSwapPanes,
   onFocusPane,
   onOpenTerminalTab,
   onCloseTerminalTab,
@@ -69,6 +73,9 @@ export function PaneGrid({
   dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
+  /** Slot-Tausch per Drag&Drop (Ticket 20) — die Geste selbst entsteht hier
+   * drin (`usePaneDrag`), nach außen geht nur ihr Ergebnis. */
+  onSwapPanes: (sourcePaneId: string, targetPaneId: string) => void;
   onFocusPane: (paneId: string) => void;
   onOpenTerminalTab: (paneId: string) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
@@ -89,7 +96,38 @@ export function PaneGrid({
    * maximierten Zelle. */
   rotation: FocusRotation;
 }) {
+  const { t } = useTranslation();
   const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // Slot-Tausch (Ticket 20): der Pane-Header ist der Griff, jede ANDERE
+  // belegte Pane ein gültiges Ziel. Der Zustand des Zugs lebt hier und nicht
+  // in App.tsx (anders als bei den Datei-Drops, deren eine Quelle außerhalb
+  // dieses Baums beginnt) — Griff, Ziele und Wirkung liegen alle innerhalb
+  // dieses Grids, ein Umweg über die App-Ebene brächte nur Durchreichung.
+  const paneDrag = usePaneDrag<string>();
+  // Im Fokus-Modus ist genau eine Pane sichtbar: es gibt kein Ziel, auf das
+  // man zielen könnte, und die ausgeblendeten Nachbarn behalten ihre
+  // Rechtecke (`visibility: hidden`, s. u.) — ohne diese Sperre träfe die
+  // Trefferprüfung Panes, die niemand sieht.
+  const swapEnabled = state.maximizedPaneId === null;
+  const occupiedPaneIds = state.slots.flatMap((slot) =>
+    slot ? [slot.paneId] : [],
+  );
+  const startPaneDrag = (paneId: string) => (event: ReactPointerEvent<HTMLElement>) => {
+    if (!swapEnabled) return;
+    // Die Bedienelemente im Header (Tab-Chips, Fokus-Modus, Schließen, das
+    // Umbenennen-Feld) behalten ihre eigene Geste — ohne diese Ausnahme
+    // begänne jeder Klick auf sie zugleich einen Zug, und die 4px-Schwelle
+    // allein rettete das nur, solange die Hand ruhig bleibt.
+    if (event.target instanceof Element && event.target.closest("button, input")) {
+      return;
+    }
+    paneDrag.startDrag(event, {
+      source: paneId,
+      candidatePaneIds: occupiedPaneIds.filter((id) => id !== paneId),
+      onDrop: (targetPaneId) => onSwapPanes(paneId, targetPaneId),
+    });
+  };
   // Weiche Übergänge für Template-Wechsel und Fokus-Modus (FLIP, s.
   // useGridTransitions.ts) — reine WAAPI-Animationen auf den bestehenden
   // Zellen, die Unmount-Invariante dieses Baums (Kopfkommentar) bleibt
@@ -122,11 +160,18 @@ export function PaneGrid({
             totalSlots={state.slots.length}
             rotation={rotation}
             dropTarget={slot.paneId === dragTargetPaneId}
+            dragSource={paneDrag.source === slot.paneId}
+            dropInvite={
+              paneDrag.targetPaneId === slot.paneId ? (
+                <PaneDropInvite glyph="⇄" label={t("paneDrag.swapInvite")} />
+              ) : null
+            }
             editor={paneFileEditors.editorFor(slot.paneId)}
             guardLeave={guardLeave}
             dropTargets={dropTargets}
             onClose={() => onClosePane(slot.paneId)}
             onFocus={() => onFocusPane(slot.paneId)}
+            onHeaderPointerDown={startPaneDrag(slot.paneId)}
             onOpenTerminalTab={onOpenTerminalTab}
             onCloseTerminalTab={onCloseTerminalTab}
             onRenameTerminalTab={onRenameTerminalTab}
@@ -163,11 +208,14 @@ function PaneCell({
   focusModeActive,
   slotNumber,
   dropTarget,
+  dragSource,
+  dropInvite,
   editor,
   guardLeave,
   dropTargets,
   onClose,
   onFocus,
+  onHeaderPointerDown,
   onOpenTerminalTab,
   onCloseTerminalTab,
   onRenameTerminalTab,
@@ -193,11 +241,25 @@ function PaneCell({
   /** Ob ein Datei-Drag gerade über DIESER Pane schwebt (`useWebviewFileDrop`)
    * — der aktive Terminal-Tab zeigt dann sein Drop-Ziel-HUD. */
   dropTarget: boolean;
+  /** Ob DIESE Pane gerade selbst gezogen wird (Ticket 20) — sie tritt für die
+   * Dauer des Zugs zurück, damit die Aufmerksamkeit beim Ziel liegt. */
+  dragSource: boolean;
+  /** Fertig gerendertes Drop-Ziel-HUD für die Grid-eigenen Züge, oder `null`
+   * — dieselbe Aufteilung wie bei `focusModeHud`: die Entscheidung, WELCHER
+   * Zug gerade über dieser Zelle schwebt, trifft `PaneGrid` einmal zentral,
+   * diese Zelle platziert nur noch das Ergebnis. Bewusst auf ZELL-Ebene und
+   * nicht (wie das Datei-Drop-HUD) in der Terminalfläche: der Tausch betrifft
+   * die ganze Pane, und eine Pane mit offener Datei muss ihn genauso
+   * anzeigen. */
+  dropInvite: ReactNode;
   editor: ReturnType<PaneFileEditors["editorFor"]>;
   guardLeave: (paneId: string, run: () => void) => void;
   dropTargets: PaneDropRegistration;
   onClose: () => void;
   onFocus: () => void;
+  /** Zieh-Griff beider Kopfzeilen (Terminal wie Datei) — s. `PaneGrid`s
+   * `startPaneDrag`. */
+  onHeaderPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenTerminalTab: (paneId: string) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
   onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
@@ -295,7 +357,15 @@ function PaneCell({
     // `relative`, damit die absolut positionierten Flächen darunter (jeder
     // Terminal-Tab UND der File-Tab) sich exakt auf DIESE Zelle beziehen,
     // nicht auf das ganze Grid.
-    <div className="relative flex min-h-0 min-w-0 flex-col" style={cellStyle}>
+    <div
+      // Die gezogene Pane tritt zurück (Ticket 20) — ohne diesen Unterschied
+      // sähen Quelle und Ziel während des Zugs identisch aus, und das
+      // Ziel-HUD wäre das einzige Signal, dass überhaupt etwas gezogen wird.
+      className={`relative flex min-h-0 min-w-0 flex-col transition-opacity ${
+        dragSource ? "opacity-50" : ""
+      }`}
+      style={cellStyle}
+    >
       {/* Wie zuvor: jede Fläche bleibt gemountet, nur ausgeblendet — ein
           Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen.
           Seit Ticket 18 sind das bis zu N Terminal-Tabs gleichzeitig statt
@@ -342,6 +412,7 @@ function PaneCell({
               dropTargets={dropTargets}
               onClose={onClose}
               onFocus={onFocus}
+              onHeaderPointerDown={onHeaderPointerDown}
               onToggleFocusMode={onToggleFocusMode}
               focusModeHud={focusModeHud}
             />
@@ -361,10 +432,15 @@ function PaneCell({
           onEdit={editor.editContent}
           onSave={editor.save}
           onClose={() => guardLeave(pane.paneId, editor.close)}
+          onHeaderPointerDown={onHeaderPointerDown}
           onToggleFocusMode={onToggleFocusMode}
           focusModeHud={focusModeHud}
         />
       </div>
+      {/* Zuletzt im Zellen-Array und damit über allen Flächen darin: das HUD
+          des Grid-eigenen Zugs gehört der ganzen Zelle, nicht dem gerade
+          sichtbaren Tab. */}
+      {dropInvite}
     </div>
   );
 }

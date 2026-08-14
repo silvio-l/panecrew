@@ -137,6 +137,38 @@ describe("useGridTransitions", () => {
     expect(b.keyframes[1]?.transform).toBe("translate(0px, 0px) scale(1, 1)");
   });
 
+  it("FLIPpt beide Panes beim reinen Slot-Tausch (Ticket 20) — ohne Template-/Fokus-Wechsel", () => {
+    rects.set("a", { x: 0, y: 0, w: 100, h: 100 });
+    rects.set("b", { x: 110, y: 0, w: 100, h: 100 });
+    const { rerender } = render(
+      <Harness
+        cells={[{ key: "a" }, { key: "b" }]}
+        template="split"
+        maximized={null}
+      />,
+    );
+
+    // Getauschte Slots: gleiche Geometrie, vertauschte Schlüsselreihenfolge —
+    // die DOM-Reihenfolge IST die Slot-Reihenfolge, `cellKeys[i]` gehört zu
+    // `children[i]`, also trägt jetzt die erste Zelle "b".
+    rects.set("a", { x: 110, y: 0, w: 100, h: 100 });
+    rects.set("b", { x: 0, y: 0, w: 100, h: 100 });
+    rerender(
+      <Harness
+        cells={[{ key: "b" }, { key: "a" }]}
+        template="split"
+        maximized={null}
+      />,
+    );
+
+    const a = animateCalls.find((call) => call.key === "a");
+    const b = animateCalls.find((call) => call.key === "b");
+    expect(a?.keyframes[0]?.transform).toBe(
+      "translate(-110px, 0px) scale(1, 1)",
+    );
+    expect(b?.keyframes[0]?.transform).toBe("translate(110px, 0px) scale(1, 1)");
+  });
+
   it("animiert NICHT bei einem Re-Render ohne Template-/Fokus-Modus-Wechsel", () => {
     rects.set("a", { x: 0, y: 0, w: 100, h: 100 });
     const { rerender } = render(

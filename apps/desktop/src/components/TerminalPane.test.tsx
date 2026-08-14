@@ -76,6 +76,7 @@ const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
       }}
       onClose={vi.fn()}
       onFocus={vi.fn()}
+      onHeaderPointerDown={vi.fn()}
       onToggleFocusMode={vi.fn()}
       focusModeHud={null}
     />

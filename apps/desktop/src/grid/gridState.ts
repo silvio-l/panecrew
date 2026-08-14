@@ -205,6 +205,41 @@ export function assignProjectToSlot(
   return { ...state, slots: nextSlots, focusedPaneId: paneId };
 }
 
+/**
+ * Tauscht zwei belegte Slots (Ticket 20) — die Template-Topologie bleibt
+ * dabei per Konstruktion unberührt: es wird nur der Inhalt zweier Positionen
+ * im `slots`-Array vertauscht, nie dessen Länge oder das Template.
+ *
+ * Warum ausschließlich belegt↔belegt: ein Drop auf einen LEEREN Slot ist
+ * bereits der bestehende Picker-Fluss (`assignProjectToSlot`), und ein
+ * "Verschieben statt Tauschen" dorthin hätte eine zweite, konkurrierende
+ * Bedeutung für dieselbe Geste. Ein leerer Slot ist hier deshalb No-Op
+ * (identische Referenz), ebenso ein ungültiger Index und der Tausch einer
+ * Pane mit sich selbst.
+ *
+ * `focusedPaneId`/`maximizedPaneId` bleiben bewusst unangetastet: beide
+ * zeigen auf `paneId`s, nicht auf Positionen — wer fokussiert war, ist es
+ * nach dem Tausch weiterhin, nur an anderer Stelle im Grid.
+ */
+export function swapPanes(
+  state: GridState,
+  indexA: number,
+  indexB: number,
+): GridState {
+  if (indexA === indexB) return state;
+  if (indexA < 0 || indexA >= state.slots.length) return state;
+  if (indexB < 0 || indexB >= state.slots.length) return state;
+
+  const paneA = state.slots[indexA];
+  const paneB = state.slots[indexB];
+  if (!paneA || !paneB) return state;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[indexA] = paneB;
+  nextSlots[indexB] = paneA;
+  return { ...state, slots: nextSlots };
+}
+
 /** Hängt einen weiteren Terminal-Tab an und macht ihn sofort aktiv (verlässt
  * dabei den File-Tab, falls gerade sichtbar) — der Zustandsübergang hinter
  * "weiteren Terminal-Tab öffnen". Eine unbekannte `paneId` lässt den State

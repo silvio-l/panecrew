@@ -106,6 +106,10 @@
     "rotationStop": "Stop rotation",
     "intervalAria": "Rotation interval {{seconds}} seconds, click to change"
   },
+  "paneDrag": {
+    "swapInvite": "Swap slots",
+    "moveTabInvite": "Move tab here"
+  },
   "paneTabs": {
     "selectView": "Select view",
     "terminalTab": "Terminal {{number}}",

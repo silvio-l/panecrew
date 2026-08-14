@@ -159,6 +159,7 @@ export function HarnessApp({
                 // ein leerer Slot bleibt im Harness leer.
                 onAssignProject={() => undefined}
                 onClosePane={grid.closePane}
+                onSwapPanes={grid.swapPanes}
                 onFocusPane={grid.focusPane}
                 onOpenTerminalTab={grid.openTerminalTab}
                 onCloseTerminalTab={grid.closeTerminalTab}

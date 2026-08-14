@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,6 +10,7 @@ import {
   ChromeTooltip,
 } from "./ChromeTooltip";
 import { FocusModeButton } from "./FocusModeButton";
+import { PaneDropInvite } from "./PaneDropInvite";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
@@ -44,6 +45,7 @@ export function TerminalPane({
   dropTargets,
   onClose,
   onFocus,
+  onHeaderPointerDown,
   onToggleFocusMode,
   focusModeHud,
 }: {
@@ -91,6 +93,10 @@ export function TerminalPane({
    * Explorer-Pfad hängen daran) — getrennt vom hook-eigenen `focus()` unten,
    * das nur xterm.js' DOM-Fokus setzt und den Grid-Store nie erreicht. */
   onFocus: () => void;
+  /** Der Header ist der Griff für den Slot-Tausch (Ticket 20) — `PaneGrid.tsx`
+   * entscheidet darin, ob aus dem Drücken überhaupt ein Ziehen wird (Klicks
+   * auf die Bedienelemente im Header bleiben Klicks). */
+  onHeaderPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   /** Ticket 19: derselbe Aufruf maximiert diese Pane oder verlässt den
    * Fokus-Modus, je nach `maximized` — die Entscheidung trifft `PaneGrid.tsx`
    * zentral (`onToggleFocusMode`-Kommentar dort). */
@@ -268,7 +274,12 @@ export function TerminalPane({
           Pane-Rahmen an. FileEditor.tsx' Header spiegelt exakt dieselbe
           Schaltung. */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
+        onPointerDown={onHeaderPointerDown}
+        // `cursor-grab` ist die einzige Ankündigung, dass dieser Kopf ein
+        // Griff ist — ohne sie bliebe der Slot-Tausch (Ticket 20) eine Geste,
+        // die man nur findet, wenn man sie schon kennt. Die Bedienelemente im
+        // Kopf setzen ihren eigenen Cursor und bleiben unberührt.
+        className={`flex h-6 shrink-0 cursor-grab items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
           focused
             ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
             : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"
@@ -381,44 +392,11 @@ export function TerminalPane({
           {/* Drop-Ziel-HUD: erscheint, sobald ein Datei-Drag über dieser Pane
               schwebt, und wandert beim Ziehen von Pane zu Pane mit — dieselbe
               Treffermathematik wie der Drop selbst (useWebviewFileDrop.ts),
-              das HUD verspricht also exakt, was ein Loslassen tut. Amber ist
-              hier Einladung, dieselbe Semantik wie die Sucher-Ecken der
-              leeren Slots (App.css, .pc-hud-corner-Kommentar) — kein zweiter
-              Fokus-Ort: während eines nativen Drags gibt es keinen
-              konkurrierenden Zeiger-Zustand. Harte Schnitte, kein Easing;
-              `aria-hidden`, weil ein nativer Datei-Drag reine Zeigerführung
-              ist. `pointer-events-none` versteht sich: die Fläche gehört
-              weiter dem Terminal. */}
+              das HUD verspricht also exakt, was ein Loslassen tut. Das
+              Instrument selbst teilt es sich mit den beiden Grid-eigenen
+              Zügen (PaneDropInvite.tsx). */}
           {active && dropTarget && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-10"
-            >
-              {/* 4px nach innen gerückt: direkt auf der Kante würden die
-                  Ecken bei fokussierter Pane mit deren Amber-Rahmen zu einer
-                  verdickten Ecke verschmelzen — abgesetzt lesen sie sich als
-                  eigenes Instrument über dem Inhalt. */}
-              <div className="absolute inset-1">
-                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--tl" />
-                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--tr" />
-                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--bl" />
-                <span className="pc-hud-corner pc-hud-corner--invite pc-hud-corner--br" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span
-                  className="flex items-center gap-1.5 rounded-(--pc-paneControl-radius) border border-(--pc-pane-activeBorder)/45 bg-(--pc-pane-background)/90 py-1 pl-2 font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em] uppercase"
-                  // Tracking-Ausgleich wie beim Sprachchip der TitleBar:
-                  // letter-spacing hängt rechts am letzten Glyph, ohne den
-                  // Abzug stünde das Wort nicht mittig in seiner Plakette.
-                  style={{ paddingRight: "calc(0.5rem - 0.25em)" }}
-                >
-                  <span className="text-(--pc-pane-activeBorder)">⇣</span>
-                  <span className="text-(--pc-descriptionForeground)">
-                    {t("terminalPane.dropHint")}
-                  </span>
-                </span>
-              </div>
-            </div>
+            <PaneDropInvite glyph="⇣" label={t("terminalPane.dropHint")} />
           )}
           {/* Dauerhaft gemountete Live-Region (nur ihr Inhalt kommt und
               geht): eine erst beim Kopieren eingehängte role="status"-Region

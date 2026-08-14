@@ -106,6 +106,7 @@ function App() {
     state: gridState,
     assignProject,
     closePane,
+    swapPanes,
     switchTemplate,
     focusPane,
     openTerminalTab,
@@ -918,6 +919,7 @@ function App() {
               dragTargetPaneId={dragTargetPaneId ?? explorerDrag.targetPaneId}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
+              onSwapPanes={swapPanes}
               onFocusPane={focusPane}
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}

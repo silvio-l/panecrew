@@ -160,11 +160,21 @@ function startCellAnimation(
 }
 
 /**
- * Animiert die Zellen von `workspaceRef` bei jedem Wechsel von `template`
- * oder `maximizedPaneId` von ihrem alten zu ihrem neuen Rechteck. Andere
- * Renders (Fokuswechsel, Tab-Wechsel, Slot-Belegung) aktualisieren nur die
- * Schnappschüsse und animieren nichts — sonst „flösse" das Grid bei jedem
- * beliebigen Re-Render, sobald sich nebenbei die Fenstergröße geändert hat.
+ * Animiert die Zellen von `workspaceRef` bei jedem Wechsel von `template`,
+ * `maximizedPaneId` oder der SLOT-REIHENFOLGE (`cellKeys`) von ihrem alten zu
+ * ihrem neuen Rechteck. Andere Renders (Fokuswechsel, Tab-Wechsel)
+ * aktualisieren nur die Schnappschüsse und animieren nichts — sonst „flösse"
+ * das Grid bei jedem beliebigen Re-Render, sobald sich nebenbei die
+ * Fenstergröße geändert hat.
+ *
+ * Die Schlüsselreihenfolge gehört seit Ticket 20 (Slot-Tausch per Drag&Drop)
+ * in den Auslöser: ein Tausch ändert weder Template noch Fokus-Modus, die
+ * beiden Panes sprängen sonst hart an ihre neue Position. Die anderen
+ * Reihenfolge-Änderungen derselben Liste (Pane geschlossen → `empty-slot-N`,
+ * Projekt zugewiesen → neue `paneId`) laufen dadurch ebenfalls durch den
+ * Animationszweig, bleiben dort aber folgenlos: die neue Zelle hat keinen
+ * First-Schnappschuss (wird übersprungen, `pc-cell-in` übernimmt), und die
+ * unbewegten Nachbarn fallen unter die Deadzone in `startCellAnimation`.
  */
 export function useGridTransitions(
   workspaceRef: RefObject<HTMLElement | null>,
@@ -172,7 +182,7 @@ export function useGridTransitions(
   template: TemplateId,
   maximizedPaneId: string | null,
 ): void {
-  const trigger = `${template}|${maximizedPaneId ?? ""}`;
+  const trigger = `${template}|${maximizedPaneId ?? ""}|${cellKeys.join(",")}`;
   const prevCells = useRef<ReadonlyMap<string, CellSnapshot>>(new Map());
   const prevTrigger = useRef(trigger);
   const running = useRef(new Map<string, Animation>());

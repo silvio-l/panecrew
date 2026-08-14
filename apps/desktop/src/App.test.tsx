@@ -1541,6 +1541,75 @@ describe("Grid / Mehrfach-Pane", () => {
     ).toHaveLength(1);
   });
 
+  it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const cellSections = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-pane-id]"));
+    const [first, second] = cellSections();
+    if (!first || !second) throw new Error("Zwei Panes erwartet");
+    expect(first.getAttribute("aria-label")).toBe("Terminal storefront");
+
+    // jsdom hat kein Layout: ohne diese Rechtecke träfe die Zeigerprüfung
+    // (halboffene Grenzen gegen Nullrechtecke, dropRouting.ts) niemals eine
+    // Pane, und der Drop verpuffte — der Test prüfte dann nichts.
+    const rects = new Map<HTMLElement, DOMRect>([
+      [first, { left: 0, top: 0, right: 100, bottom: 100 } as DOMRect],
+      [second, { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect],
+    ]);
+    for (const [element, rect] of rects) {
+      element.getBoundingClientRect = () => rect;
+    }
+
+    const header = first.querySelector("header");
+    if (!header) throw new Error("Pane-Header nicht gefunden");
+    // jsdom kennt Pointer-Capture nicht (s. useExplorerPathDrag.test.tsx).
+    header.setPointerCapture = vi.fn();
+    header.releasePointerCapture = vi.fn();
+    header.hasPointerCapture = vi.fn(() => true);
+
+    const spawnsBefore = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "pty_spawn",
+    ).length;
+
+    fireEvent.pointerDown(header, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(header, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(header, { clientX: 150, clientY: 50 });
+
+    // Slot-Reihenfolge im DOM ist die Slot-Reihenfolge des States
+    // (PaneGrid.tsx' Invariante) — der Tausch ist hier direkt ablesbar.
+    await waitFor(() => {
+      expect(cellSections()[0]?.getAttribute("aria-label")).toBe(
+        "Terminal admin",
+      );
+    });
+    expect(cellSections()[1]?.getAttribute("aria-label")).toBe(
+      "Terminal storefront",
+    );
+
+    // Der eigentliche Punkt: ein Tausch ist ein Umsortieren, kein Neuaufbau.
+    // Beides zusammen — kein Kill, kein zusätzlicher Spawn UND dieselben
+    // DOM-Knoten wie vorher — unterscheidet „verschoben" von „geschlossen
+    // und neu geöffnet".
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+    ).toHaveLength(spawnsBefore);
+    expect(cellSections()[0]).toBe(second);
+    expect(cellSections()[1]).toBe(first);
+  });
+
   // Neuzuweisung eines BELEGTEN Slots (dritter der drei im Plan genannten
   // Verlassen-Wege, `App.tsx`s `assignProjectToSlot` guardet und vergisst
   // die verdrängte Pane bereits) hat in diesem Schritt noch keinen

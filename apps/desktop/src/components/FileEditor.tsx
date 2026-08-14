@@ -1,5 +1,9 @@
 import { useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
@@ -45,6 +49,7 @@ export function FileEditor({
   onEdit,
   onSave,
   onClose,
+  onHeaderPointerDown,
   onToggleFocusMode,
   focusModeHud,
 }: {
@@ -75,6 +80,10 @@ export function FileEditor({
   onEdit: (content: string) => void;
   onSave: (options?: { force?: boolean }) => void;
   onClose: () => void;
+  /** Griff für den Slot-Tausch (Ticket 20) — identisch zu TerminalPane.tsx:
+   * beide Kopfzeilen sind dieselbe Zone derselben Pane, eine Pane mit
+   * offener Datei muss sich genauso ziehen lassen wie eine mit Terminal. */
+  onHeaderPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   /** Ticket 19: derselbe Aufruf wie in TerminalPane.tsx — maximiert diese
    * Pane oder verlässt den Fokus-Modus, je nach `maximized`. */
   onToggleFocusMode: () => void;
@@ -179,7 +188,9 @@ export function FileEditor({
           `.impeccable/direction-contract-desktop.md` → „Zustandswechsel:
           „hart 0ms" aufgehoben"). */}
       <header
-        className={`flex h-6 shrink-0 items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
+        onPointerDown={onHeaderPointerDown}
+        // `cursor-grab` wie im Terminal-Kopf (Begründung dort).
+        className={`flex h-6 shrink-0 cursor-grab items-center gap-2 border-b pl-3 pr-1 text-(length:--pc-chrome-fontSizeSmall) font-medium tracking-wide transition-colors ${
           focused
             ? "border-(--pc-pane-activeBorder)/45 text-(--pc-paneHeader-activeForeground)"
             : "border-(--pc-paneHeader-border) text-(--pc-paneHeader-foreground)"

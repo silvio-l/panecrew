@@ -10,6 +10,7 @@ import {
   focusPane as focusPaneInState,
   openTerminalTab as openTerminalTabInState,
   renameTerminalTab as renameTerminalTabInState,
+  swapPanes as swapPanesInState,
   switchTemplate as switchTemplateInState,
   switchToFileTab as switchToFileTabInState,
   switchToTerminalTab as switchToTerminalTabInState,
@@ -31,6 +32,14 @@ export interface Grid {
     projectPath: string,
   ) => { paneId: string; tabId: string };
   closePane: (paneId: string) => void;
+  /** Tauscht die Slot-Positionen zweier belegter Panes (Ticket 20). Bewusst
+   * über `paneId`s statt über Slot-Indizes, obwohl der Reducer indexbasiert
+   * arbeitet: der Aufrufer ist ein laufender Zieh-Vorgang, dessen Indizes zum
+   * Zeitpunkt des Loslassens veraltet sein könnten (ein Template-Wechsel
+   * währenddessen kompaktiert sie). Aufgelöst wird deshalb hier drin, gegen
+   * den DANN aktuellen State; unbekannte `paneId`s ergeben -1 und damit den
+   * No-Op des Reducers. */
+  swapPanes: (sourcePaneId: string, targetPaneId: string) => void;
   /** Der Zustandsübergang hinter "Klick in eine Pane setzt den Fokus" —
    * ruft `usePtyTerminal`s eigenen `focus()` (DOM-Fokus für xterm.js) nicht
    * ab, das bleibt Sache des Aufrufers; hier wird nur `focusedPaneId`
@@ -87,6 +96,16 @@ export function useGrid(): Grid {
     setState((current) => closePaneInState(current, paneId));
   }, []);
 
+  const swapPanes = useCallback((sourcePaneId: string, targetPaneId: string) => {
+    setState((current) =>
+      swapPanesInState(
+        current,
+        current.slots.findIndex((slot) => slot?.paneId === sourcePaneId),
+        current.slots.findIndex((slot) => slot?.paneId === targetPaneId),
+      ),
+    );
+  }, []);
+
   const switchTemplate = useCallback((target: TemplateId) => {
     setState((current) => switchTemplateInState(current, target));
   }, []);
@@ -136,6 +155,7 @@ export function useGrid(): Grid {
     state,
     assignProject,
     closePane,
+    swapPanes,
     switchTemplate,
     focusPane,
     openTerminalTab,

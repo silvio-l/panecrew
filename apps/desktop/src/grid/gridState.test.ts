@@ -13,6 +13,7 @@ import {
   focusPane,
   focusedProjectPath,
   openTerminalTab,
+  swapPanes,
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
@@ -437,6 +438,63 @@ describe("gridState", () => {
       expect(switchToTerminalTab(withOne, "does-not-exist", "tab-0")).toBe(
         withOne,
       );
+    });
+  });
+
+  describe("swapPanes (Ticket 20)", () => {
+    function quadWithTwoPanes(): GridState {
+      return assignProjectToSlot(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        3,
+        "/repo/b",
+        "pane-1",
+        "tab-1",
+      );
+    }
+
+    it("tauscht zwei belegte Slots und lässt Template/Slot-Zahl unberührt", () => {
+      const withTwo = quadWithTwoPanes();
+      const next = swapPanes(withTwo, 0, 3);
+      expect((next.slots[0] as Pane).paneId).toBe("pane-1");
+      expect((next.slots[3] as Pane).paneId).toBe("pane-0");
+      expect(next.slots[1]).toBeNull();
+      expect(next.slots[2]).toBeNull();
+      expect(next.template).toBe(withTwo.template);
+      expect(next.slots).toHaveLength(withTwo.slots.length);
+    });
+
+    it("bewegt die Panes als identische Objekte (Tabs/PTY-Zuordnung unverändert)", () => {
+      const withTwo = quadWithTwoPanes();
+      const next = swapPanes(withTwo, 0, 3);
+      // Referenzgleich: der Tausch schreibt Panes um, er baut sie nicht neu —
+      // sonst wären Terminal-Tabs (und damit die PTY-Zuordnung) neue Objekte.
+      expect(next.slots[0]).toBe(withTwo.slots[3]);
+      expect(next.slots[3]).toBe(withTwo.slots[0]);
+    });
+
+    it("lässt Fokus und Fokus-Modus an der Pane, nicht an der Position", () => {
+      const maximized = enterFocusMode(quadWithTwoPanes(), "pane-1");
+      const next = swapPanes(maximized, 0, 3);
+      expect(next.focusedPaneId).toBe("pane-1");
+      expect(next.maximizedPaneId).toBe("pane-1");
+    });
+
+    it("ist ein No-Op (identische Referenz) beim Tausch einer Pane mit sich selbst", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(swapPanes(withTwo, 0, 0)).toBe(withTwo);
+    });
+
+    it("ist ein No-Op bei ungültigen Indizes", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(swapPanes(withTwo, -1, 3)).toBe(withTwo);
+      expect(swapPanes(withTwo, 0, 99)).toBe(withTwo);
+    });
+
+    it("ist ein No-Op, wenn einer der beiden Slots leer ist (leerer Slot = Picker-Fluss)", () => {
+      const withTwo = quadWithTwoPanes();
+      expect(swapPanes(withTwo, 0, 1)).toBe(withTwo);
+      expect(swapPanes(withTwo, 1, 3)).toBe(withTwo);
+      expect(swapPanes(withTwo, 1, 2)).toBe(withTwo);
     });
   });
 
