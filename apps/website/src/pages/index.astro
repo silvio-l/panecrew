@@ -113,11 +113,20 @@ const description =
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
     --lift: 0.15s ease;
+    /* cinematic refinement (2026-08-14): shared reveal easing + a single
+       tracking token for the small mono labels that were previously four
+       uncoordinated one-offs (.kicker, .hint, .xpl .hd). */
+    --reveal-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --label-track: 0.09em;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
+    /* faint technical grid, well under the bokeh glow — a board-texture
+       hint, not a visible pattern on its own */
     background:
+      repeating-linear-gradient(0deg, rgba(255, 253, 245, 0.025) 0, rgba(255, 253, 245, 0.025) 1px, transparent 1px, transparent 64px),
+      repeating-linear-gradient(90deg, rgba(255, 253, 245, 0.025) 0, rgba(255, 253, 245, 0.025) 1px, transparent 1px, transparent 64px),
       linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
     background-color: var(--indigo);
     color: var(--cream);
@@ -260,7 +269,10 @@ const description =
     background: var(--term);
     border: 1px solid rgba(255, 253, 245, 0.14);
     border-radius: 14px; overflow: hidden;
-    box-shadow: 0 30px 70px rgba(10, 12, 26, 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 253, 245, 0.07),
+      0 1px 2px rgba(10, 12, 26, 0.5),
+      0 30px 70px rgba(10, 12, 26, 0.55);
   }
   .app-bar {
     display: flex; align-items: center; gap: 7px;
@@ -286,7 +298,7 @@ const description =
     padding: 10px 0; overflow: hidden;
   }
   .xpl .hd {
-    font-size: 8.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    font-size: 8.5px; letter-spacing: var(--label-track); text-transform: uppercase;
     color: var(--cyan-bright); padding: 0 12px 5px; line-height: 1.6;
   }
   .xpl .proj { color: var(--amber); font-weight: 700; padding: 0 12px; white-space: nowrap; }
@@ -337,6 +349,11 @@ const description =
     pointer-events: none; overflow: visible;
   }
   .seam-svg path { fill: none; stroke: var(--amber); stroke-opacity: 0.3; stroke-width: 1.5; }
+  /* live charge overlay: a second, brighter trace on identical geometry
+     whose stroke-dashoffset tracks scroll progress (see updateSeamCharge
+     in the script below) — the quiet #seamPath stays untouched so the
+     already-approved static ornament never disappears. */
+  .seam-svg path#seamPathLive { stroke-opacity: 0.85; stroke-width: 2; }
   .seam-svg rect { fill: var(--amber); fill-opacity: 0.3; }
   .hpane {
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
@@ -381,6 +398,26 @@ const description =
     to { transform: none; opacity: 1; }
   }
 
+  /* ---------- scroll reveal (cinematic section entrance) ----------
+     Deliberately `animation … backwards`, not `transition`/`animation …
+     both`: a transition on the same elements as .card:hover would slow
+     the hover return from var(--lift) to the reveal duration; `both`
+     would pin the end-state transform with animation priority and block
+     hover's own transform. `backwards` lets the computed style take back
+     over the instant the animation ends, so hover keeps its own 0.15s
+     timing untouched. Same easing curve as flyin/dockin above — a
+     continuation of the existing choreography, not a second vocabulary. */
+  .reveal { opacity: 0; }
+  .reveal.in {
+    opacity: 1;
+    animation: revealIn 0.56s var(--reveal-ease) backwards;
+    animation-delay: var(--rd, 0s);
+  }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+
   /* ---------- section headers ---------- */
   .sect-head { text-align: center; padding: 96px 26px 46px; }
   .sect-head h2 {
@@ -400,10 +437,21 @@ const description =
     background: var(--cream); color: var(--ink);
     border-radius: 16px; overflow: hidden;
     display: flex; flex-direction: column;
-    box-shadow: 0 10px 26px rgba(10, 12, 26, 0.3);
+    box-shadow:
+      0 1px 2px rgba(10, 12, 26, 0.18),
+      0 10px 26px rgba(10, 12, 26, 0.3);
     transition: transform var(--lift), box-shadow var(--lift);
   }
-  .card:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(10, 12, 26, 0.38); }
+  /* copper-edge hover: same "power up on approach" language as
+     .pin-btn:hover .pin:not(.on), applied to the card itself via an inset
+     top edge rather than a new border (no layout shift). */
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow:
+      inset 0 2px 0 var(--amber),
+      0 1px 2px rgba(10, 12, 26, 0.2),
+      0 16px 34px rgba(10, 12, 26, 0.38);
+  }
   .card-vis {
     margin: 12px 12px 0; border-radius: 10px;
     background: var(--term); border: 1px solid rgba(255, 253, 245, 0.06);
@@ -490,6 +538,7 @@ const description =
   .wall .sm .ic { width: 16px; height: 16px; }
   .toolwall .kicker {
     margin-top: 34px; font-family: var(--mono); font-size: 13px; color: var(--amber);
+    letter-spacing: var(--label-track);
   }
 
   /* ---------- look closer (alternating rows) ---------- */
@@ -506,13 +555,16 @@ const description =
     color: var(--amber);
   }
   .closer-copy p { color: rgba(255, 253, 245, 0.8); text-wrap: pretty; margin-bottom: 10px; }
-  .closer-copy .hint { font-family: var(--mono); font-size: 12.5px; color: var(--cyan-bright); }
+  .closer-copy .hint { font-family: var(--mono); font-size: 12.5px; color: var(--cyan-bright); letter-spacing: var(--label-track); }
 
   /* the live demo (the 5% novelty) */
   .demo {
     background: var(--term);
     border: 1px solid rgba(255, 253, 245, 0.14); border-radius: 14px;
-    box-shadow: 0 24px 60px rgba(10, 12, 26, 0.5);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 253, 245, 0.07),
+      0 1px 2px rgba(10, 12, 26, 0.45),
+      0 24px 60px rgba(10, 12, 26, 0.5);
     overflow: hidden;
   }
   .demo .app-body { height: 330px; }
@@ -532,7 +584,10 @@ const description =
     background: var(--term-bar); border-bottom: 1px solid var(--term-line);
     color: rgba(255, 253, 245, 0.45); font-size: 9.5px; white-space: nowrap;
   }
-  .dpane:hover { transform: translateY(-1px); }
+  /* cyan preview on approach (explorer/focus context), distinct from the
+     amber .dpane.focused border — equal specificity, .focused wins by
+     source order, so hovering the already-focused pane stays amber. */
+  .dpane:hover { transform: translateY(-1px); border-color: var(--cyan); }
   .dpane:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .dpane.focused { border-color: var(--amber); }
   .dpane.focused::before { color: var(--amber); }
@@ -608,6 +663,8 @@ const description =
     .assemble .hpane, .assemble .xpl { animation: none; }
     .xpl.swap { animation: none; }
     .card:hover, .btn:hover, .brew:hover, .nav-cta:hover, .dpane:hover { transform: none; }
+    .reveal, .reveal.in { opacity: 1; animation: none; }
+    #seamPathLive { display: none; }
   }
 
   /* ---------- responsive ---------- */
@@ -633,6 +690,7 @@ const description =
     .demo .field { grid-template-columns: 1fr 1fr; }
   }
 </style>
+<noscript><style>.reveal { opacity: 1 !important; }</style></noscript>
 </head>
 <body>
 
@@ -728,6 +786,7 @@ const description =
   <!-- section-seam channel (decorative): geometry filled in by drawSeam() -->
   <svg class="seam-svg" aria-hidden="true">
     <path id="seamPath"></path>
+    <path id="seamPathLive"></path>
     <rect id="seamViaA" width="4" height="4"></rect>
     <rect id="seamViaB" width="4" height="4"></rect>
   </svg>
@@ -824,7 +883,7 @@ const description =
 
     <div class="wrap">
       <div class="crew-row">
-        <article class="card">
+        <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
             <div class="minigrid" aria-hidden="true">
               <div class="mp amb"><b>orbit-api — claude</b><span class="g">✓</span> tests green<br><span class="w">›</span> <span class="cursor"></span></div><!-- brandlint-ok: functional demo pane, real supported tool -->
@@ -844,7 +903,7 @@ const description =
           </div>
         </article>
 
-        <article class="card">
+        <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
             <div class="mock" data-title="explorer" aria-hidden="true">
               <div><span class="c">▾ dashboard</span> <span style="opacity:.5">← focus moved</span></div>
@@ -864,7 +923,7 @@ const description =
       </div>
 
       <div class="crew-row rev">
-        <article class="card">
+        <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
             <div class="tabsvis" aria-hidden="true">
               <div class="tabrow">
@@ -887,7 +946,7 @@ const description =
           </div>
         </article>
 
-        <article class="card">
+        <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
             <div class="mock" data-title="panecrew — restoring" aria-hidden="true">
               <div>$ panecrew</div>
@@ -908,7 +967,7 @@ const description =
       </div>
 
       <div class="crew-row">
-        <article class="card">
+        <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
             <div class="mock" data-title="settings — appearance" aria-hidden="true">
               <div class="swatches">
@@ -931,7 +990,7 @@ const description =
           </div>
         </article>
 
-        <article class="card">
+        <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
             <div class="mock" data-title="zsh" aria-hidden="true">
               <div>$ panecrew ~/code/orbit-api</div>
@@ -959,7 +1018,7 @@ const description =
       <h2>Any CLI is crew.</h2>
       <p>No adapters, no integrations, no favourites — every pane is a real terminal.</p>
     </div>
-    <div class="wall" aria-label="Tools that run in PaneCrew">
+    <div class="wall reveal" aria-label="Tools that run in PaneCrew">
       <span class="lg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#tiClaudeCode"/></svg>Claude Code</span><!-- brandlint-ok: functional list of supported CLI tools -->
       <span class="md"><svg class="ic" viewBox="0 0 256 260" aria-hidden="true"><use href="#tiOpenAI"/></svg>codex</span><!-- brandlint-ok: functional list of supported CLI tools -->
       <span class="lg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#tiGemini"/></svg>Gemini CLI</span><!-- brandlint-ok: functional list of supported CLI tools -->
@@ -987,7 +1046,7 @@ const description =
 
     <div class="wrap">
       <!-- 5% novelty: the visitor drives the focus-follow -->
-      <div class="closer-row" id="demo">
+      <div class="closer-row reveal" id="demo">
         <div class="closer-vis">
           <div class="demo app" id="demoApp" aria-label="Interactive demo: choose a pane and the explorer follows">
             <div class="app-bar" aria-hidden="true">
@@ -1051,7 +1110,7 @@ const description =
         </div>
       </div>
 
-      <div class="closer-row rev">
+      <div class="closer-row rev reveal">
         <div class="closer-vis">
           <div class="app" aria-hidden="true">
             <div class="app-bar">
@@ -1086,7 +1145,7 @@ const description =
     </div>
 
     <div class="wrap oss-grid">
-      <article class="card">
+      <article class="card reveal" style="--rd:0s">
         <div class="card-vis">
           <div class="mock" data-title="LICENSE" aria-hidden="true">
             <div>$ head -1 LICENSE</div>
@@ -1103,7 +1162,7 @@ const description =
         </div>
       </article>
 
-      <article class="card">
+      <article class="card reveal" style="--rd:0.08s">
         <div class="card-vis">
           <div class="mock" data-title="extension registry" aria-hidden="true">
             <div>registry.json</div>
@@ -1120,7 +1179,7 @@ const description =
         </div>
       </article>
 
-      <article class="card">
+      <article class="card reveal" style="--rd:0.16s">
         <div class="card-vis">
           <div class="mock" data-title="zsh" aria-hidden="true">
             <div>$ git push origin main</div>
@@ -1140,7 +1199,7 @@ const description =
   </section>
 
   <!-- ================= INSTALL ================= -->
-  <section class="install" id="install">
+  <section class="install reveal" id="install">
     <p class="eyebrow">shipping</p>
     <h2>Nightly builds are live.</h2>
     <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon) and Windows today, Homebrew tap next.</p>
@@ -1409,6 +1468,25 @@ const description =
     spyTargets.forEach(function (t) { if (t) spy.observe(t); });
   }
 
+  /* ---- chrome: scroll reveal ----
+     One shared observer drives every .reveal element (crew cards, tool
+     wall, closer rows, oss cards, install CTA). Each element reveals once,
+     then is unobserved — this is a one-time entrance, not a repeating
+     effect on scroll-back-up. */
+  var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+  if (revealEls.length) {
+    if (reduced || !('IntersectionObserver' in window)) {
+      revealEls.forEach(function (el) { el.classList.add('in'); });
+    } else {
+      var revealObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('in'); revealObs.unobserve(e.target); }
+        });
+      }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+      revealEls.forEach(function (el) { revealObs.observe(el); });
+    }
+  }
+
   /* ---- chrome: section-seam channel ----
      Static board-channel ornament: measure the big section tops once, run a
      vertical route down the left gutter that jogs sideways at every seam
@@ -1416,8 +1494,10 @@ const description =
      focus semantics, no interaction, no scroll listener — redrawn only on
      load/resize because the section tops move with layout. */
   var seamPath = document.getElementById('seamPath');
+  var seamPathLive = document.getElementById('seamPathLive');
   var seamViaA = document.getElementById('seamViaA');
   var seamViaB = document.getElementById('seamViaB');
+  var seamStartY = 0, seamEndY = 0, seamLen = 0;
 
   function drawSeam() {
     if (!seamPath) return;
@@ -1440,16 +1520,69 @@ const description =
     }
     pts.push({ x: pts[pts.length - 1].x, y: ys[ys.length - 1] + 64 });
     var line = simplifyPoints(pts);
-    seamPath.setAttribute('d', pathD(line, 6));
+    var d = pathD(line, 6);
+    seamPath.setAttribute('d', d);
+    if (seamPathLive) seamPathLive.setAttribute('d', d);
     seamViaA.setAttribute('x', String(line[0].x - 2));
     seamViaA.setAttribute('y', String(line[0].y - 2));
     var end = line[line.length - 1];
     seamViaB.setAttribute('x', String(end.x - 2));
     seamViaB.setAttribute('y', String(end.y - 2));
+
+    // cache the route's own absolute document-Y range + length for the
+    // scroll-linked charge below — mapped against the route's own span,
+    // not scrollY/documentHeight, or the route would already read "full"
+    // somewhere in the footer, well past its own last via.
+    var mainTopAbs = originTop + window.scrollY;
+    seamStartY = mainTopAbs + line[0].y;
+    seamEndY = mainTopAbs + end.y;
+    seamLen = pathLength(line, 6);
   }
 
   drawSeam();
   window.addEventListener('load', drawSeam);
+
+  /* ---- chrome: seam charge (scroll-linked) ----
+     A second, brighter path on the seam's identical geometry "powers up"
+     as the visitor scrolls through its own Y-range — the quiet #seamPath
+     ornament is untouched, this is purely an overlay. Reads only
+     window.scrollY in the scroll handler (no getBoundingClientRect there)
+     to avoid layout thrashing; rAF-gated to at most one write per frame. */
+  var seamTicking = false;
+  function updateSeamCharge() {
+    seamTicking = false;
+    if (!seamPathLive || !seamLen || seamEndY <= seamStartY) return;
+    var t = (window.scrollY - seamStartY) / (seamEndY - seamStartY);
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    seamPathLive.style.strokeDasharray = String(seamLen);
+    seamPathLive.style.strokeDashoffset = String(seamLen * (1 - t));
+  }
+  if (seamPathLive && !reduced) {
+    window.addEventListener('scroll', function () {
+      if (!seamTicking) { seamTicking = true; requestAnimationFrame(updateSeamCharge); }
+    }, { passive: true });
+  }
+  updateSeamCharge();
+
+  /* ---- chrome: bokeh parallax (hero only) ----
+     The whole .bokeh layer drifts at a fraction of scroll speed — never
+     its individual blur()'d children, which would re-rasterize the blur
+     every frame. Stops reading scroll once the hero has scrolled past;
+     the clouds are hero-local atmosphere, not a page-wide effect. */
+  var bokeh = document.querySelector('.bokeh');
+  if (bokeh && !reduced) {
+    bokeh.style.willChange = 'transform';
+    var bokehTicking = false;
+    var heroBottom = heroApp ? heroApp.getBoundingClientRect().bottom + window.scrollY + 200 : 900;
+    var updateBokeh = function () {
+      bokehTicking = false;
+      if (window.scrollY > heroBottom) return;
+      bokeh.style.transform = 'translateY(' + (window.scrollY * 0.08).toFixed(1) + 'px)';
+    };
+    window.addEventListener('scroll', function () {
+      if (!bokehTicking) { bokehTicking = true; requestAnimationFrame(updateBokeh); }
+    }, { passive: true });
+  }
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
@@ -1459,6 +1592,7 @@ const description =
       var demoFocusedIdx = demoPanes.findIndex(function (p) { return p.classList.contains('focused'); });
       demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
       drawSeam();
+      updateSeamCharge();
     }, 120);
   });
 })();
