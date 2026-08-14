@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSettingsStoreForTests } from "../settings/settingsStore";
 import i18next from "./index";
 import { initLanguageApplier } from "./applyLanguage";
 
@@ -21,15 +22,25 @@ const invokeMock = vi.mocked(invoke);
 beforeEach(() => {
   changedListener = null;
   invokeMock.mockReset();
+  // Ticket 08: `initLanguageApplier` holt seine Werte jetzt über den
+  // geteilten `settingsStore.ts` statt über ein eigenes `invoke`/`listen` —
+  // ohne Reset würde jeder Test hier den zwischengespeicherten Stand des
+  // vorherigen wiederverwenden, statt wie zuvor frisch zu fetchen.
+  resetSettingsStoreForTests();
 });
 
 afterEach(() => {
   void i18next.changeLanguage("de");
 });
 
+// Ticket 08: `initLanguageApplier` hängt jetzt hinter `settingsStore.ts`s
+// eigener Async-Kette (`fetchValues()` plus `.finally()` plus `.then()`,
+// s. settingsStore.ts) statt eines einzelnen `invoke(...).then(...)` — mehr
+// Mikrotask-Hops als die alten zwei `Promise.resolve()`-Ticks abdeckten. Ein
+// echter Makrotask-Tick drainiert stattdessen zuverlässig JEDE ausstehende
+// Mikrotask-Kette, ganz ohne deren genaue Tiefe mitzuzählen.
 async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe("initLanguageApplier", () => {

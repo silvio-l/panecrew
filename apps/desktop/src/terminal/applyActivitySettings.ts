@@ -7,8 +7,10 @@
 // auf, ohne echtes Backend) — dieses Modul ist die einzige Stelle, die
 // `setActivityIdleMs`/`setActivityLineThreshold` tatsächlich aus dem
 // Settings-Store befüllt.
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+//
+// Fetch/Abo laufen seit Ticket 08 über `settingsStore.ts` (s. dessen
+// Kopfkommentar) statt über ein eigenes `invoke`/`listen`.
+import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 import { setActivityIdleMs, setActivityLineThreshold } from "./terminalActivity";
 
 const IDLE_KEY = "terminal.activityIdleMs";
@@ -27,27 +29,19 @@ function applyIfNumber(key: string, value: unknown): void {
  * (in der Praxis nie ausgehängten) Entry-Point-Cleanup.
  */
 export function initTerminalActivitySettingsApplier(): () => void {
-  const refreshFromBackend = () => {
-    void invoke<Record<string, unknown>>("settings_get_values").then((values) => {
-      applyIfNumber(IDLE_KEY, values[IDLE_KEY]);
-      applyIfNumber(LINE_THRESHOLD_KEY, values[LINE_THRESHOLD_KEY]);
-    });
+  const applyFromValues = (values: Record<string, unknown>) => {
+    applyIfNumber(IDLE_KEY, values[IDLE_KEY]);
+    applyIfNumber(LINE_THRESHOLD_KEY, values[LINE_THRESHOLD_KEY]);
   };
-  refreshFromBackend();
+  void getSettingsValues().then(applyFromValues);
 
-  const unlistenPromise = listen<{ key: string; value: unknown }>(
-    "settings:changed",
-    (event) => {
-      const { key, value } = event.payload;
-      if (key === "*") {
-        refreshFromBackend();
-      } else {
-        applyIfNumber(key, value);
-      }
-    },
-  );
+  const unsubscribe = subscribeToSettingsChanges((event) => {
+    if (event.key === "*") {
+      applyFromValues(event.values);
+    } else {
+      applyIfNumber(event.key, event.value);
+    }
+  });
 
-  return () => {
-    void unlistenPromise.then((unlisten) => unlisten());
-  };
+  return unsubscribe;
 }

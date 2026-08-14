@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSettingsStoreForTests } from "../settings/settingsStore";
 import { initThemeApplier } from "./applyTheme";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -44,15 +45,26 @@ beforeEach(() => {
       },
     }) as unknown as MediaQueryList;
   invokeMock.mockReset();
+  // Ticket 08: `initThemeApplier` holt seine Werte jetzt über den geteilten
+  // `settingsStore.ts` statt über ein eigenes `invoke`/`listen` — ohne
+  // Reset würde jeder Test hier den zwischengespeicherten Stand (und den
+  // bereits registrierten Listener) des vorherigen wiederverwenden, statt
+  // wie zuvor frisch zu fetchen.
+  resetSettingsStoreForTests();
 });
 
 afterEach(() => {
   document.documentElement.removeAttribute("data-theme");
 });
 
+// Ticket 08: `initThemeApplier` hängt jetzt hinter `settingsStore.ts`s
+// eigener Async-Kette (`fetchValues()` plus `.finally()` plus `.then()`,
+// s. settingsStore.ts) statt eines einzelnen `invoke(...).then(...)` — mehr
+// Mikrotask-Hops als die alten zwei `Promise.resolve()`-Ticks abdeckten. Ein
+// echter Makrotask-Tick drainiert stattdessen zuverlässig JEDE ausstehende
+// Mikrotask-Kette, ganz ohne deren genaue Tiefe mitzuzählen.
 async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe("initThemeApplier", () => {

@@ -7,8 +7,10 @@
 // MutationObserver beobachtet den `style`-Attribut-Wechsel auf
 // `documentElement`, den `setProperty` unten auslöst, und zieht bereits
 // laufende xterm-Instanzen nach.
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+//
+// Fetch/Abo laufen seit Ticket 08 über `settingsStore.ts` (s. dessen
+// Kopfkommentar) statt über ein eigenes `invoke`/`listen`.
+import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 
 const TOKEN = "--pc-terminal-fontSize";
 
@@ -22,29 +24,21 @@ function apply(fontSize: number) {
  * (rare, in practice never-unmounted) entry-point cleanup.
  */
 export function initTerminalSettingsApplier(): () => void {
-  const refreshFromBackend = () => {
-    void invoke<Record<string, unknown>>("settings_get_values").then((values) => {
-      const fontSize = values["terminal.fontSize"];
-      if (typeof fontSize === "number" && Number.isFinite(fontSize)) {
-        apply(fontSize);
-      }
-    });
+  const applyFromValues = (values: Record<string, unknown>) => {
+    const fontSize = values["terminal.fontSize"];
+    if (typeof fontSize === "number" && Number.isFinite(fontSize)) {
+      apply(fontSize);
+    }
   };
-  refreshFromBackend();
+  void getSettingsValues().then(applyFromValues);
 
-  const unlistenPromise = listen<{ key: string; value: unknown }>(
-    "settings:changed",
-    (event) => {
-      const { key, value } = event.payload;
-      if (key === "terminal.fontSize" && typeof value === "number") {
-        apply(value);
-      } else if (key === "*") {
-        refreshFromBackend();
-      }
-    },
-  );
+  const unsubscribe = subscribeToSettingsChanges((event) => {
+    if (event.key === "terminal.fontSize" && typeof event.value === "number") {
+      apply(event.value);
+    } else if (event.key === "*") {
+      applyFromValues(event.values);
+    }
+  });
 
-  return () => {
-    void unlistenPromise.then((unlisten) => unlisten());
-  };
+  return unsubscribe;
 }

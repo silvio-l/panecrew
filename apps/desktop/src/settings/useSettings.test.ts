@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSettingsStoreForTests } from "./settingsStore";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -39,6 +40,12 @@ const SCHEMA: SettingSchemaEntry[] = [
 
 beforeEach(() => {
   changedListener = null;
+  // Ticket 08: `useSettings` holt seine Werte jetzt über den geteilten
+  // `settingsStore.ts` statt über ein eigenes `invoke`/`listen` — dessen
+  // Zwischenstand ist modulweit, würde also sonst unbemerkt aus einem
+  // `it()`-Block dieser Datei in den nächsten durchsickern (jeder Test hier
+  // erwartet einen frischen Fetch mit seinem eigenen Mock-Ergebnis).
+  resetSettingsStoreForTests();
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd) => {
     if (cmd === "settings_get_schema") {

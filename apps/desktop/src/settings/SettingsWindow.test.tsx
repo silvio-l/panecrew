@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSettingsStoreForTests } from "./settingsStore";
 import { SettingsWindow } from "./SettingsWindow";
 import type { SettingSchemaEntry } from "./useSettings";
 
@@ -36,6 +37,10 @@ const SCHEMA: SettingSchemaEntry[] = [
 
 beforeEach(() => {
   invokeMock.mockReset();
+  // Ticket 08: `useSettings` holt seine Werte jetzt über den geteilten
+  // `settingsStore.ts` — dessen Zwischenstand ist modulweit und würde ohne
+  // Reset unbemerkt aus einem Test in den nächsten durchsickern.
+  resetSettingsStoreForTests();
   invokeMock.mockImplementation((cmd) => {
     if (cmd === "settings_get_schema") return Promise.resolve(SCHEMA);
     if (cmd === "settings_get_values") {

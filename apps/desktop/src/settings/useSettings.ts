@@ -5,7 +5,7 @@
 // `useFocusRotation.ts`.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { getSettingsValues, subscribeToSettingsChanges } from "./settingsStore";
 
 type SettingType =
   | { kind: "string" }
@@ -29,11 +29,6 @@ export interface SettingSchemaEntry {
 }
 
 type SettingValues = Record<string, unknown>;
-
-interface ChangedPayload {
-  key: string;
-  value: unknown;
-}
 
 export interface UseSettingsResult {
   schema: SettingSchemaEntry[];
@@ -72,24 +67,25 @@ export function useSettings(): UseSettingsResult {
   // avoidable render).
   const fetchAndApply = useCallback(async () => {
     try {
-      // Bewusst ohne Typ-Parameter an `invoke` — das reale Backend liefert
-      // immer Array/Objekt, aber ein `T`-Cast hier würde TypeScript das nur
-      // GLAUBEN machen, ohne die IPC-Außengrenze tatsächlich zu prüfen. Ein
-      // unvollständig gestubbter `invoke`-Mock in einem Konsumenten-Test
-      // (z. B. App.test.tsx-Szenarien, die primär etwas anderes prüfen und
-      // für unbekannte Kommandos pauschal `undefined` liefern) träfe sonst
-      // einen `values["irgendein.key"]`-Zugriff auf `undefined` statt ein
-      // leeres Objekt.
+      // Bewusst ohne Typ-Parameter an `invoke` für das Schema — das reale
+      // Backend liefert immer ein Array, aber ein `T`-Cast hier würde
+      // TypeScript das nur GLAUBEN machen, ohne die IPC-Außengrenze
+      // tatsächlich zu prüfen. Ein unvollständig gestubbter `invoke`-Mock in
+      // einem Konsumenten-Test (z. B. App.test.tsx-Szenarien, die primär
+      // etwas anderes prüfen und für unbekannte Kommandos pauschal
+      // `undefined` liefern) träfe sonst einen `values["irgendein.key"]`-
+      // Zugriff auf `undefined` statt ein leeres Objekt.
+      //
+      // `getSettingsValues()` statt eines eigenen `invoke("settings_get_
+      // values")`: teilt sich den einen Fetch dieses Fensters mit jedem
+      // anderen Consumer (Ticket 08) — dedupliziert automatisch gegen einen
+      // bereits laufenden oder bereits aufgelösten Request.
       const [schemaResult, valuesResult] = await Promise.all([
         invoke("settings_get_schema"),
-        invoke("settings_get_values"),
+        getSettingsValues(),
       ]);
       setSchema(Array.isArray(schemaResult) ? (schemaResult as SettingSchemaEntry[]) : []);
-      setValues(
-        typeof valuesResult === "object" && valuesResult !== null
-          ? (valuesResult as SettingValues)
-          : {},
-      );
+      setValues(valuesResult);
       setError(null);
     } catch (loadError) {
       setError(String(loadError));
@@ -115,20 +111,26 @@ export function useSettings(): UseSettingsResult {
   }, [fetchAndApply]);
 
   useEffect(() => {
-    const unlistenPromise = listen<ChangedPayload>("settings:changed", (event) => {
-      const { key, value } = event.payload;
+    // `subscribeToSettingsChanges` statt eines eigenen `listen("settings:
+    // changed", …)`: teilt sich den einen Listener dieses Fensters mit jedem
+    // anderen Consumer (Ticket 08) — der geteilte Store hat den
+    // Wildcard-Refetch (der eine `settings_get_values`-Aufruf, s.
+    // settingsStore.ts) zu diesem Zeitpunkt bereits erledigt, `load()` unten
+    // holt sich über `getSettingsValues()` also nur noch den bereits
+    // frischen, zwischengespeicherten Stand — der zusätzliche
+    // `settings_get_schema`-Aufruf bleibt hier, weil das Schema nicht Teil
+    // des geteilten Stores ist.
+    const unsubscribe = subscribeToSettingsChanges((event) => {
       // The raw-JSON save path (ticket 07) can change many keys at once and
       // emits this one wildcard instead of one event per key — the only case
       // that still needs a full reload.
-      if (key === "*") {
+      if (event.key === "*") {
         void load();
         return;
       }
-      setValues((current) => ({ ...current, [key]: value }));
+      setValues((current) => ({ ...current, [event.key]: event.value }));
     });
-    return () => {
-      void unlistenPromise.then((unlisten) => unlisten());
-    };
+    return unsubscribe;
   }, [load]);
 
   const setValue = useCallback(async (key: string, value: unknown) => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 import { isMacPlatform } from "./platform";
 import { matchesShortcut, SHORTCUTS, zoomAction } from "./registry";
 import { DEFAULT_ZOOM, nextZoomLevel } from "./zoom";
@@ -31,23 +31,27 @@ export function useAppZoom(): number {
   const ownChangeRef = useRef(false);
 
   useEffect(() => {
-    void invoke<Record<string, unknown> | undefined>("settings_get_values").then((values) => {
-      const persisted = values?.[SETTINGS_KEY];
+    // `getSettingsValues()`/`subscribeToSettingsChanges()` statt eines
+    // eigenen `invoke("settings_get_values")`/`listen("settings:changed")`
+    // (Ticket 08) — teilt sich den einen Fetch/Listener dieses Fensters mit
+    // Theme-/Sprache-/Terminal-/Aktivitäts-Applier und `useSettings`. Bewusst
+    // weiterhin ohne eigene Reaktion auf den Wildcard-Key `"*"` — genau wie
+    // zuvor: der Rohtext-Editor-Reset trifft praktisch nie `appearance.zoom`,
+    // und ein Verhalten dafür hinzuzufügen wäre eine Funktionsänderung, die
+    // dieses Ticket nicht verlangt.
+    void getSettingsValues().then((values) => {
+      const persisted = values[SETTINGS_KEY];
       if (typeof persisted === "number" && Number.isFinite(persisted)) {
         setZoom(persisted);
       }
     });
 
-    const unlistenPromise = listen<{ key: string; value: unknown }>(
-      "settings:changed",
-      (event) => {
-        const { key, value } = event.payload;
-        if (key === SETTINGS_KEY && typeof value === "number") {
-          setZoom(value);
-        }
-      },
-    );
-    return () => void unlistenPromise.then((unlisten) => unlisten());
+    const unsubscribe = subscribeToSettingsChanges((event) => {
+      if (event.key === SETTINGS_KEY && typeof event.value === "number") {
+        setZoom(event.value);
+      }
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {

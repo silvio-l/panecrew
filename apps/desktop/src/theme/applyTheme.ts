@@ -4,8 +4,12 @@
 // `settings:changed`-Abonnement mitzubringen. Löst `system` gegen
 // `prefers-color-scheme` auf und setzt `document.documentElement.dataset.theme`
 // — theme.css reagiert darauf über `:root[data-theme="light"]`.
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+//
+// Fetch/Abo laufen seit Ticket 08 über `settingsStore.ts` statt über ein
+// eigenes `invoke("settings_get_values")`/`listen("settings:changed")` —
+// dasselbe Fenster teilt sich den einen Fetch/Listener mit jedem anderen
+// Applier/Hook, statt je einen eigenen zu öffnen.
+import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 
 type ThemeChoice = "system" | "light" | "dark";
 
@@ -40,31 +44,25 @@ export function initThemeApplier(): () => void {
   const onMediaChange = () => apply(current);
   media.addEventListener("change", onMediaChange);
 
-  const refreshFromBackend = () => {
-    void invoke<Record<string, unknown>>("settings_get_values").then((values) => {
-      if (isThemeChoice(values["appearance.theme"])) {
-        current = values["appearance.theme"];
-        apply(current);
-      }
-    });
+  const applyFromValues = (values: Record<string, unknown>) => {
+    if (isThemeChoice(values["appearance.theme"])) {
+      current = values["appearance.theme"];
+      apply(current);
+    }
   };
-  refreshFromBackend();
+  void getSettingsValues().then(applyFromValues);
 
-  const unlistenPromise = listen<{ key: string; value: unknown }>(
-    "settings:changed",
-    (event) => {
-      const { key, value } = event.payload;
-      if (key === "appearance.theme" && isThemeChoice(value)) {
-        current = value;
-        apply(current);
-      } else if (key === "*") {
-        refreshFromBackend();
-      }
-    },
-  );
+  const unsubscribe = subscribeToSettingsChanges((event) => {
+    if (event.key === "appearance.theme" && isThemeChoice(event.value)) {
+      current = event.value;
+      apply(current);
+    } else if (event.key === "*") {
+      applyFromValues(event.values);
+    }
+  });
 
   return () => {
     media.removeEventListener("change", onMediaChange);
-    void unlistenPromise.then((unlisten) => unlisten());
+    unsubscribe();
   };
 }

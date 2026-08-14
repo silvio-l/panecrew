@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Tooltip } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { ExplorerPanel } from "./ExplorerPanel";
+import { resetSettingsStoreForTests } from "../settings/settingsStore";
 import type { GitDecorations } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
 
@@ -93,6 +94,12 @@ const flatTree = (count: number): TreeNode[] =>
 describe("ExplorerPanel", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    // Ticket 08: `useSettings` holt seine Werte jetzt über den geteilten
+    // `settingsStore.ts` — dessen Zwischenstand ist modulweit und würde ohne
+    // Reset unbemerkt aus einem Test in den nächsten durchsickern (der Test
+    // unten mit `explorer.confirmBeforeDelete: false` erwartet z. B. einen
+    // frischen Fetch mit genau diesem, vom Standard-Mock abweichenden Wert).
+    resetSettingsStoreForTests();
   });
 
   it("mountet auch bei 5000 Knoten nur den sichtbaren Ausschnitt", () => {

@@ -4,8 +4,10 @@
 // alle auf dieselbe Weise ein. Der TitleBar-Sprachumschalter ist damit
 // überflüssig geworden (2026-08-13, Nutzerentscheidung) — die Sprache wird
 // jetzt ausschließlich über die Settings gesetzt, hier nur noch angewendet.
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+//
+// Fetch/Abo laufen seit Ticket 08 über `settingsStore.ts` (s. dessen
+// Kopfkommentar) statt über ein eigenes `invoke`/`listen`.
+import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 import { isSupportedLanguage, setLanguage } from "./index";
 
 /**
@@ -16,29 +18,25 @@ import { isSupportedLanguage, setLanguage } from "./index";
  * `initThemeApplier`).
  */
 export function initLanguageApplier(): () => void {
-  const refreshFromBackend = () => {
-    void invoke<Record<string, unknown>>("settings_get_values").then((values) => {
-      const language = values["appearance.language"];
-      if (typeof language === "string" && isSupportedLanguage(language)) {
-        setLanguage(language);
-      }
-    });
+  const applyFromValues = (values: Record<string, unknown>) => {
+    const language = values["appearance.language"];
+    if (typeof language === "string" && isSupportedLanguage(language)) {
+      setLanguage(language);
+    }
   };
-  refreshFromBackend();
+  void getSettingsValues().then(applyFromValues);
 
-  const unlistenPromise = listen<{ key: string; value: unknown }>(
-    "settings:changed",
-    (event) => {
-      const { key, value } = event.payload;
-      if (key === "appearance.language" && typeof value === "string" && isSupportedLanguage(value)) {
-        setLanguage(value);
-      } else if (key === "*") {
-        refreshFromBackend();
-      }
-    },
-  );
+  const unsubscribe = subscribeToSettingsChanges((event) => {
+    if (
+      event.key === "appearance.language" &&
+      typeof event.value === "string" &&
+      isSupportedLanguage(event.value)
+    ) {
+      setLanguage(event.value);
+    } else if (event.key === "*") {
+      applyFromValues(event.values);
+    }
+  });
 
-  return () => {
-    void unlistenPromise.then((unlisten) => unlisten());
-  };
+  return unsubscribe;
 }
