@@ -257,7 +257,7 @@ const description =
   .bokeh::before {
     content: ""; position: absolute; inset: 0;
     background: url("/hero-atmosphere.webp") center 30% / cover no-repeat;
-    opacity: 0.28;
+    opacity: 0.17;
   }
   .bokeh i {
     position: absolute; border-radius: 50%; filter: blur(52px);
@@ -342,7 +342,7 @@ const description =
   .xpl {
     background: var(--term-xpl);
     border: 1px solid var(--term-line); border-radius: 8px;
-    font-family: var(--mono); font-size: 11px; line-height: 1.95;
+    font-family: var(--mono); font-size: 11px; line-height: 21px;
     color: rgba(255, 253, 245, 0.68);
     padding: 10px 0; overflow: hidden;
   }
@@ -352,7 +352,12 @@ const description =
   }
   .xpl .proj { color: var(--amber); font-weight: 700; padding: 0 12px; white-space: nowrap; }
   .xpl ul { list-style: none; }
-  .xpl li { padding: 0 12px 0 22px; white-space: nowrap; }
+  /* box-drawing tree connectors (├─/└─/│) live in the text itself, so
+     indentation comes from the glyphs, not from padding — a fixed
+     integer line-height above is what keeps the │ continuations lining
+     up flush between rows instead of drifting a sub-pixel per line. */
+  .xpl li { padding: 0 12px; white-space: nowrap; }
+  .xpl li .tc { color: rgba(255, 253, 245, 0.32); }
   .xpl li.hl { background: rgba(90, 207, 211, 0.14); color: var(--cream); }
   .xpl.swap { animation: xswap 0.28s ease; }
   @keyframes xswap { 0% { opacity: 0.25; transform: translateX(-5px); } 100% { opacity: 1; transform: none; } }
@@ -495,7 +500,7 @@ const description =
   #crew::before {
     content: ""; position: absolute; inset: 0; z-index: 0;
     background: url("/crew-atmosphere.webp") center top / cover no-repeat;
-    opacity: 0.4;
+    opacity: 0.22;
     /* eases in from transparent at the top boundary — mirrors .bokeh's own
        fade-out, so the seam dissolves from both sides instead of the
        hero's atmosphere hard-cutting into this one — and fades out again
@@ -568,10 +573,11 @@ const description =
 
   /* card visuals: small terminal mocks */
   .mock {
-    font-family: var(--mono); font-size: 11px; line-height: 1.85;
+    font-family: var(--mono); font-size: 11px; line-height: 20px;
     color: rgba(255, 253, 245, 0.62); padding: 30px 14px 10px; width: 100%;
     position: relative;
   }
+  .mock .tc { color: rgba(255, 253, 245, 0.32); }
   .mock::before {
     content: attr(data-title);
     position: absolute; top: 0; left: 0; right: 0; height: 24px;
@@ -909,12 +915,12 @@ const description =
             <p class="hd">explorer · follows focus</p>
             <p class="proj">▾ orbit-api</p>
             <ul>
-              <li>▸ node_modules</li>
-              <li>▾ src</li>
-              <li class="hl">&nbsp;&nbsp;router.ts</li>
-              <li>&nbsp;&nbsp;handlers.ts</li>
-              <li>package.json</li>
-              <li>README.md</li>
+              <li><span class="tc">├─ </span>▸ node_modules</li>
+              <li><span class="tc">├─ </span>▾ src</li>
+              <li class="hl"><span class="tc">│  ├─ </span>router.ts</li>
+              <li><span class="tc">│  └─ </span>handlers.ts</li>
+              <li><span class="tc">├─ </span>package.json</li>
+              <li><span class="tc">└─ </span>README.md</li>
             </ul>
           </aside>
           <div class="pinrail" aria-hidden="true">
@@ -1002,9 +1008,9 @@ const description =
           <div class="card-vis">
             <div class="mock" data-title="explorer" aria-hidden="true">
               <div><span class="c">▾ dashboard</span> <span style="opacity:.5">← focus moved</span></div>
-              <div>&nbsp;&nbsp;▾ src/charts</div>
-              <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="w" style="background:rgba(90,207,211,.16); padding:0 4px;">usage.tsx</span></div>
-              <div>&nbsp;&nbsp;vite.config.ts</div>
+              <div><span class="tc">├─ </span>▾ src/charts</div>
+              <div><span class="tc">│  └─ </span><span class="w" style="background:rgba(90,207,211,.16); padding:0 4px;">usage.tsx</span></div>
+              <div><span class="tc">└─ </span>vite.config.ts</div>
             </div>
           </div>
           <div class="card-body">
@@ -1148,18 +1154,19 @@ const description =
               <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
               <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
               <span>PaneCrew — live demo</span>
+              <span class="hud-readout"><span class="hb">2×2</span> · 4 panes · 1 explorer</span>
             </div>
             <div class="app-body">
               <aside class="xpl" id="demoXpl">
                 <p class="hd">explorer · follows focus</p>
                 <p class="proj">▾ orbit-api</p>
                 <ul>
-                  <li>▸ node_modules</li>
-                  <li>▾ src</li>
-                  <li class="hl">&nbsp;&nbsp;router.ts</li>
-                  <li>&nbsp;&nbsp;handlers.ts</li>
-                  <li>package.json</li>
-                  <li>README.md</li>
+                  <li><span class="tc">├─ </span>▸ node_modules</li>
+                  <li><span class="tc">├─ </span>▾ src</li>
+                  <li class="hl"><span class="tc">│  ├─ </span>router.ts</li>
+                  <li><span class="tc">│  └─ </span>handlers.ts</li>
+                  <li><span class="tc">├─ </span>package.json</li>
+                  <li><span class="tc">└─ </span>README.md</li>
                 </ul>
               </aside>
               <div class="pinrail" role="group" aria-label="Focus pins">
@@ -1338,16 +1345,32 @@ const description =
     { name: 'panecrew', files: ['▾ apps/desktop', ['src-tauri/', true], ['src/App.tsx', false], '▸ docs', 'CLAUDE.md', 'pnpm-lock.yaml'] } // brandlint-ok: self-referential demo (this repo's own real file tree)
   ];
 
+  /* files is a flat list where a plain string starts a root-level node
+     and any tuples immediately following it become that node's children
+     — reshape that into real tree nodes, then draw real box-drawing
+     connectors (├─/└─/│) off the shape, same idiom as `tree`/ls -R, not
+     the old fixed &nbsp;&nbsp; indent that couldn't tell first-of/last-of
+     a group apart. */
   function renderExplorer(el, idx, animate) {
     var p = projects[idx];
-    var html = '<p class="hd">explorer · follows focus</p>' +
-      '<p class="proj">▾ ' + p.name + '</p><ul>';
+    var nodes = [];
     p.files.forEach(function (f) {
       if (typeof f === 'string') {
-        html += '<li>' + f + '</li>';
-      } else {
-        html += '<li' + (f[1] ? ' class="hl"' : '') + '>&nbsp;&nbsp;' + f[0] + '</li>';
+        nodes.push({ label: f, hl: false, children: [] });
+      } else if (nodes.length) {
+        nodes[nodes.length - 1].children.push({ label: f[0], hl: f[1] });
       }
+    });
+    var html = '<p class="hd">explorer · follows focus</p>' +
+      '<p class="proj">▾ ' + p.name + '</p><ul>';
+    nodes.forEach(function (node, i) {
+      var lastRoot = i === nodes.length - 1;
+      html += '<li><span class="tc">' + (lastRoot ? '└─ ' : '├─ ') + '</span>' + node.label + '</li>';
+      node.children.forEach(function (child, j) {
+        var lastChild = j === node.children.length - 1;
+        var prefix = (lastRoot ? '   ' : '│  ') + (lastChild ? '└─ ' : '├─ ');
+        html += '<li' + (child.hl ? ' class="hl"' : '') + '><span class="tc">' + prefix + '</span>' + child.label + '</li>';
+      });
     });
     html += '</ul>';
     el.innerHTML = html;
