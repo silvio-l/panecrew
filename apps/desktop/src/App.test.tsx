@@ -1541,6 +1541,92 @@ describe("Grid / Mehrfach-Pane", () => {
     ).toHaveLength(1);
   });
 
+  it("verschiebt einen Terminal-Tab per Chip-Drag in die Nachbar-Pane desselben Projekts, ohne die PTY zu killen (Ticket 32)", async () => {
+    // Beide Panes auf DASSELBE Projekt — die Projektgleichheit ist die
+    // Bedingung des Zugs (der `cwd` einer PTY steht beim Spawn fest).
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />);
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+
+    const sections = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-pane-id]"));
+    const [sourceSection, targetSection] = sections();
+    if (!sourceSection || !targetSection) throw new Error("Zwei Panes erwartet");
+    const sourcePaneId = sourceSection.dataset.paneId;
+    const targetPaneId = targetSection.dataset.paneId;
+    // Die Zelle der ZIEL-Pane: an ihr wird am Ende geprüft, dass der
+    // DOM-Knoten des Tabs wirklich dorthin gewandert ist.
+    const targetCell = targetSection.closest(".pc-workspace > *");
+    if (!targetCell) throw new Error("Ziel-Zelle nicht gefunden");
+
+    // Zweiten Terminal-Tab in der QUELL-Pane öffnen (nur dann ist überhaupt
+    // einer wegziehbar — der letzte verbleibende bleibt, wo er ist).
+    fireEvent.click(
+      within(sourceSection).getByRole("button", {
+        name: "Weiteren Terminal-Tab öffnen",
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+      ).toHaveLength(3);
+    });
+
+    // Der Chip des neuen, jetzt aktiven Tabs. Eindeutig ungescoped: die
+    // Leiste des inaktiven Tabs liegt hinter `visibility: hidden` und fällt
+    // aus Rollen-Queries heraus, die Ziel-Pane hat nur einen Tab.
+    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const movedSurface = chip.closest("[data-pane-id]");
+    if (!(movedSurface instanceof HTMLElement)) {
+      throw new Error("Fläche des gezogenen Tabs nicht gefunden");
+    }
+    expect(movedSurface.dataset.paneId).toBe(sourcePaneId);
+
+    // jsdom hat kein Layout (s. Slot-Tausch-Test oben) — nur die Ziel-Pane
+    // braucht ein Rechteck, sie ist die einzige Kandidatin.
+    const targetRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
+    for (const section of sections()) {
+      if (section.dataset.paneId !== targetPaneId) continue;
+      section.getBoundingClientRect = () => targetRect;
+    }
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    await waitFor(() => {
+      expect(movedSurface.dataset.paneId).toBe(targetPaneId);
+    });
+    // Der eigentliche Nachweis: DERSELBE DOM-Knoten hängt jetzt in der Zelle
+    // der Ziel-Pane — verschoben, nicht neu gebaut.
+    expect(targetCell.contains(movedSurface)).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_spawn"),
+    ).toHaveLength(3);
+    // Die Quell-Pane behält genau einen Tab, die Ziel-Pane hat jetzt zwei.
+    expect(
+      sections().filter((s) => s.dataset.paneId === sourcePaneId),
+    ).toHaveLength(1);
+    expect(
+      sections().filter((s) => s.dataset.paneId === targetPaneId),
+    ).toHaveLength(2);
+  });
+
   it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
     openMock
       .mockResolvedValueOnce("/Users/dev/projects/storefront")

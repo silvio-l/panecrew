@@ -12,7 +12,9 @@ import {
   focusModeSelectSlot,
   focusPane,
   focusedProjectPath,
+  moveTerminalTab,
   openTerminalTab,
+  renameTerminalTab,
   swapPanes,
   switchTemplate,
   switchToFileTab,
@@ -438,6 +440,104 @@ describe("gridState", () => {
       expect(switchToTerminalTab(withOne, "does-not-exist", "tab-0")).toBe(
         withOne,
       );
+    });
+  });
+
+  describe("moveTerminalTab (Ticket 32)", () => {
+    /** Zwei Panes desselben Projekts, die linke mit zwei Terminal-Tabs. */
+    function twoPanesSameProject(): GridState {
+      const withPanes = assignProjectToSlot(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        1,
+        "/repo/a",
+        "pane-1",
+        "tab-1",
+      );
+      return openTerminalTab(withPanes, "pane-0", "tab-0b");
+    }
+
+    it("hängt den Tab in die Ziel-Pane, macht ihn dort aktiv und holt den Fokus mit", () => {
+      const start = twoPanesSameProject();
+      const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
+
+      const target = next.slots[1] as Pane;
+      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-1",
+        "tab-0b",
+      ]);
+      expect(target.activeTerminalTabId).toBe("tab-0b");
+      expect(target.showingFile).toBe(false);
+      expect(next.focusedPaneId).toBe("pane-1");
+    });
+
+    it("lässt die Quell-Pane mit ihrem verbleibenden Tab aktiv zurück", () => {
+      // "tab-0b" war nach `openTerminalTab` der aktive Tab der Quelle — nach
+      // dem Wegziehen muss dort ein anderer übernehmen, sonst zeigte die
+      // Pane auf einen Tab, den sie nicht mehr hat.
+      const start = twoPanesSameProject();
+      const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
+
+      const source = next.slots[0] as Pane;
+      expect(source.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
+      expect(source.activeTerminalTabId).toBe("tab-0");
+    });
+
+    it("lässt den aktiven Tab der Quelle unangetastet, wenn ein INAKTIVER wegzieht", () => {
+      const start = switchToTerminalTab(twoPanesSameProject(), "pane-0", "tab-0");
+      const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
+      expect((next.slots[0] as Pane).activeTerminalTabId).toBe("tab-0");
+    });
+
+    it("verschiebt den Tab als identisches Objekt (Name/PTY-Zuordnung bleiben)", () => {
+      const start = renameTerminalTab(
+        twoPanesSameProject(),
+        "pane-0",
+        "tab-0b",
+        "Build",
+      );
+      const movedBefore = (start.slots[0] as Pane).terminalTabs[1];
+      const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
+      expect((next.slots[1] as Pane).terminalTabs[1]).toBe(movedBefore);
+    });
+
+    it("ist ein No-Op über Projektgrenzen hinweg (identische Referenz)", () => {
+      const start = openTerminalTab(
+        assignProjectToSlot(
+          assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+          1,
+          "/repo/b",
+          "pane-1",
+          "tab-1",
+        ),
+        "pane-0",
+        "tab-0b",
+      );
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-1")).toBe(start);
+    });
+
+    it("ist ein No-Op, wenn die Quelle nur diesen einen Terminal-Tab hätte", () => {
+      const start = assignProjectToSlot(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        1,
+        "/repo/a",
+        "pane-1",
+        "tab-1",
+      );
+      expect(moveTerminalTab(start, "pane-0", "tab-0", "pane-1")).toBe(start);
+    });
+
+    it("ist ein No-Op bei unbekannter Pane, unbekanntem Tab und Ziel = Quelle", () => {
+      const start = twoPanesSameProject();
+      expect(moveTerminalTab(start, "gibt-es-nicht", "tab-0b", "pane-1")).toBe(
+        start,
+      );
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "gibt-es-nicht")).toBe(
+        start,
+      );
+      expect(moveTerminalTab(start, "pane-0", "gibt-es-nicht", "pane-1")).toBe(
+        start,
+      );
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-0")).toBe(start);
     });
   });
 

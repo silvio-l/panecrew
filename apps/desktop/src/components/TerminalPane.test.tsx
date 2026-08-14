@@ -54,6 +54,12 @@ const paneTabs: PaneTabsProps = {
   onCloseTerminalTab: vi.fn(),
   onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
+  tabDrag: {
+    start: vi.fn(),
+    consumeClick: () => false,
+    draggingTabId: null,
+    draggable: true,
+  },
 };
 
 const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
@@ -155,6 +161,92 @@ describe("TerminalPane", () => {
 
     rerender(paneElement(false, true, false));
     expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("meldet die Drop-Registrierung beim Pane-Wechsel um (Ticket 32)", () => {
+    // Ein verschobener Terminal-Tab wird NICHT neu gemountet (das ist der
+    // ganze Punkt des Tickets) — seine `paneId`-Prop wechselt einfach. Ohne
+    // diese Ummeldung lieferte ein Finder-Drop danach in die alte Pane, und
+    // zwar lautlos: sichtbar wäre nur, dass der Pfad in einem anderen
+    // Terminal landet als dem, auf das gezielt wurde.
+    const dropTargets = {
+      register: vi.fn(),
+      unregister: vi.fn(),
+      paneAtPoint: vi.fn(() => null),
+      insertInto: vi.fn(),
+    };
+    const element = (paneId: string) => (
+      <Tooltip.Provider>
+        <TerminalPane
+          paneId={paneId}
+          tabId="tab-1"
+          projectPath="/tmp/projekt"
+          projectName="projekt"
+          focused
+          maximized={false}
+          active
+          dropTarget={false}
+          tabs={paneTabs}
+          dropTargets={dropTargets}
+          onClose={vi.fn()}
+          onFocus={vi.fn()}
+          onHeaderPointerDown={vi.fn()}
+          onToggleFocusMode={vi.fn()}
+          focusModeHud={null}
+        />
+      </Tooltip.Provider>
+    );
+
+    const { rerender } = render(element("pane-1"));
+    expect(dropTargets.register).toHaveBeenCalledWith(
+      "pane-1",
+      expect.any(Function),
+    );
+
+    rerender(element("pane-2"));
+    expect(dropTargets.unregister).toHaveBeenCalledWith("pane-1");
+    expect(dropTargets.register).toHaveBeenCalledWith(
+      "pane-2",
+      expect.any(Function),
+    );
+  });
+
+  it("holt den Fokus zurück, wenn der Tab die Pane gewechselt hat (Ticket 32)", () => {
+    // `active` und `focused` bleiben beim Zug beide `true` — nur die `paneId`
+    // wechselt. Das Umhängen des DOM-Knotens nimmt den Fokus mit auf
+    // `<body>`, deshalb muss dieser Fall eigens erkannt werden.
+    const element = (paneId: string) => (
+      <Tooltip.Provider>
+        <TerminalPane
+          paneId={paneId}
+          tabId="tab-1"
+          projectPath="/tmp/projekt"
+          projectName="projekt"
+          focused
+          maximized={false}
+          active
+          dropTarget={false}
+          tabs={paneTabs}
+          dropTargets={{
+            register: vi.fn(),
+            unregister: vi.fn(),
+            paneAtPoint: vi.fn(() => null),
+            insertInto: vi.fn(),
+          }}
+          onClose={vi.fn()}
+          onFocus={vi.fn()}
+          onHeaderPointerDown={vi.fn()}
+          onToggleFocusMode={vi.fn()}
+          focusModeHud={null}
+        />
+      </Tooltip.Provider>
+    );
+
+    const { rerender } = render(element("pane-1"));
+    expect(focus).not.toHaveBeenCalled();
+
+    rerender(element("pane-2"));
+    expect(focus).toHaveBeenCalledOnce();
   });
 
   it("quittiert Kopieren per Tastenkombination genauso wie über das Kontextmenü", () => {

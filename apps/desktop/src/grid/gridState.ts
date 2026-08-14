@@ -263,6 +263,32 @@ export function openTerminalTab(
   return { ...state, slots: nextSlots };
 }
 
+/** Entfernt einen Terminal-Tab aus der Liste einer Pane und beantwortet die
+ * Anschlussfrage gleich mit: welcher Tab ist danach aktiv? War der entfernte
+ * nicht aktiv, ändert sich daran nichts; war er es, übernimmt sein Vorgänger
+ * (an Position 0: sein Nachfolger).
+ *
+ * Geteilt von `closeTerminalTab` und `moveTerminalTab` — beide entfernen den
+ * Tab an derselben Stelle aus derselben Liste und unterscheiden sich nur
+ * darin, was DANACH mit ihm passiert (sterben bzw. in einer anderen Pane
+ * weiterleben). Aufrufer garantieren `terminalTabs.length > 1` und einen
+ * gültigen `tabIndex`; der Fallback-Zugriff unten ist deshalb nie leer. */
+function withoutTerminalTab(
+  pane: Pane,
+  tabIndex: number,
+): Pick<Pane, "terminalTabs" | "activeTerminalTabId"> {
+  const tabId = (pane.terminalTabs[tabIndex] as TerminalTab).tabId;
+  const nextTabs = pane.terminalTabs.filter((tab) => tab.tabId !== tabId);
+  const fallbackTab = nextTabs[Math.max(tabIndex - 1, 0)] ?? nextTabs[0];
+  return {
+    terminalTabs: nextTabs,
+    activeTerminalTabId:
+      pane.activeTerminalTabId === tabId
+        ? (fallbackTab as TerminalTab).tabId
+        : pane.activeTerminalTabId,
+  };
+}
+
 /** Schließt einen Terminal-Tab (beendet nur dessen PTY, nicht die Pane) —
  * der letzte verbleibende Terminal-Tab einer Pane lässt sich nicht
  * schließen (identische Referenz), ebenso eine unbekannte `paneId`/`tabId`.
@@ -281,22 +307,66 @@ export function closeTerminalTab(
   const tabIndex = pane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
   if (tabIndex === -1) return state;
 
-  // nextTabs hat mindestens ein Element (Guard oben: terminalTabs.length > 1
-  // vor dem Filtern), der Fallback-Zugriff auf Index 0 ist also nie leer.
-  const nextTabs = pane.terminalTabs.filter((tab) => tab.tabId !== tabId);
-  const fallbackTab = nextTabs[Math.max(tabIndex - 1, 0)] ?? nextTabs[0];
-  const nextActiveTabId =
-    pane.activeTerminalTabId === tabId
-      ? (fallbackTab as TerminalTab).tabId
-      : pane.activeTerminalTabId;
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = { ...pane, ...withoutTerminalTab(pane, tabIndex) };
+  return { ...state, slots: nextSlots };
+}
+
+/**
+ * Verschiebt einen Terminal-Tab in eine andere Pane DESSELBEN Projekts
+ * (Ticket 32) — der Tab wechselt den Besitzer, seine PTY läuft unverändert
+ * weiter (dass das auch beim Rendern hält, ist die eigentliche Arbeit des
+ * Tickets, s. `useTerminalTabHosts.ts`).
+ *
+ * Die Projekt-Gleichheit ist harte Bedingung, nicht Komfort: der `cwd` einer
+ * PTY steht beim Spawn fest und ist danach nicht mehr änderbar — ein Tab in
+ * einer Pane mit anderem Projektpfad zeigte dauerhaft ein Terminal, das
+ * woanders steht als die Pane behauptet (und als der Explorer beim
+ * Fokussieren dieser Pane zeigt).
+ *
+ * No-Op (identische Referenz) bei: unbekannter Quell-/Ziel-Pane, gleicher
+ * Quell- und Ziel-Pane, unterschiedlichem Projektpfad, unbekanntem Tab und
+ * wenn die Quelle danach ohne Terminal-Tab dastünde (dieselbe Untergrenze
+ * wie beim Schließen).
+ *
+ * Der Tab landet am ENDE der Ziel-Leiste und wird dort sofort aktiv (wie
+ * `openTerminalTab`), der Fokus wandert mit ihm — ohne das zeigten
+ * Akzentrahmen und Explorer weiter auf die Quelle, während die Eingabe schon
+ * in der Ziel-Pane landet.
+ */
+export function moveTerminalTab(
+  state: GridState,
+  sourcePaneId: string,
+  tabId: string,
+  targetPaneId: string,
+): GridState {
+  if (sourcePaneId === targetPaneId) return state;
+  const sourceIndex = state.slots.findIndex(
+    (slot) => slot?.paneId === sourcePaneId,
+  );
+  const targetIndex = state.slots.findIndex(
+    (slot) => slot?.paneId === targetPaneId,
+  );
+  if (sourceIndex === -1 || targetIndex === -1) return state;
+
+  const source = state.slots[sourceIndex] as Pane;
+  const target = state.slots[targetIndex] as Pane;
+  if (source.projectPath !== target.projectPath) return state;
+  if (source.terminalTabs.length <= 1) return state;
+
+  const tabIndex = source.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) return state;
+  const movedTab = source.terminalTabs[tabIndex] as TerminalTab;
 
   const nextSlots = state.slots.slice();
-  nextSlots[index] = {
-    ...pane,
-    terminalTabs: nextTabs,
-    activeTerminalTabId: nextActiveTabId,
+  nextSlots[sourceIndex] = { ...source, ...withoutTerminalTab(source, tabIndex) };
+  nextSlots[targetIndex] = {
+    ...target,
+    terminalTabs: [...target.terminalTabs, movedTab],
+    activeTerminalTabId: movedTab.tabId,
+    showingFile: false,
   };
-  return { ...state, slots: nextSlots };
+  return { ...state, slots: nextSlots, focusedPaneId: targetPaneId };
 }
 
 /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü

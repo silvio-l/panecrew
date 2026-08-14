@@ -111,6 +111,7 @@ function App() {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    moveTerminalTab,
     renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
@@ -924,6 +925,7 @@ function App() {
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}
               onRenameTerminalTab={renameTerminalTab}
+              onMoveTerminalTab={moveTerminalTab}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}

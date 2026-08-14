@@ -191,15 +191,30 @@ export function TerminalPane({
   // `active` gar nicht — ohne diesen Zweig blieb der Rahmen/Trace-Fokus
   // sichtbar bei der Ziel-Pane, während Tastatureingaben weiter im vorher
   // fokussierten Terminal landeten.
+  //
+  // Dritte Bedingung (`paneId`-Wechsel) ergänzt 2026-08-14 mit Ticket 32: ein
+  // in eine andere Pane gezogener Tab behält `active` UND `focused` (er wird
+  // im Ziel sofort aktiv, und der Zug nimmt den Pane-Fokus mit) — keiner der
+  // beiden Übergänge oben feuert also. Trotzdem ist der DOM-Fokus danach weg:
+  // das Umhängen des Containers (`useTerminalTabHosts.ts`) nimmt den Knoten
+  // kurz aus dem Dokument, und der Browser gibt den Fokus dabei an `<body>`
+  // zurück. Der Wechsel der eigenen `paneId` IST dieses Umhängen.
   const wasActive = useRef(active);
   const wasFocused = useRef(focused);
+  const wasPaneId = useRef(paneId);
   useEffect(() => {
-    if (active && (!wasActive.current || !wasFocused.current) && focused) {
+    const movedToOtherPane = wasPaneId.current !== paneId;
+    if (
+      active &&
+      focused &&
+      (!wasActive.current || !wasFocused.current || movedToOtherPane)
+    ) {
       focus();
     }
     wasActive.current = active;
     wasFocused.current = focused;
-  }, [active, focused, focus]);
+    wasPaneId.current = paneId;
+  }, [active, focused, paneId, focus]);
 
   // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
   // Pane-Aufblitz): `onTabAttentionFlash` meldet den Chip-Aufblitz

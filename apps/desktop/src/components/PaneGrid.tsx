@@ -6,20 +6,41 @@
 // Slot-Index — nie ein pro-Region-Wrapper-`<div>`, der nach Slot-Index
 // geschlüsselt ist, sonst würde eine Kompaktierung (Quad→Geteilt mit Panes an
 // Slot 0 und 3) über einen Index-Key-Wechsel unmounten und per
-// `usePtyTerminal`s Cleanup eine lebende PTY killen.
+// `usePtyTerminal`s Cleanup eine lebende PTY killen. Seit Ticket 20 hängt am
+// selben Array noch ein Zweites: der Slot-Tausch IST dieses Umsortieren, und
+// `useGridTransitions.ts` liest die DOM-Reihenfolge der Kinder positionsweise
+// gegen dieselben Schlüssel — beide brächen, sobald hier etwas anderes als
+// genau ein Kind je Slot stünde. (Die Portale unten erzeugen an dieser Stelle
+// KEIN DOM, sie sind nur fiber-seitig Kinder — die Kinderliste des
+// `.pc-workspace` bleibt exakt die Slot-Liste.)
 //
 // Daraus folgt unmittelbar, wie die sieben Templates aussehen dürfen: als
 // Klasse am Container, nie als Struktur darin. Kein Template fügt ein Kind
 // hinzu, entfernt eines oder sortiert um — deshalb ist der Unterschied
 // zwischen Quad und Viererreihe für React gar kein Unterschied, und deshalb
 // überlebt jede PTY jeden Wechsel. Die Spuren selbst stehen in App.css.
-import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+//
+// Terminal-Tabs (Ticket 32) hängen NICHT mehr in ihrer Zelle, sondern als
+// flache Liste hier: je Tab ein Portal in einen stabilen, nicht von React
+// verwalteten Container (`grid/useTerminalTabHosts.ts`), der per DOM in die
+// Host-Fläche seiner gerade besitzenden Pane gehängt wird. Nur so kann ein Tab
+// die Pane wechseln, ohne unmountet — und damit seine PTY gekillt — zu
+// werden; die ausführliche Begründung steht im Kopfkommentar jenes Hooks.
+import {
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
 import type { GridState, Pane } from "../grid/gridState";
 import { useGridTransitions } from "../grid/useGridTransitions";
 import { usePaneDrag } from "../grid/usePaneDrag";
+import { useTerminalTabHosts, type TabOwnership } from "../grid/useTerminalTabHosts";
 import type { FocusRotation } from "../grid/useFocusRotation";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { projectNameFromPath } from "../types/project";
@@ -29,6 +50,30 @@ import { FocusModeHud } from "./FocusModeHud";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
 import { TerminalPane } from "./TerminalPane";
+
+/** Alles, was für EINE belegte Zelle einmal zentral abgeleitet wird — Zelle
+ * und Terminal-Tabs liegen seit Ticket 32 in zwei getrennten Teilbäumen und
+ * brauchen dieselben Werte (allen voran `tabs`: die Tab-Leiste ist in beiden
+ * Flächen dasselbe Objekt, s. `PaneTabsProps`). Zweimal abgeleitet wären sie
+ * zwei Wahrheiten, die auseinanderlaufen können. */
+interface PaneView {
+  pane: Pane;
+  focused: boolean;
+  maximized: boolean;
+  /** Die für DIESES Rendern gültige, abgeleitete Ansicht — nicht `pane`s
+   * Rohfeld (s. Herleitung unten). */
+  showingFile: boolean;
+  tabs: PaneTabsProps;
+  focusModeHud: ReactNode;
+  dropInvite: ReactNode;
+  dragSource: boolean;
+  fileDropTarget: boolean;
+  editor: ReturnType<PaneFileEditors["editorFor"]>;
+  onHeaderPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
+  onToggleFocusMode: () => void;
+  onClose: () => void;
+  onFocus: () => void;
+}
 
 export function PaneGrid({
   state,
@@ -45,6 +90,7 @@ export function PaneGrid({
   onOpenTerminalTab,
   onCloseTerminalTab,
   onRenameTerminalTab,
+  onMoveTerminalTab,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
   onEnterFocusMode,
@@ -66,10 +112,12 @@ export function PaneGrid({
    * gehalten statt hier erzeugt (Begründung dort) — beide Drop-Quellen
    * brauchen sie, und die eine beginnt außerhalb dieses Baums. */
   dropTargets: PaneDropRegistration;
-  /** Die Pane unter einem schwebenden Drag, aus welcher Quelle auch immer —
-   * `null`, wenn gerade keine. `App.tsx` führt die beiden Quellen zu diesem
-   * einen Wert zusammen, damit das Drop-Ziel-HUD hier nicht zwei Herkünfte
-   * auseinanderhalten muss: für die Pane ist beides derselbe Zustand. */
+  /** Die Pane unter einem schwebenden Datei-Drag, aus welcher Quelle auch
+   * immer — `null`, wenn gerade keine. `App.tsx` führt die beiden Quellen zu
+   * diesem einen Wert zusammen, damit das Drop-Ziel-HUD hier nicht zwei
+   * Herkünfte auseinanderhalten muss: für die Pane ist beides derselbe
+   * Zustand. (Die beiden GRID-eigenen Züge — Slot-Tausch, Tab-Verschieben —
+   * entstehen dagegen hier drin, s. u.) */
   dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
@@ -82,6 +130,13 @@ export function PaneGrid({
   /** Kontextmenü-Aktion "Umbenennen" (`PaneTabs.tsx`) — `label: null` löscht
    * den Namen wieder. */
   onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
+  /** Terminal-Tab in eine andere Pane desselben Projekts verschieben (Ticket
+   * 32) — wie der Slot-Tausch eine hier drin entstehende Geste. */
+  onMoveTerminalTab: (
+    sourcePaneId: string,
+    tabId: string,
+    targetPaneId: string,
+  ) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — der Klick auf den
@@ -98,38 +153,174 @@ export function PaneGrid({
 }) {
   const { t } = useTranslation();
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const hosts = useTerminalTabHosts();
 
-  // Slot-Tausch (Ticket 20): der Pane-Header ist der Griff, jede ANDERE
-  // belegte Pane ein gültiges Ziel. Der Zustand des Zugs lebt hier und nicht
+  // Die beiden Grid-eigenen Züge (Ticket 20: Pane↔Slot am Header-Griff;
+  // Ticket 32: Terminal-Tab am Chip-Griff). Ihr Zustand lebt hier und nicht
   // in App.tsx (anders als bei den Datei-Drops, deren eine Quelle außerhalb
   // dieses Baums beginnt) — Griff, Ziele und Wirkung liegen alle innerhalb
   // dieses Grids, ein Umweg über die App-Ebene brächte nur Durchreichung.
   const paneDrag = usePaneDrag<string>();
+  const tabDrag = usePaneDrag<{ paneId: string; tabId: string }>();
   // Im Fokus-Modus ist genau eine Pane sichtbar: es gibt kein Ziel, auf das
   // man zielen könnte, und die ausgeblendeten Nachbarn behalten ihre
   // Rechtecke (`visibility: hidden`, s. u.) — ohne diese Sperre träfe die
-  // Trefferprüfung Panes, die niemand sieht.
-  const swapEnabled = state.maximizedPaneId === null;
-  const occupiedPaneIds = state.slots.flatMap((slot) =>
-    slot ? [slot.paneId] : [],
+  // Trefferprüfung Panes, die niemand sieht. Gilt für beide Züge.
+  const dragEnabled = state.maximizedPaneId === null;
+
+  const startPaneDrag =
+    (paneId: string) => (event: ReactPointerEvent<HTMLElement>) => {
+      if (!dragEnabled) return;
+      // Die Bedienelemente im Header (Tab-Chips, Fokus-Modus, Schließen, das
+      // Umbenennen-Feld) behalten ihre eigene Geste — ohne diese Ausnahme
+      // begänne jeder Klick auf sie zugleich einen Zug, und die 4px-Schwelle
+      // allein rettete das nur, solange die Hand ruhig bleibt.
+      if (event.target instanceof Element && event.target.closest("button, input")) {
+        return;
+      }
+      paneDrag.startDrag(event, {
+        source: paneId,
+        candidatePaneIds: state.slots.flatMap((slot) =>
+          slot && slot.paneId !== paneId ? [slot.paneId] : [],
+        ),
+        onDrop: (targetPaneId) => onSwapPanes(paneId, targetPaneId),
+      });
+    };
+
+  const startTabDrag =
+    (pane: Pane) => (tabId: string, event: ReactPointerEvent<HTMLElement>) => {
+      if (!dragEnabled) return;
+      // Der letzte verbleibende Tab lässt sich nicht wegziehen — dieselbe
+      // Untergrenze wie beim Schließen (`PaneTabs.tsx`' `closable`), und der
+      // Reducer wäre an dieser Stelle ohnehin ein No-Op.
+      if (pane.terminalTabs.length <= 1) return;
+      tabDrag.startDrag(event, {
+        source: { paneId: pane.paneId, tabId },
+        // Nur Panes DESSELBEN Projekts: der `cwd` einer PTY steht beim Spawn
+        // fest, ein Tab in einer Pane mit anderem Projektpfad zeigte
+        // dauerhaft woanders hin als seine Pane behauptet. Die Ablehnung
+        // steckt in dieser Liste und wirkt damit schon beim Schweben — kein
+        // HUD über einer Pane, in der ein Loslassen nichts täte.
+        candidatePaneIds: state.slots.flatMap((slot) =>
+          slot &&
+          slot.paneId !== pane.paneId &&
+          slot.projectPath === pane.projectPath
+            ? [slot.paneId]
+            : [],
+        ),
+        onDrop: (targetPaneId) =>
+          onMoveTerminalTab(pane.paneId, tabId, targetPaneId),
+      });
+    };
+
+  const views: (PaneView | null)[] = state.slots.map((slot, index) => {
+    if (!slot) return null;
+    const pane = slot;
+    const focused = pane.paneId === state.focusedPaneId;
+    const maximized = pane.paneId === state.maximizedPaneId;
+    const editor = paneFileEditors.editorFor(pane.paneId);
+    // `pane.showingFile` ist reine Nutzer-ABSICHT (gridState.ts kennt keinen
+    // Dateizustand) — ob dazu wirklich eine Fläche existiert, weiß nur der
+    // Editor-Zustand hier. Ohne diesen Abgleich bliebe eine Pane nach einem
+    // wiederhergestellten `active_tab: {kind:"file"}` auf einen inzwischen
+    // ungültigen Pfad tot: FileEditor liefert bei `status === "idle"` `null`,
+    // und kein Terminal-Tab wäre je sichtbar.
+    const openPath = editor.state.status === "idle" ? null : editor.state.path;
+    const showingFile = pane.showingFile && openPath !== null;
+
+    return {
+      pane,
+      focused,
+      maximized,
+      showingFile,
+      editor,
+      tabs: {
+        terminalTabs: pane.terminalTabs.map((tab, i) => ({
+          tabId: tab.tabId,
+          number: i + 1,
+          label: tab.label,
+        })),
+        activeTerminalTabId: pane.activeTerminalTabId,
+        // Grid-Fokus dieser Pane, nicht Tab-Auswahl innerhalb ihrer eigenen
+        // Leiste (Begründung an PaneTabs.tsx' `paneFocused`-Feld).
+        paneFocused: focused,
+        showingFile,
+        fileName: openPath === null ? null : fileNameFromPath(openPath),
+        fileDirty: editor.wouldLoseWork,
+        tabDrag: {
+          start: startTabDrag(pane),
+          consumeClick: tabDrag.consumeDragClick,
+          draggingTabId:
+            tabDrag.source?.paneId === pane.paneId
+              ? tabDrag.source.tabId
+              : null,
+          // Nur was auch wandern könnte, kündigt sich als Griff an.
+          draggable: dragEnabled && pane.terminalTabs.length > 1,
+        },
+        onSelectTerminalTab: (tabId) =>
+          onSwitchToTerminalTab(pane.paneId, tabId),
+        onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
+        onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
+        onRenameTerminalTab: (tabId, label) =>
+          onRenameTerminalTab(pane.paneId, tabId, label),
+        onSelectFile: () => onSwitchToFileTab(pane.paneId),
+      },
+      // Rotations-Cluster des Fokus-Modus (Ticket 19) — EINMAL pro Zelle
+      // berechnet und identisch an TerminalPane.tsx UND FileEditor.tsx
+      // gereicht (Begründung/Platzierung im Pane-Header statt als
+      // freischwebendes Overlay: FocusModeHud.tsx-Kopfkommentar). `null` für
+      // jede nicht-maximierte Zelle — beide Flächen rendern dann einfach
+      // nichts an der Stelle.
+      focusModeHud: maximized ? (
+        <FocusModeHud
+          slotNumber={index + 1}
+          totalSlots={state.slots.length}
+          rotation={rotation}
+        />
+      ) : null,
+      // Welcher der beiden Grid-eigenen Züge gerade über dieser Zelle
+      // schwebt — sie schließen einander aus, ein Zeiger zieht immer nur
+      // eines von beidem.
+      dropInvite:
+        tabDrag.targetPaneId === pane.paneId ? (
+          <PaneDropInvite glyph="⇥" label={t("paneDrag.moveTabInvite")} />
+        ) : paneDrag.targetPaneId === pane.paneId ? (
+          <PaneDropInvite glyph="⇄" label={t("paneDrag.swapInvite")} />
+        ) : null,
+      dragSource: paneDrag.source === pane.paneId,
+      fileDropTarget: pane.paneId === dragTargetPaneId,
+      onHeaderPointerDown: startPaneDrag(pane.paneId),
+      // Derselbe Header-Knopf ist Ein- und Ausstieg zugleich: eine maximierte
+      // Pane bietet "verlassen" an, jede andere "maximieren" — zwei
+      // Aktionen, aber immer nur EIN sichtbarer Knopf pro Zelle.
+      onToggleFocusMode: () =>
+        maximized ? onExitFocusMode() : onEnterFocusMode(pane.paneId),
+      onClose: () => onClosePane(pane.paneId),
+      onFocus: () => onFocusPane(pane.paneId),
+    };
+  });
+
+  // Wer besitzt gerade welchen Tab — die einzige Eingabe des Umhängens.
+  const ownership: TabOwnership[] = views.flatMap((view) =>
+    view === null
+      ? []
+      : view.pane.terminalTabs.map((tab) => ({
+          tabId: tab.tabId,
+          paneId: view.pane.paneId,
+        })),
   );
-  const startPaneDrag = (paneId: string) => (event: ReactPointerEvent<HTMLElement>) => {
-    if (!swapEnabled) return;
-    // Die Bedienelemente im Header (Tab-Chips, Fokus-Modus, Schließen, das
-    // Umbenennen-Feld) behalten ihre eigene Geste — ohne diese Ausnahme
-    // begänne jeder Klick auf sie zugleich einen Zug, und die 4px-Schwelle
-    // allein rettete das nur, solange die Hand ruhig bleibt.
-    if (event.target instanceof Element && event.target.closest("button, input")) {
-      return;
-    }
-    paneDrag.startDrag(event, {
-      source: paneId,
-      candidatePaneIds: occupiedPaneIds.filter((id) => id !== paneId),
-      onDrop: (targetPaneId) => onSwapPanes(paneId, targetPaneId),
-    });
-  };
-  // Weiche Übergänge für Template-Wechsel und Fokus-Modus (FLIP, s.
-  // useGridTransitions.ts) — reine WAAPI-Animationen auf den bestehenden
+  // LAYOUT-Effekt, nicht passiv, und bewusst ohne Dependency-Array (wie
+  // useGridTransitions.ts): alle Layout-Effekte laufen vor allen passiven,
+  // der Container hängt dadurch garantiert im Dokument, bevor
+  // `usePtyTerminal`s Mount-Effekt `terminal.open()`/`fitAddon.fit()` ruft —
+  // in einem noch nicht eingehängten Container misst der FitAddon 0×0.
+  // `syncOwnership` ist idempotent, ein Lauf pro Commit kostet nichts.
+  useLayoutEffect(() => {
+    hosts.syncOwnership(ownership);
+  });
+
+  // Weiche Übergänge für Template-Wechsel, Fokus-Modus und Slot-Tausch (FLIP,
+  // s. useGridTransitions.ts) — reine WAAPI-Animationen auf den bestehenden
   // Zellen, die Unmount-Invariante dieses Baums (Kopfkommentar) bleibt
   // unberührt. Die Schlüssel entsprechen exakt den React-Keys unten, denn
   // DOM-Reihenfolge = Slot-Reihenfolge (dieselbe Invariante).
@@ -148,43 +339,14 @@ export function PaneGrid({
     // Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
     // (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig.
     <div ref={workspaceRef} className={`pc-workspace pc-layout--${state.template}`}>
-      {state.slots.map((slot, index) =>
-        slot ? (
+      {views.map((view, index) =>
+        view ? (
           <PaneCell
-            key={slot.paneId}
-            pane={slot}
-            focused={slot.paneId === state.focusedPaneId}
-            maximized={slot.paneId === state.maximizedPaneId}
+            key={view.pane.paneId}
+            view={view}
             focusModeActive={state.maximizedPaneId !== null}
-            slotNumber={index + 1}
-            totalSlots={state.slots.length}
-            rotation={rotation}
-            dropTarget={slot.paneId === dragTargetPaneId}
-            dragSource={paneDrag.source === slot.paneId}
-            dropInvite={
-              paneDrag.targetPaneId === slot.paneId ? (
-                <PaneDropInvite glyph="⇄" label={t("paneDrag.swapInvite")} />
-              ) : null
-            }
-            editor={paneFileEditors.editorFor(slot.paneId)}
+            hostRef={hosts.hostRef(view.pane.paneId)}
             guardLeave={guardLeave}
-            dropTargets={dropTargets}
-            onClose={() => onClosePane(slot.paneId)}
-            onFocus={() => onFocusPane(slot.paneId)}
-            onHeaderPointerDown={startPaneDrag(slot.paneId)}
-            onOpenTerminalTab={onOpenTerminalTab}
-            onCloseTerminalTab={onCloseTerminalTab}
-            onRenameTerminalTab={onRenameTerminalTab}
-            onSwitchToTerminalTab={onSwitchToTerminalTab}
-            onSwitchToFileTab={onSwitchToFileTab}
-            // Derselbe Header-Knopf ist Ein- und Ausstieg zugleich: eine
-            // maximierte Pane bietet "verlassen" an, jede andere "maximieren"
-            // — zwei Aktionen, aber immer nur EIN sichtbarer Knopf pro Zelle.
-            onToggleFocusMode={() =>
-              slot.paneId === state.maximizedPaneId
-                ? onExitFocusMode()
-                : onEnterFocusMode(slot.paneId)
-            }
           />
         ) : (
           <ProjectPicker
@@ -197,114 +359,107 @@ export function PaneGrid({
           />
         ),
       )}
+      {/* NACH den Zellen: Portale rendern zwar kein DOM an dieser Stelle,
+          aber ihre Kinder mounten in Baumreihenfolge — die Host-Flächen der
+          Zellen sind dadurch schon per Ref eingetragen, wenn der Layout-
+          Effekt oben die Container einhängt. */}
+      {views.flatMap((view) =>
+        view === null
+          ? []
+          : view.pane.terminalTabs.map((tab) =>
+              createPortal(
+                <TerminalTabSurface
+                  view={view}
+                  tabId={tab.tabId}
+                  dropTargets={dropTargets}
+                />,
+                hosts.containerFor(tab.tabId),
+                tab.tabId,
+              ),
+            ),
+      )}
+    </div>
+  );
+}
+
+/** Eine Terminal-Tab-Fläche, gerendert ins stabile Container-`<div>` ihres
+ * Tabs (Kopfkommentar) und dadurch dort, wo dessen Host-Fläche gerade hängt.
+ * Alle Werte kommen aus der `PaneView` ihrer AKTUELLEN Besitzer-Pane — nach
+ * einem Zug ist das eine andere, ohne dass hier etwas neu gemountet wird. */
+function TerminalTabSurface({
+  view,
+  tabId,
+  dropTargets,
+}: {
+  view: PaneView;
+  tabId: string;
+  dropTargets: PaneDropRegistration;
+}) {
+  const isActiveTab = tabId === view.pane.activeTerminalTabId;
+  const isVisible = isActiveTab && !view.showingFile;
+  return (
+    // Jede Fläche bleibt gemountet, nur ausgeblendet — ein Unmount würde über
+    // `usePtyTerminal`s Cleanup `pty_kill` auslösen. Deshalb NICHT `hidden`
+    // (= `display: none`): ein inaktiver Tab wäre damit 0×0 groß, denn
+    // `usePtyTerminal.ts`s `fitAddon.fit()` misst die Containerbox beim
+    // Mount, und `display: none` nimmt sie komplett aus dem Layout. Jede
+    // Fläche liegt `absolute inset-0` exakt über den anderen (Bezug ist die
+    // Host-Fläche der Zelle, `PaneCell` unten) und wird nur per inline
+    // `visibility: hidden` ausgeblendet — das lässt den Platz im Layout,
+    // xterm.js misst also auch als inaktiver Tab korrekt, und nimmt
+    // Klicks/Drops gleich mit raus, ohne ein zusätzliches
+    // `pointer-events: none` zu brauchen. Inline statt Tailwind-Klasse, damit
+    // es unabhängig vom geladenen Stylesheet real vorhanden ist (u. a.
+    // Voraussetzung für Testing Librarys `toBeVisible()`).
+    <div
+      className="absolute inset-0 flex min-h-0 flex-col"
+      style={isVisible ? undefined : { visibility: "hidden" }}
+    >
+      <TerminalPane
+        paneId={view.pane.paneId}
+        tabId={tabId}
+        projectPath={view.pane.projectPath}
+        projectName={projectNameFromPath(view.pane.projectPath)}
+        focused={view.focused}
+        maximized={view.maximized}
+        // Unabhängig von `showingFile`: genau EIN Terminal-Tab je Pane trägt
+        // die Drop-Registrierung (`useWebviewFileDrop.ts`) — korrekt an den
+        // AKTIVEN von N Tabs gebunden statt zufällig an den zuletzt
+        // gemounteten. Seit Ticket 32 zählt dabei die aktuelle Besitzer-Pane:
+        // ein verschobener Tab meldet sich bei der alten ab und bei der neuen
+        // an (Regressionstest in TerminalPane.test.tsx).
+        active={isActiveTab}
+        dropTarget={view.fileDropTarget}
+        tabs={view.tabs}
+        dropTargets={dropTargets}
+        onClose={view.onClose}
+        onFocus={view.onFocus}
+        onHeaderPointerDown={view.onHeaderPointerDown}
+        onToggleFocusMode={view.onToggleFocusMode}
+        focusModeHud={view.focusModeHud}
+      />
     </div>
   );
 }
 
 function PaneCell({
-  pane,
-  focused,
-  maximized,
+  view,
   focusModeActive,
-  slotNumber,
-  dropTarget,
-  dragSource,
-  dropInvite,
-  editor,
+  hostRef,
   guardLeave,
-  dropTargets,
-  onClose,
-  onFocus,
-  onHeaderPointerDown,
-  onOpenTerminalTab,
-  onCloseTerminalTab,
-  onRenameTerminalTab,
-  onSwitchToTerminalTab,
-  onSwitchToFileTab,
-  onToggleFocusMode,
-  totalSlots,
-  rotation,
 }: {
-  pane: Pane;
-  focused: boolean;
-  /** Ob GENAU DIESE Pane gerade den Fokus-Modus trägt (Ticket 19) — sie
-   * spannt sich per `grid-area` über das ganze Raster, alle übrigen Zellen
-   * bleiben gemountet, werden aber unsichtbar (s. u.). */
-  maximized: boolean;
+  view: PaneView;
   /** Ob IRGENDEINE Pane gerade maximiert ist — auch für die anderen Zellen
    * relevant, die dann `visibility: hidden` bekommen statt ihrer normalen
    * Sichtbarkeit. */
   focusModeActive: boolean;
-  /** 1-basiert, wie die Zahlen-Hotkeys im Fokus-Modus — dieselbe Zahl wie
-   * `ProjectPicker`s Slot-Beschriftung. */
-  slotNumber: number;
-  /** Ob ein Datei-Drag gerade über DIESER Pane schwebt (`useWebviewFileDrop`)
-   * — der aktive Terminal-Tab zeigt dann sein Drop-Ziel-HUD. */
-  dropTarget: boolean;
-  /** Ob DIESE Pane gerade selbst gezogen wird (Ticket 20) — sie tritt für die
-   * Dauer des Zugs zurück, damit die Aufmerksamkeit beim Ziel liegt. */
-  dragSource: boolean;
-  /** Fertig gerendertes Drop-Ziel-HUD für die Grid-eigenen Züge, oder `null`
-   * — dieselbe Aufteilung wie bei `focusModeHud`: die Entscheidung, WELCHER
-   * Zug gerade über dieser Zelle schwebt, trifft `PaneGrid` einmal zentral,
-   * diese Zelle platziert nur noch das Ergebnis. Bewusst auf ZELL-Ebene und
-   * nicht (wie das Datei-Drop-HUD) in der Terminalfläche: der Tausch betrifft
-   * die ganze Pane, und eine Pane mit offener Datei muss ihn genauso
-   * anzeigen. */
-  dropInvite: ReactNode;
-  editor: ReturnType<PaneFileEditors["editorFor"]>;
+  /** Ref-Callback für die Host-Fläche der Terminal-Tabs dieser Pane
+   * (`useTerminalTabHosts.ts`). React legt in diesen Knoten nie selbst etwas
+   * hinein — seine Kinder sind die stabilen Tab-Container. */
+  hostRef: (element: HTMLDivElement | null) => void;
   guardLeave: (paneId: string, run: () => void) => void;
-  dropTargets: PaneDropRegistration;
-  onClose: () => void;
-  onFocus: () => void;
-  /** Zieh-Griff beider Kopfzeilen (Terminal wie Datei) — s. `PaneGrid`s
-   * `startPaneDrag`. */
-  onHeaderPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
-  onOpenTerminalTab: (paneId: string) => void;
-  onCloseTerminalTab: (paneId: string, tabId: string) => void;
-  onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
-  onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
-  onSwitchToFileTab: (paneId: string) => void;
-  /** Ein Aufruf deckt beide Richtungen ab — s. `PaneGrid`s Berechnung oben:
-   * maximiert diese Pane, wenn sie es noch nicht ist, sonst verlässt sie den
-   * Fokus-Modus. */
-  onToggleFocusMode: () => void;
-  /** Für die HUD-Leiste der maximierten Zelle: "2/4"-Positionsanzeige. */
-  totalSlots: number;
-  /** Rotationsmodus-Zustand + Bedienung, gereicht an `FocusModeHud.tsx`. */
-  rotation: FocusRotation;
 }) {
-  // `pane.showingFile` ist reine Nutzer-ABSICHT (gridState.ts kennt keinen
-  // Dateizustand) — ob dazu wirklich eine Fläche existiert, weiß nur der
-  // Editor-Zustand hier. Ohne diesen Abgleich bliebe eine Pane nach einem
-  // wiederhergestellten `active_tab: {kind:"file"}` auf einen inzwischen
-  // ungültigen Pfad tot: FileEditor liefert bei `status === "idle"` `null`,
-  // und kein Terminal-Tab wäre je sichtbar. `showingFile` unten ist deshalb
-  // die für DIESES Rendern gültige, abgeleitete Ansicht — nicht `pane`s
-  // Rohfeld.
-  const openPath = editor.state.status === "idle" ? null : editor.state.path;
-  const showingFile = pane.showingFile && openPath !== null;
-
-  const tabs: PaneTabsProps = {
-    terminalTabs: pane.terminalTabs.map((tab, i) => ({
-      tabId: tab.tabId,
-      number: i + 1,
-      label: tab.label,
-    })),
-    activeTerminalTabId: pane.activeTerminalTabId,
-    // Grid-Fokus dieser Pane, nicht Tab-Auswahl innerhalb ihrer eigenen
-    // Leiste (Begründung an PaneTabs.tsx' `paneFocused`-Feld) — `focused` ist
-    // hier ohnehin schon im Scope, da PaneCell es selbst als Prop trägt.
-    paneFocused: focused,
-    showingFile,
-    fileName: openPath === null ? null : fileNameFromPath(openPath),
-    fileDirty: editor.wouldLoseWork,
-    onSelectTerminalTab: (tabId) => onSwitchToTerminalTab(pane.paneId, tabId),
-    onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
-    onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
-    onRenameTerminalTab: (tabId, label) => onRenameTerminalTab(pane.paneId, tabId, label),
-    onSelectFile: () => onSwitchToFileTab(pane.paneId),
-  };
+  const { pane, focused, maximized, showingFile, editor } = view;
 
   // Fokus-Modus-Geometrie (Ticket 19): KEIN Unmount, KEINE zweite
   // Layout-Klasse am `.pc-workspace` — dieselbe Zelle bleibt an ihrem
@@ -333,8 +488,8 @@ function PaneCell({
   //
   // Alle ANDEREN Zellen bekommen `visibility: hidden` — nicht `display:
   // none`: Letzteres kollabiert die Containerbox jedes Nachfahren auf 0×0,
-  // exakt der Grund, warum schon die Terminal-Tab-Sichtbarkeit direkt
-  // darunter (Kommentar dort) dasselbe Muster verwendet. Ohne diesen
+  // exakt der Grund, warum schon die Terminal-Tab-Sichtbarkeit
+  // (`TerminalTabSurface` oben) dasselbe Muster verwendet. Ohne diesen
   // Unterschied verlöre `fitAddon.fit()` beim Verlassen des Fokus-Modus seine
   // Messbasis. Dasselbe gilt für leere Slots (`ProjectPicker.tsx`s eigene
   // `focusModeActive`-Prop).
@@ -344,81 +499,25 @@ function PaneCell({
       ? { visibility: "hidden" }
       : undefined;
 
-  // Rotations-Cluster des Fokus-Modus (Ticket 19) — EINMAL pro Zelle
-  // berechnet und identisch an TerminalPane.tsx UND FileEditor.tsx gereicht
-  // (Begründung/Platzierung im Pane-Header statt als freischwebendes Overlay:
-  // FocusModeHud.tsx-Kopfkommentar). `null` für jede nicht-maximierte Zelle —
-  // beide Flächen rendern dann einfach nichts an der Stelle.
-  const focusModeHud = maximized ? (
-    <FocusModeHud slotNumber={slotNumber} totalSlots={totalSlots} rotation={rotation} />
-  ) : null;
-
   return (
-    // `relative`, damit die absolut positionierten Flächen darunter (jeder
-    // Terminal-Tab UND der File-Tab) sich exakt auf DIESE Zelle beziehen,
-    // nicht auf das ganze Grid.
+    // `relative`, damit die absolut positionierten Flächen darunter (die
+    // Terminal-Host-Fläche UND der File-Tab) sich exakt auf DIESE Zelle
+    // beziehen, nicht auf das ganze Grid.
     <div
       // Die gezogene Pane tritt zurück (Ticket 20) — ohne diesen Unterschied
       // sähen Quelle und Ziel während des Zugs identisch aus, und das
       // Ziel-HUD wäre das einzige Signal, dass überhaupt etwas gezogen wird.
       className={`relative flex min-h-0 min-w-0 flex-col transition-opacity ${
-        dragSource ? "opacity-50" : ""
+        view.dragSource ? "opacity-50" : ""
       }`}
       style={cellStyle}
     >
-      {/* Wie zuvor: jede Fläche bleibt gemountet, nur ausgeblendet — ein
-          Unmount würde über `usePtyTerminal`s Cleanup `pty_kill` auslösen.
-          Seit Ticket 18 sind das bis zu N Terminal-Tabs gleichzeitig statt
-          einem, deshalb reicht das frühere `hidden`-Attribut (= `display:
-          none`) nicht mehr: ein inaktiver Tab wäre beim Öffnen 0×0 groß, denn
-          `usePtyTerminal.ts`s `fitAddon.fit()` misst die Containerbox beim
-          Mount, und `display: none` nimmt sie komplett aus dem Layout. Jede
-          Fläche liegt deshalb `absolute inset-0` exakt übereinander und wird
-          nur per inline `visibility: hidden` ausgeblendet (nicht per
-          Tailwind-Klasse, Begründung dort) — das lässt den Platz im Layout,
-          xterm.js misst also auch als inaktiver Tab korrekt, und nimmt
-          Klicks/Drops gleich mit raus, ohne ein zusätzliches
-          `pointer-events: none` zu brauchen. */}
-      {pane.terminalTabs.map((tab) => {
-        const isActiveTab = tab.tabId === pane.activeTerminalTabId;
-        const isVisible = isActiveTab && !showingFile;
-        return (
-          <div
-            key={tab.tabId}
-            className="absolute inset-0 flex min-h-0 flex-col"
-            // Inline statt einer Tailwind-Klasse: `visibility: hidden` allein
-            // reicht (nimmt Klicks/Fokus schon von sich aus raus, ein
-            // zusätzliches `pointer-events: none` wäre doppelt), und inline
-            // gesetzt ist es unabhängig vom geladenen Stylesheet real
-            // vorhanden — u. a. Voraussetzung dafür, dass Testing Librarys
-            // `toBeVisible()` es überhaupt sieht.
-            style={isVisible ? undefined : { visibility: "hidden" }}
-          >
-            <TerminalPane
-              paneId={pane.paneId}
-              tabId={tab.tabId}
-              projectPath={pane.projectPath}
-              projectName={projectNameFromPath(pane.projectPath)}
-              focused={focused}
-              maximized={maximized}
-              // Unabhängig von `showingFile`: genau EIN Terminal-Tab je Pane
-              // trägt die Drop-Registrierung (`useWebviewFileDrop.ts`),
-              // exakt wie vor Ticket 18 (ein Terminal pro Pane, immer
-              // registriert) — nur jetzt korrekt an den AKTIVEN von N Tabs
-              // gebunden statt zufällig an den zuletzt gemounteten.
-              active={isActiveTab}
-              dropTarget={dropTarget}
-              tabs={tabs}
-              dropTargets={dropTargets}
-              onClose={onClose}
-              onFocus={onFocus}
-              onHeaderPointerDown={onHeaderPointerDown}
-              onToggleFocusMode={onToggleFocusMode}
-              focusModeHud={focusModeHud}
-            />
-          </div>
-        );
-      })}
+      {/* Die Host-Fläche der Terminal-Tabs dieser Pane: React rendert genau
+          dieses eine, leere `<div>` und rührt seinen Inhalt nie an — die
+          Tab-Container hängt `useTerminalTabHosts.ts` per DOM hinein. Genau
+          diese Trennung ist der Grund, warum ein Tab die Pane wechseln kann,
+          ohne unmountet zu werden. */}
+      <div ref={hostRef} className="absolute inset-0" />
       <div
         className="absolute inset-0 flex min-h-0 flex-col"
         style={showingFile ? undefined : { visibility: "hidden" }}
@@ -428,19 +527,19 @@ function PaneCell({
           focused={focused}
           maximized={maximized}
           projectName={projectNameFromPath(pane.projectPath)}
-          tabs={tabs}
+          tabs={view.tabs}
           onEdit={editor.editContent}
           onSave={editor.save}
           onClose={() => guardLeave(pane.paneId, editor.close)}
-          onHeaderPointerDown={onHeaderPointerDown}
-          onToggleFocusMode={onToggleFocusMode}
-          focusModeHud={focusModeHud}
+          onHeaderPointerDown={view.onHeaderPointerDown}
+          onToggleFocusMode={view.onToggleFocusMode}
+          focusModeHud={view.focusModeHud}
         />
       </div>
       {/* Zuletzt im Zellen-Array und damit über allen Flächen darin: das HUD
           des Grid-eigenen Zugs gehört der ganzen Zelle, nicht dem gerade
           sichtbaren Tab. */}
-      {dropInvite}
+      {view.dropInvite}
     </div>
   );
 }

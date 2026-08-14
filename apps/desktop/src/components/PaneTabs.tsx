@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ContextMenu } from "radix-ui";
 import {
@@ -269,6 +270,27 @@ interface TerminalTabInfo {
  * FileEditor.tsx binden beide denselben Tab-Zustand derselben Pane ein
  * (Kopfkommentar) und reichen deshalb dasselbe Objekt einfach durch, statt
  * jedes Feld einzeln zu wiederholen. */
+/** Der Zug eines Terminal-Tabs in eine andere Pane (Ticket 32) — er lebt in
+ * `PaneGrid.tsx` (dort sind Ziele und Wirkung bekannt), hier hängen nur der
+ * Griff und die Quell-Optik daran. Nicht exportiert: `PaneGrid.tsx` baut das
+ * Objekt strukturell als Teil von `PaneTabsProps` (dieselbe Linie wie
+ * `TerminalTabInfo` oben). */
+interface PaneTabDrag {
+  /** An `onPointerDown` des Chips. */
+  start: (tabId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  /** Ob der unmittelbar folgende Klick noch zum eben beendeten Zug gehört —
+   * ohne diese Abfrage würde jeder erfolgreiche Zug nebenbei den Quell-Tab
+   * auswählen (das Pointer-Capture führt den Klick zum Chip zurück). */
+  consumeClick: () => boolean;
+  /** Welcher Tab DIESER Pane gerade gezogen wird, sonst `null`. */
+  draggingTabId: string | null;
+  /** Ob die Tabs dieser Pane überhaupt ziehbar sind — falsch beim letzten
+   * verbleibenden Tab (dieselbe Untergrenze wie `closable`) und im
+   * Fokus-Modus. Steuert allein die Ankündigung (`cursor-grab`); die
+   * eigentliche Sperre sitzt in `start`. */
+  draggable: boolean;
+}
+
 export interface PaneTabsProps {
   terminalTabs: readonly TerminalTabInfo[];
   activeTerminalTabId: string;
@@ -291,6 +313,8 @@ export interface PaneTabsProps {
    * (leeres/unverändertes Eingabefeld committen, s. `TerminalTabRenameField`). */
   onRenameTerminalTab: (tabId: string, label: string | null) => void;
   onSelectFile: () => void;
+  /** Tab-Verschieben zwischen Panes (Ticket 32). */
+  tabDrag: PaneTabDrag;
   /** Optional: meldet den false→true-Übergang von `unread` zusätzlich zum
    * eigenen Chip-Aufblitz nach außen — TerminalPane.tsx/FileEditor.tsx
    * nutzen das für den Pane-weiten Aufblitz (s. Kopfkommentar dieser Datei,
@@ -310,6 +334,7 @@ export function PaneTabs({
   onCloseTerminalTab,
   onRenameTerminalTab,
   onSelectFile,
+  tabDrag,
   onTabAttentionFlash,
 }: PaneTabsProps) {
   const { t } = useTranslation();
@@ -360,11 +385,19 @@ export function PaneTabs({
           // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
           // anklickbar zu bleiben.
           closable={terminalTabs.length > 1}
+          draggable={tabDrag.draggable}
+          dragging={tabDrag.draggingTabId === tab.tabId}
           renaming={tab.tabId === renamingTabId}
           onAttentionFlash={
             onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
           }
-          onSelect={() => onSelectTerminalTab(tab.tabId)}
+          onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
+          onSelect={() => {
+            // Der Abschlussklick eines Zugs darf den Quell-Tab nicht
+            // nebenbei auswählen (s. `PaneTabDrag.consumeClick`).
+            if (tabDrag.consumeClick()) return;
+            onSelectTerminalTab(tab.tabId);
+          }}
           onClose={() => onCloseTerminalTab(tab.tabId)}
           onStartRename={() => setRenamingTabId(tab.tabId)}
           onCommitRename={(label) => {
@@ -409,8 +442,11 @@ function TerminalTabChip({
   active,
   paneFocused,
   closable,
+  draggable,
+  dragging,
   renaming,
   onAttentionFlash,
+  onPointerDown,
   onSelect,
   onClose,
   onStartRename,
@@ -423,8 +459,14 @@ function TerminalTabChip({
   active: boolean;
   paneFocused: boolean;
   closable: boolean;
+  /** Ob dieser Chip als Zieh-Griff angekündigt wird (Ticket 32). */
+  draggable: boolean;
+  /** Ob GENAU DIESER Chip gerade gezogen wird — er tritt dann zurück, wie
+   * die gezogene Pane beim Slot-Tausch. */
+  dragging: boolean;
   renaming: boolean;
   onAttentionFlash?: () => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onSelect: () => void;
   onClose: () => void;
   onStartRename: () => void;
@@ -509,6 +551,7 @@ function TerminalTabChip({
         ) : (
           <button
             type="button"
+            onPointerDown={onPointerDown}
             onClick={onSelect}
             onAuxClick={(event) => {
               // Mittelklick (button === 1) schließt, wie in jedem
@@ -555,7 +598,13 @@ function TerminalTabChip({
             // ohne Kontur las sich ein inaktiver Tab gar nicht mehr als
             // Tab, nur noch als schwebender Text. Erst bei Hover hellt
             // Rand UND Füllung auf.
+            // `cursor-grab`/`opacity-50` (Ticket 32): dieselbe Ankündigung
+            // und derselbe Rückzug wie beim Pane-Header-Griff — ein Chip, der
+            // nirgendwo hinkann (letzter Tab, Fokus-Modus), kündigt sich auch
+            // nicht als Griff an.
             className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
+              draggable ? "cursor-grab" : ""
+            } ${dragging ? "opacity-50" : ""} ${
               active
                 ? `${
                     paneFocused

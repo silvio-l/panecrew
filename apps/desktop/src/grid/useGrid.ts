@@ -8,6 +8,7 @@ import {
   exitFocusMode as exitFocusModeInState,
   focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
+  moveTerminalTab as moveTerminalTabInState,
   openTerminalTab as openTerminalTabInState,
   renameTerminalTab as renameTerminalTabInState,
   swapPanes as swapPanesInState,
@@ -54,6 +55,15 @@ export interface Grid {
    * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
   openTerminalTab: (paneId: string) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
+  /** Verschiebt einen Terminal-Tab in eine andere Pane desselben Projekts
+   * (Ticket 32) — die PTY läuft dabei weiter, es ist ein reiner
+   * Besitzerwechsel. No-Op über Projektgrenzen hinweg und beim letzten
+   * verbleibenden Tab der Quelle. */
+  moveTerminalTab: (
+    sourcePaneId: string,
+    tabId: string,
+    targetPaneId: string,
+  ) => void;
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
   renameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
@@ -124,6 +134,15 @@ export function useGrid(): Grid {
     setState((current) => closeTerminalTabInState(current, paneId, tabId));
   }, []);
 
+  const moveTerminalTab = useCallback(
+    (sourcePaneId: string, tabId: string, targetPaneId: string) => {
+      setState((current) =>
+        moveTerminalTabInState(current, sourcePaneId, tabId, targetPaneId),
+      );
+    },
+    [],
+  );
+
   const renameTerminalTab = useCallback(
     (paneId: string, tabId: string, label: string | null) => {
       setState((current) => renameTerminalTabInState(current, paneId, tabId, label));
@@ -160,6 +179,7 @@ export function useGrid(): Grid {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    moveTerminalTab,
     renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,

@@ -27,6 +27,12 @@ const baseProps = (
   onCloseTerminalTab: vi.fn(),
   onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
+  tabDrag: {
+    start: vi.fn(),
+    consumeClick: () => false,
+    draggingTabId: null,
+    draggable: true,
+  },
   ...overrides,
 });
 
