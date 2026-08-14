@@ -1,56 +1,56 @@
-# Tastaturkürzel
+# Keyboard Shortcuts
 
-Diese Referenz wird aus `apps/desktop/src/shortcuts/registry.ts` erzeugt —
-denselben Definitionen, die auch die Tastenerkennung zur Laufzeit treiben.
-Regenerieren mit `node --experimental-strip-types scripts/generate-shortcuts-docs.ts`
-aus `apps/desktop`, Ausgabe nach `docs/shortcuts.md` umleiten und committen.
+This reference is generated from `apps/desktop/src/shortcuts/registry.ts` —
+the same definitions that also drive key detection at runtime. Regenerate
+with `node --experimental-strip-types scripts/generate-shortcuts-docs.ts`
+from `apps/desktop`, redirect the output to `docs/shortcuts.md`, and commit it.
 
-## Gesamte Oberfläche
+## Whole Interface
 
-| Aktion | macOS | Windows / Linux |
+| Action | macOS | Windows / Linux |
 | --- | --- | --- |
-| Gesamte Oberfläche vergrößern | ⇧⌘+ | Ctrl+Shift++ |
-| Gesamte Oberfläche verkleinern | ⇧⌘- | Ctrl+Shift+- |
-| Oberflächen-Zoom zurücksetzen | ⇧⌘0 | Ctrl+Shift+0 |
-| Neues PaneCrew-Fenster öffnen | ⌘N | Ctrl+N |
+| Zoom in on the whole interface | ⇧⌘+ | Ctrl+Shift++ |
+| Zoom out on the whole interface | ⇧⌘- | Ctrl+Shift+- |
+| Reset interface zoom | ⇧⌘0 | Ctrl+Shift+0 |
+| Open a new PaneCrew window | ⌘N | Ctrl+N |
 
-## Aktive Pane
+## Active Pane
 
-Nicht mehr nur „Terminal-Pane": eine Pane zeigt seit dem Mini-Editor entweder
-ihr Terminal oder eine geöffnete Datei, und beide Zustände bringen eigene
-Kürzel mit. Es gilt jeweils das der Fläche, die gerade den Tastaturfokus hat.
+No longer just "terminal pane": since the mini editor, a pane shows either
+its terminal or an open file, and both states bring their own shortcuts.
+Whichever surface currently has keyboard focus applies.
 
-| Aktion | macOS | Windows / Linux |
+| Action | macOS | Windows / Linux |
 | --- | --- | --- |
-| Schrift der aktiven Terminal-Pane vergrößern | ⌘+ | Ctrl++ |
-| Schrift der aktiven Terminal-Pane verkleinern | ⌘- | Ctrl+- |
-| Schriftgröße der aktiven Terminal-Pane zurücksetzen | ⌘0 | Ctrl+0 |
-| Geöffnete Datei speichern | ⌘S | Ctrl+S |
-| Fokus-Modus umschalten (Pane maximieren/verlassen) | ⌘↵ | Ctrl+↵ |
-| Aktiven Terminal-Tab schließen | ⌘W | Ctrl+W |
-| Terminal-Tab 1 der aktiven Pane anzeigen | ⌘1 | Ctrl+1 |
-| Terminal-Tab 2 der aktiven Pane anzeigen | ⌘2 | Ctrl+2 |
-| Terminal-Tab 3 der aktiven Pane anzeigen | ⌘3 | Ctrl+3 |
-| Terminal-Tab 4 der aktiven Pane anzeigen | ⌘4 | Ctrl+4 |
-| Terminal-Tab 5 der aktiven Pane anzeigen | ⌘5 | Ctrl+5 |
-| Terminal-Tab 6 der aktiven Pane anzeigen | ⌘6 | Ctrl+6 |
-| Terminal-Tab 7 der aktiven Pane anzeigen | ⌘7 | Ctrl+7 |
-| Terminal-Tab 8 der aktiven Pane anzeigen | ⌘8 | Ctrl+8 |
-| Terminal-Tab 9 der aktiven Pane anzeigen | ⌘9 | Ctrl+9 |
+| Increase font size of the active terminal pane | ⌘+ | Ctrl++ |
+| Decrease font size of the active terminal pane | ⌘- | Ctrl+- |
+| Reset font size of the active terminal pane | ⌘0 | Ctrl+0 |
+| Save the open file | ⌘S | Ctrl+S |
+| Toggle focus mode (maximize/leave pane) | ⌘↵ | Ctrl+↵ |
+| Close the active terminal tab | ⌘W | Ctrl+W |
+| Show terminal tab 1 of the active pane | ⌘1 | Ctrl+1 |
+| Show terminal tab 2 of the active pane | ⌘2 | Ctrl+2 |
+| Show terminal tab 3 of the active pane | ⌘3 | Ctrl+3 |
+| Show terminal tab 4 of the active pane | ⌘4 | Ctrl+4 |
+| Show terminal tab 5 of the active pane | ⌘5 | Ctrl+5 |
+| Show terminal tab 6 of the active pane | ⌘6 | Ctrl+6 |
+| Show terminal tab 7 of the active pane | ⌘7 | Ctrl+7 |
+| Show terminal tab 8 of the active pane | ⌘8 | Ctrl+8 |
+| Show terminal tab 9 of the active pane | ⌘9 | Ctrl+9 |
 
-## Kontextabhängige Tasten im Terminal
+## Context-Dependent Keys in the Terminal
 
-Nicht in der Registry, weil sie nur gelten, solange die genannte Anzeige
-sichtbar ist — sonst erreichen sie unverändert die Shell (Pfeiltasten bleiben
-History-Navigation, Tab bleibt die Tab-Completion der Shell).
+Not in the registry, because they only apply while the named display is
+visible — otherwise they reach the shell unchanged (arrow keys stay history
+navigation, Tab stays the shell's own tab completion).
 
-**Enter ist bewusst nicht dabei und schickt immer ab**, auch bei offener
-Liste. Im Terminal hat die Taste genau eine Bedeutung, und die zu verbiegen
-kostet mehr, als die Übernahme per Enter einbringt.
+**Enter is deliberately not included and always submits**, even with a list
+open. In the terminal the key has exactly one meaning, and bending that costs
+more than accepting via Enter would gain.
 
-| Taste | Wirkung, solange sichtbar |
+| Key | Effect while visible |
 | --- | --- |
-| → (am Zeilenende), Ctrl+F | Sichtbare Inline-Ergänzung übernehmen |
-| ↑ / ↓ | Auswahl im Verzeichnis-Popup bewegen |
-| Tab | Ausgewähltes Verzeichnis übernehmen |
-| Esc | Verzeichnis-Popup schließen |
+| → (at end of line), Ctrl+F | Accept the visible inline completion |
+| ↑ / ↓ | Move selection in the directory popup |
+| Tab | Accept the selected directory |
+| Esc | Close the directory popup |

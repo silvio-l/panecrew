@@ -79,7 +79,7 @@ export const CLOSE_TERMINAL_TAB_SHORTCUT_ID = "pane.closeTerminalTab";
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
     id: "app.zoomIn",
-    description: "Gesamte Oberfläche vergrößern",
+    description: "Zoom in on the whole interface",
     scope: "app",
     glyph: "+",
     codes: PLUS_CODES,
@@ -87,7 +87,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   },
   {
     id: "app.zoomOut",
-    description: "Gesamte Oberfläche verkleinern",
+    description: "Zoom out on the whole interface",
     scope: "app",
     glyph: "-",
     codes: MINUS_CODES,
@@ -95,7 +95,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   },
   {
     id: "app.zoomReset",
-    description: "Oberflächen-Zoom zurücksetzen",
+    description: "Reset interface zoom",
     scope: "app",
     glyph: "0",
     codes: ZERO_CODES,
@@ -108,7 +108,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     // Kürzel dort fälschlich als Zoom-Aktion interpretiert (Glyph "N" ist
     // weder "+" noch "0", würde also als "-" fehlgedeutet).
     id: NEW_WINDOW_SHORTCUT_ID,
-    description: "Neues PaneCrew-Fenster öffnen",
+    description: "Open a new PaneCrew window",
     scope: "app",
     glyph: "N",
     codes: ["KeyN"],
@@ -116,7 +116,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   },
   {
     id: "pane.zoomIn",
-    description: "Schrift der aktiven Terminal-Pane vergrößern",
+    description: "Increase font size of the active terminal pane",
     scope: "pane",
     glyph: "+",
     codes: PLUS_CODES,
@@ -124,7 +124,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   },
   {
     id: "pane.zoomOut",
-    description: "Schrift der aktiven Terminal-Pane verkleinern",
+    description: "Decrease font size of the active terminal pane",
     scope: "pane",
     glyph: "-",
     codes: MINUS_CODES,
@@ -132,7 +132,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   },
   {
     id: "pane.zoomReset",
-    description: "Schriftgröße der aktiven Terminal-Pane zurücksetzen",
+    description: "Reset font size of the active terminal pane",
     scope: "pane",
     glyph: "0",
     codes: ZERO_CODES,
@@ -144,7 +144,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     // physischen Positionen sitzen. Buchstabentasten tun das nicht — "KeyS"
     // ist auf beiden Layouts dieselbe Taste.
     id: SAVE_FILE_SHORTCUT_ID,
-    description: "Geöffnete Datei speichern",
+    description: "Save the open file",
     scope: "pane",
     glyph: "S",
     codes: ["KeyS"],
@@ -157,7 +157,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     // Kürzel VOR jeder Terminal-Pane aus (`stopPropagation`), damit Cmd+Return
     // nie zusätzlich als Absenden bei der Shell ankommt.
     id: TOGGLE_FOCUS_MODE_SHORTCUT_ID,
-    description: "Fokus-Modus umschalten (Pane maximieren/verlassen)",
+    description: "Toggle focus mode (maximize/leave pane)",
     scope: "pane",
     glyph: "↵",
     codes: ["Enter", "NumpadEnter"],
@@ -172,7 +172,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     // `terminalTabs.length > 1`-Bedingung wie das Kontextmenü, s.
     // PaneTabs.tsx), eine Pane kann über dieses Kürzel also nie leer werden.
     id: CLOSE_TERMINAL_TAB_SHORTCUT_ID,
-    description: "Aktiven Terminal-Tab schließen",
+    description: "Close the active terminal tab",
     scope: "pane",
     glyph: "W",
     codes: ["KeyW"],
@@ -189,7 +189,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     const number = index + 1;
     return {
       id: terminalTabSelectId(number),
-      description: `Terminal-Tab ${number} der aktiven Pane anzeigen`,
+      description: `Show terminal tab ${number} of the active pane`,
       scope: "pane",
       glyph: String(number) as ShortcutGlyph,
       codes: [`Digit${number}`, `Numpad${number}`],
