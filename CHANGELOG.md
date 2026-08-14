@@ -40,6 +40,59 @@ Eintrag bleibt:
   was sich für jemanden ändert, der die App benutzt, nicht wie es intern
   gebaut ist.
 
+## [0.1.0-nightly.2] - 2026-08-14
+<!--
+coverage:
+  - about
+  - chrome
+  - ci
+  - cli
+  - docs
+  - explorer
+  - harness
+  - i18n
+  - meta
+  - pty
+  - release-config
+  - session
+  - settings
+  - splash
+  - theme
+  - tooling
+  - updater
+  - website
+diff_hash: ea7223829730d493b973b624811fac1ea6232a12bdfbae03fd84e70e423017fc
+-->
+### Hinzugefügt
+- Ein vollständiges Einstellungsfenster: Farbthema wählen, Zoomstufe und
+  Terminal-Schriftgröße live anpassen, Grid-Vorlage per Piktogramm auswählen.
+- Zusätzliche Fenster: ⌘N/Strg+N öffnet ein weiteres PaneCrew-Fenster, das
+  Position, Größe und offene Projekte eigenständig über einen Neustart hinweg
+  merkt.
+- Terminal-Tabs zeigen jetzt echte Marken-Icons des erkannten CLI-Tools,
+  lassen sich per Kontextmenü umbenennen/schließen und melden
+  Hintergrundaktivität über ein Ungelesen-Signal.
+- Panes und Terminal-Tabs lassen sich per Drag & Drop verschieben, tauschen
+  und in neue, leere Slots ziehen, mit Zeiger-Vorschau und sichtbarer
+  Ziel-Markierung.
+
+### Geändert
+- Fokus-Modus rotiert jetzt zuverlässig automatisch durch Panes/Tabs, mit
+  Countdown-Anzeige im Pane-Header.
+- Der Datei-Explorer lädt Ordner jetzt sparsam pro Verzeichnis nach, statt
+  beim Öffnen den kompletten Projektbaum auf einmal einzulesen — spürbar
+  schneller bei großen Projekten.
+- Der Nightly-Kanal ist jetzt voll funktionsfähig: automatische
+  Update-Prüfung ist aktiv, jeder Nightly-Build bekommt eine eigene, stets
+  steigende Versionsnummer, und es wird nur noch für Apple-Silicon-Macs
+  gebaut (kein Rosetta-Hinweis mehr auf Apple-Chip-Geräten).
+- Kleinere Verbesserungen an der Marketing-Website (u. a. echte
+  Tool-Logos, SEO-Feintuning).
+
+### Behoben
+- Ein per Drag zwischen Panes verschobener Terminal-Tab verlor dabei seine
+  laufende Sitzung — das passiert jetzt nicht mehr.
+
 ## [0.1.0] - 2026-08-13
 <!--
 coverage:
