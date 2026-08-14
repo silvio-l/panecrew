@@ -18,6 +18,17 @@ DESIGN.md
 # lokal, nie auf GitHub.
 tools/
 
+# OSS-Allowlist-Policy selbst: rein lokale Enforcement-Konfiguration, hat auf
+# GitHub nichts verloren (Compliance-Cleanup 2026-08-14) — .githooks/pre-commit
+# und pre-push laufen fail-open (WARN statt Block), wenn die Datei fehlt.
+.ossallowlist
+
+# Repo-level Dev-Tooling (Node-Skripte ohne Public-Bezug: Brand-Name-Linter,
+# Allowlist-Hash-Helper, Shortcuts-Doku-Generator, Driver-Install-Skript) --
+# nie public, Compliance-Cleanup 2026-08-14.
+/scripts/
+apps/desktop/scripts/
+
 # Secrets
 .env
 .env.local
