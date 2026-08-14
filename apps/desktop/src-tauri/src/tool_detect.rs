@@ -193,7 +193,10 @@ mod tests {
     /// is what `match_tool` must find.
     #[test]
     fn matches_a_known_tool_by_argv_even_when_the_process_itself_is_named_after_the_interpreter() {
-        let script_path = std::env::temp_dir().join(format!(
+        // Test-only fixture, not a security operation: no untrusted input in
+        // the path, PID keeps it unique for the test's lifetime, and it's
+        // removed at the end of this function.
+        let script_path = std::env::temp_dir().join(format!( // nosemgrep: rust.lang.security.temp-dir.temp-dir
             "panecrew-tool-detect-claude-fixture-{}.sh", // brandlint-ok: Fixture-Dateiname muss ein echtes TOOL_MARKERS-Stichwort enthalten, sonst testet der Fall nichts
             std::process::id()
         ));

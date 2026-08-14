@@ -1080,7 +1080,10 @@ const description =
       <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i>
       <span class="spark" style="left:12%; top:40px;">✦</span>
       <span class="spark" style="left:46%; top:-10px; animation-delay:1.2s; font-size:14px;">✦</span>
-      <span class="spark" style="right:18%; top:70px; animation-delay:2.3s;">✧</span>
+      <!-- was top:70px/right:18% -- landed directly behind .nav-cta ("get
+           panecrew"), animating under an interactive control. Pushed below
+           the nav's real estate, same lane as its right-side siblings. -->
+      <span class="spark" style="right:18%; top:150px; animation-delay:2.3s;">✧</span>
       <span class="spark" style="right:7%; top:220px; animation-delay:3.1s; font-size:13px;">✦</span>
       <span class="spark" style="left:5%; top:260px; animation-delay:1.8s; font-size:15px;">✧</span>
     </div>
