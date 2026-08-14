@@ -596,13 +596,30 @@ const description =
   /* ---------- pinned demo sequence (scrollytelling) ----------
      The live demo is the product's core argument, so it gets the page's
      one pinned scrubbed moment: on desktop the demo window pins while
-     ~1.3 extra viewports of scroll drive focus across all four panes —
-     scrolling IS the focus-follow story. Pointer interaction still wins
-     while the cursor is inside the window (guard in updateDemoScrub).
+     ~0.75 extra viewports of scroll drive focus across all four panes —
+     scrolling IS the focus-follow story. A genuinely fresh pane hover
+     still wins briefly (short grace window in updateDemoScrub) so the
+     "or hover a pane" affordance keeps working, but scroll always
+     reclaims control — 2026-08-14 fix: the previous guard suppressed
+     scrubbing for as long as the pointer merely sat anywhere inside the
+     (large, centered) demo window, which is exactly where a mouse tends
+     to rest while scrolling — scroll input landed but visibly did
+     nothing, reading as a stall. Trimmed from 230vh/~1.3 viewports at
+     the same time so the gaps between the four visible state changes
+     are shorter regardless.
      Mobile and reduced-motion keep the plain in-flow layout. */
   @media (min-width: 941px) and (prefers-reduced-motion: no-preference) {
-    .demo-stage { height: 230vh; }
+    .demo-stage { height: 175vh; }
     .demo-stage .demo-sticky { position: sticky; top: max(64px, calc(50vh - 230px)); }
+  }
+  /* continuous scroll-progress fill under the demo title bar — without
+     it, the only visible feedback was the four discrete pane jumps,
+     which over the pinned span still reads as "nothing is happening"
+     in between. Tied 1:1 to scroll fraction (updateDemoScrub). */
+  #demoApp .app-bar { position: relative; }
+  .demo-progress {
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    width: 0%; background: var(--amber); z-index: 1;
   }
 
   /* generated companion plate to the hero atmosphere (same ComfyUI/SDXL
@@ -1291,7 +1308,7 @@ const description =
 
     <div class="wrap">
       <!-- 5% novelty: the visitor drives the focus-follow.
-           .demo-stage pins the row on desktop and lets ~1.3 viewports of
+           .demo-stage pins the row on desktop and lets ~0.75 extra viewports of
            scroll scrub the focus through all four panes (see updateDemoScrub)
            — the anchor/scroll-spy target #demo stays on the outer stage. -->
       <div class="demo-stage" id="demo">
@@ -1304,6 +1321,7 @@ const description =
               <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
               <span>PaneCrew — live demo</span>
               <span class="hud-readout"><span class="hb">2×2</span> · <span class="hud-idx" id="demoHudIdx">01</span><span class="hb">/04</span> · <span class="hud-name" id="demoHudName">orbit-api</span></span>
+              <i class="demo-progress" id="demoProgress" aria-hidden="true"></i>
             </div>
             <div class="app-body">
               <aside class="xpl" id="demoXpl">
@@ -1704,6 +1722,11 @@ const description =
   );
 
   var demoCur = 0;
+  /* 2026-08-14 fix: a genuinely fresh pane hover holds off scroll-driven
+     scrubbing only for this short grace window, not indefinitely — see
+     the .demo-stage comment above for why the old whole-window flag
+     made scrolling feel dead. */
+  var demoHoverUntil = 0;
   function demoFocus(idx) {
     demoCur = idx;
     demoPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
@@ -1719,7 +1742,7 @@ const description =
   }
 
   demoPanes.forEach(function (p, i) {
-    p.addEventListener('pointerenter', function () { demoFocus(i); });
+    p.addEventListener('pointerenter', function () { demoHoverUntil = performance.now() + 600; demoFocus(i); });
     p.addEventListener('click', function () { demoFocus(i); });
     p.addEventListener('focus', function () { demoFocus(i); });
   });
@@ -1925,11 +1948,9 @@ const description =
      transforms so a resize across the breakpoint can't strand one. */
   var vfxEls = Array.prototype.slice.call(document.querySelectorAll('[data-vfx]'));
   var demoStage = document.getElementById('demo');
+  var demoProgress = document.getElementById('demoProgress');
   var scrollCue = document.getElementById('scrollCue');
-  var demoHover = false;
   var fxWide = matchMedia('(min-width: 941px)').matches;
-  demoApp.addEventListener('pointerenter', function () { demoHover = true; });
-  demoApp.addEventListener('pointerleave', function () { demoHover = false; });
 
   function updateVfx() {
     if (!fxWide) return;
@@ -1950,12 +1971,14 @@ const description =
   }
 
   function updateDemoScrub() {
-    if (!fxWide || demoHover || !demoStage) return;
+    if (!fxWide || !demoStage) return;
     var r = demoStage.getBoundingClientRect();
     var span = r.height - window.innerHeight;
     if (span < 120) return; // stage isn't pinned at this size
     var p = -r.top / span;
     if (p < 0) p = 0; if (p > 1) p = 1;
+    if (demoProgress) demoProgress.style.width = (p * 100).toFixed(1) + '%';
+    if (performance.now() < demoHoverUntil) return; // let a just-hovered pane stand briefly
     var idx = Math.min(3, Math.floor(p * 4));
     if (idx !== demoCur) demoFocus(idx);
   }
