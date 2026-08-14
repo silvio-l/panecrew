@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { Profiler, StrictMode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -1740,6 +1740,84 @@ describe("Grid / Mehrfach-Pane", () => {
     // auf einer ausgelasteten Maschine nicht, ohne dass etwas defekt wäre.
   }, 25_000);
 
+  it("behält beim Chip-Drag in eine Nachbar-Pane genau einen lebenden WebGL-Kontext je Pane", async () => {
+    // Ergänzt den Zug-Test oben um genau die Frage, die das WebGL-Gating in
+    // usePtyTerminal.ts aufwirft: verschiebt ein Zug den Kontext sauber mit,
+    // statt ihn zu verlieren oder zu verdoppeln? Kein StrictMode nötig — anders
+    // als der PTY-Kill-Fall oben stirbt hier bei einem doppelt laufenden
+    // Aktiv/Inaktiv-Effekt nichts, ein zweites Dispose/Load-Paar wäre nur
+    // redundant, nicht destruktiv.
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />);
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+    // Zwei Panes, je ein aktiver Tab — zwei lebende Kontexte, keiner davon
+    // entsorgt.
+    expect(webgl.addons.filter((a) => !a.disposed)).toHaveLength(2);
+
+    const sections = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-pane-id]"));
+    const [sourceSection, targetSection] = sections();
+    if (!sourceSection || !targetSection) throw new Error("Zwei Panes erwartet");
+    const targetPaneId = targetSection.dataset.paneId;
+
+    // Zweiten Tab in der Quell-Pane öffnen: er wird sofort aktiv, der zuvor
+    // aktive erste Tab derselben Pane wird dadurch zum Hintergrund-Tab — sein
+    // Kontext muss jetzt freigegeben sein.
+    fireEvent.click(
+      within(sourceSection).getByRole("button", {
+        name: "Weiteren Terminal-Tab öffnen",
+      }),
+    );
+    await screen.findByRole("button", { name: "Terminal 2" });
+    expect(webgl.addons.filter((a) => !a.disposed)).toHaveLength(2);
+
+    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    // Die konkrete Instanz des gezogenen Tabs — er ist vor UND nach dem Zug
+    // der aktive Tab seiner (jeweils eigenen) Pane, behält also durchgehend
+    // GENAU DIESEN Kontext, ohne zwischendurch einen neuen anzulegen.
+    const movedTabAddon = webgl.addons.at(-1);
+    const targetRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
+    for (const section of sections()) {
+      if (section.dataset.paneId !== targetPaneId) continue;
+      section.getBoundingClientRect = () => targetRect;
+    }
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    const movedSurface = chip.closest("[data-pane-id]");
+    await waitFor(() => {
+      expect((movedSurface as HTMLElement | null)?.dataset.paneId).toBe(
+        targetPaneId,
+      );
+    });
+
+    expect(movedTabAddon?.disposed).toBe(false);
+    // Die Quell-Pane hat durch den Zug ihren einzig verbliebenen Tab wieder
+    // aktiv werden lassen (eine Pane ohne sichtbaren Tab gibt es nicht) — der
+    // lädt dafür erwartungsgemäß einen frischen Kontext nach. Die eigentliche
+    // Zusicherung des Gatings bleibt unabhängig von dieser Verschiebungs-
+    // Buchhaltung: NIE mehr als ein lebender Kontext je (weiterhin offener)
+    // Pane, macht bei zwei Panes also immer genau zwei — vorher wie nachher.
+    expect(webgl.addons.filter((a) => !a.disposed)).toHaveLength(2);
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+  });
+
   it("erzeugt per Chip-Drag auf einen LEEREN Slot eine neue Pane im Projekt des Tabs, ohne die PTY zu killen", async () => {
     // Nutzer-Wunsch: "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort
     // ein neues Pane erstellt, das dann in dem Projekt des Tabs hängt, und
@@ -2371,6 +2449,126 @@ describe("Grid / Mehrfach-Pane", () => {
     ).toHaveLength(0);
     expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
     expect(screen.getByLabelText("Terminal admin")).toBeInTheDocument();
+  });
+});
+
+// Render-Isolation im File-Editor (Ticket 05, Performance-Audit). Weder
+// PaneGrid.tsx noch seine Zellen sind memoisiert — jeder App-weite
+// State-Update rendert deshalb faktisch den GANZEN Baum (jede Pane, jeden
+// Tab-Chip, den Explorer) neu, ganz ohne dass irgendeine Komponente das
+// selbst verhindern müsste. Genau das macht einen EINZIGEN `<Profiler>` um
+// die ganze `<App/>` zur richtigen Sonde: sein `onRender` feuert bei JEDEM
+// Commit des Baums, unabhängig davon, welche einzelne Komponente den Update
+// ausgelöst hat — "kein weiterer Commit" beweist hier also gleichzeitig
+// "keine Nachbar-Pane, kein Tab-Chip, kein Explorer-Baum hat erneut
+// gerendert", ohne dass der Test eine dieser Komponenten selbst instrumentieren
+// müsste (wären ohnehin Dateien außerhalb des Tickets).
+describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  it("re-rendert bei fortgesetztem Tippen weder die Nachbar-Pane noch den Explorer-Baum erneut", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "README.md", is_dir: false }]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+
+    const onRender = vi.fn();
+    render(
+      <Profiler id="app" onRender={onRender}>
+        <App />
+      </Profiler>,
+    );
+
+    // Zwei Panes — storefront bleibt die unbeteiligte Nachbar-Pane, admin
+    // (zweit-fokussiert) bekommt die Datei geöffnet und editiert.
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    fireEvent.click(await screen.findByRole("button", { name: "README.md" }));
+    const textbox = await screen.findByRole("textbox", {
+      name: "Inhalt von README.md",
+    });
+
+    // Der ERSTE Tastendruck macht den Puffer erstmals "dirty" — das ist der
+    // eine, gewollte Cross-Pane-Sync dieses Tickets (Baumzeile UND Tab-Chip
+    // zeigen "ungespeichert", s. `usePaneFileEditors.ts`s `editContent`). Die
+    // eigentliche Prüfung beginnt erst NACH diesem einen, erwarteten Commit.
+    fireEvent.change(textbox, { target: { value: "g" } });
+    await waitFor(() => {
+      expect(
+        explorerTreeButton(/README\.md,\s*ungespeichert/),
+      ).toBeInTheDocument();
+    });
+
+    onRender.mockClear();
+
+    // Fortgesetztes Tippen — jeder weitere Tastendruck bleibt seit Ticket 05
+    // rein lokal in der (seit diesem Ticket unkontrollierten) Textarea, s.
+    // `FileEditor.tsx`s `EditorBuffer` und `usePaneFileEditors.ts`s
+    // `editContent`. Mehrere einzelne `change`-Events statt eines einzigen
+    // mit dem Endtext, damit die Prüfung wirklich "pro Tastendruck" und nicht
+    // nur "pro abgeschlossener Eingabe" gilt.
+    fireEvent.change(textbox, { target: { value: "ge" } });
+    fireEvent.change(textbox, { target: { value: "geä" } });
+    fireEvent.change(textbox, { target: { value: "geän" } });
+    fireEvent.change(textbox, { target: { value: "geänd" } });
+    fireEvent.change(textbox, { target: { value: "geände" } });
+    fireEvent.change(textbox, { target: { value: "geändert" } });
+
+    // Kein einziger weiterer Commit des ganzen App-Baums — weder die
+    // Nachbar-Pane (storefront) noch ihre Tab-Chips noch der Explorer-Baum
+    // haben also erneut gerendert, unabhängig davon, wie viele Tastendrücke
+    // seit dem "dirty"-Übergang oben folgten.
+    expect(onRender).not.toHaveBeenCalled();
+    // Der Puffer selbst führt den vollen getippten Stand trotzdem korrekt —
+    // die Isolation kostet keine Korrektheit, s. `bufferRef` in
+    // FileEditor.tsx.
+    expect(textbox).toHaveValue("geändert");
+    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
+  });
+
+  it("aktualisiert die geteilte Ungespeichert-Markierung nur beim ersten Tastendruck einer Sitzung, nicht bei jedem weiteren", async () => {
+    openMock.mockResolvedValueOnce("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "README.md", is_dir: false }]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    render(<App />);
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    fireEvent.click(await screen.findByRole("button", { name: "README.md" }));
+    const textbox = await screen.findByRole("textbox", {
+      name: "Inhalt von README.md",
+    });
+
+    fireEvent.change(textbox, { target: { value: "g" } });
+    const saveButton = await screen.findByRole("button", { name: "Speichern" });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    // Weiteres Tippen ändert an der (bereits aktiven) Markierung nichts mehr
+    // — sie bleibt einfach, statt bei jedem Tastendruck erneut gesetzt zu
+    // werden. Der eigentliche Beweis dafür liegt im ersten Test dieses
+    // Blocks (kein weiterer Commit); dieser Test hält zusätzlich fest, dass
+    // Speichern-Knopf und Baumzeile dabei trotzdem korrekt "dirty" bleiben.
+    fireEvent.change(textbox, { target: { value: "geändert" } });
+    expect(saveButton).toBeEnabled();
+    expect(
+      explorerTreeButton(/README\.md,\s*ungespeichert/),
+    ).toBeInTheDocument();
   });
 });
 

@@ -41,14 +41,22 @@ interface FileEditorHandle {
   open: (path: string) => void;
   close: () => void;
   /** Ändert den Puffertext (nur wirksam aus "ready"/"save-error" heraus, sonst
-   * No-Op — siehe `fileEditorState.ts`s `edit`). */
+   * No-Op — siehe `fileEditorState.ts`s `edit`). Ticket 05 (Performance-
+   * Audit): ab dem ZWEITEN Tastendruck einer bereits "dirty" Sitzung ist
+   * das selbst ein No-Op, s. `editContent` unten — der volle Cross-Pane-
+   * Zustand wird dann nicht mehr bei jedem Tastendruck ersetzt. */
   editContent: (content: string) => void;
   /** Schreibt den aktuellen Puffer über `explorer_write_file`. Ohne `force`
    * wird der beim Laden/letzten erfolgreichen Save erhaltene Stamp mitgesendet
    * (Konflikt möglich); mit `force: true` wird zuerst der aktuelle
    * Platten-Stamp frisch gelesen und der Write damit erzwungen — das ist
-   * "trotzdem überschreiben". */
-  save: (options?: { force?: boolean }) => void;
+   * "trotzdem überschreiben". `content` (Ticket 05): der tatsächlich zu
+   * schreibende Text, direkt aus der (seit Ticket 05 unkontrollierten)
+   * Textarea gelesen — `state.content` selbst kann seit demselben Ticket
+   * hinter dem zuletzt getippten Stand zurückbleiben, s. `editContent`.
+   * Fehlt `content`, wird `state.content` verwendet (unverändertes
+   * Verhalten für Aufrufer, die keinen frischeren Stand kennen). */
+  save: (options?: { force?: boolean; content?: string }) => void;
   /** Würde ein Wechsel (andere Datei, Projekt, Pane schließen) gerade
    * ungespeicherte Arbeit verwerfen? */
   wouldLoseWork: boolean;
@@ -113,11 +121,18 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
       });
   };
 
-  const save = (paneId: string, options?: { force?: boolean }) => {
+  const save = (paneId: string, options?: { force?: boolean; content?: string }) => {
     const state = stateFor(paneId);
     if (state.status !== "ready" && state.status !== "save-error") return;
     if (state.status === "ready" && !state.dirty) return;
-    const { path, content, crlf, stamp } = state;
+    const { path, crlf, stamp } = state;
+    // Ticket 05: seit `editContent` unten ab dem zweiten Tastendruck einer
+    // Sitzung nichts mehr tut, kann `state.content` hinter dem tatsächlich
+    // getippten Stand zurückbleiben — `options.content` (aus der Textarea
+    // selbst gelesen, `FileEditor.tsx`s `bufferRef`) ist deshalb die
+    // maßgebliche Quelle, `state.content` nur der Fallback für Aufrufer ohne
+    // frischeren Stand.
+    const content = options?.content ?? state.content;
 
     const writeWith = (expected: FileStamp) =>
       invoke<FileStamp>("explorer_write_file", {
@@ -139,7 +154,11 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
           );
         });
 
-    updateState(paneId, () => startSaving(state));
+    // `edit()` VOR `startSaving()`: trägt den frischen Textarea-Stand (s. o.)
+    // noch in den geteilten Zustand ein, bevor der in "saving" einfriert —
+    // ohne das schriebe der spätere Fehlerzweig (`saveFailed`) einen
+    // veralteten Puffer fest, der dann im "save-error"-Zustand stünde.
+    updateState(paneId, (current) => startSaving(edit(current, content)));
     if (options?.force) {
       // "Trotzdem überschreiben": den aktuellen Platten-Stamp frisch holen
       // und damit schreiben, statt den (bewusst veralteten) Stamp aus `state`
@@ -156,15 +175,48 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     }
   };
 
+  /**
+   * Ticket 05 (Performance-Audit): trägt einen Tastendruck NUR NOCH DANN
+   * wirklich in den Pane-übergreifenden Zustand ein, wenn dieser Puffer
+   * dadurch ERSTMALS seit dem letzten sauberen/gescheiterten Stand "dirty"
+   * wird (oder einen "save-error" verlässt, s. u.) — jeder weitere
+   * Tastendruck derselben Sitzung ist hier ein reines No-Op. Vorher ersetzte
+   * JEDER Tastendruck den GESAMTEN Record in `states` und riss darüber das
+   * ganze Grid (jede Pane, jeden Tab-Chip, den Explorer-Baum) in einen
+   * Re-Render — genau das beseitigt dieses Ticket. Der tatsächliche Text
+   * lebt bis zum nächsten Checkpoint (Speichern) unverändert im DOM der
+   * Textarea selbst (seit Ticket 05 unkontrolliert, `FileEditor.tsx`s
+   * `EditorBuffer`); `save()` oben liest ihn dort direkt, dieser Datensatz
+   * muss ihn bis dahin nicht führen.
+   *
+   * `wouldLoseWork` bleibt dabei korrekt: `state.dirty` kippt genau bei
+   * diesem einen Update auf `true` und bleibt es unverändert (kein
+   * Zeitablauf, keine weitere Bedingung), bis Speichern oder ein neues
+   * `open()`/`close()` es zurücksetzt — jeder GUARD (`App.tsx`s
+   * `guardLeave` u. a.) liest also weiterhin den korrekten Stand, ganz ohne
+   * dass jeder weitere Tastendruck dafür noch etwas tun müsste.
+   *
+   * Ausnahme "save-error": ein gescheiterter Speicherversuch verwirft seine
+   * Fehlermeldung bereits beim NÄCHSTEN Tastendruck (bestehendes,
+   * dokumentiertes Verhalten, s. `fileEditorState.ts`s Kommentar an
+   * `edit()`) — das bleibt deshalb weiterhin ein echtes, jedes Mal
+   * neu prüfendes Update.
+   */
+  const editContent = (paneId: string, content: string) => {
+    const current = stateFor(paneId);
+    if (current.status === "ready" && current.dirty) return;
+    updateState(paneId, (state) => edit(state, content));
+  };
+
   const editorFor = (paneId: string): FileEditorHandle => {
     const state = stateFor(paneId);
     return {
       state,
       open: (path: string) => open(paneId, path),
       close: () => updateState(paneId, () => closeFile()),
-      editContent: (content: string) =>
-        updateState(paneId, (current) => edit(current, content)),
-      save: (options?: { force?: boolean }) => save(paneId, options),
+      editContent: (content: string) => editContent(paneId, content),
+      save: (options?: { force?: boolean; content?: string }) =>
+        save(paneId, options),
       wouldLoseWork: wouldLoseWork(state),
     };
   };

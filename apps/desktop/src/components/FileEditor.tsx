@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -40,6 +40,10 @@ import {
 // gleicher Aktiv-Rahmen, gleiche h-6-Kopfzeile in denselben Tokens): Was hier
 // steht, ist nicht ein zweites Fenster neben der Pane, sondern dieselbe Pane
 // mit anderem Inhalt.
+//
+// RENDER-ISOLATION (Ticket 05, Performance-Audit, 2026-08-14): die eigentliche
+// Eingabefläche (`EditorBuffer` unten) ist unkontrolliert statt an
+// `state.content` gebunden — Details/Begründung an `EditorBuffer` selbst.
 export function FileEditor({
   state,
   focused,
@@ -78,7 +82,13 @@ export function FileEditor({
    * Ansicht. */
   tabs: PaneTabsProps;
   onEdit: (content: string) => void;
-  onSave: (options?: { force?: boolean }) => void;
+  /** `content` (Ticket 05, Performance-Audit): der aktuelle Textarea-Stand,
+   * gelesen über `bufferRef` unten — seit derselbe Puffer unkontrolliert ist
+   * (s. `EditorBuffer`), ist das die einzig verlässliche Quelle, nicht
+   * `state.content` (das bleibt seit demselben Ticket ab dem zweiten
+   * Tastendruck einer Sitzung zurück, s. `usePaneFileEditors.ts`s
+   * `editContent`). */
+  onSave: (options?: { force?: boolean; content?: string }) => void;
   onClose: () => void;
   /** Griff für den Slot-Tausch (Ticket 20) — identisch zu TerminalPane.tsx:
    * beide Kopfzeilen sind dieselbe Zone derselben Pane, eine Pane mit
@@ -99,6 +109,12 @@ export function FileEditor({
   // Pane-Aufblitz) — dieselbe Mechanik wie TerminalPane.tsx, VOR dem
   // frühen `return` unten, da Hooks nicht bedingt aufgerufen werden dürfen.
   const [paneFlashKey, setPaneFlashKey] = useState(0);
+  // Ticket 05 (Performance-Audit): Ref auf die (seit diesem Ticket
+  // unkontrollierte) Textarea in `EditorBuffer` unten — der einzige Weg, den
+  // GERADE getippten Stand für Speichern/Strg+S zu lesen, seit nicht mehr
+  // jeder Tastendruck den React-Zustand nachführt (`state.content` kann
+  // hinter ihm zurückbleiben, s. `usePaneFileEditors.ts`s `editContent`).
+  const bufferRef = useRef<HTMLTextAreaElement | null>(null);
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
   // bedingungslos und stellt die Bedingung damit genau einmal — hier.
   if (state.status === "idle") return null;
@@ -144,7 +160,7 @@ export function FileEditor({
       // und die will man in einem Editor nie sehen. `onSave` ist in dem Fall
       // ein No-Op.
       event.preventDefault();
-      onSave();
+      onSave({ content: bufferRef.current?.value });
       return;
     }
     const tabNumber = terminalTabSelectNumber(shortcut);
@@ -224,7 +240,7 @@ export function FileEditor({
             type="button"
             disabled={!canSave}
             aria-busy={saving}
-            onClick={() => onSave()}
+            onClick={() => onSave({ content: bufferRef.current?.value })}
             // Farbe/Deckkraft in EINE Klasse verzweigt statt zwei
             // gleichrangige Utilities nebeneinander (dieselbe Regel wie in
             // ExplorerPanel.tsx: sonst entscheidet die Reihenfolge im
@@ -282,54 +298,102 @@ export function FileEditor({
             <SaveErrorNotice
               message={state.message}
               conflict={state.conflict}
-              onSave={onSave}
+              onSave={(options) =>
+                onSave({ ...options, content: bufferRef.current?.value })
+              }
             />
           )}
-          <textarea
-            // Nur während des Schreibens gesperrt, und zwar nicht aus
-            // Vorsicht: `edit()` in fileEditorState.ts nimmt aus „saving"
-            // heraus keine Änderung an (der Puffer ist in dem Moment gerade
-            // unterwegs zur Platte). Ohne dieses readOnly schluckte das Feld
-            // die Tastendrücke dieser einen Zwischenzeit stillschweigend.
-            readOnly={saving}
-            onChange={(event) => onEdit(event.target.value)}
-            // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen,
-            // und ein umgebrochener Block verschiebt jede Zeilennummer, die
-            // man im Terminal daneben gerade liest. Umgebrochen wird also
-            // nicht, gescrollt wird waagerecht.
-            wrap="off"
-            // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext
-            // reines Rauschen.
-            spellCheck={false}
-            aria-label={t("fileEditor.contentAria", { name })}
-            value={state.content}
-            // Die Schrift des Terminals, nicht die des Chromes: der Text steht
-            // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
-            // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
-            // (px-3 py-2), damit die erste Spalte beim Umschalten nicht
-            // springt. tabSize 4 statt der Browser-Vorgabe 8, die Quelltext
-            // auseinanderreißt.
-            style={{
-              fontFamily: "var(--pc-terminal-fontFamily)",
-              fontSize: "var(--pc-terminal-fontSize)",
-              lineHeight: "var(--pc-terminal-lineHeight)",
-              tabSize: 4,
-            }}
-            // select-text/cursor-text gegen die App-weiten `user-select: none`
-            // und `cursor: default` aus App.css: hier ist Text zum Lesen,
-            // Kopieren und Ändern da. Kein eigener Fokusring — das Feld ist
-            // fokussierbar und zeigt dann seinen Cursor, wie jede
-            // Editorfläche; ein Ring um die halbe Pane wäre der lautere und
-            // zugleich unschärfere Hinweis. caret im Terminal-Cursor-Ton:
-            // dieselbe „hier schreibst du"-Aussage wie der Amber-Block im
-            // Terminal nebenan (theme.css, Akzent-Investition 2026-08-13).
-            className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) caret-(--pc-terminal-cursor) outline-none"
+          <EditorBuffer
+            ref={bufferRef}
+            ariaLabel={t("fileEditor.contentAria", { name })}
+            initialContent={state.content}
+            saving={saving}
+            onEdit={onEdit}
           />
         </>
       )}
     </section>
   );
 }
+
+/**
+ * Die eigentliche Eingabefläche (Ticket 05, Performance-Audit) —
+ * UNCONTROLLED statt vorher `value={state.content}`: der Browser führt den
+ * Text selbst, React schreibt ihn nur EINMAL beim Mounten hinein
+ * (`defaultValue`). `onEdit` (= `usePaneFileEditors.ts`s `editContent`)
+ * bleibt zwar an jedem Tastendruck verdrahtet, tut dort aber ab dem ZWEITEN
+ * Tastendruck einer bereits "dirty" Sitzung nichts mehr (Kommentar dort) —
+ * vorher ersetzte JEDER Tastendruck den GESAMTEN Pane-übergreifenden
+ * Editor-Zustand und riss damit das ganze Grid (jede Pane, jeden Tab-Chip,
+ * den Explorer-Baum) in einen Re-Render.
+ *
+ * Bleibt über die gesamte Lebensdauer EINES offenen Puffers eingehängt
+ * (ready → saving → save-error → ready …, auch über eine reine
+ * Umbenennung hinweg, die nur `state.path` ändert) — nur ein ECHTER
+ * Dateiwechsel hängt sie ab und frisch wieder ein: `FileEditor.tsx` rendert
+ * bei einem neuen `open()` erst den "loading"-Zweig (dieser Zweig hier
+ * verschwindet ganz), dann bei Erfolg diesen Zweig neu — und GENAU dann darf
+ * `defaultValue` auch wirklich neu greifen (sie wirkt sonst nur beim
+ * allerersten Mount, DOM-Standardverhalten für unkontrollierte Felder).
+ *
+ * Der aktuelle Text ist für den Aufrufer nur noch über die weitergereichte
+ * Ref erreichbar (`FileEditor.tsx`s `bufferRef`, gelesen bei Speichern/
+ * Strg+S) — die DOM-`value` einer Textarea ist dafür ohnehin die einzig
+ * verlässliche Quelle, sobald nicht mehr jeder Tastendruck den
+ * React-Zustand nachführt.
+ */
+const EditorBuffer = forwardRef<
+  HTMLTextAreaElement,
+  {
+    ariaLabel: string;
+    initialContent: string;
+    saving: boolean;
+    onEdit: (content: string) => void;
+  }
+>(function EditorBuffer({ ariaLabel, initialContent, saving, onEdit }, ref) {
+  return (
+    <textarea
+      ref={ref}
+      // Nur während des Schreibens gesperrt, und zwar nicht aus Vorsicht:
+      // `edit()` in fileEditorState.ts nimmt aus „saving" heraus keine
+      // Änderung an (der Puffer ist in dem Moment gerade unterwegs zur
+      // Platte). Ohne dieses readOnly schluckte das Feld die Tastendrücke
+      // dieser einen Zwischenzeit stillschweigend.
+      readOnly={saving}
+      defaultValue={initialContent}
+      onChange={(event) => onEdit(event.target.value)}
+      // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen, und
+      // ein umgebrochener Block verschiebt jede Zeilennummer, die man im
+      // Terminal daneben gerade liest. Umgebrochen wird also nicht,
+      // gescrollt wird waagerecht.
+      wrap="off"
+      // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext reines
+      // Rauschen.
+      spellCheck={false}
+      aria-label={ariaLabel}
+      // Die Schrift des Terminals, nicht die des Chromes: der Text steht
+      // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
+      // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
+      // (px-3 py-2), damit die erste Spalte beim Umschalten nicht springt.
+      // tabSize 4 statt der Browser-Vorgabe 8, die Quelltext auseinanderreißt.
+      style={{
+        fontFamily: "var(--pc-terminal-fontFamily)",
+        fontSize: "var(--pc-terminal-fontSize)",
+        lineHeight: "var(--pc-terminal-lineHeight)",
+        tabSize: 4,
+      }}
+      // select-text/cursor-text gegen die App-weiten `user-select: none` und
+      // `cursor: default` aus App.css: hier ist Text zum Lesen, Kopieren und
+      // Ändern da. Kein eigener Fokusring — das Feld ist fokussierbar und
+      // zeigt dann seinen Cursor, wie jede Editorfläche; ein Ring um die
+      // halbe Pane wäre der lautere und zugleich unschärfere Hinweis. caret
+      // im Terminal-Cursor-Ton: dieselbe „hier schreibst du"-Aussage wie der
+      // Amber-Block im Terminal nebenan (theme.css, Akzent-Investition
+      // 2026-08-13).
+      className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) caret-(--pc-terminal-cursor) outline-none"
+    />
+  );
+});
 
 // Ein fehlgeschlagenes Speichern — als Band über dem Puffer, nicht an seiner
 // Stelle (Begründung am Aufrufer). Gleiche Aufteilung wie TreeErrorNotice im
