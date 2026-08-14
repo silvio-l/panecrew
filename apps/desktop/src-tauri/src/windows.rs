@@ -291,6 +291,26 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         state.windows.retain(|w| w.label != window.label());
         let _ = session_store::write_session(&dir, &state);
     }
+
+    // Settings/About never destroy themselves on close — `settings_window.rs`/
+    // `about.rs` intercept `CloseRequested` and only `hide()`, precisely so
+    // reopening them is instant instead of a full WKWebView+React cold start.
+    // That means tao's own window map never empties out while either of them
+    // exists, so its "last window destroyed → fire ExitRequested" check
+    // (`tauri-runtime-wry`) never fires on its own once every PANE window is
+    // gone — the app was found sitting orphaned in the Dock with zero visible
+    // windows (2026-08-14 report: Settings left open, then main pane window
+    // closed). PaneCrew is a single-purpose grid tool, not a document app, so
+    // "no more pane windows" should mean "fully quit", utility windows
+    // notwithstanding — checked and triggered explicitly here since tao can't
+    // know the difference between a pane and a utility window on its own.
+    let other_pane_windows_remain = app.webview_windows().keys().any(|label| {
+        let label = label.as_str();
+        label != window.label() && (label == MAIN || label.starts_with(SECONDARY_LABEL_PREFIX))
+    });
+    if !other_pane_windows_remain {
+        app.exit(0);
+    }
 }
 
 /// Regression tests for the 2026-08-13 bug "secondary windows can't be dragged
