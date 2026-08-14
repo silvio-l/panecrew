@@ -23,7 +23,11 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// (Suchstichwort, kanonische Tool-ID) — das Stichwort wird als
 /// Teilstring-Suche (case-insensitive) gegen Prozessname UND volle
@@ -50,12 +54,60 @@ const SHELL_BINARIES: &[&str] = &[
     "cmd",
 ];
 
-/// Wraps a `System` behind a `Mutex` so it can live in Tauri's managed state
-/// across repeated polls — CPU usage is meaningless from a single refresh
-/// (sysinfo's own documented limitation: it's a delta since the PREVIOUS
-/// refresh), so a fresh `System` per call would report 0% for everyone.
+/// Ticket 03 (perf audit): every open terminal tab polls `detect()`
+/// independently (`useDetectedToolId`, ~2s cadence per tab, see
+/// `useDetectedTool.ts`) — without coalescing, N open tabs whose poll
+/// intervals land close together each trigger their own full system-wide
+/// `sysinfo` process refresh, which is the actually expensive part of a
+/// scan (walking every OS process), not the per-call tree walk over the
+/// already-fetched snapshot. A refresh inside this window is reused by
+/// every caller instead of re-triggered; only the first caller after the
+/// TTL expires pays for a fresh one. Short enough that no caller ever acts
+/// on data staler than a fraction of a single tab's own poll interval.
+const REFRESH_TTL: Duration = Duration::from_millis(500);
+
+/// The shared, cached `sysinfo` state plus when it was last actually
+/// refreshed (`None` before the first call ever runs).
 #[derive(Default)]
-pub struct ToolDetector(Mutex<System>);
+struct Snapshot {
+    system: System,
+    refreshed_at: Option<Instant>,
+}
+
+/// Wraps a `Snapshot` behind a `Mutex` so it can live in Tauri's managed
+/// state across repeated polls — CPU usage is meaningless from a single
+/// refresh (sysinfo's own documented limitation: it's a delta since the
+/// PREVIOUS refresh), so a fresh `System` per call would report 0% for
+/// everyone. The same lock that guards the `System` also coalesces
+/// concurrent/near-simultaneous `detect()` calls onto one underlying
+/// refresh (see `REFRESH_TTL` above): a caller that finds the cache still
+/// fresh skips `refresh_processes_specifics` entirely and reads straight
+/// from what an earlier caller already fetched.
+pub struct ToolDetector {
+    snapshot: Mutex<Snapshot>,
+    /// Test-only instrumentation: counts actual underlying refreshes so the
+    /// coalescing test below can assert on it directly instead of inferring
+    /// it from timing. Absent from release builds.
+    #[cfg(test)]
+    refresh_count: AtomicUsize,
+}
+
+impl Default for ToolDetector {
+    fn default() -> Self {
+        Self {
+            snapshot: Mutex::new(Snapshot::default()),
+            #[cfg(test)]
+            refresh_count: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[cfg(test)]
+impl ToolDetector {
+    fn refresh_count(&self) -> usize {
+        self.refresh_count.load(Ordering::SeqCst)
+    }
+}
 
 impl ToolDetector {
     /// Returns a canonical tool id for `root_pid`'s process tree, or `None`
@@ -73,15 +125,26 @@ impl ToolDetector {
     /// then, not a guess. (3) Only a childless root (an idle shell) falls
     /// back to identifying the shell itself.
     pub fn detect(&self, root_pid: u32) -> Option<String> {
-        let mut system = self.0.lock().unwrap();
-        // `cmd` defaults to `UpdateKind::Never` — without asking for it
-        // explicitly, `Process::cmd()` stays empty forever regardless of the
-        // real command line, silently defeating `match_tool`'s argv search.
-        system.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
-        );
+        let mut snapshot = self.snapshot.lock().unwrap();
+        let stale = match snapshot.refreshed_at {
+            Some(refreshed_at) => refreshed_at.elapsed() >= REFRESH_TTL,
+            None => true,
+        };
+        if stale {
+            // `cmd` defaults to `UpdateKind::Never` — without asking for it
+            // explicitly, `Process::cmd()` stays empty forever regardless of
+            // the real command line, silently defeating `match_tool`'s argv
+            // search.
+            snapshot.system.refresh_processes_specifics(
+                ProcessesToUpdate::All,
+                true,
+                ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+            );
+            snapshot.refreshed_at = Some(Instant::now());
+            #[cfg(test)]
+            self.refresh_count.fetch_add(1, Ordering::SeqCst);
+        }
+        let system = &snapshot.system;
 
         let root = Pid::from_u32(root_pid);
         system.process(root)?;
@@ -155,6 +218,7 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     use std::process::{Child, Command, Stdio};
+    use std::sync::{Arc, Barrier};
     use std::time::{Duration, Instant};
 
     fn wait_for<F: Fn() -> bool>(predicate: F, timeout: Duration) -> bool {
@@ -288,5 +352,147 @@ mod tests {
             || detector.detect(pid).is_none(),
             Duration::from_secs(5)
         ));
+    }
+
+    /// Fixture-struct style (matches `explorer_watch.rs`/`session_store.rs`
+    /// etc.): owns the throwaway shell child and guarantees it's killed even
+    /// if an assertion below panics.
+    struct Fixture {
+        shell: Child,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            Self {
+                shell: spawn_shell_with_child(),
+            }
+        }
+
+        fn pid(&self) -> u32 {
+            self.shell.id()
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.shell.kill();
+            let _ = self.shell.wait();
+        }
+    }
+
+    /// Ticket 03: N terminal tabs polling at (near-)the same moment must
+    /// still cost one underlying `sysinfo` refresh, not N — that refresh,
+    /// not the tree walk over its already-fetched result, is the expensive
+    /// part `REFRESH_TTL` exists to coalesce. Uses a brand-new detector (no
+    /// priming call) so the very first `detect()` in the batch is the one
+    /// that has to refresh, and the outcome is a deterministic exact count
+    /// rather than a range: every call is serialized through the same
+    /// `Mutex<Snapshot>`, so whichever thread the OS scheduler lets acquire
+    /// the lock first always finds `refreshed_at` still `None` (stale) and
+    /// refreshes; by the time any other thread gets the lock afterward,
+    /// `REFRESH_TTL` (500ms) has not remotely elapsed, so it reuses the
+    /// cache. No thread can observe a state in between.
+    #[test]
+    fn concurrent_detect_calls_within_the_ttl_window_share_one_underlying_refresh() {
+        const CONCURRENT_CALLS: usize = 8;
+
+        let fixture = Fixture::new();
+        let pid = fixture.pid();
+
+        // Warm-up with a throwaway detector, NOT the one this test measures:
+        // `sysinfo` only reports a child once the OS has actually made it
+        // visible in the process table, which can lag slightly behind
+        // `Command::spawn()` returning — without this, the burst below could
+        // race a still-invisible "sleep" child and see the childless-shell
+        // fallback (`Some("shell")`) instead of the intended unmatched
+        // descendant (`None`), independent of this module's own cache.
+        let warmup = ToolDetector::default();
+        wait_for(|| warmup.detect(pid).is_none(), Duration::from_secs(5));
+
+        let detector = Arc::new(ToolDetector::default());
+
+        // A barrier lines every thread up at the same instant instead of
+        // relying on OS scheduling to make their `detect()` calls land
+        // close together.
+        let barrier = Arc::new(Barrier::new(CONCURRENT_CALLS));
+        let handles: Vec<_> = (0..CONCURRENT_CALLS)
+            .map(|_| {
+                let detector = Arc::clone(&detector);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    detector.detect(pid)
+                })
+            })
+            .collect();
+
+        let results: Vec<Option<String>> =
+            handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+        assert_eq!(
+            detector.refresh_count(),
+            1,
+            "expected the {CONCURRENT_CALLS} concurrent detect() calls inside the TTL window to collapse into exactly one underlying process refresh, not {CONCURRENT_CALLS}"
+        );
+        assert!(
+            results.iter().all(Option::is_none),
+            "every concurrent caller should see the same, consistent detection result ('sleep' is an unrecognized descendant, so `None`) from the shared snapshot"
+        );
+    }
+
+    /// Ticket 03's other criterion: "each tab still receives a correct,
+    /// current detection result" — a shared cache must not let one tab's
+    /// answer leak onto another's. Two roots with genuinely DIFFERENT
+    /// expected outcomes, detected back-to-back through the same detector
+    /// (so both land inside one TTL window and share its one refresh),
+    /// each still has to come back with its own correct result.
+    #[test]
+    fn a_shared_refresh_still_returns_each_root_pids_own_correct_result() {
+        let unmatched_fixture = Fixture::new(); // sh + unmatched "sleep" child -> None
+        let unmatched_pid = unmatched_fixture.pid();
+        let mut idle_shell = Command::new("sh")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawning the fixture shell should succeed");
+        let idle_pid = idle_shell.id();
+
+        // Warm up both roots with throwaway detectors first — same
+        // process-table-visibility race as the test above, now for two
+        // roots at once: the measured detector's single refresh must find
+        // both already fully settled.
+        let warmup_unmatched = ToolDetector::default();
+        wait_for(
+            || warmup_unmatched.detect(unmatched_pid).is_none(),
+            Duration::from_secs(5),
+        );
+        let warmup_idle = ToolDetector::default();
+        wait_for(
+            || warmup_idle.detect(idle_pid).as_deref() == Some("shell"),
+            Duration::from_secs(5),
+        );
+
+        let detector = ToolDetector::default();
+        let unmatched_result = detector.detect(unmatched_pid);
+        let idle_result = detector.detect(idle_pid);
+
+        let _ = idle_shell.kill();
+        let _ = idle_shell.wait();
+
+        assert_eq!(
+            detector.refresh_count(),
+            1,
+            "both calls landed inside the same TTL window and should share one refresh"
+        );
+        assert_eq!(
+            unmatched_result, None,
+            "the unmatched-descendant root's own result must not be replaced by the idle root's"
+        );
+        assert_eq!(
+            idle_result.as_deref(),
+            Some("shell"),
+            "the idle-shell root's own result must not be replaced by the unmatched root's"
+        );
     }
 }

@@ -228,7 +228,21 @@ pub fn kill_all_for_window(state: &PtyState, registry: &WindowPtyRegistry, windo
 /// handle (already closed, a poll racing a close) and when the detector
 /// itself can't find the root pid anymore; the frontend treats both the
 /// same way, by simply not showing an icon.
-#[tauri::command]
+///
+/// `async` (perf audit ticket 06): a scan walks the ENTIRE OS process table
+/// (`ToolDetector::detect`, via `sysinfo`), which — unlike `pty_write`,
+/// `pty_resize`, `pty_kill` right above, all cheap in-memory map lookups —
+/// is genuinely slow enough to matter. Every open terminal tab polls this
+/// command independently (`useDetectedToolId`, ~2s cadence), so without
+/// `async` a scan in flight would sit on the same IPC dispatch thread that
+/// also has to dispatch e.g. `pty_write` for a completely unrelated pane,
+/// adding real keystroke latency there. Same "must not block the IPC
+/// dispatch thread" reasoning as `pty_spawn` above and `session_load`
+/// (`session_store.rs`) — `(async)` alone (no `async fn`, matching
+/// `session_load`'s and `explorer_read_dir`'s convention) is enough since
+/// Tauri already dispatches an `(async)` command via its own async runtime
+/// instead of the main thread; there's no `.await` point inside this body.
+#[tauri::command(async)]
 pub fn pty_detect_tool(
     state: State<PtyState>,
     detector: State<ToolDetector>,
