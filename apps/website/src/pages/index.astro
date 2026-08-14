@@ -50,7 +50,7 @@ const description =
       "@type": "SoftwareApplication",
       "name": "PaneCrew",
       "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "macOS, Windows",
+      "operatingSystem": "macOS",
       "description": "A grid of real, simultaneously visible terminal sessions across different projects, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
       "url": "https://panecrew.dev",
       "offers": {
@@ -120,7 +120,7 @@ const description =
     --label-track: 0.09em;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; font-size: 100%; }
   body {
     /* faint technical grid, well under the bokeh glow — a board-texture
        hint, not a visible pattern on its own */
@@ -130,7 +130,7 @@ const description =
       linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
     background-color: var(--indigo);
     color: var(--cream);
-    font-family: var(--sans); font-size: 16.5px; line-height: 1.6;
+    font-family: var(--sans); font-size: 1.03125rem; line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
@@ -143,7 +143,7 @@ const description =
 
   /* ---------- eyebrow ornament (terminal-true ASCII corners) ---------- */
   .eyebrow {
-    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+    font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em;
     text-transform: uppercase; color: var(--amber);
     display: flex; align-items: center; justify-content: center; gap: 10px;
     margin-bottom: 14px;
@@ -161,11 +161,11 @@ const description =
   .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
   .logo svg { width: 26px; height: 26px; }
   .logo b {
-    font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: -0.01em;
+    font-family: var(--display); font-weight: 700; font-size: 1.3125rem; letter-spacing: -0.01em;
   }
   .nav-links { display: flex; gap: 22px; margin-left: 8px; }
   .nav-links a {
-    text-decoration: none; font-size: 14.5px; color: rgba(255, 253, 245, 0.82);
+    text-decoration: none; font-size: 0.90625rem; color: rgba(255, 253, 245, 0.82);
     transition: color var(--lift);
     position: relative;
   }
@@ -179,7 +179,7 @@ const description =
   .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .nav-cta {
     text-decoration: none;
-    font-family: var(--mono); font-size: 13px;
+    font-family: var(--mono); font-size: 0.875rem;
     background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
     border-radius: 999px; padding: 7px 16px;
     transition: transform var(--lift), background var(--lift);
@@ -200,7 +200,7 @@ const description =
      modifier adds the floating capsule chrome (nav readout). Sharp
      corners on purpose — a precision instrument, not a friendly pill. */
   .hud-readout {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em;
+    font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.02em;
     color: rgba(255, 253, 245, 0.7); white-space: nowrap;
     font-variant-numeric: tabular-nums; /* readouts tick without jitter */
   }
@@ -291,7 +291,7 @@ const description =
   }
   .hero-copy .pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .tag {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
     background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
     color: rgba(255, 253, 245, 0.85);
     border-radius: 999px; padding: 4px 12px;
@@ -306,10 +306,10 @@ const description =
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .hero-copy p { color: rgba(255, 253, 245, 0.85); max-width: 460px; margin-bottom: 12px; text-wrap: pretty; }
-  .hero-copy .avail { font-size: 13.5px; color: rgba(255, 253, 245, 0.6); margin-bottom: 26px; }
+  .hero-copy .avail { font-size: 0.90625rem; color: rgba(255, 253, 245, 0.6); margin-bottom: 26px; }
   .btn {
     display: inline-flex; align-items: center; gap: 9px;
-    font-family: var(--display); font-weight: 700; font-size: 16px;
+    font-family: var(--display); font-weight: 700; font-size: 1rem;
     background: linear-gradient(180deg, #ffd394, #fcad43);
     color: #3a2405; text-decoration: none;
     border-radius: 999px; padding: 12px 26px;
@@ -468,7 +468,7 @@ const description =
     position: absolute; top: 0; left: 0; right: 0; height: 22px;
     display: flex; align-items: center; padding: 0 10px;
     background: var(--term-bar); border-bottom: 1px solid var(--term-line);
-    color: rgba(255, 253, 245, 0.45); font-size: 9.5px; white-space: nowrap;
+    color: rgba(255, 253, 245, 0.66); font-size: 9.5px; white-space: nowrap;
   }
   .hpane.focused { border-color: var(--amber); }
   .hpane.focused::before { color: var(--amber); }
@@ -581,7 +581,7 @@ const description =
        110px bottom padding either way). */
     position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
     z-index: 2; white-space: nowrap;
-    font-family: var(--mono); font-size: 11px; letter-spacing: var(--label-track);
+    font-family: var(--mono); font-size: 0.75rem; letter-spacing: var(--label-track);
     color: rgba(255, 253, 245, 0.6);
     transition: opacity 0.3s ease;
   }
@@ -732,14 +732,14 @@ const description =
   .card .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .badge {
     display: inline-flex; align-items: center; gap: 5px;
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+    font-family: var(--mono); font-size: 0.71875rem; letter-spacing: 0.07em; text-transform: uppercase;
     background: #f6ead4; border: 1px solid #e8cfa4; color: #8a5a1a;
     border-radius: 999px; padding: 3px 10px;
   }
   .badge svg { width: 10px; height: 10px; flex: none; }
   .badge.cy { background: #ddf2f2; border-color: #a8dcdc; color: #17696b; }
-  .card p { font-size: 14.5px; color: var(--ink-dim); text-wrap: pretty; }
-  .card .more { display: inline-block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--amber-text); text-decoration: none; transition: transform var(--lift); }
+  .card p { font-size: 0.90625rem; color: var(--ink-dim); text-wrap: pretty; }
+  .card .more { display: inline-block; margin-top: 8px; font-size: 0.90625rem; font-weight: 600; color: var(--amber-text); text-decoration: none; transition: transform var(--lift); }
   .card .more:hover { text-decoration: underline; transform: translateX(3px); }
 
   /* card visuals: small terminal mocks */
@@ -754,7 +754,7 @@ const description =
     position: absolute; top: 0; left: 0; right: 0; height: 24px;
     display: flex; align-items: center; padding: 0 12px;
     background: var(--term-bar); border-bottom: 1px solid var(--term-line);
-    color: rgba(255, 253, 245, 0.45); font-size: 10px;
+    color: rgba(255, 253, 245, 0.66); font-size: 10px;
   }
   .minigrid {
     display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
@@ -766,7 +766,7 @@ const description =
     font-family: var(--mono); font-size: 9.5px; line-height: 1.7;
     color: rgba(255, 253, 245, 0.55); overflow: hidden; white-space: nowrap;
   }
-  .minigrid .mp b { display: block; font-weight: 400; color: rgba(255, 253, 245, 0.4); font-size: 8.5px; margin-bottom: 2px; }
+  .minigrid .mp b { display: block; font-weight: 400; color: rgba(255, 253, 245, 0.62); font-size: 8.5px; margin-bottom: 2px; }
   .minigrid .mp.amb { border-color: rgba(229, 150, 86, 0.65); }
   .tabsvis { padding: 12px; width: 100%; display: flex; flex-direction: column; gap: 0; }
   .tabrow { display: flex; gap: 4px; }
@@ -795,14 +795,14 @@ const description =
     color: rgba(255, 253, 245, 0.9); white-space: nowrap;
   }
   .wall .ic { flex: none; fill: currentColor; }
-  .wall .lg { font-family: var(--display); font-weight: 700; font-size: 25px; letter-spacing: -0.01em; }
+  .wall .lg { font-family: var(--display); font-weight: 700; font-size: 1.5625rem; letter-spacing: -0.01em; }
   .wall .lg .ic { width: 27px; height: 27px; }
-  .wall .md { font-family: var(--mono); font-size: 17px; opacity: 0.8; }
+  .wall .md { font-family: var(--mono); font-size: 1.0625rem; opacity: 0.8; }
   .wall .md .ic { width: 20px; height: 20px; }
-  .wall .sm { font-family: var(--mono); font-size: 14px; opacity: 0.6; }
+  .wall .sm { font-family: var(--mono); font-size: 0.875rem; opacity: 0.6; }
   .wall .sm .ic { width: 16px; height: 16px; }
   .toolwall .kicker {
-    margin-top: 34px; font-family: var(--mono); font-size: 13px; color: var(--amber);
+    margin-top: 34px; font-family: var(--mono); font-size: 0.875rem; color: var(--amber);
     letter-spacing: var(--label-track);
   }
 
@@ -820,7 +820,7 @@ const description =
     color: var(--amber);
   }
   .closer-copy p { color: rgba(255, 253, 245, 0.8); text-wrap: pretty; margin-bottom: 10px; }
-  .closer-copy .hint { font-family: var(--mono); font-size: 12.5px; color: var(--cyan-bright); letter-spacing: var(--label-track); }
+  .closer-copy .hint { font-family: var(--mono); font-size: 0.875rem; color: var(--cyan-bright); letter-spacing: var(--label-track); }
 
   /* the live demo (the 5% novelty) */
   .demo {
@@ -847,7 +847,7 @@ const description =
     position: absolute; top: 0; left: 0; right: 0; height: 22px;
     display: flex; align-items: center; padding: 0 10px;
     background: var(--term-bar); border-bottom: 1px solid var(--term-line);
-    color: rgba(255, 253, 245, 0.45); font-size: 9.5px; white-space: nowrap;
+    color: rgba(255, 253, 245, 0.66); font-size: 9.5px; white-space: nowrap;
   }
   /* cyan preview on approach (explorer/focus context), distinct from the
      amber .dpane.focused border — equal specificity, .focused wins by
@@ -877,14 +877,14 @@ const description =
   .install p { color: rgba(255, 253, 245, 0.75); margin-bottom: 30px; max-width: 520px; margin-left: auto; margin-right: auto; text-wrap: pretty; }
   .brew {
     display: inline-flex; align-items: center; gap: 12px;
-    font-family: var(--mono); font-size: 15px;
+    font-family: var(--mono); font-size: 0.9375rem;
     background: rgba(18, 19, 20, 0.75); border: 1px solid rgba(229, 150, 86, 0.5); /* --term at pill alpha */
     color: var(--cream); border-radius: 999px; padding: 14px 26px;
     transition: transform var(--lift), border-color var(--lift);
   }
   .brew:hover { transform: translateY(-2px); border-color: var(--amber); }
   .brew .soon {
-    color: var(--amber); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--amber); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
   }
   .install-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
@@ -901,9 +901,9 @@ const description =
     flex: none;
   }
   .glyph-tile svg { width: 21px; height: 21px; }
-  .foot b { font-family: var(--display); font-weight: 700; font-size: 17px; }
-  .foot .cp { color: var(--ink-dim); font-size: 13.5px; }
-  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  .foot b { font-family: var(--display); font-weight: 700; font-size: 1.0625rem; }
+  .foot .cp { color: var(--ink-dim); font-size: 0.90625rem; }
+  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 0.8125rem; color: var(--ink-dim); }
   .foot-gh {
     display: inline-flex; align-items: center; justify-content: center;
     width: 32px; height: 32px; flex: none;
@@ -1267,17 +1267,17 @@ const description =
                 <span class="sw" style="background:linear-gradient(135deg,#272822,#e5c07b)"></span>
                 <span class="sw" style="background:linear-gradient(135deg,#002b36,#5acfd3)"></span>
               </div>
-              <div style="padding-top:8px">$ import theme from Open VSX… <span class="g">✓</span></div><!-- brandlint-ok: functional demo, real planned theme-import source -->
-              <div>extensions: sandboxed · permission-gated</div>
+              <div style="padding-top:8px">$ import theme from VS Code… <span class="g">✓</span></div><!-- brandlint-ok: functional demo, real shipped theme-import mechanism (JSON import, not a registry fetch) -->
+              <div>extensions: sandboxed · coming soon</div>
             </div>
           </div>
           <div class="card-body">
             <h3 class="sticker">Wardrobe</h3>
             <div class="pills">
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>themes</span>
-              <span class="badge">extensions</span>
+              <span class="badge">extensions (soon)</span>
             </div>
-            <p>Bring your VS Code theme — imported straight from Open VSX. Underneath: a sandboxed extension system with rights you confirm once, at install.</p><!-- brandlint-ok: functional product claim, real planned theme-import format -->
+            <p>Bring your VS Code theme, imported straight from its JSON — built in today. A sandboxed extension system, with rights you confirm once at install, is next.</p><!-- brandlint-ok: functional product claim; theming is shipped, the extension runtime is roadmap, worded accordingly -->
           </div>
         </article>
 
@@ -1296,6 +1296,46 @@ const description =
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>CLI</span>
             </div>
             <p>Straight from your shell into a working grid. The project picker is there when you want it — optional when you don't.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="crew-row rev">
+        <article class="card reveal" style="--rd:0s">
+          <div class="card-vis">
+            <div class="mock" data-title="settings — appearance" aria-hidden="true">
+              <div>$ zoom 100% <span class="c">→</span> 115% <span class="g">✓</span></div>
+              <div>$ terminal font-size 13px <span class="g">✓</span></div>
+              <div>$ grid layout 2×2 <span class="c">→</span> 2×1 <span class="g">✓</span></div>
+              <div><span class="w">›</span> <span class="cursor"></span></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Dial</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>zoom &amp; font</span>
+              <span class="badge">grid layout</span>
+            </div>
+            <p>A dedicated settings window: zoom level and terminal font size adjust live, and the grid layout is picked by pictogram — no config file to hand-edit.</p>
+          </div>
+        </article>
+
+        <article class="card reveal" style="--rd:0.1s">
+          <div class="card-vis">
+            <div class="mock" data-title="panecrew — window 2" aria-hidden="true">
+              <div>$ ⌘N</div>
+              <div><span class="g">✓</span> new window opened</div>
+              <div><span class="g">✓</span> position, size, projects: independent</div>
+              <div><span class="w">›</span> <span class="cursor"></span></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="sticker">Spawn</h3>
+            <div class="pills">
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>⌘N / Ctrl+N</span>
+              <span class="badge">independent windows</span>
+            </div>
+            <p>Open another PaneCrew window for a second grid — its own position, size, and projects, remembered independently across a restart.</p>
           </div>
         </article>
       </div>
@@ -1432,7 +1472,7 @@ const description =
         <div class="closer-copy" data-vfx="par" data-par="16">
           <h3>Built inside itself.</h3>
           <p>PaneCrew is developed in PaneCrew — a grid of agents building the app they run in, every day. Rough edges don't survive that arrangement for long.</p>
-          <p>No git magic, either: panes just <code style="font-family:var(--mono); font-size:14px; color:var(--cyan-bright);">cd</code> into folders you already have checked out. Your repos stay yours.</p>
+          <p>No git magic, either: panes just <code style="font-family:var(--mono); font-size:0.875rem; color:var(--cyan-bright);">cd</code> into folders you already have checked out. Your repos stay yours.</p>
         </div>
       </div>
     </div>
@@ -1504,7 +1544,7 @@ const description =
   <section class="install reveal" id="install" data-idx="04">
     <p class="eyebrow">shipping</p>
     <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Nightly</span></span> <span class="kw"><span class="kwi" style="--wi:1">builds</span></span> <span class="kw"><span class="kwi" style="--wi:2">are</span></span> <span class="kw"><span class="kwi" style="--wi:3">live.</span></span></h2>
-    <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon) and Windows today, Homebrew tap next.</p>
+    <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon), dogfooded daily; a Windows build ships from the same CI but isn't verified on real hardware yet. Homebrew tap next.</p>
     <div class="install-ctas">
       <a class="btn" href="https://github.com/silvio-l/panecrew/releases/tag/nightly-latest" target="_blank" rel="noopener">Download Nightly</a>
       <span class="brew">
