@@ -29,6 +29,19 @@ veröffentlichter Commit je Kanal) stehen ausschließlich lokal in
 - Der Ablauf zum Anlegen eines neuen Eintrags (inkl. Coverage/Hash pflegen)
   steht in `docs/agents/release-process.md`.
 
+## [0.1.0-nightly.3] - 2026-08-14
+### Behoben
+- Ein Klick auf „Installieren & Neustarten" konnte trotz zuvor erfolgreich
+  gefundenem Update mit „Konnte nicht geprüft werden" scheitern: der
+  Download-Link zeigte auf einen GitHub-API-Endpunkt mit engem anonymem
+  Anfrage-Limit statt auf den unlimitierten öffentlichen Download-Link. Die
+  Fehlermeldung im Über-Fenster und im Update-Banner unterscheidet jetzt
+  außerdem korrekt zwischen einer fehlgeschlagenen Prüfung und einer
+  fehlgeschlagenen Installation, mit Möglichkeit zum erneuten Versuch.
+- Eine per Tab-Vervollständigung eingefügte Datei-/Ordnerpfad-Ergänzung mit
+  Backslash vor einem Leerzeichen wurde im Terminal-Eingabefeld nicht mehr
+  korrekt escaped.
+
 ## [0.1.0-nightly.2] - 2026-08-14
 ### Hinzugefügt
 - Ein vollständiges Einstellungsfenster: Farbthema wählen, Zoomstufe und
