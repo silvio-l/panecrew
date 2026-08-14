@@ -1,0 +1,75 @@
+---
+import GuideLayout from "../../layouts/GuideLayout.astro";
+
+const title = "How to Open Multiple Terminal Windows at Once — PaneCrew";
+const description =
+  "Run several independent PaneCrew windows side by side, each with its own pane grid, projects, and window position remembered across restarts."; // brandlint-ok: functional product claim, shown verbatim in <meta description>
+
+const faq = [
+  {
+    q: "How do I open multiple terminal windows?", // brandlint-ok: literal confirmed search query, answered verbatim per AEO practice
+    a: "Press ⌘N (macOS) or Ctrl+N (Windows) inside PaneCrew to open another, fully independent window — its own grid of panes, its own open projects, positioned wherever you drag it. There's no limit beyond your screen space.",
+  },
+  {
+    q: "How do I manage multiple terminal windows without losing track of them?",
+    a: "Each PaneCrew window remembers its own position, size, and open projects across an app restart, so you don't have to re-arrange or re-open anything the next time you launch it — pick up exactly where each window left off, including which monitor it was on.",
+  },
+  {
+    q: "Do I need tmux to run multiple terminal windows?",
+    a: "No — tmux splits a single terminal into panes you still navigate one at a time. PaneCrew windows are real, separate OS windows you can place side by side or across monitors, each already showing a full grid of simultaneously visible panes.",
+  },
+  {
+    q: "Can I open multiple terminal windows on macOS?",
+    a: "Yes — PaneCrew is a free, open-source (MIT) desktop app for macOS today, with a Windows build in progress. ⌘N opens as many independent windows as you need.", // brandlint-ok: functional product claim, real supported platform
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faq.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+---
+<GuideLayout title={title} description={description} path="/guides/multiple-terminal-windows/">
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
+  </Fragment>
+
+  <section class="guide wrap">
+    <p class="eyebrow">Guide</p>
+    <h1>How to Open Multiple Terminal Windows at Once</h1>
+    <p class="lede">
+      The direct way to open multiple terminal windows at once is a dedicated shortcut for it: PaneCrew opens another fully independent window with ⌘N/Ctrl+N, each one carrying its own grid of real terminal panes, its own open projects, and its own remembered position — no window manager scripting, no re-arranging after every restart. <!-- brandlint-ok: functional product claim -->
+    </p>
+
+    <h2>Windows vs. panes — why both</h2>
+    <p>
+      A pane is a slot inside one grid; a window is a separate one, with its own grid inside
+      it. Most days, PaneCrew's fixed grid of up to four panes in a single window covers a full
+      working set. Multiple windows are for the days it doesn't — a second monitor, a
+      completely unrelated project you don't want mixed into today's grid, or simply more than
+      four things running at once. Within one pane, you can still stack several renamable
+      terminal tabs for closely related work — windows, panes, and tabs each solve a different
+      layer of "I have more than one thing running," none of them hidden behind the others.
+    </p>
+
+    <h2>Frequently asked questions</h2>
+    {faq.map((item) => (
+      <div class="faq-item">
+        <h3>{item.q}</h3>
+        <p>{item.a}</p>
+      </div>
+    ))}
+
+    <div class="cta">
+      <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS today, with a
+      Windows build in progress — a grid of real terminal panes with a focus-following file
+      explorer, and as many independent windows as you need.</p>
+      <a href="/#install">Get PaneCrew</a>
+    </div>
+  </section>
+</GuideLayout>

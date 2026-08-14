@@ -7,7 +7,7 @@
 const siteUrl = "https://panecrew.dev";
 const title = "PaneCrew — A pane for every agent";
 const description =
-  "Run multiple CLI coding agent sessions — Claude Code, Codex, Gemini CLI — in one terminal grid, with a focus-following file explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
+  "Run multiple CLI agent sessions, projects, and windows in one app — Claude Code, Codex, Gemini CLI — with a focus-following file explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support, multi-project/multi-window), shown verbatim in <meta description>
 ---
 
 <!doctype html>
@@ -51,7 +51,7 @@ const description =
       "name": "PaneCrew",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS",
-      "description": "A grid of real, simultaneously visible terminal sessions across different projects, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
+      "description": "A grid of real, simultaneously visible terminal sessions across different projects and independent windows, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
       "url": "https://panecrew.dev",
       "offers": {
         "@type": "Offer",
@@ -1210,7 +1210,7 @@ const description =
           <span class="tag">macOS</span><span class="tag">Windows</span><span class="tag">terminal-native</span>
         </div>
         <h1 class="kin" id="heroH1" style="--kd:0.12s"><span class="kw"><span class="kwi" style="--wi:0">A</span></span> <span class="kw"><span class="kwi am" style="--wi:1">pane</span></span> <span class="kw"><span class="kwi" style="--wi:2">for</span></span> <span class="kw"><span class="kwi" style="--wi:3">every</span></span> <span class="kw"><span class="kwi" style="--wi:4">agent.</span></span></h1>
-        <p class="reveal" style="--rd:0.45s">PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
+        <p class="reveal" style="--rd:0.45s">PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around. Need a second grid for another project? Open another window — its own panes, projects, and position, remembered independently.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
         <p class="avail reveal" style="--rd:0.55s">In development for macOS and Windows. Dogfooded daily.</p>
         <div class="hero-ctas reveal" style="--rd:0.65s">
           <a class="btn" href="#install">Get PaneCrew</a>
@@ -1393,6 +1393,7 @@ const description =
               <span class="badge">independent windows</span>
             </div>
             <p>Open another PaneCrew window for a second grid — its own position, size, and projects, remembered independently across a restart.</p>
+            <a class="more" href="/guides/multiple-terminal-windows/">Opening multiple terminal windows at once →</a>
           </div>
         </article>
       </div>
