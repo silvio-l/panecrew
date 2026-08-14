@@ -172,6 +172,7 @@ export function HarnessApp({
                     insertIndex ?? undefined,
                   )
                 }
+                onMoveTerminalTabToEmptySlot={grid.moveTerminalTabToEmptySlot}
                 onSwitchToTerminalTab={grid.switchToTerminalTab}
                 onSwitchToFileTab={grid.switchToFileTab}
                 onEnterFocusMode={grid.enterFocusMode}

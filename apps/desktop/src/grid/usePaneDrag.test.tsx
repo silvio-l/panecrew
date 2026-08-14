@@ -16,11 +16,19 @@ const PANE_RECTS: Record<string, DOMRect> = {
   "pane-rechts": { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect,
 };
 
+/** Attrappe eines LEEREN Slots (Slot-Index 2, rechts neben den Panes) — das
+ * dritte Zielangebot des Tab-Zugs, getroffen über `[data-empty-slot]`
+ * (`ProjectPicker.tsx`) statt über eine `paneId`. */
+const EMPTY_SLOT_INDEX = 2;
+const EMPTY_SLOT_RECT = { left: 200, top: 0, right: 300, bottom: 100 } as DOMRect;
+
 function Harness({
   candidatePaneIds,
   insertionIndexAt,
   onDrop,
   onClick,
+  emptySlotIndices,
+  onDropEmptySlot,
 }: {
   candidatePaneIds: readonly string[];
   insertionIndexAt?: (
@@ -29,6 +37,8 @@ function Harness({
   ) => number;
   onDrop: (targetPaneId: string, insertIndex: number | null) => void;
   onClick: () => void;
+  emptySlotIndices?: readonly number[];
+  onDropEmptySlot?: (slotIndex: number) => void;
 }) {
   const drag = usePaneDrag<string>();
   return (
@@ -41,6 +51,8 @@ function Harness({
             candidatePaneIds,
             insertionIndexAt,
             onDrop,
+            emptySlotIndices,
+            onDropEmptySlot,
           });
         }}
         onClick={() => {
@@ -54,6 +66,8 @@ function Harness({
       <p>{`ziel:${drag.targetPaneId ?? "-"}`}</p>
       <p>{`ziel-slot:${drag.targetIndex ?? "-"}`}</p>
       <p>{`kandidaten:${drag.candidatePaneIds.join("+") || "-"}`}</p>
+      <p>{`leer-ziel:${drag.targetEmptySlot ?? "-"}`}</p>
+      <p>{`leer-kandidaten:${drag.emptySlotIndices.join("+") || "-"}`}</p>
       {/* Die Zeigerplakette, wie die echten Aufrufer sie mounten: erst ab dem
           Scharfwerden, Startlage aus `ghostOrigin`, danach schiebt der Hook
           direkt über das Ref — als eigene Komponente mit Props, exakt das
@@ -65,6 +79,7 @@ function Harness({
       {Object.keys(PANE_RECTS).map((paneId) => (
         <div key={paneId} data-pane-id={paneId} />
       ))}
+      <div data-empty-slot={EMPTY_SLOT_INDEX} />
     </>
   );
 }
@@ -93,6 +108,10 @@ const setup = (
     targetPaneId: string,
     point: { x: number; y: number },
   ) => number,
+  emptySlots?: {
+    emptySlotIndices?: readonly number[];
+    onDropEmptySlot?: (slotIndex: number) => void;
+  },
 ) => {
   const onDrop = vi.fn();
   const onClick = vi.fn();
@@ -102,6 +121,8 @@ const setup = (
       insertionIndexAt={insertionIndexAt}
       onDrop={onDrop}
       onClick={onClick}
+      emptySlotIndices={emptySlots?.emptySlotIndices}
+      onDropEmptySlot={emptySlots?.onDropEmptySlot}
     />,
   );
   for (const [paneId, rect] of Object.entries(PANE_RECTS)) {
@@ -109,6 +130,12 @@ const setup = (
       `[data-pane-id="${paneId}"]`,
     );
     if (element) element.getBoundingClientRect = () => rect;
+  }
+  const emptySlotElement = document.querySelector<HTMLElement>(
+    `[data-empty-slot="${String(EMPTY_SLOT_INDEX)}"]`,
+  );
+  if (emptySlotElement) {
+    emptySlotElement.getBoundingClientRect = () => EMPTY_SLOT_RECT;
   }
   const handle = screen.getByRole("button", { name: "Griff" });
   // jsdom kennt die Pointer-Capture-Methoden nicht — Attrappen statt eines
@@ -332,5 +359,67 @@ describe("usePaneDrag", () => {
     fireEvent.pointerUp(handle, { clientX: 180, clientY: 50 });
     expect(onDrop).toHaveBeenCalledWith("pane-rechts", 1);
     expect(screen.getByText("ziel-slot:-")).toBeInTheDocument();
+  });
+
+  it("trifft einen leeren Slot, legt ihn als Ziel offen und reicht den Drop an `onDropEmptySlot`", () => {
+    // Nutzer-Wunsch "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort
+    // ein neues Pane erstellt": leere Slots sind das dritte Zielangebot,
+    // adressiert über ihren Index (`data-empty-slot`), nicht über eine
+    // `paneId` — die existiert dort noch nicht.
+    const onDropEmptySlot = vi.fn();
+    const { onDrop, handle } = setup(["pane-rechts"], undefined, {
+      emptySlotIndices: [EMPTY_SLOT_INDEX],
+      onDropEmptySlot,
+    });
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(handle, { clientX: 150, clientY: 50 });
+    // Beim Scharfwerden liegen beide Zielangebote offen.
+    expect(screen.getByText("leer-kandidaten:2")).toBeInTheDocument();
+    // Über der Pane: Pane-Ziel, kein Leer-Ziel.
+    expect(screen.getByText("ziel:pane-rechts")).toBeInTheDocument();
+    expect(screen.getByText("leer-ziel:-")).toBeInTheDocument();
+
+    // Über dem leeren Slot: umgekehrt.
+    fireEvent.pointerMove(handle, { clientX: 250, clientY: 50 });
+    expect(screen.getByText("ziel:-")).toBeInTheDocument();
+    expect(screen.getByText("leer-ziel:2")).toBeInTheDocument();
+
+    fireEvent.pointerUp(handle, { clientX: 250, clientY: 50 });
+    expect(onDropEmptySlot).toHaveBeenCalledWith(EMPTY_SLOT_INDEX);
+    expect(onDrop).not.toHaveBeenCalled();
+    // Nach dem Ende ist auch das dritte Zielangebot aufgeräumt.
+    expect(screen.getByText("leer-ziel:-")).toBeInTheDocument();
+    expect(screen.getByText("leer-kandidaten:-")).toBeInTheDocument();
+  });
+
+  it("wird auch OHNE Kandidaten-Panes scharf, wenn es leere Slots gibt (letzter Tab → leerer Slot)", () => {
+    // Der Zug "letzter Tab der einzigen Pane in einen leeren Slot" hat keine
+    // einzige Kandidaten-Pane — vor dem leeren-Slot-Ziel wäre die Geste hier
+    // gar nicht erst scharf geworden.
+    const onDropEmptySlot = vi.fn();
+    const { handle } = setup([], undefined, {
+      emptySlotIndices: [EMPTY_SLOT_INDEX],
+      onDropEmptySlot,
+    });
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(handle, { clientX: 250, clientY: 50 });
+    expect(screen.getByText("quelle:pane-links")).toBeInTheDocument();
+    fireEvent.pointerUp(handle, { clientX: 250, clientY: 50 });
+
+    expect(onDropEmptySlot).toHaveBeenCalledWith(EMPTY_SLOT_INDEX);
+  });
+
+  it("ignoriert leere Slots bei Zügen ohne `emptySlotIndices` (Slot-Tausch)", () => {
+    const { onDrop, handle } = setup(["pane-rechts"]);
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(handle, { clientX: 250, clientY: 50 });
+    expect(screen.getByText("leer-ziel:-")).toBeInTheDocument();
+    fireEvent.pointerUp(handle, { clientX: 250, clientY: 50 });
+
+    // Loslassen über dem (nicht angebotenen) leeren Slot: ein Abbruch.
+    expect(onDrop).not.toHaveBeenCalled();
   });
 });

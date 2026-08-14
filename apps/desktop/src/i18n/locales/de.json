@@ -108,7 +108,8 @@
   },
   "paneDrag": {
     "swapInvite": "Slots tauschen",
-    "moveTabInvite": "Tab hierher"
+    "moveTabInvite": "Tab hierher",
+    "newPaneInvite": "Neue Pane hier"
   },
   "paneTabs": {
     "selectView": "Ansicht wählen",

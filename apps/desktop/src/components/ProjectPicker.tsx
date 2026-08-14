@@ -30,7 +30,7 @@
 // Kein Glow, keine kinetische Typografie: das Emblem tippt nicht, kein
 // Zeichen ändert sich — es wechseln ausschließlich Farbe/Deckkraft
 // stehender Glyphen.
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING } from "./ChromeTooltip";
 
@@ -38,8 +38,9 @@ export function ProjectPicker({
   onChoose,
   busy,
   restoring,
-  slotNumber,
+  slotIndex,
   focusModeActive,
+  dropInvite = null,
 }: {
   onChoose: () => void;
   busy: boolean;
@@ -50,9 +51,15 @@ export function ProjectPicker({
    * "Projekt wählen"-Knopf: ein Klick währenddessen würde mit der laufenden
    * Wiederherstellung um genau diesen Slot konkurrieren (2026-08-12). */
   restoring?: boolean;
-  /** 1-basierte Slot-Position im aktiven Template (PaneGrid reicht den
-   * Array-Index durch) — reine Anzeige im HUD-Readout. */
-  slotNumber: number;
+  /** 0-basierter Slot-Index im aktiven Template (PaneGrid reicht den
+   * Array-Index durch) — fürs HUD-Readout (dort 1-basiert angezeigt) und als
+   * `data-empty-slot`-Messhaken des Tab-Zugs auf leere Slots (Nutzer-Wunsch
+   * "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort ein neues Pane
+   * erstellt"): `usePaneDrag.ts` trifft leere Zellen über genau dieses
+   * Attribut, denn eine `paneId` existiert hier noch nicht. Das Attribut
+   * trägt nur der ECHTE leere Slot, nicht der restoring-Zweig — der ist
+   * bereits vergeben und damit kein Ziel. */
+  slotIndex: number;
   /** Ob IRGENDEINE Pane gerade maximiert ist (Ticket 19) — ein leerer Slot
    * kann selbst nie maximiert sein, muss dann aber genauso wie jede andere
    * unbeteiligte Zelle unsichtbar werden, sonst schiene sein Rahmen hinter
@@ -61,8 +68,14 @@ export function ProjectPicker({
    * statt `display: none` — dieselbe Begründung wie bei `PaneCell`: der
    * Slot bleibt Teil der Grid-Spurberechnung, kollabiert also nicht. */
   focusModeActive: boolean;
+  /** Das "Tab hierher → neue Pane"-Instrument des Tab-Zugs (`PaneGrid.tsx`
+   * reicht ein fertiges `PaneDropInvite` herein, sobald dieser Slot Ziel des
+   * laufenden Zugs ist) — hier nur platziert, nicht hergeleitet: was ein Zug
+   * ist und wann er läuft, weiß allein das Grid. */
+  dropInvite?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const slotNumber = slotIndex + 1;
   const cellStyle: CSSProperties | undefined = focusModeActive
     ? { visibility: "hidden" }
     : undefined;
@@ -90,7 +103,14 @@ export function ProjectPicker({
     // Container-Query statt Media-Query: entscheidend ist die Breite DIESES
     // Slots, nicht die des Fensters. Derselbe Slot ist im Vierergrid rund
     // 470px breit und in der Viererreihe rund 230px — bei gleichem Fenster.
-    <div className="@container flex min-h-0 min-w-0" style={cellStyle}>
+    // `relative`: Anker für das Drop-Instrument des Tab-Zugs (`dropInvite`,
+    // absolut über der ganzen Zelle) — als Geschwister NEBEN dem Knopf statt
+    // in ihm, ein `<button>` soll keine Blockelemente enthalten.
+    <div
+      className="@container relative flex min-h-0 min-w-0"
+      style={cellStyle}
+      data-empty-slot={slotIndex}
+    >
       <button
         type="button"
         onClick={onChoose}
@@ -116,6 +136,7 @@ export function ProjectPicker({
           {t("projectPicker.hint")}
         </span>
       </button>
+      {dropInvite}
     </div>
   );
 }

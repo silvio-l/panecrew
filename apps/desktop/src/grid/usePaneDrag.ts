@@ -55,6 +55,19 @@ interface PaneDragSpec<TSource> {
     point: { x: number; y: number },
   ) => number;
   onDrop: (targetPaneId: string, insertIndex: number | null) => void;
+  /** Optional: LEERE Slots als drittes Zielangebot (Nutzer-Wunsch "wenn ich
+   * ein Tab auf einen leeren Slot ziehe, wird dort ein neues Pane
+   * erstellt") — als Slot-INDIZES, denn eine `paneId` existiert dort per
+   * Definition noch nicht. Getroffen wird gegen `[data-empty-slot]`-Zellen
+   * (`ProjectPicker.tsx`), mit derselben Frisch-Messung wie
+   * `candidateAtPoint`. Ohne Angabe (Slot-Tausch) bleiben leere Slots, was
+   * sie dort immer waren: kein Ziel. */
+  emptySlotIndices?: readonly number[];
+  /** Der Drop auf einen leeren Slot aus `emptySlotIndices` — getrennt von
+   * `onDrop`, weil die Wirkung eine andere ist (Pane erzeugen statt in eine
+   * bestehende einsortieren) und ein Vereinigungstyp im ersten Parameter
+   * beide Aufrufer nur zum Fallunterscheiden zwänge. */
+  onDropEmptySlot?: (slotIndex: number) => void;
 }
 
 export interface PaneDrag<TSource> {
@@ -71,6 +84,10 @@ export interface PaneDrag<TSource> {
   /** Die Position innerhalb dieser Pane (s. `insertionIndexAt`) — `null`,
    * wenn kein Ziel getroffen ist oder der Zug keine Positionen kennt. */
   targetIndex: number | null;
+  /** Der LEERE Slot, in dem ein Loslassen JETZT landen würde (s.
+   * `emptySlotIndices`), sonst `null`. Schließt sich mit `targetPaneId`
+   * gegenseitig aus — ein Zeiger steht immer nur über einem von beidem. */
+  targetEmptySlot: number | null;
   /** Die beim Scharfwerden erlaubten Ziel-Panes (die `candidatePaneIds` der
    * laufenden Spec), leer außerhalb eines scharfen Zugs. Nachgereicht mit dem
    * Nutzer-Befund zum Tab-Zug ("er muss mir natürlich auch anzeigen, wo ich
@@ -79,6 +96,11 @@ export interface PaneDrag<TSource> {
    * zufällig traf — der Aufrufer kann die Kandidaten jetzt sofort beim
    * Scharfwerden andeuten statt sie den Nutzer suchen zu lassen. */
   candidatePaneIds: readonly string[];
+  /** Die beim Scharfwerden erlaubten leeren Ziel-Slots (die
+   * `emptySlotIndices` der laufenden Spec) — dasselbe Sofort-Andeuten wie
+   * `candidatePaneIds`, nur für das dritte Zielangebot. Leer außerhalb
+   * eines scharfen Zugs und bei Zügen ohne Leere-Slot-Ziele. */
+  emptySlotIndices: readonly number[];
   /** Wo der Zeiger beim Scharfwerden stand — Startposition der
    * Zeigerplakette, sonst `null`. Alles danach schreibt der Bewegungs-Handler
    * direkt ins DOM (s. `ghostRef`), nicht in den State. */
@@ -118,14 +140,44 @@ function candidateAtPoint(
   return paneIdAtPoint(rects, point);
 }
 
+/** Trefferprüfung gegen die erlaubten LEEREN Slots — dieselbe Frisch-Messung
+ * wie `candidateAtPoint`, nur dass die Zellen hier über ihren Slot-Index
+ * adressiert sind (`data-empty-slot`, `ProjectPicker.tsx`): eine `paneId`
+ * gibt es an einem leeren Slot noch nicht. */
+function emptySlotAtPoint(
+  emptySlotIndices: readonly number[],
+  point: { x: number; y: number },
+): number | null {
+  for (const slotIndex of emptySlotIndices) {
+    const element = document.querySelector(
+      `[data-empty-slot="${String(slotIndex)}"]`,
+    );
+    if (!element) continue;
+    const rect = element.getBoundingClientRect();
+    if (
+      point.x >= rect.left &&
+      point.x <= rect.right &&
+      point.y >= rect.top &&
+      point.y <= rect.bottom
+    ) {
+      return slotIndex;
+    }
+  }
+  return null;
+}
+
 const NO_CANDIDATES: readonly string[] = [];
+const NO_EMPTY_SLOTS: readonly number[] = [];
 
 export function usePaneDrag<TSource>(): PaneDrag<TSource> {
   const [source, setSource] = useState<TSource | null>(null);
   const [targetPaneId, setTargetPaneId] = useState<string | null>(null);
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
+  const [targetEmptySlot, setTargetEmptySlot] = useState<number | null>(null);
   const [candidatePaneIds, setCandidatePaneIds] =
     useState<readonly string[]>(NO_CANDIDATES);
+  const [emptySlotIndices, setEmptySlotIndices] =
+    useState<readonly number[]>(NO_EMPTY_SLOTS);
   const [ghostOrigin, setGhostOrigin] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -146,8 +198,13 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
       if (event.button !== 0) return;
       // Ohne erlaubtes Ziel gibt es nichts zu ziehen (einzige Pane im Grid,
       // einziger Tab der Pane, kein zweites Projektfenster desselben
-      // Projekts): dann bleibt die Geste ein reiner Klick.
-      if (spec.candidatePaneIds.length === 0) return;
+      // Projekts): dann bleibt die Geste ein reiner Klick. Ein leerer Slot
+      // zählt als Ziel — der Zug "letzter Tab in einen leeren Slot" hat
+      // keine einzige Kandidaten-Pane und ist trotzdem einer.
+      const specEmptySlots = spec.emptySlotIndices ?? NO_EMPTY_SLOTS;
+      if (spec.candidatePaneIds.length === 0 && specEmptySlots.length === 0) {
+        return;
+      }
 
       // Defensiv zurückgesetzt (nicht nur beim Beenden gesetzt): endete ein
       // vorheriges Ziehen ohne den erwarteten Klick, verschluckte die
@@ -185,17 +242,23 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
           if (dropped) {
             const point = { x: lastX, y: lastY };
             const hit = candidateAtPoint(spec.candidatePaneIds, point);
+            const emptyHit =
+              hit === null ? emptySlotAtPoint(specEmptySlots, point) : null;
             // Über keinem erlaubten Ziel losgelassen heißt: nichts tun. Ein
             // Zug ins Leere ist ein Abbruch, keine halbe Handlung.
             if (hit !== null) {
               spec.onDrop(hit, spec.insertionIndexAt?.(hit, point) ?? null);
+            } else if (emptyHit !== null) {
+              spec.onDropEmptySlot?.(emptyHit);
             }
           }
         }
         setSource(null);
         setTargetPaneId(null);
         setTargetIndex(null);
+        setTargetEmptySlot(null);
         setCandidatePaneIds(NO_CANDIDATES);
+        setEmptySlotIndices(NO_EMPTY_SLOTS);
         setGhostOrigin(null);
       };
 
@@ -212,6 +275,7 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
           armed = true;
           setSource(spec.source);
           setCandidatePaneIds(spec.candidatePaneIds);
+          setEmptySlotIndices(specEmptySlots);
           setGhostOrigin({ x: lastX, y: lastY });
         }
         // Direkt ans DOM statt in den State — Begründung an `ghostRef`. Die
@@ -233,6 +297,12 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
         setTargetIndex(
           hit !== null ? (spec.insertionIndexAt?.(hit, point) ?? null) : null,
         );
+        // Panes und leere Slots überlappen sich nie (je eine Grid-Zelle) —
+        // die Pane-Prüfung zuerst ist deshalb keine Vorfahrtsregel, nur eine
+        // ersparte zweite Messung, wenn schon eine Pane getroffen ist.
+        setTargetEmptySlot(
+          hit === null ? emptySlotAtPoint(specEmptySlots, point) : null,
+        );
       };
       const onUp = () => {
         finish(true);
@@ -253,7 +323,9 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
     source,
     targetPaneId,
     targetIndex,
+    targetEmptySlot,
     candidatePaneIds,
+    emptySlotIndices,
     ghostOrigin,
     ghostRef,
     consumeDragClick,

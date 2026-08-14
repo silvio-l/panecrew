@@ -13,6 +13,7 @@ import {
   focusPane,
   focusedProjectPath,
   moveTerminalTab,
+  moveTerminalTabToEmptySlot,
   openTerminalTab,
   renameTerminalTab,
   swapPanes,
@@ -624,6 +625,92 @@ describe("gridState", () => {
       expect(moveTerminalTab(start, "pane-0", "gibt-es-nicht", "pane-1")).toBe(
         start,
       );
+    });
+  });
+
+  describe("moveTerminalTabToEmptySlot", () => {
+    /** Eine Pane mit zwei Tabs in Slot 0, Slots 1–3 leer. */
+    function onePaneTwoTabs(): GridState {
+      return openTerminalTab(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        "pane-0",
+        "tab-0b",
+      );
+    }
+
+    it("erzeugt im Ziel-Slot eine frische Pane im Projekt der Quelle, mit dem Tab als aktivem, und holt den Fokus mit", () => {
+      const start = onePaneTwoTabs();
+      const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", 2, "pane-neu");
+
+      const created = next.slots[2] as Pane;
+      expect(created.paneId).toBe("pane-neu");
+      expect(created.projectPath).toBe("/repo/a");
+      expect(created.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0b"]);
+      expect(created.activeTerminalTabId).toBe("tab-0b");
+      expect(created.showingFile).toBe(false);
+      expect(next.focusedPaneId).toBe("pane-neu");
+      // Die Quelle behält ihren verbleibenden Tab als aktiven.
+      const source = next.slots[0] as Pane;
+      expect(source.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
+      expect(source.activeTerminalTabId).toBe("tab-0");
+    });
+
+    it("verschiebt den Tab als identisches Objekt (Name/PTY-Zuordnung bleiben)", () => {
+      const start = renameTerminalTab(onePaneTwoTabs(), "pane-0", "tab-0b", "Build");
+      const movedBefore = (start.slots[0] as Pane).terminalTabs[1];
+      const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", 1, "pane-neu");
+      expect((next.slots[1] as Pane).terminalTabs[0]).toBe(movedBefore);
+    });
+
+    it("leert den Quell-Slot, wenn der LETZTE Tab wegzieht", () => {
+      const start = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/a",
+        "pane-0",
+        "tab-0",
+      );
+      const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0", 3, "pane-neu");
+      expect(next.slots[0]).toBeNull();
+      expect((next.slots[3] as Pane).terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-0",
+      ]);
+    });
+
+    it("räumt beim Leeren der Quelle einen auf sie zeigenden Fokus-Modus ab", () => {
+      const start = enterFocusMode(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        "pane-0",
+      );
+      const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0", 1, "pane-neu");
+      expect(next.maximizedPaneId).toBeNull();
+    });
+
+    it("ist ein No-Op auf einen BELEGTEN Slot (Wettlauf mit einer parallelen Zuweisung)", () => {
+      const start = onePaneTwoTabs();
+      expect(
+        moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", 0, "pane-neu"),
+      ).toBe(start);
+    });
+
+    it("ist ein No-Op bei einem Slot-Index außerhalb des Templates", () => {
+      const start = onePaneTwoTabs();
+      expect(
+        moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", -1, "pane-neu"),
+      ).toBe(start);
+      expect(
+        moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", 4, "pane-neu"),
+      ).toBe(start);
+    });
+
+    it("ist ein No-Op bei unbekannter Quelle und unbekanntem Tab", () => {
+      const start = onePaneTwoTabs();
+      expect(
+        moveTerminalTabToEmptySlot(start, "gibt-es-nicht", "tab-0b", 1, "pane-neu"),
+      ).toBe(start);
+      expect(
+        moveTerminalTabToEmptySlot(start, "pane-0", "gibt-es-nicht", 1, "pane-neu"),
+      ).toBe(start);
     });
   });
 

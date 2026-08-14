@@ -435,6 +435,71 @@ export function moveTerminalTab(
   };
 }
 
+/**
+ * Verschiebt einen Terminal-Tab auf einen LEEREN Slot — dort entsteht dafür
+ * eine neue Pane im Projekt der Quelle, mit genau diesem Tab als einzigem
+ * (Nutzer-Wunsch: "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort
+ * ein neues Pane erstellt, das dann in dem Projekt des Tabs hängt").
+ *
+ * Bewusst ein EIGENER Übergang neben `moveTerminalTab` statt eines dritten
+ * Zweigs darin: dessen Ziel ist eine existierende `paneId`, hier ist das Ziel
+ * eine Slot-POSITION und die Pane entsteht erst — zwei verschiedene
+ * Zieltypen in einer Signatur wären eine Falle für jeden Aufrufer. Die
+ * Quell-Seite ist dagegen wörtlich dieselbe (inkl. "letzter Tab leert den
+ * Slot" — der Zug wird dann praktisch ein Pane-Umzug), deshalb teilt sie
+ * `withoutTerminalTab` und die `maximizedPaneId`-Nachsorge.
+ *
+ * `newPaneId` kommt fertig vom Aufrufer (`useGrid.ts`) — dieses Modul erzeugt
+ * keine IDs (Kopfkommentar). No-Op (identische Referenz) bei: unbekannter
+ * Quell-Pane, unbekanntem Tab, Index außerhalb des Templates und einem Slot,
+ * der gar nicht (mehr) leer ist — Letzteres deckt auch den Wettlauf mit einer
+ * parallel laufenden Zuweisung ab, statt eine fremde Pane zu überschreiben.
+ *
+ * Wie bei `moveTerminalTab`: der Tab ist in der neuen Pane aktiv, der Fokus
+ * wandert dorthin.
+ */
+export function moveTerminalTabToEmptySlot(
+  state: GridState,
+  sourcePaneId: string,
+  tabId: string,
+  targetSlotIndex: number,
+  newPaneId: string,
+): GridState {
+  const sourceIndex = state.slots.findIndex(
+    (slot) => slot?.paneId === sourcePaneId,
+  );
+  if (sourceIndex === -1) return state;
+  if (targetSlotIndex < 0 || targetSlotIndex >= state.slots.length) return state;
+  if (state.slots[targetSlotIndex] !== null) return state;
+
+  const source = state.slots[sourceIndex] as Pane;
+  const tabIndex = source.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) return state;
+  const movedTab = source.terminalTabs[tabIndex] as TerminalTab;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[sourceIndex] =
+    source.terminalTabs.length <= 1
+      ? null
+      : { ...source, ...withoutTerminalTab(source, tabIndex) };
+  nextSlots[targetSlotIndex] = {
+    paneId: newPaneId,
+    projectPath: source.projectPath,
+    terminalTabs: [movedTab],
+    activeTerminalTabId: movedTab.tabId,
+    showingFile: false,
+  };
+  return {
+    ...state,
+    slots: nextSlots,
+    focusedPaneId: newPaneId,
+    maximizedPaneId:
+      nextSlots[sourceIndex] === null && state.maximizedPaneId === sourcePaneId
+        ? null
+        : state.maximizedPaneId,
+  };
+}
+
 /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
  * "Umbenennen", `PaneTabs.tsx`) — reine Chip-Beschriftung, `tabId`/Nummer
  * bleiben unberührt, die Cmd/Strg+1..9-Kürzel bleiben also weiter

@@ -112,6 +112,7 @@ function App() {
     openTerminalTab,
     closeTerminalTab,
     moveTerminalTab,
+    moveTerminalTabToEmptySlot,
     renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
@@ -666,6 +667,27 @@ function App() {
     else run();
   };
 
+  // Der Zug auf einen LEEREN Slot (dort entsteht eine frische Pane im Projekt
+  // der Quelle, der Tab wandert hinein) — dieselbe Guard-Logik wie
+  // `moveTerminalTabGuarded` direkt darüber: leert der Zug die Quelle (ihr
+  // letzter Tab), fragt ungespeicherter Editor-Stand nach und `forget` räumt
+  // danach auf; auch hier bewusst ohne Sitzungs-Rückfrage, die PTY lebt in
+  // der neuen Pane weiter.
+  const moveTerminalTabToEmptySlotGuarded = (
+    sourcePaneId: string,
+    tabId: string,
+    slotIndex: number,
+  ) => {
+    const source = gridState.slots.find((slot) => slot?.paneId === sourcePaneId);
+    const emptiesSource = source?.terminalTabs.length === 1;
+    const run = () => {
+      moveTerminalTabToEmptySlot(sourcePaneId, tabId, slotIndex);
+      if (emptiesSource) paneFileEditors.forget(sourcePaneId);
+    };
+    if (emptiesSource) guardLeave(sourcePaneId, run);
+    else run();
+  };
+
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
   // Zeile UND öffnet die Datei in der Editorfläche. Bewusst kein zusätzlicher
   // Doppelklick-Handler (Nutzerentscheidung, deckt sich mit Story 8 des
@@ -954,6 +976,7 @@ function App() {
               onCloseTerminalTab={closeTerminalTabGuarded}
               onRenameTerminalTab={renameTerminalTab}
               onMoveTerminalTab={moveTerminalTabGuarded}
+              onMoveTerminalTabToEmptySlot={moveTerminalTabToEmptySlotGuarded}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}

@@ -98,6 +98,7 @@ export function PaneGrid({
   onCloseTerminalTab,
   onRenameTerminalTab,
   onMoveTerminalTab,
+  onMoveTerminalTabToEmptySlot,
   onSwitchToTerminalTab,
   onSwitchToFileTab,
   onEnterFocusMode,
@@ -148,6 +149,17 @@ export function PaneGrid({
     tabId: string,
     targetPaneId: string,
     insertIndex: number | null,
+  ) => void;
+  /** Terminal-Tab auf einen LEEREN Slot ziehen (Nutzer-Wunsch "wenn ich ein
+   * Tab auf einen leeren Slot ziehe, wird dort ein neues Pane erstellt, das
+   * dann in dem Projekt des Tabs hängt"): dort entsteht eine frische Pane im
+   * Projekt der Quelle, der Tab wandert hinein — dieselbe PTY-Kontinuität
+   * wie `onMoveTerminalTab` (der Tab wird nie unmountet, s.
+   * `useTerminalTabHosts.ts`). */
+  onMoveTerminalTabToEmptySlot: (
+    sourcePaneId: string,
+    tabId: string,
+    slotIndex: number,
   ) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
@@ -207,6 +219,15 @@ export function PaneGrid({
       });
     };
 
+  // Leere Slots als drittes Ziel des Tab-Zugs (ein Drop erzeugt dort eine
+  // frische Pane im Projekt der Quelle) — restoring-Slots ausgenommen: die
+  // sind bereits an die laufende Sitzungs-Wiederherstellung vergeben, ein
+  // Drop dorthin konkurrierte mit ihr um denselben Slot (dieselbe Sperre wie
+  // der Picker-Knopf des Slots selbst, `ProjectPicker.tsx`).
+  const emptyTargetSlots = state.slots.flatMap((slot, index) =>
+    slot === null && !restoringSlots.has(index) ? [index] : [],
+  );
+
   const startTabDrag =
     (pane: Pane) => (tabId: string, event: ReactPointerEvent<HTMLElement>) => {
       if (!dragEnabled) return;
@@ -237,6 +258,11 @@ export function PaneGrid({
         insertionIndexAt: terminalTabInsertionIndex,
         onDrop: (targetPaneId, insertIndex) => {
           onMoveTerminalTab(pane.paneId, tabId, targetPaneId, insertIndex);
+          setDropSettle((prev) => ({ tabId, nonce: (prev?.nonce ?? 0) + 1 }));
+        },
+        emptySlotIndices: emptyTargetSlots,
+        onDropEmptySlot: (slotIndex) => {
+          onMoveTerminalTabToEmptySlot(pane.paneId, tabId, slotIndex);
           setDropSettle((prev) => ({ tabId, nonce: (prev?.nonce ?? 0) + 1 }));
         },
       });
@@ -309,11 +335,13 @@ export function PaneGrid({
           // Nur was auch wandern könnte, kündigt sich als Griff an: mit
           // mehreren eigenen Tabs immer (Umsortieren geht dann selbst ohne
           // zweite Pane), der letzte Tab nur, wenn es eine andere Pane
-          // desselben Projekts als Ziel gibt — exakt die Kandidatenliste,
-          // die `startTabDrag` scharf macht.
+          // desselben Projekts ODER einen leeren Slot als Ziel gibt — exakt
+          // die Kandidaten- und Leere-Slot-Listen, die `startTabDrag` scharf
+          // macht.
           draggable:
             dragEnabled &&
             (pane.terminalTabs.length > 1 ||
+              emptyTargetSlots.length > 0 ||
               state.slots.some(
                 (slot) =>
                   slot &&
@@ -460,8 +488,20 @@ export function PaneGrid({
             onChoose={() => onAssignProject(index)}
             busy={pickingSlot === index}
             restoring={restoringSlots.has(index)}
-            slotNumber={index + 1}
+            slotIndex={index}
             focusModeActive={state.maximizedPaneId !== null}
+            // Dasselbe zweistufige Zielangebot wie `dropInvite` der belegten
+            // Zellen (gedämpfte Ecken ab dem Scharfwerden, voll unterm
+            // Zeiger) — die Liste kommt aus dem Zug selbst, exakt wie dort.
+            dropInvite={
+              tabDrag.emptySlotIndices.includes(index) ? (
+                <PaneDropInvite
+                  glyph="⊞"
+                  label={t("paneDrag.newPaneInvite")}
+                  engaged={tabDrag.targetEmptySlot === index}
+                />
+              ) : null
+            }
           />
         ),
       )}
@@ -501,7 +541,9 @@ export function PaneGrid({
         number={draggedTab.number}
         label={draggedTab.label}
         origin={tabDrag.ghostOrigin}
-        overTarget={tabDrag.targetPaneId !== null}
+        overTarget={
+          tabDrag.targetPaneId !== null || tabDrag.targetEmptySlot !== null
+        }
       />
     )}
     </>

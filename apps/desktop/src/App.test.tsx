@@ -1541,6 +1541,56 @@ describe("Grid / Mehrfach-Pane", () => {
     ).toHaveLength(1);
   });
 
+  it("öffnet das Chip-Kontextmenü nach echtem Rechtsklick (pointerdown button 2 vor contextmenu) und mountet das Umbenennen-Feld", async () => {
+    // Die Nahtstelle, die kein anderer Test abdeckt: der Chip trägt seit
+    // Ticket 32 ein `onPointerDown`, das den ECHTEN Zieh-Hook (`usePaneDrag`,
+    // hier ungemockt — anders als in PaneTabs.test.tsx) scharfzuschalten
+    // versucht, und erst DANACH feuert der Browser `contextmenu` an Radix'
+    // Trigger. Ein Rechtsklick durchläuft also immer beide Handler in dieser
+    // Reihenfolge — würde `startDrag` die Sekundärtaste nicht abweisen (oder
+    // Pointer-Capture an sich reißen), bräche das Kontextmenü, ohne dass
+    // `fireEvent.contextMenu` allein (wie im Test oben) es je bemerkte.
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    // Zweiter Tab, damit `candidatePaneIds` nicht leer ist (Umsortieren in
+    // der eigenen Pane) — sonst kehrte `startDrag` schon VOR der
+    // Tasten-Prüfung um und die Naht bliebe unbelastet.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
+    );
+    const chip = await screen.findByRole("button", { name: "Terminal 2" });
+
+    // Echte Rechtsklick-Reihenfolge: erst `pointerdown` mit Sekundärtaste
+    // auf dem Chip-Knopf selbst (dem Träger des Zieh-Handlers) …
+    fireEvent.pointerDown(chip, { button: 2, buttons: 2, pointerId: 7 });
+    // … dann `contextmenu`, das zum Radix-Trigger (`span`-Hülle) aufsteigt.
+    fireEvent.contextMenu(chip);
+
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Terminal 2 umbenennen" }),
+    );
+
+    // `onCloseAutoFocus` (PaneTabs.tsx) mountet und fokussiert das Feld erst
+    // nach dem Trap-Abbau des Menüs — genau dieser Übergang war der defekt
+    // gemeldete ("Tab umbenennen funktioniert nicht mehr").
+    const field = await screen.findByLabelText("Name für Terminal 2");
+    expect(field).toHaveFocus();
+
+    fireEvent.change(field, { target: { value: "Build" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    // Der Name landet als Anhang im aria-Label des Chips (Nummer bleibt die
+    // Kennung), das Feld ist wieder ausgehängt.
+    await screen.findByRole("button", { name: "Terminal 2: Build" });
+    expect(
+      screen.queryByLabelText("Name für Terminal 2"),
+    ).not.toBeInTheDocument();
+  });
+
   it("verschiebt einen Terminal-Tab per Chip-Drag in die Nachbar-Pane desselben Projekts, ohne die PTY zu killen (Ticket 32)", async () => {
     // Beide Panes auf DASSELBE Projekt — die Projektgleichheit ist die
     // Bedingung des Zugs (der `cwd` einer PTY steht beim Spawn fest).
@@ -1690,6 +1740,79 @@ describe("Grid / Mehrfach-Pane", () => {
     // auf einer ausgelasteten Maschine nicht, ohne dass etwas defekt wäre.
   }, 25_000);
 
+  it("erzeugt per Chip-Drag auf einen LEEREN Slot eine neue Pane im Projekt des Tabs, ohne die PTY zu killen", async () => {
+    // Nutzer-Wunsch: "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort
+    // ein neues Pane erstellt, das dann in dem Projekt des Tabs hängt, und
+    // der Tab wird in das neue Pane gehängt." StrictMode wie im Zug-Test
+    // darüber — auch das Umhängen in eine FRISCH ERZEUGTE Pane muss die
+    // Placement-Falle überleben (die neue Pane rendert neu, der Tab-Portal-
+    // Knoten darf trotzdem nur umgehängt, nie neu gemountet werden).
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />, { wrapper: StrictMode });
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
+    );
+    await screen.findByRole("button", { name: "Terminal 2" });
+    // Nullpunkt wie im Zug-Test darüber: das StrictMode-Mount-Rauschen gehört
+    // zum Aufbau, nicht zum Zug.
+    invokeMock.mockClear();
+
+    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const movedSurface = chip.closest("[data-pane-id]");
+    if (!(movedSurface instanceof HTMLElement)) {
+      throw new Error("Fläche des gezogenen Tabs nicht gefunden");
+    }
+    const sourcePaneId = movedSurface.dataset.paneId;
+
+    // jsdom hat kein Layout: nur der leere Ziel-Slot (Index 1) bekommt ein
+    // Rechteck — getroffen wird er über sein `data-empty-slot`-Attribut
+    // (ProjectPicker.tsx), eine `paneId` existiert dort noch nicht. Die
+    // übrigen leeren Slots bleiben 0×0 und damit untreffbar.
+    const emptyCell = container.querySelector<HTMLElement>('[data-empty-slot="1"]');
+    if (!emptyCell) throw new Error("Leerer Slot 1 nicht gefunden");
+    emptyCell.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 200, bottom: 100 }) as DOMRect;
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+
+    // Während des Schwebens über dem leeren Slot: dasselbe zweistufige
+    // Instrument wie über einer Ziel-Pane, nur mit der "neue Pane"-Ansage.
+    expect(screen.getByText("Neue Pane hier")).toBeInTheDocument();
+
+    fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    // Nach dem Drop: DERSELBE DOM-Knoten hängt jetzt unter einer NEUEN
+    // paneId — verschoben in die frisch erzeugte Pane, nicht neu gebaut.
+    await waitFor(() => {
+      expect(movedSurface.dataset.paneId).not.toBe(sourcePaneId);
+    });
+    const paneSections = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pane-id]"),
+    );
+    const paneIds = new Set(paneSections.map((s) => s.dataset.paneId));
+    expect(paneIds.size).toBe(2);
+    expect(paneIds.has(sourcePaneId)).toBe(true);
+    // Beide Panes zeigen dasselbe Projekt — die neue hängt im Projekt des
+    // Tabs, nicht in einem leeren Zustand.
+    expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    // Kern der Zusicherung: keine PTY gekillt, keine gespawnt — die Sitzung
+    // des gezogenen Tabs lebt in der neuen Pane unverändert weiter.
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
+  }, 25_000);
+
   it("sortiert einen Terminal-Tab per Chip-Drag innerhalb der eigenen Pane um (Präzisions-Runde)", async () => {
     // Nutzer-Befund: "auch das Re-Org von Tabs innerhalb eines Panes geht
     // noch nicht". Eine Pane, zwei Tabs — die eigene Pane ist seit der
@@ -1752,9 +1875,17 @@ describe("Grid / Mehrfach-Pane", () => {
         '[aria-label="Terminal 1"]',
       ),
     ).not.toBeNull();
-    // (`--invite` gezielt: die ProjectPicker der leeren Slots tragen eigene,
-    // permanente `--fine`-Ecken, die hier nichts zur Sache tun.)
-    expect(container.querySelector(".pc-hud-corner--invite")).toBeNull();
+    // (`--invite` gezielt und auf die ZELLE der eigenen Pane gescoped: die
+    // ProjectPicker der leeren Slots tragen eigene, permanente `--fine`-
+    // Ecken — und seit dem Leere-Slot-Ziel WÄHREND eines Zugs zu Recht auch
+    // ihr eigenes gedämpftes `--invite`-Instrument ("Neue Pane hier"). Nur
+    // die eigene Pane darf keins zeigen: dort läuft der Zug sichtbar in der
+    // Leiste selbst.)
+    const ownCell = container
+      .querySelector("[data-pane-id]")
+      ?.closest(".pc-workspace > *");
+    if (!ownCell) throw new Error("Zelle der eigenen Pane nicht gefunden");
+    expect(ownCell.querySelector(".pc-hud-corner--invite")).toBeNull();
 
     fireEvent.pointerUp(chip, { clientX: 10, clientY: 10 });
 

@@ -9,6 +9,7 @@ import {
   focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
   moveTerminalTab as moveTerminalTabInState,
+  moveTerminalTabToEmptySlot as moveTerminalTabToEmptySlotInState,
   openTerminalTab as openTerminalTabInState,
   renameTerminalTab as renameTerminalTabInState,
   swapPanes as swapPanesInState,
@@ -66,6 +67,15 @@ export interface Grid {
     tabId: string,
     targetPaneId: string,
     insertIndex?: number,
+  ) => void;
+  /** Verschiebt einen Terminal-Tab auf einen LEEREN Slot: dort entsteht eine
+   * neue Pane im Projekt der Quelle, mit diesem Tab als einzigem — die
+   * frische `paneId` wird hier erzeugt (dieselbe Erzeugungs-Verantwortung
+   * wie `assignProject`). No-Op, wenn der Slot inzwischen belegt ist. */
+  moveTerminalTabToEmptySlot: (
+    sourcePaneId: string,
+    tabId: string,
+    targetSlotIndex: number,
   ) => void;
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
@@ -157,6 +167,22 @@ export function useGrid(): Grid {
     [],
   );
 
+  const moveTerminalTabToEmptySlot = useCallback(
+    (sourcePaneId: string, tabId: string, targetSlotIndex: number) => {
+      const newPaneId = crypto.randomUUID();
+      setState((current) =>
+        moveTerminalTabToEmptySlotInState(
+          current,
+          sourcePaneId,
+          tabId,
+          targetSlotIndex,
+          newPaneId,
+        ),
+      );
+    },
+    [],
+  );
+
   const renameTerminalTab = useCallback(
     (paneId: string, tabId: string, label: string | null) => {
       setState((current) => renameTerminalTabInState(current, paneId, tabId, label));
@@ -194,6 +220,7 @@ export function useGrid(): Grid {
     openTerminalTab,
     closeTerminalTab,
     moveTerminalTab,
+    moveTerminalTabToEmptySlot,
     renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,
