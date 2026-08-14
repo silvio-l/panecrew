@@ -129,6 +129,7 @@ pub fn run() {
                 });
             app.manage(ShellIntegrationDir(root));
             windows::restore_persisted_windows(app.handle());
+            splash::position_on_cursor_monitor(app.handle());
             splash::arm_watchdog(app.handle());
             settings_window::prewarm(app.handle());
             Ok(())

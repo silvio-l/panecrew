@@ -6,9 +6,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindowBuilder, Window,
+    WindowEvent,
+};
 
 const LABEL: &str = "settings";
+const WIDTH: f64 = 760.0;
+const HEIGHT: f64 = 560.0;
 
 /// Setzt `show()` VOR dem Erzeugen/Anzeigen — unterscheidet "der Nutzer hat
 /// die Einstellungen tatsächlich geöffnet" von "das Fenster ist nur
@@ -95,7 +100,9 @@ pub fn prewarm(app: &AppHandle) {
     if app.get_webview_window(LABEL).is_some() {
         return;
     }
-    if let Err(error) = build_hidden(app) {
+    // No opener at app-start — same primary-monitor `.center()` fallback as
+    // always; `show()`'s first real invocation repositions it anyway.
+    if let Err(error) = build_hidden(app, None) {
         eprintln!("PaneCrew: Einstellungen-Fenster konnte nicht vorgewärmt werden: {error}");
     }
     // Bewusst KEIN arm_reveal_watchdog: dieses Fenster soll unsichtbar
@@ -106,45 +113,112 @@ pub fn prewarm(app: &AppHandle) {
 
 /// Singleton: a second call brings the existing window to the front instead
 /// of opening a duplicate (story 10).
-pub fn show(app: &AppHandle) {
+///
+/// `opener` is the window the user actually triggered "Settings" from (the
+/// IPC caller, auto-injected by Tauri into `settings_open_window` — see
+/// `settings_commands.rs`) — NOT necessarily "main": with multiple windows
+/// open, any of them can open Settings. Positioning off it, not off a
+/// hardcoded default monitor, is what fixes the multi-monitor report: a
+/// blind `.center()` always lands on the PRIMARY monitor, regardless of
+/// which monitor `opener` (and the user) is actually on.
+pub fn show(app: &AppHandle, opener: &Window) {
     OPEN_REQUESTED.store(true, Ordering::SeqCst);
+    let position = centered_over(opener, WIDTH, HEIGHT);
 
     if let Some(window) = app.get_webview_window(LABEL) {
+        // Repositions the SAME prewarmed/singleton window on every real open,
+        // not just at first build: `prewarm()` below only ever centers on the
+        // primary monitor (no opener exists yet at app-start), so without
+        // this the window would carry that wrong position across its entire
+        // hidden-singleton lifetime and only ever get it right by accident.
+        if let Some((position, _scale_factor)) = position {
+            let _ = window.set_position(position);
+        }
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
         return;
     }
 
-    if let Err(error) = build_hidden(app) {
+    if let Err(error) = build_hidden(app, position) {
         eprintln!("PaneCrew: Einstellungen-Fenster konnte nicht geöffnet werden: {error}");
         return;
     }
     arm_reveal_watchdog(app);
 }
 
-fn build_hidden(app: &AppHandle) -> tauri::Result<()> {
+/// Physical top-left position that centers a `target_width` × `target_height`
+/// (logical px) window over `opener`, clamped to `opener`'s own monitor so a
+/// window near a screen edge can't push the settings window half off-screen,
+/// plus the scale factor it was computed with (callers that need LOGICAL
+/// pixels — `WebviewWindowBuilder::position`, per its own doc comment — must
+/// divide by this; `Window::set_position` takes the physical value as-is).
+/// `None` if any of the underlying platform queries fail (headless/test
+/// environments, a not-yet-mapped window) — callers fall back to `.center()`.
+fn centered_over(
+    opener: &Window,
+    target_width: f64,
+    target_height: f64,
+) -> Option<(PhysicalPosition<i32>, f64)> {
+    let opener_position = opener.outer_position().ok()?;
+    let opener_size = opener.outer_size().ok()?;
+    let scale_factor = opener.scale_factor().ok()?;
+
+    let target_width = (target_width * scale_factor).round() as i32;
+    let target_height = (target_height * scale_factor).round() as i32;
+
+    let mut x = opener_position.x + (opener_size.width as i32 - target_width) / 2;
+    let mut y = opener_position.y + (opener_size.height as i32 - target_height) / 2;
+
+    if let Ok(Some(monitor)) = opener.current_monitor() {
+        let monitor_position = monitor.position();
+        let monitor_size = monitor.size();
+        let max_x = monitor_position.x + monitor_size.width as i32 - target_width;
+        let max_y = monitor_position.y + monitor_size.height as i32 - target_height;
+        x = x.clamp(monitor_position.x, max_x.max(monitor_position.x));
+        y = y.clamp(monitor_position.y, max_y.max(monitor_position.y));
+    }
+
+    Some((PhysicalPosition::new(x, y), scale_factor))
+}
+
+fn build_hidden(app: &AppHandle, position: Option<(PhysicalPosition<i32>, f64)>) -> tauri::Result<()> {
     let title = if app.config().identifier.ends_with(".nightly") {
         "PaneCrew Nightly — Einstellungen"
     } else {
         "PaneCrew — Einstellungen"
     };
 
-    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
-        .title(title)
-        .inner_size(760.0, 560.0)
-        .min_inner_size(560.0, 420.0)
-        .background_color(
-            parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
-        )
-        // Normal native decorations, normal resizing, no `always_on_top`: the
-        // opposite of `about.rs` on every point that made that window modal.
-        .resizable(true)
-        .center()
-        // Revealed only once the frontend has something to show (chrome +
-        // "loading" text render at mount, before schema/values arrive) via
-        // `settings_visible` below — same white-flash fix as `about.rs`.
-        .visible(false);
+    let mut builder =
+        WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
+            .title(title)
+            .inner_size(WIDTH, HEIGHT)
+            .min_inner_size(560.0, 420.0)
+            .background_color(
+                parse_hex_color(BACKGROUND)
+                    .expect("BACKGROUND constant must be a valid #rrggbb color"),
+            )
+            // Normal native decorations, normal resizing, no `always_on_top`: the
+            // opposite of `about.rs` on every point that made that window modal.
+            .resizable(true)
+            // Revealed only once the frontend has something to show (chrome +
+            // "loading" text render at mount, before schema/values arrive) via
+            // `settings_visible` below — same white-flash fix as `about.rs`.
+            .visible(false);
+
+    builder = match position {
+        // `WebviewWindowBuilder::position` takes LOGICAL pixels (its own doc
+        // comment) while `centered_over` computed physical ones — divide back
+        // by the same scale factor, not the still-unbuilt window's own (which
+        // doesn't exist yet to ask).
+        Some((position, scale_factor)) => builder.position(
+            f64::from(position.x) / scale_factor,
+            f64::from(position.y) / scale_factor,
+        ),
+        // `prewarm()`'s first-ever build (no opener yet) and any environment
+        // where `centered_over` couldn't resolve the opener's monitor.
+        None => builder.center(),
+    };
 
     builder.build()?;
     Ok(())

@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getSettingsValues, subscribeToSettingsChanges } from "../settings/settingsStore";
 import { isMacPlatform } from "./platform";
 import { matchesShortcut, SHORTCUTS, zoomAction } from "./registry";
-import { DEFAULT_ZOOM, nextZoomLevel } from "./zoom";
+import { DEFAULT_APP_ZOOM, nextZoomLevel } from "./zoom";
 
 const SETTINGS_KEY = "appearance.zoom";
 
@@ -19,8 +19,8 @@ const SETTINGS_KEY = "appearance.zoom";
 // Pane-Kürzel sieht, ist unkritisch — die App-Einträge verlangen Shift, die
 // Pane-Einträge verbieten es, matchesShortcut prüft exakt.
 export function useAppZoom(): number {
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  // Persistenz lief bislang gar nicht — jeder Neustart fiel auf DEFAULT_ZOOM
+  const [zoom, setZoom] = useState(DEFAULT_APP_ZOOM);
+  // Persistenz lief bislang gar nicht — jeder Neustart fiel auf DEFAULT_APP_ZOOM
   // zurück. `appearance.zoom` im Settings-Store (statt localStorage, wie eine
   // ältere Notiz hier mal vorsah) macht den Wert konsistent mit
   // Theme/Sprache/Terminal-Schriftgröße UND in der Settings-UI editierbar.
@@ -74,7 +74,7 @@ export function useAppZoom(): number {
       ownChangeRef.current = true;
       setZoom((current) =>
         shortcut.glyph === "0"
-          ? DEFAULT_ZOOM
+          ? DEFAULT_APP_ZOOM
           : nextZoomLevel(current, shortcut.glyph === "+" ? 1 : -1),
       );
     };

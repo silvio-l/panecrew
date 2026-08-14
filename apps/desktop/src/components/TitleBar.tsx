@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SupportedLanguage } from "../i18n";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
+import { DEFAULT_APP_ZOOM } from "../shortcuts/zoom";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 
 // Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
@@ -145,58 +146,109 @@ export function TitleBar({ zoom }: { zoom: number }) {
           </span>
         </div>
 
-        {/* Zoom-Readout — ein echtes HUD-Instrument, kein Zierrat: erscheint
-            nur, wenn der App-Zoom von 100 % abweicht, und verschwindet hart
-            (0ms) mit der Rückkehr. Sichtbar sind nur Ziffern und %, deshalb
-            keine i18n-Frage im Sichtbaren; der Screenreader bekommt den Satz.
-            Gedimmt im Readout-Register (.pc-hud-readout) — es informiert,
-            es ruft nicht. pointer-events-none: die Kapselfläche dahinter
-            bleibt Ziehfläche. */}
-        {zoom !== 1 && (
-          <div className="pointer-events-none flex shrink-0 items-center pr-1">
-            <span
-              aria-hidden="true"
-              className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.25em]"
+        {/* Instrumenten-Cluster (Zoom, Datum, Uhrzeit): eine geschlossene
+            HUD-Gruppe statt dreier lose benachbarter Werte, vertikal genauso
+            zentriert wie die Icon-Knöpfe rechts daneben (die sind size-7,
+            items-center, keine eigene Textzeile — der Referenzpunkt).
+            Zwei Defekte, an fotografischen Messungen der laufenden
+            Dogfood-Instanz belegt (Kapsel-Screenshot, Pixel-Scan der
+            Glyphen-Bounding-Box):
+            1) items-center zentrierte jeden Wert nach seiner EIGENEN
+               Zeilenbox statt nach der Glyphenhöhe — bei 10/11/14px
+               unterschiedlich hoch (Browser-Default-line-height ist keine
+               feste Größe, sondern schriftgrößenabhängig gerundet), deshalb
+               saß "140%" gemessen 2px höher als Datum/Uhrzeit. Nicht die
+               Baseline war das Problem, sondern die Box: leading-none auf
+               jedem Textwert zieht die Zeilenbox auf die Glyphenhöhe
+               zusammen (line-height 1 statt Browser-Default) — items-center
+               zentriert diese enge Box jetzt exakt so, wie es die
+               size-7-Icon-Boxen daneben schon immer tat. (Ein früherer
+               Versuch mit items-baseline richtete zwar die Grundlinien
+               aus, aber genau das war nicht der Wunsch — der Nutzer wollte
+               eine echte optische Mitte wie bei den Icons, keine
+               Schriftlinie.)
+            2) Zoom↔Datum trug nur Padding, kein Trenner, während Datum|Zeit
+               bereits eine 1px-Glass-Kante hatte — uneinheitliche Grammatik.
+               Derselbe Trenner (<Divider>) sitzt jetzt zwischen JEDEM
+               Wertepaar UND vor der Bedienelement-Gruppe, sodass Werte und
+               Icons als zwei klar getrennte Cluster lesbar sind. */}
+        <div className="flex h-full shrink-0 items-center gap-2">
+          {zoom !== DEFAULT_APP_ZOOM && (
+            <>
+              {/* Volle descriptionForeground-Deckkraft statt der geteilten
+                  .pc-hud-readout-Klasse (dimmt auf 70%, für Slot-Nummern
+                  richtig): seit DEFAULT_APP_ZOOM auf 1,2 steht, ist dieser
+                  Wert praktisch immer sichtbar (nur beim exakten Default
+                  ausgeblendet) statt einer seltenen Ausnahmeanzeige — dafür
+                  war die Abdunklung zu blass, dieselbe Lesbarkeits-Korrektur
+                  wie zuvor schon beim Datum. */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none font-(family-name:--pc-terminal-fontFamily) text-[10px] leading-none tracking-[0.25em] text-(--pc-descriptionForeground)"
+              >
+                {`${String(Math.round(zoom * 100))}%`}
+              </span>
+              <span className="sr-only">
+                {t("titleBar.zoomLevel", { percent: Math.round(zoom * 100) })}
+              </span>
+              <Divider />
+            </>
+          )}
+
+          <DateTimeReadout t={t} />
+        </div>
+
+        <Divider className="mx-2" />
+
+        <div className="flex shrink-0 items-center">
+          <ChromeTooltip label={newWindowTooltipLabel} align="end">
+            <button
+              type="button"
+              aria-label={t("titleBar.newWindow")}
+              // `window_open_new` generiert Label und Kaskaden-Position selbst
+              // (`windows.rs`) — aus JEDEM Fenster heraus aufrufbar, kein
+              // "main"-exklusiver Command wie `get_launch_project`.
+              onClick={() => void invoke("window_open_new")}
+              className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
             >
-              {`${String(Math.round(zoom * 100))}%`}
-            </span>
-            <span className="sr-only">
-              {t("titleBar.zoomLevel", { percent: Math.round(zoom * 100) })}
-            </span>
-          </div>
-        )}
+              <NewWindowIcon />
+            </button>
+          </ChromeTooltip>
 
-        <DateTimeReadout t={t} />
-
-        <ChromeTooltip label={newWindowTooltipLabel} align="end">
-          <button
-            type="button"
-            aria-label={t("titleBar.newWindow")}
-            // `window_open_new` generiert Label und Kaskaden-Position selbst
-            // (`windows.rs`) — aus JEDEM Fenster heraus aufrufbar, kein
-            // "main"-exklusiver Command wie `get_launch_project`.
-            onClick={() => void invoke("window_open_new")}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-          >
-            <NewWindowIcon />
-          </button>
-        </ChromeTooltip>
-
-        <ChromeTooltip label={t("titleBar.settings")} align="end">
-          <button
-            type="button"
-            aria-label={t("titleBar.settings")}
-            // `settings_open_window` ist selbst schon das Singleton (Ticket 03,
-            // settings_window.rs::show): ein zweiter Klick bei bereits offenem
-            // Fenster holt es nur nach vorn, öffnet nie ein zweites.
-            onClick={() => void invoke("settings_open_window")}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-          >
-            <GearIcon />
-          </button>
-        </ChromeTooltip>
+          <ChromeTooltip label={t("titleBar.settings")} align="end">
+            <button
+              type="button"
+              aria-label={t("titleBar.settings")}
+              // `settings_open_window` ist selbst schon das Singleton (Ticket 03,
+              // settings_window.rs::show): ein zweiter Klick bei bereits offenem
+              // Fenster holt es nur nach vorn, öffnet nie ein zweites.
+              onClick={() => void invoke("settings_open_window")}
+              className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            >
+              <GearIcon />
+            </button>
+          </ChromeTooltip>
+        </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Ein 1px-Wert-Trenner im Glass-Rahmenton (--pc-glass-border, derselbe Ton
+ * wie die Kapselkante) — die einzige Trenngrammatik des Instrumenten-Clusters,
+ * an jeder Wertegrenze (Zoom↔Datum, Datum↔Zeit, Cluster↔Bedienelemente).
+ * Eigene Komponente statt dreier wörtlicher Duplikate. self-center fest
+ * einprogrammiert statt dem Aufrufer überlassen: alle umgebenden Kontexte
+ * sind items-center, aber der Trenner soll auch dann noch mittig stehen,
+ * falls er künftig in einem items-start/-end-Kontext landet.
+ */
+function Divider({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`h-3 w-px shrink-0 self-center bg-(--pc-glass-border) ${className}`}
+    />
   );
 }
 
@@ -241,40 +293,66 @@ function DateTimeReadout({
   }).format(now);
 
   return (
-    <div className="pointer-events-none flex shrink-0 items-baseline gap-2 pr-1">
-      {/* Datum: eigenes Register statt der geteilten .pc-hud-readout-Klasse
-          (die dimmt auf 70% descriptionForeground — für Slot-Nummern richtig,
-          für ein auf einen Blick lesbares Datum zu blass, Nutzer-Feedback
-          2026-08-13 "das Datum kann man ja immer noch nicht gut sehen").
-          Volle descriptionForeground-Deckkraft statt color-mix-Dimmung, aber
-          weiterhin klar zweitrangig zur Uhrzeit über Größe + Schriftschnitt
-          (kein font-semibold, kein --pc-foreground). */}
-      <span
-        aria-hidden="true"
-        className="font-(family-name:--pc-terminal-fontFamily) text-[11px] tracking-[0.12em] text-(--pc-descriptionForeground)"
+    // Ganze Uhr als ChromeTooltip-Trigger (dasselbe Popup-Material wie die
+    // beiden Knöpfe rechts daneben): das volle lokalisierte Datum stand vorher
+    // nur im sr-only-Satz — für Sehende nirgends abrufbar, obwohl längst
+    // berechnet. pointer-events-auto hier (statt am Cluster) macht exakt
+    // diese Fläche hoverbar. Vorher fiel ein Mousedown hier dank
+    // pointer-events-none durch bis zur Kapsel (bare data-tauri-drag-region,
+    // wirkt laut tauri drag.js nur bei exaktem Treffer auf DIESES Element —
+    // der Durchfall-Klick war der Ziehmechanismus). pointer-events-auto
+    // blockiert diesen Durchfall, darum jetzt data-tauri-drag-region="deep"
+    // direkt hier: macht die ganze Fläche wieder ziehbar (deep wirkt auf den
+    // gesamten Teilbaum, unabhängig vom exakten Treffer) UND hoverbar für
+    // den Tooltip — Radix öffnet über Hover/Focus, nicht über Click, kollidiert
+    // also nicht mit dem Drag-Mousedown.
+    <ChromeTooltip label={fullDateTime} align="end">
+      {/* Hover-Feedback (die eine noch offene UI-Optimierung dieses Runs):
+          bislang gab die Uhr keinerlei visuellen Hinweis, dass sie ein
+          Tooltip-Trigger ist — anders als die Icon-Knöpfe rechts daneben, die
+          alle auf Hover reagieren (hover:bg-list-hoverBackground). Dieselbe
+          Fläche, dieselbe Klasse: negative Margin gleicht das zusätzliche
+          Padding wieder aus, sodass sich der sichtbare Text nicht verschiebt
+          und der Cluster-Abstand zum Divider gleich bleibt. */}
+      <div
+        data-tauri-drag-region="deep"
+        className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
       >
-        {weekday} {datePart}
-      </span>
-      {/* Messerscharfe 1px-Trennlinie statt Leerraum zwischen Datum und
-          Uhrzeit — derselbe Glass-Rahmenton wie die Kapsel selbst
-          (--pc-glass-border), keine neue Farbe für ein einzelnes Pixel. */}
-      <span aria-hidden="true" className="h-3 w-px shrink-0 self-center bg-(--pc-glass-border)" />
-      {/* Die Uhrzeit selbst: größer, voller Vordergrundton statt gedimmt,
-          mit blinkendem Doppelpunkt als Terminal-Cursor (2026-08-13,
-          Nutzer-Wunsch "präsenter... kontrastreicher... ein bisschen
-          Terminal, verspielt"). */}
-      <span
-        aria-hidden="true"
-        className="font-(family-name:--pc-terminal-fontFamily) text-[14px] font-semibold tracking-[0.04em] text-(--pc-foreground) tabular-nums"
-      >
-        {hour}
-        <span className="pc-clock-cursor">:</span>
-        {minute}
-      </span>
-      <span className="sr-only">
-        {t("titleBar.dateTime", { dateTime: fullDateTime })}
-      </span>
-    </div>
+        {/* Datum: eigenes Register statt der geteilten .pc-hud-readout-Klasse
+            (die dimmt auf 70% descriptionForeground — für Slot-Nummern richtig,
+            für ein auf einen Blick lesbares Datum zu blass, Nutzer-Feedback
+            2026-08-13 "das Datum kann man ja immer noch nicht gut sehen").
+            Volle descriptionForeground-Deckkraft statt color-mix-Dimmung, aber
+            weiterhin klar zweitrangig zur Uhrzeit über Größe + Schriftschnitt
+            (kein font-semibold, kein --pc-foreground). leading-none: die
+            Zeilenbox soll die Glyphenhöhe abbilden, nicht die schriftgrößen-
+            abhängige Browser-Default-Zeilenhöhe — sonst zentriert
+            items-center am Cluster daneben (s. Kommentar dort) sichtbar
+            daneben statt exakt mittig zu den Icon-Knöpfen. */}
+        <span
+          aria-hidden="true"
+          className="font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-none tracking-[0.12em] text-(--pc-descriptionForeground)"
+        >
+          {weekday} {datePart}
+        </span>
+        <Divider />
+        {/* Die Uhrzeit selbst: größer, voller Vordergrundton statt gedimmt,
+            mit blinkendem Doppelpunkt als Terminal-Cursor (2026-08-13,
+            Nutzer-Wunsch "präsenter... kontrastreicher... ein bisschen
+            Terminal, verspielt"). */}
+        <span
+          aria-hidden="true"
+          className="font-(family-name:--pc-terminal-fontFamily) text-[14px] leading-none font-semibold tracking-[0.04em] text-(--pc-foreground) tabular-nums"
+        >
+          {hour}
+          <span className="pc-clock-cursor">:</span>
+          {minute}
+        </span>
+        <span className="sr-only">
+          {t("titleBar.dateTime", { dateTime: fullDateTime })}
+        </span>
+      </div>
+    </ChromeTooltip>
   );
 }
 

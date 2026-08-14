@@ -230,9 +230,14 @@ pub fn settings_write_raw(
     Ok(())
 }
 
+/// `window` is auto-injected by Tauri as the IPC caller's own window (Tauri 2
+/// resolves any `Window`/`WebviewWindow`-typed command parameter this way) —
+/// needed so `settings_window::show` can center the Settings window over
+/// whichever window/monitor the user actually clicked the gear icon in,
+/// instead of always the primary monitor (2026-08-14 multi-monitor report).
 #[tauri::command]
-pub fn settings_open_window(app: AppHandle) {
-    crate::settings_window::show(&app);
+pub fn settings_open_window(app: AppHandle, window: tauri::Window) {
+    crate::settings_window::show(&app, &window);
 }
 
 #[cfg(test)]

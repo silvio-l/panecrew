@@ -23,6 +23,46 @@ struct Signals {
 /// bewusst hinter deren 6 s, damit sie den regulären Ablauf nie abschneidet.
 const WATCHDOG: Duration = Duration::from_secs(8);
 
+/// Same logical size as `tauri.conf.json`'s `splashscreen` entry — kept here
+/// too since `position_on_cursor_monitor` below needs it and the JSON config
+/// has no Rust-side counterpart to read it back from.
+const SPLASH_WIDTH: f64 = 940.0;
+const SPLASH_HEIGHT: f64 = 590.0;
+
+/// Repositions the splash window (still hidden, declaratively `"center":
+/// true` in `tauri.conf.json`) onto the monitor under the OS cursor at
+/// launch, instead of always the primary monitor (2026-08-14 multi-monitor
+/// report — same root cause as the Settings window, but there is no caller
+/// WINDOW to center over here: splash is the very first thing the app shows,
+/// before "main" or any other window exists. The cursor position is the
+/// closest available proxy for "the monitor the user is actually sitting
+/// at"). Best-effort: any failed platform query (headless CI, an
+/// environment without a cursor) leaves the declarative primary-monitor
+/// center in place — called once from `run()`'s `setup()`, before the
+/// splash-reveal watchdog arms, so the reposition always lands before the
+/// window can ever become visible.
+pub fn position_on_cursor_monitor(app: &AppHandle) {
+    let Some(splash) = app.get_webview_window("splashscreen") else {
+        return;
+    };
+    let Ok(cursor) = app.cursor_position() else {
+        return;
+    };
+    let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) else {
+        return;
+    };
+
+    let scale_factor = monitor.scale_factor();
+    let target_width = (SPLASH_WIDTH * scale_factor).round() as i32;
+    let target_height = (SPLASH_HEIGHT * scale_factor).round() as i32;
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let x = monitor_position.x + (monitor_size.width as i32 - target_width) / 2;
+    let y = monitor_position.y + (monitor_size.height as i32 - target_height) / 2;
+
+    let _ = splash.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
 pub fn arm_watchdog(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {

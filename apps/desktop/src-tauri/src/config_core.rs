@@ -36,7 +36,7 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     registry.register(entry(
         "terminal.fontSize",
         SettingType::Number,
-        serde_json::json!(13),
+        serde_json::json!(14),
     ))?;
     // Needs-Attention-Grundlage (terminalActivity.ts, Task #7/#13): ein Tab
     // gilt intern als "aktiv", sobald innerhalb von activityIdleMs mindestens

@@ -2616,11 +2616,13 @@ describe("Zoom", () => {
     press("Minus");
     press("Minus");
     press("Minus");
+    press("Minus");
+    press("Minus");
     expect(setZoomMock.mock.calls.at(-1)?.[0]).toBeLessThan(1);
     expect(physicalInset()).toBeCloseTo(84);
 
     press("Digit0");
-    expect(setZoomMock).toHaveBeenLastCalledWith(1);
+    expect(setZoomMock).toHaveBeenLastCalledWith(1.2);
     expect(physicalInset()).toBeCloseTo(84);
   });
 
@@ -2665,7 +2667,7 @@ describe("Zoom", () => {
     fireEvent.keyDown(window, { code: "Equal", ctrlKey: true });
 
     // Der Effekt beim Mounten setzt einmal die Ausgangsstufe; mehr nicht.
-    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
+    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1.2]);
   });
 
   it("zoomt mit Strg+Plus die Pane-Schrift und meldet die neue Größe ans PTY", async () => {
@@ -2704,7 +2706,7 @@ describe("Zoom", () => {
     // beim Kindprozess ankommt.
     expect(soloTerminal().fit).toHaveBeenCalled();
     // Und die Oberfläche bleibt, wo sie war.
-    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1]);
+    expect(setZoomMock.mock.calls.map(([level]) => level)).toEqual([1.2]);
   });
 });
 

@@ -24,7 +24,7 @@ export function readTerminalOptions(): {
   );
   return {
     fontFamily: readToken("--pc-terminal-fontFamily") ?? "ui-monospace",
-    fontSize: Number.isFinite(fontSize) ? fontSize : 12,
+    fontSize: Number.isFinite(fontSize) ? fontSize : 14,
     lineHeight: Number.isFinite(lineHeight) ? lineHeight : 1.65,
   };
 }
