@@ -164,6 +164,30 @@ export function HarnessApp({
                 onFocusPane={grid.focusPane}
                 onOpenTerminalTab={grid.openTerminalTab}
                 onCloseTerminalTab={grid.closeTerminalTab}
+                // Kein Guard/keine Rückfrage nötig — der Harness spielt nur
+                // ein Storyboard ab (Kopfkommentar), dasselbe Prinzip wie
+                // `onClosePane` oben.
+                onCloseOtherTerminalTabs={(paneId, tabId) => {
+                  const pane = grid.state.slots.find(
+                    (slot) => slot?.paneId === paneId,
+                  );
+                  if (!pane) return;
+                  for (const tab of pane.terminalTabs) {
+                    if (tab.tabId !== tabId) grid.closeTerminalTab(paneId, tab.tabId);
+                  }
+                }}
+                onCloseTerminalTabsToRight={(paneId, tabId) => {
+                  const pane = grid.state.slots.find(
+                    (slot) => slot?.paneId === paneId,
+                  );
+                  const index = pane?.terminalTabs.findIndex(
+                    (tab) => tab.tabId === tabId,
+                  );
+                  if (!pane || index === undefined || index < 0) return;
+                  for (const tab of pane.terminalTabs.slice(index + 1)) {
+                    grid.closeTerminalTab(paneId, tab.tabId);
+                  }
+                }}
                 onRenameTerminalTab={grid.renameTerminalTab}
                 onMoveTerminalTab={(sourcePaneId, tabId, targetPaneId, insertIndex) =>
                   grid.moveTerminalTab(

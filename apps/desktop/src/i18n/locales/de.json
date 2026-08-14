@@ -86,6 +86,12 @@
     "terminalTabTitle": "Terminal-Tab schließen?",
     "terminalTabDescription": "<bold>Terminal {{number}}</bold> wird geschlossen, die darin laufende Sitzung wird beendet.",
     "confirmTerminalTab": "Tab schließen",
+    "terminalTabsBatchTitle_one": "1 Tab schließen?",
+    "terminalTabsBatchTitle_other": "{{count}} Tabs schließen?",
+    "terminalTabsBatchDescription_one": "<bold>1 Terminal-Tab</bold> wird geschlossen, die darin laufende Sitzung wird beendet.",
+    "terminalTabsBatchDescription_other": "<bold>{{count}} Terminal-Tabs</bold> werden geschlossen, die darin laufenden Sitzungen werden beendet.",
+    "confirmTerminalTabsBatch_one": "1 Tab schließen",
+    "confirmTerminalTabsBatch_other": "{{count}} Tabs schließen",
     "cancel": "Abbrechen"
   },
   "terminalPane": {
@@ -117,8 +123,13 @@
     "terminalTab": "Terminal {{number}}",
     "openTerminalTab": "Weiteren Terminal-Tab öffnen",
     "closeTerminalTab": "Terminal {{number}} schließen",
+    "closeOtherTerminalTabs_one": "1 anderen Tab schließen",
+    "closeOtherTerminalTabs_other": "{{count}} andere Tabs schließen",
+    "closeTerminalTabsToRight_one": "1 Tab rechts davon schließen",
+    "closeTerminalTabsToRight_other": "{{count}} Tabs rechts davon schließen",
     "renameTerminalTab": "Terminal {{number}} umbenennen",
     "renameTerminalTabFieldLabel": "Name für Terminal {{number}}",
+    "middleClickCloseHint": "Mittelklick zum Schließen",
     "unreadActivityLabel": "Ungelesene Aktivität",
     "tool": {
       "claude": "Claude Code",

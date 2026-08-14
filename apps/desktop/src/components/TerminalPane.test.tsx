@@ -52,6 +52,8 @@ const paneTabs: PaneTabsProps = {
   onSelectTerminalTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
+  onCloseOtherTerminalTabs: vi.fn(),
+  onCloseTerminalTabsToRight: vi.fn(),
   onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
   tabDrag: {

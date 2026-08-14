@@ -6,6 +6,7 @@ import {
   CHROME_FOCUS_RING,
   CHROME_MENU_CONTENT_CLASS,
   CHROME_MENU_ITEM_CLASS,
+  CHROME_MENU_SEPARATOR_CLASS,
   ChromeTooltip,
 } from "./ChromeTooltip";
 import { isMacPlatform } from "../shortcuts/platform";
@@ -309,6 +310,14 @@ export interface PaneTabsProps {
   onSelectTerminalTab: (tabId: string) => void;
   onOpenTerminalTab: () => void;
   onCloseTerminalTab: (tabId: string) => void;
+  /** Browser-übliches "Andere Tabs schließen" (Kontextmenü) — schließt alle
+   * Terminal-Tabs AUSSER `tabId` in einem Zug, EIN gemeinsamer Guard statt
+   * einer Rückfrage pro Tab (s. App.tsx' `closeOtherTerminalTabsGuarded`). */
+  onCloseOtherTerminalTabs: (tabId: string) => void;
+  /** Browser-übliches "Tabs rechts schließen" (Kontextmenü) — schließt alle
+   * Terminal-Tabs rechts von `tabId` in einem Zug, EIN gemeinsamer Guard
+   * statt einer Rückfrage pro Tab (s. App.tsx' `closeTerminalTabsToRightGuarded`). */
+  onCloseTerminalTabsToRight: (tabId: string) => void;
   /** Kontextmenü-Aktion "Umbenennen" — `label: null` löscht den Namen wieder
    * (leeres/unverändertes Eingabefeld committen, s. `TerminalTabRenameField`). */
   onRenameTerminalTab: (tabId: string, label: string | null) => void;
@@ -349,6 +358,8 @@ export function PaneTabs({
   onSelectTerminalTab,
   onOpenTerminalTab,
   onCloseTerminalTab,
+  onCloseOtherTerminalTabs,
+  onCloseTerminalTabsToRight,
   onRenameTerminalTab,
   onSelectFile,
   tabDrag,
@@ -412,6 +423,8 @@ export function PaneTabs({
           // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
           // anklickbar zu bleiben.
           closable={terminalTabs.length > 1}
+          otherTabsCount={terminalTabs.length - 1}
+          tabsToRightCount={terminalTabs.length - 1 - i}
           draggable={tabDrag.draggable}
           dragging={tabDrag.draggingTabId === tab.tabId}
           renaming={tab.tabId === renamingTabId}
@@ -427,6 +440,8 @@ export function PaneTabs({
             onSelectTerminalTab(tab.tabId);
           }}
           onClose={() => onCloseTerminalTab(tab.tabId)}
+          onCloseOthers={() => onCloseOtherTerminalTabs(tab.tabId)}
+          onCloseTabsToRight={() => onCloseTerminalTabsToRight(tab.tabId)}
           onStartRename={() => setRenamingTabId(tab.tabId)}
           onCommitRename={(label) => {
             onRenameTerminalTab(tab.tabId, label);
@@ -473,6 +488,8 @@ function TerminalTabChip({
   active,
   paneFocused,
   closable,
+  otherTabsCount,
+  tabsToRightCount,
   draggable,
   dragging,
   renaming,
@@ -481,6 +498,8 @@ function TerminalTabChip({
   onPointerDown,
   onSelect,
   onClose,
+  onCloseOthers,
+  onCloseTabsToRight,
   onStartRename,
   onCommitRename,
   onDiscardRename,
@@ -491,6 +510,19 @@ function TerminalTabChip({
   active: boolean;
   paneFocused: boolean;
   closable: boolean;
+  /** Zahl der ANDEREN Terminal-Tabs derselben Pane — `0` blendet den
+   * Browser-üblichen "Andere Tabs schließen"-Menüpunkt aus, sonst zählt sein
+   * Label die tatsächliche Anzahl vor (dasselbe Prinzip wie `closable`
+   * unten). Deckungsgleich mit `closable`s Bedingung (`> 1` Tab insgesamt),
+   * aber als eigene Zahl geführt statt aus `closable` zurückgerechnet — der
+   * Elter kennt die Gesamtzahl ohnehin schon (s. `PaneTabs`' `terminalTabs.
+   * length - 1`). */
+  otherTabsCount: number;
+  /** Zahl der Terminal-Tabs rechts von diesem Chip — `0` blendet den
+   * Browser-üblichen "Tabs rechts schließen"-Menüpunkt ganz aus (leere
+   * Aktion sonst, s. `closable` oben für dasselbe Prinzip beim einzelnen
+   * Schließen), sonst zählt sein Label die tatsächliche Anzahl vor. */
+  tabsToRightCount: number;
   /** Ob dieser Chip als Zieh-Griff angekündigt wird (Ticket 32). */
   draggable: boolean;
   /** Ob GENAU DIESER Chip gerade gezogen wird — er tritt dann zurück, wie
@@ -505,6 +537,8 @@ function TerminalTabChip({
   onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onSelect: () => void;
   onClose: () => void;
+  onCloseOthers: () => void;
+  onCloseTabsToRight: () => void;
   onStartRename: () => void;
   onCommitRename: (label: string | null) => void;
   onDiscardRename: () => void;
@@ -555,8 +589,21 @@ function TerminalTabChip({
   const suffixParts = [label, toolLabel, needsAttentionLabel].filter(
     (part): part is string => part !== null,
   );
+  // Der Mittelklick-Hinweis hängt sich NUR an den sichtbaren Tooltip, nicht
+  // an `ariaLabel` (Punkt c) der User-Anfrage, "Tabster"-Optimierung ohne
+  // Schließkreuz): die Geste existiert schon länger (`onAuxClick` oben), war
+  // aber nirgends kommuniziert. Für Screenreader-Nutzer ist ein
+  // Maus-only-Gesten-Hinweis dagegen reine Ablenkung, keine zusätzliche
+  // Information — sie haben mit dem Kontextmenü ohnehin den vollwertigen Weg.
+  // Nur wenn überhaupt schließbar (letzter verbleibender Tab, s. `closable`
+  // oben), sonst wäre der Hinweis für eine wirkungslose Geste irreführend.
+  const tooltipSuffixParts = closable
+    ? [...suffixParts, t("paneTabs.middleClickCloseHint")]
+    : suffixParts;
   const tooltipLabel =
-    suffixParts.length === 0 ? chordLabel : `${chordLabel} — ${suffixParts.join(" · ")}`;
+    tooltipSuffixParts.length === 0
+      ? chordLabel
+      : `${chordLabel} — ${tooltipSuffixParts.join(" · ")}`;
   const ariaLabel =
     suffixParts.length === 0 ? baseLabel : `${baseLabel}: ${suffixParts.join(" · ")}`;
   // Radix' ContextMenu.Content hält seinen FocusScope-Trap bis zum Ende des
@@ -568,7 +615,18 @@ function TerminalTabChip({
   // und `ContextMenu.Content`s eigener `onCloseAutoFocus` — Radix' offizieller
   // Hook für "nach dem Schließen selbst fokussieren", garantiert erst NACH
   // dem Trap-Abbau zu feuern — setzt sie danach um.
-  const pendingRenameRef = useRef(false);
+  //
+  // "Schließen" braucht denselben Umweg: `onClose` mündet in App.tsx'
+  // `closeTerminalTabGuarded`, das eine zweite Focus-trap-Overlay einhängt
+  // (`ConfirmDialog`s `AlertDialog`, fokussiert per Default den
+  // Abbrechen-Button) — synchron aus `onSelect` heraus kollidiert das mit
+  // demselben noch aktiven ContextMenu-Trap wie beim Umbenennen-Feld oben,
+  // nur einen Hop weiter unten. Ein gemeinsamer Absicht-Ref statt zweier
+  // getrennter Booleans, weil immer nur einer der beiden Menüpunkte gewählt
+  // werden kann.
+  const pendingActionRef = useRef<
+    "rename" | "close" | "closeOthers" | "closeToRight" | null
+  >(null);
 
   // Während des Umbenennens bewusst OHNE `ChromeTooltip`-Hülle: der Tooltip
   // triggert auf Hover, und die Maus steht nach dem Menüpunkt-Klick fast
@@ -721,23 +779,61 @@ function TerminalTabChip({
           // "Umbenennen" der Menüpunkt war, der das Schließen ausgelöst hat.
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            if (pendingRenameRef.current) {
-              pendingRenameRef.current = false;
+            const action = pendingActionRef.current;
+            pendingActionRef.current = null;
+            if (action === "rename") {
               onStartRename();
+            } else if (action === "close") {
+              onClose();
+            } else if (action === "closeOthers") {
+              onCloseOthers();
+            } else if (action === "closeToRight") {
+              onCloseTabsToRight();
             }
           }}
         >
           <ContextMenu.Item
             onSelect={() => {
-              pendingRenameRef.current = true;
+              pendingActionRef.current = "rename";
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
             {t("paneTabs.renameTerminalTab", { number })}
           </ContextMenu.Item>
+          {/* Trennt "Umbenennen" von der Schließen-Gruppe darunter, dasselbe
+              Idiom wie ExplorerPanel.tsx/TerminalPane.tsx' Kontextmenüs —
+              erst ab hier geht es um Tabs, die verschwinden. */}
+          {(closable || tabsToRightCount > 0) && (
+            <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
+          )}
           {closable && (
-            <ContextMenu.Item onSelect={onClose} className={CHROME_MENU_ITEM_CLASS}>
+            <ContextMenu.Item
+              onSelect={() => {
+                pendingActionRef.current = "close";
+              }}
+              className={CHROME_MENU_ITEM_CLASS}
+            >
               {t("paneTabs.closeTerminalTab", { number })}
+            </ContextMenu.Item>
+          )}
+          {otherTabsCount > 0 && (
+            <ContextMenu.Item
+              onSelect={() => {
+                pendingActionRef.current = "closeOthers";
+              }}
+              className={CHROME_MENU_ITEM_CLASS}
+            >
+              {t("paneTabs.closeOtherTerminalTabs", { count: otherTabsCount })}
+            </ContextMenu.Item>
+          )}
+          {tabsToRightCount > 0 && (
+            <ContextMenu.Item
+              onSelect={() => {
+                pendingActionRef.current = "closeToRight";
+              }}
+              className={CHROME_MENU_ITEM_CLASS}
+            >
+              {t("paneTabs.closeTerminalTabsToRight", { count: tabsToRightCount })}
             </ContextMenu.Item>
           )}
         </ContextMenu.Content>

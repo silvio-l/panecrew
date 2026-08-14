@@ -98,6 +98,8 @@ export function PaneGrid({
   onFocusPane,
   onOpenTerminalTab,
   onCloseTerminalTab,
+  onCloseOtherTerminalTabs,
+  onCloseTerminalTabsToRight,
   onRenameTerminalTab,
   onMoveTerminalTab,
   onMoveTerminalTabToEmptySlot,
@@ -137,6 +139,10 @@ export function PaneGrid({
   onFocusPane: (paneId: string) => void;
   onOpenTerminalTab: (paneId: string) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
+  /** Kontextmenü-Aktion "Andere Tabs schließen" (`PaneTabs.tsx`). */
+  onCloseOtherTerminalTabs: (paneId: string, tabId: string) => void;
+  /** Kontextmenü-Aktion "Tabs rechts schließen" (`PaneTabs.tsx`). */
+  onCloseTerminalTabsToRight: (paneId: string, tabId: string) => void;
   /** Kontextmenü-Aktion "Umbenennen" (`PaneTabs.tsx`) — `label: null` löscht
    * den Namen wieder. */
   onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
@@ -407,6 +413,10 @@ export function PaneGrid({
           onSwitchToTerminalTab(pane.paneId, tabId),
         onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
         onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
+        onCloseOtherTerminalTabs: (tabId) =>
+          onCloseOtherTerminalTabs(pane.paneId, tabId),
+        onCloseTerminalTabsToRight: (tabId) =>
+          onCloseTerminalTabsToRight(pane.paneId, tabId),
         onRenameTerminalTab: (tabId, label) =>
           onRenameTerminalTab(pane.paneId, tabId, label),
         onSelectFile: () => onSwitchToFileTab(pane.paneId),

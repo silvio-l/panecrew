@@ -86,6 +86,12 @@
     "terminalTabTitle": "Close terminal tab?",
     "terminalTabDescription": "<bold>Terminal {{number}}</bold> will be closed and the session running in it ended.",
     "confirmTerminalTab": "Close tab",
+    "terminalTabsBatchTitle_one": "Close 1 tab?",
+    "terminalTabsBatchTitle_other": "Close {{count}} tabs?",
+    "terminalTabsBatchDescription_one": "<bold>1 terminal tab</bold> will be closed and the session running in it ended.",
+    "terminalTabsBatchDescription_other": "<bold>{{count}} terminal tabs</bold> will be closed and the sessions running in them ended.",
+    "confirmTerminalTabsBatch_one": "Close 1 tab",
+    "confirmTerminalTabsBatch_other": "Close {{count}} tabs",
     "cancel": "Cancel"
   },
   "terminalPane": {
@@ -117,8 +123,13 @@
     "terminalTab": "Terminal {{number}}",
     "openTerminalTab": "Open another terminal tab",
     "closeTerminalTab": "Close terminal {{number}}",
+    "closeOtherTerminalTabs_one": "Close 1 other tab",
+    "closeOtherTerminalTabs_other": "Close {{count}} other tabs",
+    "closeTerminalTabsToRight_one": "Close 1 tab to the right",
+    "closeTerminalTabsToRight_other": "Close {{count}} tabs to the right",
     "renameTerminalTab": "Rename terminal {{number}}",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
+    "middleClickCloseHint": "Middle-click to close",
     "unreadActivityLabel": "Unread activity",
     "tool": {
       "claude": "Claude Code",

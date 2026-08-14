@@ -555,6 +555,11 @@ function App() {
   const [pendingClose, setPendingClose] = useState<
     | { target: "pane"; projectName: string; run: () => void }
     | { target: "terminalTab"; tabNumber: number; run: () => void }
+    // Ein gemeinsamer Batch-Zweig für BEIDE Mehrfach-Schließen-Wege ("Andere
+    // Tabs schließen", "Tabs rechts schließen") — beide brauchen exakt
+    // dieselbe Rückfrage-Form (nur eine Zahl, keine Richtung), ein eigener
+    // Zweig pro Weg hätte nur wortgleiche Übersetzungs-Keys verdoppelt.
+    | { target: "terminalTabsBatch"; count: number; run: () => void }
     | null
   >(null);
 
@@ -663,6 +668,41 @@ function App() {
     // nummeriert nach Position, nicht nach Id) — die Rückfrage nennt damit
     // genau die Zahl, die auf dem angeklickten Tab steht.
     setPendingClose({ target: "terminalTab", tabNumber: index + 1, run });
+  };
+
+  // Gemeinsamer Kern für BEIDE Mehrfach-Schließen-Wege unten — die Ids werden
+  // VOR dem eigentlichen Schließen eingefroren, weil jedes Schließen die
+  // Liste der Pane verändert und ein Nachschlagen währenddessen die falschen
+  // Tabs träfe. `closeTerminalTab` ist pro Aufruf ein funktionales
+  // `setState`-Update (`useGrid.ts`), die Schleife reiht sie also korrekt
+  // aneinander, jede auf dem Ergebnis der vorigen.
+  const guardBatchClose = (paneId: string, targetTabIds: readonly string[]) => {
+    if (targetTabIds.length === 0) return;
+    const run = () => {
+      for (const targetTabId of targetTabIds) closeTerminalTab(paneId, targetTabId);
+    };
+    setPendingClose({ target: "terminalTabsBatch", count: targetTabIds.length, run });
+  };
+
+  // Browser-übliches "Andere Tabs schließen" (`PaneTabs.tsx`s Kontextmenü).
+  const closeOtherTerminalTabsGuarded = (paneId: string, tabId: string) => {
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    if (!pane) return;
+    guardBatchClose(
+      paneId,
+      pane.terminalTabs.filter((tab) => tab.tabId !== tabId).map((tab) => tab.tabId),
+    );
+  };
+
+  // Browser-übliches "Tabs rechts schließen" (`PaneTabs.tsx`s Kontextmenü).
+  const closeTerminalTabsToRightGuarded = (paneId: string, tabId: string) => {
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    const index = pane?.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+    if (!pane || index === undefined || index < 0) return;
+    guardBatchClose(
+      paneId,
+      pane.terminalTabs.slice(index + 1).map((tab) => tab.tabId),
+    );
   };
 
   // Zieht der LETZTE Terminal-Tab einer Pane in eine andere (seit der
@@ -1004,6 +1044,8 @@ function App() {
               onFocusPane={focusPane}
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}
+              onCloseOtherTerminalTabs={closeOtherTerminalTabsGuarded}
+              onCloseTerminalTabsToRight={closeTerminalTabsToRightGuarded}
               onRenameTerminalTab={renameTerminalTab}
               onMoveTerminalTab={moveTerminalTabGuarded}
               onMoveTerminalTabToEmptySlot={moveTerminalTabToEmptySlotGuarded}
@@ -1064,7 +1106,12 @@ function App() {
             title={t(
               pendingClose.target === "pane"
                 ? "closeDialog.paneTitle"
-                : "closeDialog.terminalTabTitle",
+                : pendingClose.target === "terminalTab"
+                  ? "closeDialog.terminalTabTitle"
+                  : "closeDialog.terminalTabsBatchTitle",
+              pendingClose.target === "terminalTabsBatch"
+                ? { count: pendingClose.count }
+                : undefined,
             )}
             description={
               // Dasselbe Rezept wie bei der Ungespeichert-Rückfrage: das
@@ -1080,10 +1127,21 @@ function App() {
                     ),
                   }}
                 />
-              ) : (
+              ) : pendingClose.target === "terminalTab" ? (
                 <Trans
                   i18nKey="closeDialog.terminalTabDescription"
                   values={{ number: pendingClose.tabNumber }}
+                  components={{
+                    bold: (
+                      <span className="font-medium text-(--pc-foreground)" />
+                    ),
+                  }}
+                />
+              ) : (
+                <Trans
+                  i18nKey="closeDialog.terminalTabsBatchDescription"
+                  count={pendingClose.count}
+                  values={{ count: pendingClose.count }}
                   components={{
                     bold: (
                       <span className="font-medium text-(--pc-foreground)" />
@@ -1095,7 +1153,12 @@ function App() {
             confirmLabel={t(
               pendingClose.target === "pane"
                 ? "closeDialog.confirmPane"
-                : "closeDialog.confirmTerminalTab",
+                : pendingClose.target === "terminalTab"
+                  ? "closeDialog.confirmTerminalTab"
+                  : "closeDialog.confirmTerminalTabsBatch",
+              pendingClose.target === "terminalTabsBatch"
+                ? { count: pendingClose.count }
+                : undefined,
             )}
             cancelLabel={t("closeDialog.cancel")}
             onConfirm={pendingClose.run}

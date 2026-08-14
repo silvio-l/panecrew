@@ -25,6 +25,8 @@ const baseProps = (
   onSelectTerminalTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
+  onCloseOtherTerminalTabs: vi.fn(),
+  onCloseTerminalTabsToRight: vi.fn(),
   onRenameTerminalTab: vi.fn(),
   onSelectFile: vi.fn(),
   tabDrag: {
@@ -83,15 +85,76 @@ describe("PaneTabs", () => {
     expect(props.onCloseTerminalTab).not.toHaveBeenCalled();
   });
 
-  it("schließt den Tab nur über das Kontextmenü, ohne ihn auszuwählen", () => {
+  it("schließt den Tab nur über das Kontextmenü, ohne ihn auszuwählen", async () => {
     const props = baseProps();
     renderTabs(props);
 
     fireEvent.contextMenu(chipTrigger("Terminal 2"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 schließen" }));
 
-    expect(props.onCloseTerminalTab).toHaveBeenCalledWith("tab-2");
+    // Wie beim Umbenennen (s. Test unten) läuft `onClose` erst über Radix'
+    // `onCloseAutoFocus`, also erst einen Tick nach dem Klick — direkt aus
+    // `onSelect` hätte es mit dem noch aktiven ContextMenu-FocusScope-Trap
+    // kollidiert (PaneTabs.tsx' `pendingActionRef`-Kommentar; genau das war
+    // der real gemeldete Bug: "Schließen" tat sichtbar nichts).
+    await waitFor(() => expect(props.onCloseTerminalTab).toHaveBeenCalledWith("tab-2"));
     expect(props.onSelectTerminalTab).not.toHaveBeenCalled();
+  });
+
+  it("schließt alle Tabs rechts vom angeklickten über das Kontextmenü", async () => {
+    const props = baseProps({
+      terminalTabs: [
+        { tabId: "tab-1", number: 1, label: null },
+        { tabId: "tab-2", number: 2, label: null },
+        { tabId: "tab-3", number: 3, label: null },
+      ],
+    });
+    renderTabs(props);
+
+    fireEvent.contextMenu(chipTrigger("Terminal 1"));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "2 Tabs rechts davon schließen" }),
+    );
+
+    await waitFor(() =>
+      expect(props.onCloseTerminalTabsToRight).toHaveBeenCalledWith("tab-1"),
+    );
+  });
+
+  it("schließt alle anderen Tabs über das Kontextmenü", async () => {
+    const props = baseProps({
+      terminalTabs: [
+        { tabId: "tab-1", number: 1, label: null },
+        { tabId: "tab-2", number: 2, label: null },
+        { tabId: "tab-3", number: 3, label: null },
+      ],
+    });
+    renderTabs(props);
+
+    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "2 andere Tabs schließen" }),
+    );
+
+    await waitFor(() =>
+      expect(props.onCloseOtherTerminalTabs).toHaveBeenCalledWith("tab-2"),
+    );
+  });
+
+  it("bietet für den letzten Tab keinen 'Tabs rechts schließen'-Menüpunkt", () => {
+    const props = baseProps({
+      terminalTabs: [
+        { tabId: "tab-1", number: 1, label: null },
+        { tabId: "tab-2", number: 2, label: null },
+      ],
+    });
+    renderTabs(props);
+
+    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+
+    expect(
+      screen.queryByRole("menuitem", { name: /Tabs? rechts davon schließen/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("bietet für den letzten verbleibenden Tab keinen Schließen-Menüpunkt", () => {
@@ -100,6 +163,9 @@ describe("PaneTabs", () => {
     fireEvent.contextMenu(chipTrigger("Terminal 1"));
 
     expect(screen.queryByRole("menuitem", { name: "Terminal 1 schließen" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /andere Tabs? schließen/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Terminal 1 umbenennen" })).toBeInTheDocument();
   });
 
