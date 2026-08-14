@@ -140,13 +140,48 @@ fn block_main<R: Runtime>(app: &AppHandle<R>, blocked: bool) {
     }
 }
 
-/// Gegenstück zu `block_main`. Bewusst an `Destroyed` und nicht an
-/// `CloseRequested`: ein gesperrtes Hauptfenster ist der einzige Zustand, aus
-/// dem die App nicht mehr allein herausfindet, und `Destroyed` lässt sich
-/// anders als eine Schließanfrage nicht abbrechen.
+/// Prewarm-friendly lifecycle, same pattern and rationale as
+/// `settings_window.rs`'s own `on_window_event`: closing the About window
+/// only `hide()`s it instead of letting Tauri's default `Destroyed` tear the
+/// whole webview + React mount down, so a later reopen (the `show()` early
+/// branch above) is instant instead of a full cold start. Un-blocks the main
+/// window on that same `hide()`, since a hidden-but-alive About window is no
+/// longer modal — `show()`'s early branch re-blocks it on the next open.
+///
+/// Bewusst NICHT bei einem echten App-Quit (Cmd+Q/Dock „Beenden“): Tauri
+/// feuert `CloseRequested` dabei für jedes Fenster einzeln, auch für dieses
+/// versteckte — ein unbedingtes `prevent_close()` würde dann verhindern, dass
+/// die App überhaupt beendet. `crate::windows::QuittingFlag` ist dasselbe
+/// Unterscheidungsmerkmal, das `settings_window::on_window_event` schon dafür
+/// nutzt: gesetzt, lässt dieser Handler den Default durchlaufen, das Fenster
+/// wird beim Quit also doch vollständig zerstört — kein Leak auf echtem
+/// App-Exit.
+///
+/// `Destroyed` bleibt zusätzlich behandelt (Fallback für genau diesen
+/// Quit-Fall, und für den Fall, dass das Fenster je auf anderem Weg zerstört
+/// wird): ein gesperrtes Hauptfenster ist sonst der einzige Zustand, aus dem
+/// die App nicht mehr allein herausfindet.
 pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if window.label() == LABEL && matches!(event, WindowEvent::Destroyed) {
-        block_main(window.app_handle(), false);
+    if window.label() != LABEL {
+        return;
+    }
+    match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            if window
+                .app_handle()
+                .state::<crate::windows::QuittingFlag>()
+                .is_set()
+            {
+                return;
+            }
+            api.prevent_close();
+            let _ = window.hide();
+            block_main(window.app_handle(), false);
+        }
+        WindowEvent::Destroyed => {
+            block_main(window.app_handle(), false);
+        }
+        _ => {}
     }
 }
 
