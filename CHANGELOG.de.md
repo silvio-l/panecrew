@@ -33,6 +33,21 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+## [0.1.0-nightly.4] - 2026-08-14
+### Hinzugefügt
+- CI: geschlossene, nicht gemergte Pull-Request-Branches werden jetzt
+  automatisch aufgeräumt.
+
+### Geändert
+- Die Tastaturkürzel-Referenz und die zugrundeliegenden Beschreibungen sind
+  jetzt auf Englisch.
+- Internes Compliance-Tooling (Markennamen-Linter, OSS-Allowlist-Marker-
+  Skript, Doku-Generator, Release-Treiber-Installer) ist aus dem öffentlich
+  getrackten Baum entfernt — reines Dev-Tooling, keine funktionale Änderung
+  für Nutzer.
+- Lesbarkeits-Durchgang auf der Marketing-Website: verbesserte Typografie
+  und Kontrast, außerdem ein paar überzogene Feature-Aussagen korrigiert.
+
 ## [0.1.0-nightly.3] - 2026-08-14
 ### Behoben
 - Ein Klick auf „Installieren & Neustarten" konnte trotz zuvor erfolgreich

@@ -33,6 +33,20 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+## [0.1.0-nightly.4] - 2026-08-14
+### Added
+- CI: closed, non-merged pull-request branches are now cleaned up
+  automatically.
+
+### Changed
+- The keyboard shortcut reference and its underlying descriptions are now
+  in English.
+- Internal repo-compliance tooling (brand-name linter, OSS-allowlist marker
+  script, docs generator, release-driver installer) moved out of the public
+  tracked tree — dev-only, no functional change for users.
+- Marketing-site readability pass: improved typography and contrast, and
+  corrected a couple of overstated feature claims.
+
 ## [0.1.0-nightly.3] - 2026-08-14
 ### Fixed
 - Clicking "Install & Restart" could fail with "Could not be checked" even
