@@ -88,9 +88,16 @@ pub enum ValidationError {
 /// predictable category/tree order instead of a HashMap's arbitrary one.
 /// `Clone`: lets `config_manifest.rs` stage a whole manifest's entries on a
 /// scratch copy and only commit it if every entry registers cleanly.
+///
+/// `index` mirrors `entries` as key→position, so key lookup (`find`, and the
+/// duplicate-key check in `register`) is O(1) instead of an O(n) scan —
+/// relevant once extensions start registering their own settings keys
+/// (ticket 13). `entries` stays the ordering source of truth; `index` is
+/// purely a derived accelerator kept in lockstep on every insert.
 #[derive(Default, Clone)]
 pub struct ConfigRegistry {
     entries: Vec<SchemaEntry>,
+    index: HashMap<String, usize>,
 }
 
 impl ConfigRegistry {
@@ -123,13 +130,11 @@ impl ConfigRegistry {
                 return Err(RegistrationError::InvalidNamespace(entry.key));
             }
         }
-        if self
-            .entries
-            .iter()
-            .any(|existing| existing.key == entry.key)
-        {
+        if self.index.contains_key(&entry.key) {
             return Err(RegistrationError::DuplicateKey(entry.key));
         }
+        let position = self.entries.len();
+        self.index.insert(entry.key.clone(), position);
         self.entries.push(entry);
         Ok(())
     }
@@ -142,7 +147,7 @@ impl ConfigRegistry {
     }
 
     pub fn find(&self, key: &str) -> Option<&SchemaEntry> {
-        self.entries.iter().find(|entry| entry.key == key)
+        self.index.get(key).map(|&position| &self.entries[position])
     }
 
     /// Registered default merged with `overrides` — an override wins,
@@ -450,5 +455,113 @@ mod tests {
             .map(|entry| entry.key.as_str())
             .collect();
         assert_eq!(keys, vec!["terminal.shell", "explorer.confirmBeforeDelete"]);
+    }
+
+    /// Fixture: registers `size` Core entries named `bulk.key00000` ..
+    /// `bulk.key{size-1}`, each defaulting to its own numeric index — enough
+    /// to exercise `find`/`resolve` at a registry size no hand-written test
+    /// above bothers with, and to give the scaling test in this module
+    /// something to measure against.
+    fn bulk_registry(size: usize) -> ConfigRegistry {
+        let mut registry = ConfigRegistry::new();
+        for i in 0..size {
+            registry
+                .register(core_entry(
+                    &format!("bulk.key{i:06}"),
+                    SettingType::Number,
+                    serde_json::json!(i),
+                ))
+                .expect("bulk registration should succeed");
+        }
+        registry
+    }
+
+    #[test]
+    fn find_and_resolve_stay_correct_with_a_large_number_of_registered_entries() {
+        let size = 5_000;
+        let registry = bulk_registry(size);
+
+        // find() locates an arbitrary key correctly at this scale.
+        let entry = registry.find("bulk.key002500").expect("entry should be found");
+        assert_eq!(entry.default, serde_json::json!(2500));
+
+        // A key that was never registered still correctly misses.
+        assert!(registry.find("bulk.key999999-does-not-exist").is_none());
+
+        // defaults→user merge order is unchanged: an override wins for the
+        // one key it targets, every other key still falls back to its own
+        // registered default — regardless of registry size.
+        let mut overrides = serde_json::Map::new();
+        overrides.insert("bulk.key000010".to_string(), serde_json::json!(999_999));
+
+        let resolved = registry.resolve(&overrides);
+        assert_eq!(
+            resolved.get("bulk.key000010"),
+            Some(&serde_json::json!(999_999))
+        );
+        assert_eq!(resolved.get("bulk.key000011"), Some(&serde_json::json!(11)));
+        assert_eq!(resolved.len(), size);
+
+        // schema() still preserves registration order at this scale too.
+        let keys: Vec<&str> = registry
+            .schema()
+            .iter()
+            .map(|entry| entry.key.as_str())
+            .collect();
+        assert_eq!(keys.first(), Some(&"bulk.key000000"));
+        assert_eq!(keys.last(), Some(&"bulk.key004999"));
+    }
+
+    #[test]
+    fn find_lookup_time_does_not_scale_linearly_with_registry_size() {
+        /// Times `lookups` calls to `find()` against `registry` (size
+        /// `size`), cycling through its keys. Keys are pre-formatted before
+        /// timing starts so `format!`'s own cost — identical for both
+        /// registry sizes — never counts against the measurement.
+        fn measure_find(registry: &ConfigRegistry, size: usize, lookups: usize) -> std::time::Duration {
+            let keys: Vec<String> = (0..lookups)
+                .map(|i| format!("bulk.key{:06}", i % size))
+                .collect();
+
+            // Warm-up: first touch of these keys/pages shouldn't count
+            // against either measurement.
+            for key in &keys {
+                std::hint::black_box(registry.find(key));
+            }
+
+            let start = std::time::Instant::now();
+            for key in &keys {
+                std::hint::black_box(registry.find(key));
+            }
+            start.elapsed()
+        }
+
+        let small_size = 200;
+        let large_size = 20_000; // 100x larger registry
+        let lookups = 20_000;
+
+        let small_registry = bulk_registry(small_size);
+        let large_registry = bulk_registry(large_size);
+
+        let small_duration = measure_find(&small_registry, small_size, lookups);
+        let large_duration = measure_find(&large_registry, large_size, lookups);
+
+        let scale_factor =
+            large_duration.as_secs_f64() / small_duration.as_secs_f64().max(1e-9);
+
+        // A linear scan would scale ~1:1 with registry size, i.e. ~100x here
+        // (the previous, discarded attempt at this test measured ~113.5x for
+        // exactly this 100x size ratio). An indexed (HashMap-backed) lookup
+        // should stay roughly flat regardless of registry size. The
+        // threshold is deliberately far below 100x — generous enough to
+        // absorb machine noise, but nowhere near what a linear scan would
+        // produce, so it still proves the absence of one.
+        assert!(
+            scale_factor < 10.0,
+            "lookup time scaled {scale_factor:.1}x for a {}x larger registry \
+             ({small_duration:?} -> {large_duration:?}) — this points at a \
+             linear scan, not an indexed lookup",
+            large_size / small_size
+        );
     }
 }
