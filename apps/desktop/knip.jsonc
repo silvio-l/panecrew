@@ -15,5 +15,10 @@
     "src/about/main.tsx",
     "src/harness/main.tsx",
     "src/settings/main.tsx",
-  ]
+  ],
+
+  // `wait` in den dev-Skripten ist das Shell-Builtin (Teil des
+  // trap-'kill 0'-Idioms, das Vite-Kindprozesse beim Beenden mitnimmt) —
+  // kein npm-Binary, das Knip auflösen könnte.
+  "ignoreBinaries": ["wait"]
 }
