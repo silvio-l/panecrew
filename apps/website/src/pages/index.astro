@@ -167,8 +167,15 @@ const description =
   .nav-links a {
     text-decoration: none; font-size: 14.5px; color: rgba(255, 253, 245, 0.82);
     transition: color var(--lift);
+    position: relative;
+  }
+  .nav-links a::after {
+    content: ""; position: absolute; left: 0; bottom: -4px; width: 100%; height: 1px;
+    background: var(--amber); transform: scaleX(0); transform-origin: left;
+    transition: transform var(--lift);
   }
   .nav-links a:hover { color: var(--cream); }
+  .nav-links a:hover::after { transform: scaleX(1); }
   .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .nav-cta {
     text-decoration: none;
@@ -195,8 +202,12 @@ const description =
   .hud-readout {
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em;
     color: rgba(255, 253, 245, 0.7); white-space: nowrap;
+    font-variant-numeric: tabular-nums; /* readouts tick without jitter */
   }
   .hud-readout .hb { color: rgba(255, 253, 245, 0.3); }
+  .hud-readout .hud-name { color: var(--cyan-bright); }
+  .hud-readout .hud-pct { color: rgba(255, 253, 245, 0.55); }
+  .app-bar .hud-readout { margin-left: auto; }
   .hud-readout--badge {
     display: inline-flex; align-items: center; gap: 7px;
     padding: 5px 10px;
@@ -206,7 +217,7 @@ const description =
   }
   .hud-readout--badge .hud-idx { color: var(--amber); font-weight: 600; }
   .hud-readout--badge .hud-label { letter-spacing: var(--label-track); color: var(--cyan-bright); }
-  .hud-idx.tick { animation: hudTick 0.22s var(--reveal-ease); }
+  .hud-idx.tick, .hud-readout .tick { animation: hudTick 0.22s var(--reveal-ease); }
   @keyframes hudTick { from { opacity: 0.35; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
   /* nav readout: read-only echo of the scroll-spy state (.nav-links already
      provides the real jump targets), sitting in the same sticky capsule
@@ -287,7 +298,7 @@ const description =
   }
   .hero-copy h1 {
     font-family: var(--display); font-weight: 700;
-    font-size: clamp(42px, 5.4vw, 68px); line-height: 1.02; letter-spacing: -0.015em;
+    font-size: clamp(44px, 5.8vw, 76px); line-height: 1.02; letter-spacing: -0.015em;
     margin-bottom: 20px; text-wrap: balance;
   }
   .hero-copy h1 .am {
@@ -306,6 +317,7 @@ const description =
     transition: transform var(--lift), box-shadow var(--lift);
   }
   .btn:hover { transform: translateY(-3px); box-shadow: 0 7px 0 rgba(0, 0, 0, 0.28); }
+  .btn:active { transform: translateY(-1px); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.28); }
   .btn.ghost {
     background: transparent; color: var(--cream);
     border: 1px solid var(--line-dark); box-shadow: none;
@@ -487,6 +499,111 @@ const description =
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: none; }
   }
+  /* cards enter with a touch of perspective — they tip up from the board
+     instead of only fading, transform-origin at their bottom edge. Same
+     `backwards` reasoning as .reveal above: hover's own transform takes
+     back over the instant the entrance ends. */
+  .card.reveal { transform-origin: 50% 100%; }
+  .card.reveal.in { animation-name: cardIn; animation-duration: 0.7s; }
+  @keyframes cardIn {
+    from { opacity: 0; transform: perspective(1000px) translateY(30px) rotateX(5deg); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* ---------- kinetic type (masked word-rise) ----------
+     2026-08-14 Auftrag: the contract's kinetic-typography ban is explicitly
+     overruled for this pass. One restrained pattern only — display headings
+     rise word by word out of an overflow mask, once, on entrance. No
+     typing/rolling loops in live UI copy; text is static the moment the
+     entrance ends. Word delays come from --wi (set inline per word),
+     --kd shifts a whole heading's start. The masks carry small vertical
+     padding/negative margin so tight display line-height doesn't crop
+     ascenders/descenders at rest. */
+  .kin .kw {
+    display: inline-block; overflow: hidden; vertical-align: bottom;
+    padding: 0.06em 0 0.14em; margin: -0.06em 0 -0.14em;
+  }
+  .kin .kwi { display: inline-block; transform: translateY(130%); }
+  .kin.in .kwi {
+    animation: wordRise 0.7s var(--reveal-ease) both;
+    animation-delay: calc(var(--wi, 0) * 0.07s + var(--kd, 0s));
+  }
+  @keyframes wordRise { from { transform: translateY(130%); } to { transform: translateY(0); } }
+  /* the OSS heart gets one beat after its word lands — a single accent,
+     not a loop */
+  .kin.in .heart { display: inline-block; animation: heartBeat 0.9s ease 0.9s 1; }
+  @keyframes heartBeat {
+    0%, 100% { transform: scale(1); }
+    45% { transform: scale(1.22); }
+    62% { transform: scale(0.94); }
+  }
+
+  /* ---------- toolwall stagger (chips cascade in, not one block fade) --- */
+  .wall span { opacity: 0; }
+  .wall.in { animation: none; }
+  .wall.in span {
+    opacity: 1;
+    animation: chipIn 0.5s var(--reveal-ease) backwards;
+    animation-delay: var(--rd, 0s);
+  }
+  @keyframes chipIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.92); }
+    to { opacity: 1; transform: none; }
+  }
+  .wall span { transition: color var(--lift), transform var(--lift); }
+  .wall span:hover { color: var(--cream); transform: translateY(-3px); opacity: 1; }
+
+  /* ---------- scroll cue (hero HUD, box-drawing frame) ---------- */
+  .scrollcue {
+    /* 96px, not a small inset: .hero's min-height counts the viewport but
+       the nav (~77px) sits above it in flow, so the hero's bottom edge
+       overshoots the first screen by about the nav height — this keeps
+       the cue inside the initial viewport (it sits within the hero's
+       110px bottom padding either way). */
+    position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+    z-index: 2; white-space: nowrap;
+    font-family: var(--mono); font-size: 11px; letter-spacing: var(--label-track);
+    color: rgba(255, 253, 245, 0.6);
+    transition: opacity 0.3s ease;
+  }
+  .scrollcue .sc-g { color: rgba(229, 150, 86, 0.65); letter-spacing: 0; }
+  .scrollcue b { display: inline-block; font-weight: 400; color: var(--amber); animation: cueNudge 2.2s ease-in-out infinite; }
+  @keyframes cueNudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+  .scrollcue.gone { opacity: 0; }
+
+  /* ---------- ambient bokeh drift (hero atmosphere breathes) ----------
+     transform-only on the already-blurred circles — the layer moves, the
+     blur never re-rasterizes (same reasoning as the .bokeh parallax note
+     in the script). Long periods, alternate direction, so it reads as
+     slow weather, not an effect. */
+  @keyframes bokehDrift {
+    from { transform: translate(0, 0) scale(1); }
+    to { transform: translate(26px, -18px) scale(1.06); }
+  }
+  .bokeh .b1 { animation: bokehDrift 26s ease-in-out infinite alternate; }
+  .bokeh .b2 { animation: bokehDrift 32s ease-in-out infinite alternate-reverse; }
+  .bokeh .b3 { animation: bokehDrift 24s ease-in-out infinite alternate; animation-delay: -12s; }
+  .bokeh .b4 { animation: bokehDrift 36s ease-in-out infinite alternate-reverse; animation-delay: -6s; }
+
+  /* ---------- scroll-linked depth (data-vfx) ----------
+     JS (updateVfx) writes a transform per element from its position
+     relative to viewport center: "par" layers drift at depth-dependent
+     speed, "tilt" layers ease from a slight perspective pitch to flat as
+     they reach center stage. Desktop + motion-preference only; the
+     engine never runs otherwise, so no CSS fallback state is needed. */
+  [data-vfx] { will-change: transform; }
+
+  /* ---------- pinned demo sequence (scrollytelling) ----------
+     The live demo is the product's core argument, so it gets the page's
+     one pinned scrubbed moment: on desktop the demo window pins while
+     ~1.3 extra viewports of scroll drive focus across all four panes —
+     scrolling IS the focus-follow story. Pointer interaction still wins
+     while the cursor is inside the window (guard in updateDemoScrub).
+     Mobile and reduced-motion keep the plain in-flow layout. */
+  @media (min-width: 941px) and (prefers-reduced-motion: no-preference) {
+    .demo-stage { height: 230vh; }
+    .demo-stage .demo-sticky { position: sticky; top: max(64px, calc(50vh - 230px)); }
+  }
 
   /* generated companion plate to the hero atmosphere (same ComfyUI/SDXL
      pass, local-ai-srv) — much quieter, no bright cores, meant to keep the
@@ -512,10 +629,23 @@ const description =
   #crew .sect-head, #crew > .wrap { position: relative; z-index: 1; }
 
   /* ---------- section headers ---------- */
-  .sect-head { text-align: center; padding: 96px 26px 46px; }
+  /* cinematic pacing (2026-08-14): more air between chapters — the page
+     reads as a staged sequence, so each section gets a longer beat before
+     its headline. Ghost chapter index (::before, from data-idx) mirrors the
+     nav HUD's [01/04] numbering as a barely-there mono watermark — depth
+     layer, not a second readout (only the four nav-spy chapters carry one). */
+  .sect-head { text-align: center; padding: clamp(110px, 15vh, 170px) 26px 50px; position: relative; }
+  .sect-head::before, .install::before {
+    content: attr(data-idx);
+    position: absolute; left: 50%; transform: translateX(-50%); top: 30px;
+    font-family: var(--mono); font-weight: 400;
+    font-size: clamp(110px, 16vw, 200px); line-height: 1; letter-spacing: 0.04em;
+    color: rgba(255, 253, 245, 0.04);
+    pointer-events: none; user-select: none;
+  }
   .sect-head h2 {
     font-family: var(--display); font-weight: 700;
-    font-size: clamp(34px, 4.6vw, 54px); letter-spacing: -0.015em; line-height: 1.05;
+    font-size: clamp(36px, 5vw, 62px); letter-spacing: -0.015em; line-height: 1.05;
     text-wrap: balance;
   }
   .sect-head p { color: rgba(255, 253, 245, 0.75); max-width: 560px; margin: 14px auto 0; text-wrap: pretty; }
@@ -568,8 +698,8 @@ const description =
   .badge svg { width: 10px; height: 10px; flex: none; }
   .badge.cy { background: #ddf2f2; border-color: #a8dcdc; color: #17696b; }
   .card p { font-size: 14.5px; color: var(--ink-dim); text-wrap: pretty; }
-  .card .more { display: inline-block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--amber-text); text-decoration: none; }
-  .card .more:hover { text-decoration: underline; }
+  .card .more { display: inline-block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--amber-text); text-decoration: none; transition: transform var(--lift); }
+  .card .more:hover { text-decoration: underline; transform: translateX(3px); }
 
   /* card visuals: small terminal mocks */
   .mock {
@@ -759,6 +889,13 @@ const description =
     .card:hover, .btn:hover, .brew:hover, .nav-cta:hover, .dpane:hover { transform: none; }
     .reveal, .reveal.in { opacity: 1; animation: none; }
     #seamPathLive { display: none; }
+    /* cinematic layer: everything appears finished immediately */
+    .kin .kwi { transform: none; animation: none !important; }
+    .kin.in .heart { animation: none; }
+    .wall span, .wall.in span { opacity: 1; animation: none; }
+    .bokeh i { animation: none; }
+    .scrollcue b { animation: none; }
+    [data-vfx] { transform: none !important; will-change: auto; }
   }
 
   /* ---------- responsive ---------- */
@@ -773,6 +910,8 @@ const description =
   }
   @media (max-width: 560px) {
     .nav-links { display: none; }
+    .scrollcue { display: none; }
+    .app-bar .hud-readout { display: none; }
     .app-body { grid-template-columns: 1fr; height: auto; }
     .xpl { display: none; }
     .pinrail, .trace-svg { display: none; }
@@ -784,7 +923,11 @@ const description =
     .demo .field { grid-template-columns: 1fr 1fr; }
   }
 </style>
-<noscript><style>.reveal { opacity: 1 !important; }</style></noscript>
+<noscript><style>
+  .reveal { opacity: 1 !important; }
+  .wall span { opacity: 1 !important; }
+  .kin .kwi { transform: none !important; }
+</style></noscript>
 </head>
 <body>
 
@@ -871,7 +1014,7 @@ const description =
   <div class="hud-readout hud-readout--badge" aria-hidden="true">
     <span class="hb">[</span><span class="hud-idx" id="navIdx">01</span><span class="hb">/04</span>
     <span class="hb">·</span>
-    <span class="hud-label" id="navLabel">CREW</span><span class="hb">]</span>
+    <span class="hud-label" id="navLabel">CREW</span><span id="navPctWrap"><span class="hb"> · </span><span class="hud-pct" id="navPct">000%</span></span><span class="hb">]</span>
   </div>
 </div>
 
@@ -903,12 +1046,12 @@ const description =
 
     <div class="wrap hero-grid">
       <!-- the assembly stage: panes fly in, explorer docks, focus cycles -->
-      <div class="app assemble" id="heroApp" aria-label="PaneCrew app window: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
+      <div class="app assemble" id="heroApp" data-vfx="tilt" data-tilt-max="4" aria-label="PaneCrew app window: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
         <div class="app-bar" aria-hidden="true">
           <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
           <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
           <span>PaneCrew</span>
-          <span class="hud-readout"><span class="hb">2×2</span> · 4 panes · 1 explorer</span>
+          <span class="hud-readout"><span class="hb">2×2</span> · <span class="hud-idx" id="heroHudIdx">01</span><span class="hb">/04</span> · <span class="hud-name" id="heroHudName">orbit-api</span></span>
         </div>
         <div class="app-body">
           <aside class="xpl" id="heroXpl" aria-hidden="true">
@@ -959,27 +1102,28 @@ const description =
         </div>
       </div>
 
-      <div class="hero-copy">
-        <div class="pills">
+      <div class="hero-copy" data-vfx="par" data-par="24">
+        <div class="pills reveal" style="--rd:0.35s">
           <span class="tag">macOS</span><span class="tag">Windows</span><span class="tag">terminal-native</span>
         </div>
-        <h1>A <span class="am">pane</span> for every agent.</h1>
-        <p>PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
-        <p class="avail">In development for macOS and Windows. Dogfooded daily.</p>
-        <div class="hero-ctas">
+        <h1 class="kin" id="heroH1" style="--kd:0.12s"><span class="kw"><span class="kwi" style="--wi:0">A</span></span> <span class="kw"><span class="kwi am" style="--wi:1">pane</span></span> <span class="kw"><span class="kwi" style="--wi:2">for</span></span> <span class="kw"><span class="kwi" style="--wi:3">every</span></span> <span class="kw"><span class="kwi" style="--wi:4">agent.</span></span></h1>
+        <p class="reveal" style="--rd:0.45s">PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
+        <p class="avail reveal" style="--rd:0.55s">In development for macOS and Windows. Dogfooded daily.</p>
+        <div class="hero-ctas reveal" style="--rd:0.65s">
           <a class="btn" href="#install">Get PaneCrew</a>
           <a class="btn ghost" href="#demo">See it follow ↓</a>
         </div>
       </div>
     </div>
+    <div class="scrollcue" id="scrollCue" aria-hidden="true"><span class="sc-g">╰──</span> scroll <b>▾</b> <span class="sc-g">──╯</span></div>
   </header>
 
   <!-- ================= CREW CARDS ================= -->
   <section id="crew" aria-label="Features">
-    <div class="sect-head">
-      <p class="eyebrow">meet the crew</p>
-      <h2>One app. Six crew members.</h2>
-      <p>These aren't plugins bolted on later — they're what PaneCrew is. Every card below is one facet of the same window.</p>
+    <div class="sect-head" data-idx="01">
+      <p class="eyebrow reveal">meet the crew</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">app.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Six</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
+      <p class="reveal" style="--rd:0.25s">These aren't plugins bolted on later — they're what PaneCrew is. Every card below is one facet of the same window.</p>
     </div>
 
     <div class="wrap">
@@ -1115,11 +1259,11 @@ const description =
   <!-- ================= TOOL WALL (honest logo-wall slot) ================= -->
   <section class="toolwall" aria-label="Compatible tools">
     <div class="sect-head" style="padding-bottom:0">
-      <p class="eyebrow">crew-agnostic</p>
-      <h2>Any CLI is crew.</h2>
-      <p>No adapters, no integrations, no favourites — every pane is a real terminal.</p>
+      <p class="eyebrow reveal">crew-agnostic</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Any</span></span> <span class="kw"><span class="kwi" style="--wi:1">CLI</span></span> <span class="kw"><span class="kwi" style="--wi:2">is</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew.</span></span></h2>
+      <p class="reveal" style="--rd:0.25s">No adapters, no integrations, no favourites — every pane is a real terminal.</p>
     </div>
-    <div class="wall reveal" aria-label="Tools that run in PaneCrew">
+    <div class="wall reveal" data-vfx="par" data-par="14" aria-label="Tools that run in PaneCrew">
       <span class="lg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#tiClaudeCode"/></svg>Claude Code</span><!-- brandlint-ok: functional list of supported CLI tools -->
       <span class="md"><svg class="ic" viewBox="0 0 256 260" aria-hidden="true"><use href="#tiOpenAI"/></svg>codex</span><!-- brandlint-ok: functional list of supported CLI tools -->
       <span class="lg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#tiGemini"/></svg>Gemini CLI</span><!-- brandlint-ok: functional list of supported CLI tools -->
@@ -1140,21 +1284,26 @@ const description =
 
   <!-- ================= LOOK CLOSER ================= -->
   <section aria-label="Details">
-    <div class="sect-head">
-      <p class="eyebrow">look closer</p>
-      <h2>Don't take our word for it.</h2>
+    <div class="sect-head" data-idx="02">
+      <p class="eyebrow reveal">look closer</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Don't</span></span> <span class="kw"><span class="kwi" style="--wi:1">take</span></span> <span class="kw"><span class="kwi" style="--wi:2">our</span></span> <span class="kw"><span class="kwi" style="--wi:3">word</span></span> <span class="kw"><span class="kwi" style="--wi:4">for</span></span> <span class="kw"><span class="kwi" style="--wi:5">it.</span></span></h2>
     </div>
 
     <div class="wrap">
-      <!-- 5% novelty: the visitor drives the focus-follow -->
-      <div class="closer-row reveal" id="demo">
-        <div class="closer-vis">
+      <!-- 5% novelty: the visitor drives the focus-follow.
+           .demo-stage pins the row on desktop and lets ~1.3 viewports of
+           scroll scrub the focus through all four panes (see updateDemoScrub)
+           — the anchor/scroll-spy target #demo stays on the outer stage. -->
+      <div class="demo-stage" id="demo">
+      <div class="demo-sticky">
+      <div class="closer-row reveal">
+        <div class="closer-vis" data-vfx="tilt" data-tilt-max="3.5">
           <div class="demo app" id="demoApp" aria-label="Interactive demo: choose a pane and the explorer follows">
             <div class="app-bar" aria-hidden="true">
               <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
               <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
               <span>PaneCrew — live demo</span>
-              <span class="hud-readout"><span class="hb">2×2</span> · 4 panes · 1 explorer</span>
+              <span class="hud-readout"><span class="hb">2×2</span> · <span class="hud-idx" id="demoHudIdx">01</span><span class="hb">/04</span> · <span class="hud-name" id="demoHudName">orbit-api</span></span>
             </div>
             <div class="app-body">
               <aside class="xpl" id="demoXpl">
@@ -1208,12 +1357,14 @@ const description =
           <h3>Try the follow.</h3>
           <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In the app it works exactly like this, except the terminals are real.</p>
           <p>That's the whole trick: focus a pane, and the files you need are already in front of you. No tool we tried gets this right — so we built it.</p>
-          <p class="hint">↖ hover a pane, or click a pin</p>
+          <p class="hint">↖ scroll the sequence — or hover a pane, click a pin</p>
         </div>
+      </div>
+      </div>
       </div>
 
       <div class="closer-row rev reveal">
-        <div class="closer-vis">
+        <div class="closer-vis" data-vfx="tilt" data-tilt-max="3.5">
           <div class="app" aria-hidden="true">
             <div class="app-bar">
               <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
@@ -1229,7 +1380,7 @@ const description =
             </div>
           </div>
         </div>
-        <div class="closer-copy">
+        <div class="closer-copy" data-vfx="par" data-par="16">
           <h3>Built inside itself.</h3>
           <p>PaneCrew is developed in PaneCrew — a grid of agents building the app they run in, every day. Rough edges don't survive that arrangement for long.</p>
           <p>No git magic, either: panes just <code style="font-family:var(--mono); font-size:14px; color:var(--cyan-bright);">cd</code> into folders you already have checked out. Your repos stay yours.</p>
@@ -1240,10 +1391,10 @@ const description =
 
   <!-- ================= OPEN SOURCE ================= -->
   <section id="oss" aria-label="Open source">
-    <div class="sect-head">
-      <p class="eyebrow">mit licensed</p>
-      <h2>We <span class="heart">♥</span> open source.</h2>
-      <p>PaneCrew is MIT-licensed — the grid, the explorer, the extension host, all of it. No open-core split, no asterisks.</p>
+    <div class="sect-head" data-idx="03">
+      <p class="eyebrow reveal">mit licensed</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">We</span></span> <span class="kw"><span class="kwi" style="--wi:1"><span class="heart">♥</span></span></span> <span class="kw"><span class="kwi" style="--wi:2">open</span></span> <span class="kw"><span class="kwi" style="--wi:3">source.</span></span></h2>
+      <p class="reveal" style="--rd:0.25s">PaneCrew is MIT-licensed — the grid, the explorer, the extension host, all of it. No open-core split, no asterisks.</p>
     </div>
 
     <div class="wrap oss-grid">
@@ -1301,14 +1452,14 @@ const description =
   </section>
 
   <!-- ================= INSTALL ================= -->
-  <section class="install reveal" id="install">
+  <section class="install reveal" id="install" data-idx="04">
     <p class="eyebrow">shipping</p>
-    <h2>Nightly builds are live.</h2>
+    <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Nightly</span></span> <span class="kw"><span class="kwi" style="--wi:1">builds</span></span> <span class="kw"><span class="kwi" style="--wi:2">are</span></span> <span class="kw"><span class="kwi" style="--wi:3">live.</span></span></h2>
     <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon) and Windows today, Homebrew tap next.</p>
     <div class="install-ctas">
       <a class="btn" href="https://github.com/silvio-l/panecrew/releases/tag/nightly-latest" target="_blank" rel="noopener">Download Nightly</a>
       <span class="brew">
-        <span>$ brew install panecrew</span>
+        <span id="brewCmd">$ brew install panecrew</span>
         <span class="soon">soon</span>
       </span>
     </div>
@@ -1484,11 +1635,31 @@ const description =
   );
   var heroIdx = 0, heroTimer = null, heroTraceReady = false;
 
+  /* one tiny helper for the app-bar HUD readouts (hero + demo): index +
+     focused project name, with the same tick entrance the nav readout
+     uses — every "instrument" on the page announces state changes the
+     same way. */
+  function hudSet(idxEl, nameEl, idx, animate) {
+    if (!idxEl || !nameEl) return;
+    idxEl.textContent = String(idx + 1).padStart(2, '0');
+    nameEl.textContent = projects[idx].name;
+    if (animate && !reduced) {
+      nameEl.classList.remove('tick');
+      void nameEl.offsetWidth;
+      nameEl.classList.add('tick');
+    }
+  }
+  var heroHudIdx = document.getElementById('heroHudIdx');
+  var heroHudName = document.getElementById('heroHudName');
+  var demoHudIdx = document.getElementById('demoHudIdx');
+  var demoHudName = document.getElementById('demoHudName');
+
   function heroFocus(idx, animate) {
     heroIdx = idx;
     heroPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
     heroPins.forEach(function (p, i) { p.classList.toggle('on', i === idx); });
     renderExplorer(heroXpl, idx, animate);
+    hudSet(heroHudIdx, heroHudName, idx, animate);
     if (heroTraceReady) heroDrawTrace(idx, animate);
   }
 
@@ -1532,7 +1703,9 @@ const description =
     document.getElementById('demoTracePath'), document.getElementById('demoTracePad')
   );
 
+  var demoCur = 0;
   function demoFocus(idx) {
+    demoCur = idx;
     demoPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
     demoPins.forEach(function (p, i) {
       var on = i === idx;
@@ -1541,6 +1714,7 @@ const description =
       if (dot) dot.classList.toggle('on', on);
     });
     renderExplorer(demoXpl, idx, true);
+    hudSet(demoHudIdx, demoHudName, idx, true);
     demoDrawTrace(idx, true);
   }
 
@@ -1586,10 +1760,18 @@ const description =
 
   /* ---- chrome: scroll reveal ----
      One shared observer drives every .reveal element (crew cards, tool
-     wall, closer rows, oss cards, install CTA). Each element reveals once,
-     then is unobserved — this is a one-time entrance, not a repeating
-     effect on scroll-back-up. */
-  var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+     wall, closer rows, oss cards, install CTA) plus every .kin heading
+     (masked word-rise). Each element reveals once, then is unobserved —
+     this is a one-time entrance, not a repeating effect on
+     scroll-back-up. The hero h1 is kinetic too but part of the load
+     choreography, so it fires immediately instead of waiting on the
+     observer. */
+  document.querySelectorAll('.wall span').forEach(function (el, i) {
+    el.style.setProperty('--rd', (i * 0.045).toFixed(3) + 's');
+  });
+  var heroH1 = document.getElementById('heroH1');
+  if (heroH1) heroH1.classList.add('in');
+  var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal, .kin'));
   if (revealEls.length) {
     if (reduced || !('IntersectionObserver' in window)) {
       revealEls.forEach(function (el) { el.classList.add('in'); });
@@ -1599,7 +1781,7 @@ const description =
           if (e.isIntersecting) { e.target.classList.add('in'); revealObs.unobserve(e.target); }
         });
       }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
-      revealEls.forEach(function (el) { revealObs.observe(el); });
+      revealEls.forEach(function (el) { if (!el.classList.contains('in')) revealObs.observe(el); });
     }
   }
 
@@ -1681,6 +1863,9 @@ const description =
      handler (no getBoundingClientRect there) to avoid layout thrashing;
      rAF-gated to at most one write per frame. */
   var seamTicking = false;
+  var navPct = document.getElementById('navPct');
+  var navPctWrap = document.getElementById('navPctWrap');
+  if (reduced && navPctWrap) navPctWrap.style.display = 'none';
   function updateSeamCharge() {
     seamTicking = false;
     if (!seamLen || seamEndY <= seamStartY) return;
@@ -1693,6 +1878,9 @@ const description =
     for (var i = 0; i < seamViaMeta.length; i++) {
       seamViaMeta[i].el.classList.toggle('charged', t >= seamViaMeta[i].t);
     }
+    // route-progress percent in the nav readout — same t as the seam
+    // charge, so both instruments always agree on "how far in are we".
+    if (navPct && !reduced) navPct.textContent = String(Math.round(t * 100)).padStart(3, '0') + '%';
   }
   if (!reduced) {
     window.addEventListener('scroll', function () {
@@ -1721,6 +1909,110 @@ const description =
     }, { passive: true });
   }
 
+  /* ---- cinematic layer: scroll-linked depth + pinned demo scrub + cue ----
+     One rAF-gated scroll listener for the three scroll-coupled additions
+     (2026-08-14):
+     — updateVfx: every [data-vfx] element gets a transform from its offset
+       to viewport center — "par" layers drift at depth-dependent speed,
+       "tilt" layers pitch slightly in perspective and settle flat at
+       center stage. Transform-only, offscreen elements skipped.
+     — updateDemoScrub: while the demo stage is pinned (CSS above), scroll
+       progress through the stage steps focus across the four panes — the
+       explorer-follows story told by the scroll itself. The pointer wins
+       while it's inside the demo window.
+     — the hero scroll cue fades once scrolling starts.
+     Desktop + motion-preference only; disabled state clears its own
+     transforms so a resize across the breakpoint can't strand one. */
+  var vfxEls = Array.prototype.slice.call(document.querySelectorAll('[data-vfx]'));
+  var demoStage = document.getElementById('demo');
+  var scrollCue = document.getElementById('scrollCue');
+  var demoHover = false;
+  var fxWide = matchMedia('(min-width: 941px)').matches;
+  demoApp.addEventListener('pointerenter', function () { demoHover = true; });
+  demoApp.addEventListener('pointerleave', function () { demoHover = false; });
+
+  function updateVfx() {
+    if (!fxWide) return;
+    var vh = window.innerHeight, cy = vh / 2;
+    vfxEls.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.bottom < -120 || r.top > vh + 120) return;
+      var t = ((r.top + r.height / 2) - cy) / vh;
+      if (t < -1) t = -1; if (t > 1) t = 1;
+      if (el.getAttribute('data-vfx') === 'tilt') {
+        var deg = parseFloat(el.getAttribute('data-tilt-max') || '4');
+        el.style.transform = 'perspective(1100px) rotateX(' + (t * deg).toFixed(2) + 'deg)';
+      } else {
+        var par = parseFloat(el.getAttribute('data-par') || '20');
+        el.style.transform = 'translateY(' + (t * par).toFixed(1) + 'px)';
+      }
+    });
+  }
+
+  function updateDemoScrub() {
+    if (!fxWide || demoHover || !demoStage) return;
+    var r = demoStage.getBoundingClientRect();
+    var span = r.height - window.innerHeight;
+    if (span < 120) return; // stage isn't pinned at this size
+    var p = -r.top / span;
+    if (p < 0) p = 0; if (p > 1) p = 1;
+    var idx = Math.min(3, Math.floor(p * 4));
+    if (idx !== demoCur) demoFocus(idx);
+  }
+
+  function updateCue() {
+    if (scrollCue) scrollCue.classList.toggle('gone', window.scrollY > 60);
+  }
+
+  if (!reduced) {
+    var fxTicking = false;
+    var fxFrame = function () {
+      fxTicking = false;
+      updateVfx();
+      updateDemoScrub();
+      updateCue();
+    };
+    window.addEventListener('scroll', function () {
+      if (!fxTicking) { fxTicking = true; requestAnimationFrame(fxFrame); }
+    }, { passive: true });
+    fxFrame();
+  }
+
+  /* ---- install: the brew command types itself, once ----
+     The one deliberate typing moment on the page (kinetic-type scope,
+     2026-08-14 Auftrag) — it's a terminal command in a terminal-shaped
+     pill, typed the way you'd actually enter it. Width is frozen first so
+     the pill doesn't grow mid-type; reduced-motion/no-JS keep the full
+     static text. */
+  var brewCmd = document.getElementById('brewCmd');
+  var installSec = document.getElementById('install');
+  if (brewCmd && installSec && !reduced && 'IntersectionObserver' in window) {
+    var brewTyped = false;
+    var brewObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting || brewTyped) return;
+        brewTyped = true;
+        brewObs.disconnect();
+        var full = brewCmd.textContent;
+        brewCmd.style.display = 'inline-block';
+        brewCmd.style.minWidth = brewCmd.getBoundingClientRect().width + 'px';
+        brewCmd.style.textAlign = 'left';
+        var pos = 0;
+        brewCmd.textContent = '';
+        var caret = document.createElement('span');
+        caret.className = 'cursor';
+        brewCmd.appendChild(caret);
+        var timer = setInterval(function () {
+          pos++;
+          brewCmd.textContent = full.slice(0, pos);
+          if (pos >= full.length) { clearInterval(timer); return; }
+          brewCmd.appendChild(caret);
+        }, 34);
+      });
+    }, { threshold: 0.45 });
+    brewObs.observe(installSec);
+  }
+
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
@@ -1730,6 +2022,12 @@ const description =
       demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
       drawSeam();
       updateSeamCharge();
+      var nowWide = matchMedia('(min-width: 941px)').matches;
+      if (nowWide !== fxWide) {
+        fxWide = nowWide;
+        if (!fxWide) vfxEls.forEach(function (el) { el.style.transform = ''; });
+      }
+      if (!reduced) { updateVfx(); updateDemoScrub(); }
     }, 120);
   });
 })();
