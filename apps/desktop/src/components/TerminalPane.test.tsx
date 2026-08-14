@@ -66,6 +66,7 @@ const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
   <Tooltip.Provider>
     <TerminalPane
       paneId="pane-1"
+      slotIndex={0}
       tabId="tab-1"
       projectPath="/tmp/projekt"
       projectName="projekt"
@@ -179,6 +180,7 @@ describe("TerminalPane", () => {
       <Tooltip.Provider>
         <TerminalPane
           paneId={paneId}
+          slotIndex={0}
           tabId="tab-1"
           projectPath="/tmp/projekt"
           projectName="projekt"
@@ -219,6 +221,7 @@ describe("TerminalPane", () => {
       <Tooltip.Provider>
         <TerminalPane
           paneId={paneId}
+          slotIndex={0}
           tabId="tab-1"
           projectPath="/tmp/projekt"
           projectName="projekt"
@@ -246,6 +249,47 @@ describe("TerminalPane", () => {
     expect(focus).not.toHaveBeenCalled();
 
     rerender(element("pane-2"));
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("holt den Fokus zurück, wenn die eigene Zelle den Slot gewechselt hat (Ticket 20)", () => {
+    // Slot-Tausch: `active`, `focused` und `paneId` bleiben alle unverändert,
+    // nur die Position der Zelle unter ihren Geschwistern wechselt — React
+    // sortiert dafür einen eingehängten Knoten um, und das kostet im echten
+    // Browser den Fokus. jsdom bildet diese Fokus-Korrektur nicht nach, hier
+    // steht deshalb bewusst nur, dass der Übergang als solcher erkannt wird.
+    const element = (slotIndex: number) => (
+      <Tooltip.Provider>
+        <TerminalPane
+          paneId="pane-1"
+          slotIndex={slotIndex}
+          tabId="tab-1"
+          projectPath="/tmp/projekt"
+          projectName="projekt"
+          focused
+          maximized={false}
+          active
+          dropTarget={false}
+          tabs={paneTabs}
+          dropTargets={{
+            register: vi.fn(),
+            unregister: vi.fn(),
+            paneAtPoint: vi.fn(() => null),
+            insertInto: vi.fn(),
+          }}
+          onClose={vi.fn()}
+          onFocus={vi.fn()}
+          onHeaderPointerDown={vi.fn()}
+          onToggleFocusMode={vi.fn()}
+          focusModeHud={null}
+        />
+      </Tooltip.Provider>
+    );
+
+    const { rerender } = render(element(0));
+    expect(focus).not.toHaveBeenCalled();
+
+    rerender(element(1));
     expect(focus).toHaveBeenCalledOnce();
   });
 

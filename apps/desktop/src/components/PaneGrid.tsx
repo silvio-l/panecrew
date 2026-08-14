@@ -58,6 +58,11 @@ import { TerminalPane } from "./TerminalPane";
  * zwei Wahrheiten, die auseinanderlaufen können. */
 interface PaneView {
   pane: Pane;
+  /** Der Slot, in dem diese Pane GERADE liegt. Nur für die Fokus-Übergabe
+   * relevant (Ticket 20, s. `TerminalPane.tsx`' vierte Bedingung): ein Tausch
+   * sortiert die Zellen im DOM um, und React bewegt dafür einen bereits
+   * eingehängten Knoten — der verliert dabei den Fokus. */
+  slotIndex: number;
   focused: boolean;
   maximized: boolean;
   /** Die für DIESES Rendern gültige, abgeleitete Ansicht — nicht `pane`s
@@ -230,6 +235,7 @@ export function PaneGrid({
 
     return {
       pane,
+      slotIndex: index,
       focused,
       maximized,
       showingFile,
@@ -417,6 +423,7 @@ function TerminalTabSurface({
     >
       <TerminalPane
         paneId={view.pane.paneId}
+        slotIndex={view.slotIndex}
         tabId={tabId}
         projectPath={view.pane.projectPath}
         projectName={projectNameFromPath(view.pane.projectPath)}

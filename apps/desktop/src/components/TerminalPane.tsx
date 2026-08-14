@@ -34,6 +34,7 @@ const COPY_FLASH_MS = 1200;
 
 export function TerminalPane({
   paneId,
+  slotIndex,
   tabId,
   projectPath,
   projectName,
@@ -53,6 +54,10 @@ export function TerminalPane({
    * `data-pane-id` (Drop-Routing, `useWebviewFileDrop.ts`) und geht in
    * `onFocus`/`onClose` (Pane-weite Aktionen, nicht Tab-weite). */
   paneId: string;
+  /** Der Slot, in dem die eigene Pane gerade liegt — hier ausschließlich als
+   * Signal „meine Zelle wurde im DOM umsortiert" (Slot-Tausch, Ticket 20).
+   * Sonst nirgends verwendet: die Position selbst macht das CSS-Raster. */
+  slotIndex: number;
   /** DIESER Terminal-Tab — seit Ticket 18 die PTY-Identität statt `paneId`
    * (eine Pane kann mehrere `TerminalPane`-Mounts gleichzeitig haben, je
    * einen pro Terminal-Tab). Geht 1:1 in `usePtyTerminal`. */
@@ -199,22 +204,40 @@ export function TerminalPane({
   // das Umhängen des Containers (`useTerminalTabHosts.ts`) nimmt den Knoten
   // kurz aus dem Dokument, und der Browser gibt den Fokus dabei an `<body>`
   // zurück. Der Wechsel der eigenen `paneId` IST dieses Umhängen.
+  //
+  // Vierte Bedingung (`slotIndex`-Wechsel) ergänzt 2026-08-14 mit Ticket 20 —
+  // derselbe Fehler aus der anderen Richtung: beim Slot-Tausch bleibt die Pane
+  // dieselbe, aber ihre Zelle wechselt die Position unter ihren Geschwistern,
+  // und React sortiert dafür einen bereits eingehängten Knoten per
+  // `insertBefore` um. Das ist laut DOM-Spezifikation erst ein Entfernen, dann
+  // ein Einfügen — der Fokus fällt dabei auf `<body>`, obwohl `active`,
+  // `focused` und `paneId` allesamt unverändert bleiben. React bewegt bei
+  // einem Zweier-Tausch nur EINEN der beiden Knoten, der Ausfall wäre also
+  // zusätzlich sporadisch (mal die eine, mal die andere Pane). jsdom bildet
+  // diese Fokus-Korrektur nicht nach (nachgemessen) — der Test dazu prüft
+  // deshalb nur, dass der Übergang erkannt wird, nicht den Browser-Effekt,
+  // der ihn nötig macht.
   const wasActive = useRef(active);
   const wasFocused = useRef(focused);
   const wasPaneId = useRef(paneId);
+  const wasSlotIndex = useRef(slotIndex);
   useEffect(() => {
-    const movedToOtherPane = wasPaneId.current !== paneId;
+    // Beide Fälle sind dasselbe Ereignis aus Sicht des Fokus: der eigene
+    // DOM-Knoten wurde umgehängt bzw. umsortiert.
+    const wasMovedInDom =
+      wasPaneId.current !== paneId || wasSlotIndex.current !== slotIndex;
     if (
       active &&
       focused &&
-      (!wasActive.current || !wasFocused.current || movedToOtherPane)
+      (!wasActive.current || !wasFocused.current || wasMovedInDom)
     ) {
       focus();
     }
     wasActive.current = active;
     wasFocused.current = focused;
     wasPaneId.current = paneId;
-  }, [active, focused, paneId, focus]);
+    wasSlotIndex.current = slotIndex;
+  }, [active, focused, paneId, slotIndex, focus]);
 
   // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
   // Pane-Aufblitz): `onTabAttentionFlash` meldet den Chip-Aufblitz
