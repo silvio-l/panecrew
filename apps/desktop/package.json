@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:harness": "vite --open /harness.html",
+    "dev": "trap 'kill 0' EXIT INT TERM; vite & wait",
+    "dev:harness": "trap 'kill 0' EXIT INT TERM; vite --open /harness.html & wait",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
