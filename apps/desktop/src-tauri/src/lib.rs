@@ -4,6 +4,7 @@ pub mod config_core;
 pub mod config_manifest;
 pub mod config_registry;
 pub mod explorer_fs;
+pub mod explorer_watch;
 pub mod external_editor;
 pub mod git_status;
 pub mod json_store;
@@ -26,6 +27,7 @@ pub mod windows;
 use about::PendingUpdateCheck;
 use cli::Cli;
 use config_registry::ConfigRegistry;
+use explorer_watch::ExplorerWatchState;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
 use tool_detect::ToolDetector;
@@ -65,6 +67,7 @@ pub fn run() {
         .manage(PendingUpdateCheck::default())
         .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .manage(QuittingFlag::default())
+        .manage(ExplorerWatchState::default())
         .menu(menu::build)
         .on_menu_event(|app, event| match event.id().as_ref() {
             menu::ABOUT => about::show(app, false),
@@ -75,6 +78,15 @@ pub fn run() {
             about::on_window_event(window, event);
             windows::on_window_event(window, event);
             settings_window::on_window_event(window, event);
+            // Mirrors the PTY registry's own per-window cleanup
+            // (`pty_commands::kill_all_for_window`, called from
+            // `windows::on_window_event` above): a closed window's explorer
+            // watch must not keep its background thread alive for the rest
+            // of the process's life just because a sibling window is still
+            // open.
+            if let tauri::WindowEvent::Destroyed = event {
+                explorer_watch::stop_for_window(window.app_handle(), window.label());
+            }
         })
         .setup(|app| {
             // Written once here rather than per spawn, so concurrently opening
@@ -114,6 +126,8 @@ pub fn run() {
             explorer_fs::explorer_create_directory,
             explorer_fs::explorer_rename,
             explorer_fs::explorer_delete,
+            explorer_watch::explorer_watch_start,
+            explorer_watch::explorer_watch_stop,
             external_editor::vscode_is_installed,
             external_editor::vscode_open,
             git_status::explorer_git_status,

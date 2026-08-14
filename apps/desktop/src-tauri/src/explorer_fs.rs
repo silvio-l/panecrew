@@ -14,6 +14,12 @@ use std::path::Path;
 /// dwarf a project's actual source by orders of magnitude.
 const DENYLIST: &[&str] = &["node_modules", "target", "dist", "build", ".next", "out"];
 
+/// Shared with `explorer_watch.rs` so the tree reader and the filesystem
+/// watcher can never drift apart on which directories to skip.
+pub(crate) fn is_ignored_entry(name: &str) -> bool {
+    name == ".git" || DENYLIST.contains(&name)
+}
+
 /// One directory level, sorted (folders before files, both case-insensitive
 /// — same convention `path_probe.rs` uses for its own directory listing) and
 /// denylist-filtered, with no recursion and no shared budget across calls —
@@ -265,8 +271,7 @@ fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
 
     entries.retain(|entry| {
         let name = entry.file_name();
-        let name = name.to_string_lossy();
-        name != ".git" && !DENYLIST.contains(&name.as_ref())
+        !is_ignored_entry(&name.to_string_lossy())
     });
 
     // `is_dir()` on the resolved path, not `DirEntry::file_type()` — the

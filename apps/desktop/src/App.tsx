@@ -52,6 +52,7 @@ import type {
 import { Tooltip } from "radix-ui";
 import { Trans, useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { TITLE_BAR_ZONE_HEIGHT, TitleBar } from "./components/TitleBar";
@@ -296,6 +297,30 @@ function App() {
   // stünde die Deko der eben gespeicherten Datei veraltet da: aus einer
   // unveränderten versionierten Datei macht genau dieses Schreiben ein „M".
   const paneFileEditors = usePaneFileEditors(refreshExplorer);
+
+  // `.scratch/explorer-live-refresh`: beobachtet das Projektverzeichnis der
+  // fokussierten Pane und ruft bei Änderungen denselben `refreshExplorer`-
+  // Pfad wie der manuelle Aktualisieren-Button — Expanded-State-Erhalt kommt
+  // dadurch kostenlos mit. `focusedPath` ist bereits exakt `project?.path`
+  // (siehe `focusedProjectPath`), ein Wechsel zwischen zwei Panes auf
+  // demselben Projekt ändert diesen Wert also nicht — die Rust-Seite behandelt
+  // den identischen Pfad ohnehin als No-op, unabhängig davon.
+  useEffect(() => {
+    if (focusedPath === null) return;
+    const path = focusedPath;
+    void invoke("explorer_watch_start", { path }).catch(() => {
+      // Best-effort: ein fehlendes/unlesbares Root lässt den Explorer ohne
+      // Live-Updates zurück, genau wie vor diesem Feature — der manuelle
+      // Button funktioniert unverändert weiter.
+    });
+    const unlistenPromise = listen("explorer:changed", () => refreshExplorer());
+    return () => {
+      void invoke("explorer_watch_stop");
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `refreshExplorer` schließt `focusedPath` bereits über dieselbe Abhängigkeit ein, ein Re-Run bei jeder Neudefinition wäre nur Start/Stop-Lärm ohne Verhaltensänderung.
+  }, [focusedPath]);
+
   // Der Editor der fokussierten Pane — das Rechteck der Editorfläche zeigt
   // immer nur sie. Ohne fokussierte Pane (leeres Grid) liest `editorFor("")`
   // denselben `IDLE_STATE` wie jede unbenutzte `paneId` — kein Sonderfall

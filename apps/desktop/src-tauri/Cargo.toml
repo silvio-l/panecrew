@@ -39,6 +39,8 @@ trash = "5.2.6"
 # `sysinfo` ist der einzige hier bereits geprüfte Weg mit echtem
 # Windows-Pfad. Nur das "system"-Feature: kein component/disk/network/user.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+notify-debouncer-full = "0.7.0"
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 
 [dev-dependencies]
 # Only reachable from `cargo run --example gen-cli-docs` (examples get
