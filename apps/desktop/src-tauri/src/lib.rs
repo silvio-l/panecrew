@@ -69,10 +69,20 @@ pub fn run() {
         .manage(QuittingFlag::default())
         .manage(ExplorerWatchState::default())
         .menu(menu::build)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            menu::ABOUT => about::show(app, false),
-            menu::CHECK_UPDATES => about::show(app, true),
-            _ => {}
+        .on_menu_event(|app, event| {
+            let id = event.id().as_ref();
+            match id {
+                menu::ABOUT => about::show(app, false),
+                menu::CHECK_UPDATES => about::show(app, true),
+                _ if id.starts_with(menu::WINDOW_ITEM_PREFIX) => {
+                    let label = &id[menu::WINDOW_ITEM_PREFIX.len()..];
+                    if let Some(window) = app.get_webview_window(label) {
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
+            }
         })
         .on_window_event(|window, event| {
             about::on_window_event(window, event);
@@ -86,6 +96,18 @@ pub fn run() {
             // open.
             if let tauri::WindowEvent::Destroyed = event {
                 explorer_watch::stop_for_window(window.app_handle(), window.label());
+            }
+            // Hält die dynamische "Fenster"-Menüliste (menu.rs) aktuell:
+            // ohne Rebuild bei jedem Fokuswechsel bliebe der Haken beim
+            // zuletzt fokussierten Fenster hängen, und ein zerstörtes
+            // Fenster stünde als toter Eintrag weiter drin (ein Klick
+            // darauf fände via `get_webview_window` ohnehin nichts mehr,
+            // aber sichtbar tot wäre er trotzdem falsch).
+            if matches!(
+                event,
+                tauri::WindowEvent::Destroyed | tauri::WindowEvent::Focused(true)
+            ) {
+                menu::refresh(window.app_handle());
             }
         })
         .setup(|app| {

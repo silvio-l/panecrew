@@ -166,6 +166,7 @@ export function TerminalPane({
     selectTerminalTabByNumber,
     closeActiveTerminalTab,
     notifyCopied,
+    active,
   );
   const [selectionAvailable, setSelectionAvailable] = useState(false);
   const copyWithFeedback = () => {

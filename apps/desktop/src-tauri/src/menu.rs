@@ -1,8 +1,76 @@
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Runtime};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Manager, Runtime};
 
 pub const ABOUT: &str = "about";
 pub const CHECK_UPDATES: &str = "check-updates";
+/// Gefolgt vom Fenster-Label (`window_open_new`s zurückgegebenem Wert) —
+/// `on_menu_event` in `lib.rs` schneidet das wieder ab, um das Ziel-Fenster
+/// zu adressieren.
+pub const WINDOW_ITEM_PREFIX: &str = "window:";
+
+/// Ein `CheckMenuItem` je offenem Inhalts-Fenster (`windows::is_content_window`
+/// — schließt „about"/„settings" aus), Haken beim gerade fokussierten. Das ist
+/// die native macOS-„Fenster"-Menü-Konvention (jede echte AppKit-App listet
+/// hier ihre offenen Fenster), die Tauris Menü-API anders als natives AppKit
+/// NICHT von selbst mitbringt — ohne das hier bleibt ein Fenster ohne eigenes
+/// Dock-Icon (normal, eine App hat nur eins) UND ohne Menü-Eintrag komplett
+/// unauffindbar, sobald es minimiert oder auf einem anderen Space liegt
+/// (2026-08-14 Nutzerbefund: nur über App-Exposé wiedergefunden).
+///
+/// Sortiert nach Label statt Erzeugungsreihenfolge: Letztere wird nirgends
+/// separat mitgeführt, und `nanoid()`s Zeitstempel-Suffix ist ohnehin nicht
+/// dafür gedacht, danach sortiert zu werden — Label-Sortierung ist dafür
+/// wenigstens über Rebuilds hinweg stabil. `MAIN` ("main") sortiert dabei
+/// immer zuerst (kürzerer String, Präfix jedes `"main-…"`-Labels), bekommt
+/// also zuverlässig den nummernlosen Titel.
+fn window_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuItem<R>>> {
+    let windows = app.webview_windows();
+    let focused_label = windows
+        .values()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .map(|w| w.label().to_string());
+    let mut labels: Vec<String> = windows
+        .keys()
+        .filter(|label| crate::windows::is_content_window(label))
+        .cloned()
+        .collect();
+    labels.sort();
+
+    labels
+        .iter()
+        .enumerate()
+        .map(|(index, label)| {
+            let title = if label == crate::windows::MAIN {
+                "PaneCrew".to_string()
+            } else {
+                format!("PaneCrew — Fenster {}", index + 1)
+            };
+            let checked = focused_label.as_deref() == Some(label.as_str());
+            CheckMenuItem::with_id(
+                app,
+                format!("{WINDOW_ITEM_PREFIX}{label}"),
+                title,
+                true,
+                checked,
+                None::<&str>,
+            )
+        })
+        .collect()
+}
+
+/// Baut die komplette Menüleiste neu und installiert sie — der einzige Weg,
+/// ein neu geöffnetes/geschlossenes/fokussiertes Fenster in der „Fenster"-
+/// Liste widerzuspiegeln, da Tauris Menü-API kein gezieltes Nachrüsten
+/// einzelner Einträge in ein bereits gesetztes Menü anbietet. macOS hat
+/// ohnehin nur EINE Menüleiste für den ganzen Prozess, unabhängig vom
+/// fokussierten Fenster — ein kompletter Ersatz ist hier also korrekt, kein
+/// Umweg. Fehler (z. B. während des Herunterfahrens) werden bewusst
+/// verschluckt: eine veraltete Menüleiste ist kein Absturzgrund.
+pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
+    if let Ok(menu) = build(app) {
+        let _ = app.set_menu(menu);
+    }
+}
 
 /// Eigenes Menü statt `Menu::default`: dessen macOS-App-Menü öffnet an erster
 /// Stelle das native About-Panel, und genau die Stelle braucht das eigene
@@ -40,6 +108,19 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     #[cfg(target_os = "macos")]
     {
+        let minimize = PredefinedMenuItem::minimize(app, Some("Im Dock ablegen"))?;
+        let maximize = PredefinedMenuItem::maximize(app, Some("Zoomen"))?;
+        let window_separator = PredefinedMenuItem::separator(app)?;
+        let window_list = window_items(app)?;
+        let mut fenster_items: Vec<&dyn IsMenuItem<R>> = vec![&minimize, &maximize];
+        if !window_list.is_empty() {
+            fenster_items.push(&window_separator);
+            for item in &window_list {
+                fenster_items.push(item);
+            }
+        }
+        let fenster = Submenu::with_items(app, "Fenster", true, &fenster_items)?;
+
         // Kein Eintrag für den Zoom der App (Cmd +/-/0): den fängt die
         // Shortcut-Registry im Webview ab, ein Menükürzel würde ihn abfangen,
         // bevor er dort ankommt.
@@ -76,15 +157,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     true,
                     &[&PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?],
                 )?,
-                &Submenu::with_items(
-                    app,
-                    "Fenster",
-                    true,
-                    &[
-                        &PredefinedMenuItem::minimize(app, Some("Im Dock ablegen"))?,
-                        &PredefinedMenuItem::maximize(app, Some("Zoomen"))?,
-                    ],
-                )?,
+                &fenster,
             ],
         )
     }

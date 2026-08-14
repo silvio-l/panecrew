@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Windo
 use crate::pty_commands::{self, PtyState, WindowPtyRegistry};
 use crate::session_store;
 
-const MAIN: &str = "main";
+pub(crate) const MAIN: &str = "main";
 
 /// Chrome settings mirrored from `tauri.conf.json`'s "main" entry so a
 /// second window looks like the same app, not a plain default-decorated
@@ -63,7 +63,15 @@ const ACCEPT_FIRST_MOUSE: bool = true;
 /// secondary windows — dragging (`plugin:window|start_dragging`) and the
 /// project folder picker (`dialog:allow-open`) among them. `tests` below
 /// pins the two together.
-const SECONDARY_LABEL_PREFIX: &str = "main-";
+pub(crate) const SECONDARY_LABEL_PREFIX: &str = "main-";
+
+/// True for every window `window_open_new`/`open_restored` create — the set
+/// `menu.rs`'s dynamic "Fenster" list shows, excluding the "about"/"settings"
+/// utility windows (same exclusion `window_open_new`'s own `opener` search
+/// above already applies).
+pub(crate) fn is_content_window(label: &str) -> bool {
+    label == MAIN || label.starts_with(SECONDARY_LABEL_PREFIX)
+}
 
 /// The single source for secondary-window labels — shared with the tests so a
 /// regression can't be masked by a hardcoded example label.
@@ -160,10 +168,14 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
         builder = builder.center();
     }
 
-    builder
+    let result = builder
         .build()
         .map(|_| label)
-        .map_err(|error| format!("Neues Fenster konnte nicht geöffnet werden: {error}"))
+        .map_err(|error| format!("Neues Fenster konnte nicht geöffnet werden: {error}"));
+    if result.is_ok() {
+        crate::menu::refresh(&app);
+    }
+    result
 }
 
 /// Startup restore counterpart to `window_open_new` (Ticket 27): reopens one
@@ -200,12 +212,16 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
             .hidden_title(true);
     }
 
-    builder
+    let result = builder
         .center()
         .visible(false)
         .build()
         .map(|_| ())
-        .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"))
+        .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"));
+    if result.is_ok() {
+        crate::menu::refresh(app);
+    }
+    result
 }
 
 /// `setup()`-time counterpart to `window_open_new` (Ticket 27): without this,

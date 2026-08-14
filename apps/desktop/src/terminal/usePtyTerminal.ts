@@ -115,10 +115,22 @@ export function usePtyTerminal(
   // Listener weiter unten. Der Kontextmenü-Weg (`copySelection`) braucht ihn
   // nicht — TerminalPane.tsx ruft ihn dort selbst auf.
   onCopied: () => void,
+  // Ob DIESER Tab gerade der sichtbare in seiner Pane ist (PaneGrid.tsx'
+  // `isActiveTab`) — entscheidet allein über den WebGL-Kontext (siehe
+  // `webglRef`/den Effekt unten), sonst nichts. Ref-statt-Effekt-Abhängigkeit
+  // gilt hier NICHT: anders als `onSelectTerminalTabByNumber`/`onCloseTerminalTab`
+  // braucht genau dieser Wert einen eigenen, an ihn gebundenen Effekt, um beim
+  // Wechsel zu reagieren.
+  active: boolean,
 ): PtyTerminal {
   const backend = usePtyBackend();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  // Der jeweils aktuell geladene WebGL-Kontext dieses Tabs, `null` solange er
+  // (Hintergrund-Tab) keinen braucht. Getrennt von `terminalRef`, weil er über
+  // die Lebensdauer EINES Mounts mehrfach kommt und geht (jeder Aktiv/Inaktiv-
+  // Wechsel), während `terminalRef` für den gesamten Mount stabil bleibt.
+  const webglRef = useRef<WebglAddon | null>(null);
   // Von zwei Effekten gelesen/geschrieben (Spawn-Effekt unten UND der
   // Settings-Live-Reload-MutationObserver weiter unten, der eine globale
   // Schriftgrößenänderung mit dem AKTUELLEN Pane-Zoom-Multiplikator
@@ -173,7 +185,11 @@ export function usePtyTerminal(
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
-    loadAcceleratedRenderer(terminal);
+    // KEIN Laden hier: der Aktiv/Inaktiv-Effekt weiter unten übernimmt das,
+    // auch für den allerersten Mount (er läuft nach diesem Effekt im selben
+    // Commit, `terminalRef.current` steht dann längst). Ein Laden an BEIDEN
+    // Stellen hieße für jeden von Anfang an aktiven Tab zwei WebGL-Kontexte
+    // statt einem — genau der Fehler, den dieses Gating beheben soll.
     // Erst messen, dann spawnen: pty_spawn nimmt cols/rows entgegen, und die
     // Shell druckt ihren ersten Prompt bereits in dieser Breite.
     fitAddon.fit();
@@ -607,6 +623,11 @@ export function usePtyTerminal(
       suggestion.dispose();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;
+      // `terminal.dispose()` gleich darunter räumt ein noch geladenes Addon
+      // über seinen eigenen AddonManager mit ab (derselbe Mechanismus wie im
+      // Kopfkommentar von `loadAcceleratedRenderer` beschrieben) — dieses Feld
+      // hier nur, damit kein Aufrufer über einen jetzt toten Kontext stolpert.
+      webglRef.current = null;
       terminal.dispose();
       // pty_kill ist laut Vertrag nicht idempotent — nur killen, wenn der
       // Spawn tatsächlich durchgelaufen ist. Ist er noch unterwegs, übernimmt
@@ -614,6 +635,35 @@ export function usePtyTerminal(
       if (sessionReady) backend.kill(tabId);
     };
   }, [tabId, cwd, backend]);
+
+  // Hält höchstens einen lebenden WebGL-Kontext pro PANE statt einen pro
+  // jemals geöffnetem TAB: `PaneGrid.tsx` mountet jeden Terminal-Tab dauerhaft
+  // weiter (nur `visibility: hidden`, s. dortiger Kommentar), und ohne dieses
+  // Gating lud der Haupteffekt oben für JEDEN dieser Hintergrund-Tabs
+  // bedingungslos einen eigenen Kontext — bei mehreren Fenstern/Panes mit
+  // mehreren Tabs genug, um WKWebViews Obergrenze gleichzeitiger WebGL-
+  // Kontexte zu reißen. Beobachtetes Bild dabei: kein sauberer Kontextverlust
+  // (der bestehende `onContextLoss`-Fallback griff nicht), sondern eine Pane,
+  // die fast nichts mehr zeichnete, obwohl xterms eigener Textpuffer nachweis-
+  // lich vollständig blieb (Kopieren aus der Pane lieferte den kompletten
+  // Text) — ein GPU-Ressourcenproblem, kein Puffer-/Reflow-Bug.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    // Terminal noch nicht gemountet (sollte hier nie eintreten, s. Kommentar
+    // im Haupteffekt oben — beide laufen im selben Commit, dieser danach):
+    // still bleiben statt gegen einen nicht existenten Kern zu laden.
+    if (!terminal) return;
+    if (active && !webglRef.current) {
+      webglRef.current = loadAcceleratedRenderer(terminal, () => {
+        webglRef.current = null;
+      });
+    } else if (!active && webglRef.current) {
+      // Genau der vom bestehenden `onContextLoss`-Handler dokumentierte Weg
+      // zurück zum Standard-Renderer — hier nur freiwillig statt erzwungen.
+      webglRef.current.dispose();
+      webglRef.current = null;
+    }
+  }, [active]);
 
   // Ticket 05 (Settings-System, Live-Reload): ein Theme- ODER
   // Schriftgrößen-Wechsel setzt nur CSS-Custom-Properties neu — eine bereits
@@ -692,7 +742,19 @@ export function usePtyTerminal(
 // Addon zum Zurücksetzen auf den Standard-Renderer registriert, prüft vorher
 // selbst, ob der Terminal-Kern schon entsorgt ist (ebenfalls im Addon-Code
 // nachgelesen). Ein zusätzlicher Aufruf hier wäre doppelt, nicht sicherer.
-function loadAcceleratedRenderer(terminal: Terminal): void {
+//
+// Gibt das geladene Addon zurück (oder `null` bei Fehlschlag), statt es nur
+// zu laden: der Aufrufer hält es in `webglRef`, um es beim Inaktiv-Werden des
+// Tabs wieder gezielt freigeben zu können (s. den Aktiv/Inaktiv-Effekt oben).
+// `onContextLoss` läuft zusätzlich zum Addon-eigenen Reset auf den Standard-
+// Renderer, damit auch ein SPONTANER Kontextverlust (GPU-Reset, nicht der
+// eigene Inaktiv-Wechsel) `webglRef` konsistent auf `null` zurücksetzt — sonst
+// hielte der Aktiv/Inaktiv-Effekt einen bereits toten Kontext für lebendig und
+// lüde nie neu nach.
+function loadAcceleratedRenderer(
+  terminal: Terminal,
+  onContextLoss: () => void,
+): WebglAddon | null {
   try {
     const webgl = new WebglAddon();
     // Verliert die Grafikkarte den Kontext (GPU-Reset, Treiberwechsel,
@@ -701,14 +763,17 @@ function loadAcceleratedRenderer(terminal: Terminal): void {
     // langsamer, bleibt aber sichtbar und bedienbar, statt schwarz zu stehen.
     webgl.onContextLoss(() => {
       webgl.dispose();
+      onContextLoss();
     });
     terminal.loadAddon(webgl);
+    return webgl;
   } catch (error) {
     // Kein WebGL2 (abgeschaltete Beschleunigung, alter Treiber, Headless):
     // xterm rendert dann weiter über das DOM — langsamer, aber vollständig
     // funktionsfähig. Gemeldet wird es trotzdem, sonst ist ein späteres „es
     // ruckelt" nicht mehr von einem echten Fehler zu unterscheiden.
     console.warn("PaneCrew: WebGL-Renderer nicht verfügbar", error);
+    return null;
   }
 }
 
