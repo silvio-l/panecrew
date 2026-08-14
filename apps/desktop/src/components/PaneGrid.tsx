@@ -799,8 +799,23 @@ function PaneCell({
   // Unterschied verlöre `fitAddon.fit()` beim Verlassen des Fokus-Modus seine
   // Messbasis. Dasselbe gilt für leere Slots (`ProjectPicker.tsx`s eigene
   // `focusModeActive`-Prop).
+  // `gridArea: "auto"` ist dabei KEIN Deko-Reset, sondern der Kern des
+  // Fixes für die breite volle-Zeile-Pane der 3er-Templates (Nutzer-Befund
+  // "das 2er pane nimmt in der höhe nicht den verfügbaren gesammten grid
+  // bereich ein"): ein absolut positioniertes Grid-Kind mit DEFINITEM
+  // `grid-area` bekommt laut CSS-Grid-Spec genau diese Grid-Fläche als
+  // Containing Block — nicht die Padding-Box des Containers. Die breite
+  // Zelle trägt aus templateGlyph.css weiterhin `grid-area: 1/1/2/3` (bzw.
+  // `2/1/3/3` bei two-over-one), ihr `inset: 0` füllte also nur die EINE
+  // Zeile, in der sie wohnt (live gemessen: 503px statt 1014px Höhe, volle
+  // Breite, `transform: none` — die FLIP-Hypothese schied damit aus). Die
+  // schmalen Zellen haben keine nth-child-Regel, ihr Placement bleibt
+  // vollständig `auto` → Containing Block ist die ganze Workspace-Fläche,
+  // deshalb funktionierten nur sie. Das Inline-`auto` schlägt die
+  // Klassenregel und stellt für die Dauer des Fokus-Modus dieselbe
+  // Ausgangslage her.
   const cellStyle: CSSProperties | undefined = maximized
-    ? { position: "absolute", inset: 0, zIndex: 30 }
+    ? { position: "absolute", inset: 0, zIndex: 30, gridArea: "auto" }
     : focusModeActive
       ? { visibility: "hidden" }
       : undefined;

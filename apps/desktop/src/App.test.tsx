@@ -2559,6 +2559,87 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     });
   });
 
+  it("setzt im Fokus-Modus der breiten volle-Zeile-Pane das grid-area inline auf auto zurück (3er-Grid, one-over-two)", async () => {
+    // Nutzer-Befund: "das breite 2er pane lasst sich nicht sauber in den
+    // fucus modus setzen ... nimmt in der höhe nicht den verfügbaren
+    // gesammten grid bereich ein". Root Cause (live im Chrome gemessen, s.
+    // Kommentar an `cellStyle` in PaneGrid.tsx): die breite Zelle trägt aus
+    // templateGlyph.css ein DEFINITES `grid-area: 1/1/2/3` — für ein
+    // absolut positioniertes Grid-Kind ist laut CSS-Grid-Spec dann diese
+    // Fläche der Containing Block, `inset: 0` füllte nur die eine Zeile.
+    // jsdom rechnet kein Grid-Layout, die Höhe selbst ist hier also nicht
+    // messbar — dieser Test sichert stattdessen die Verdrahtung: die
+    // maximierte Zelle MUSS das Inline-`grid-area: auto` tragen, das die
+    // Klassenregel übersteuert (die Geometrie-Wirkung ist im echten Browser
+    // verifiziert: 503px → 1014px volle Workspace-Höhe).
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "one-over-two",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/wide",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                {
+                  project_path: "/Users/dev/projects/left",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                {
+                  project_path: "/Users/dev/projects/right",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+    await screen.findByLabelText("Terminal wide");
+
+    // Die breite Pane ist bei one-over-two das ERSTE Grid-Kind (Slot 0,
+    // DOM-Reihenfolge = Slot-Reihenfolge, templateGlyph.css).
+    const workspace = container.querySelector(".pc-workspace");
+    if (!workspace) throw new Error("Workspace nicht gefunden");
+    const wideCell = workspace.children[0];
+    if (!(wideCell instanceof HTMLElement)) {
+      throw new Error("Breite Zelle nicht gefunden");
+    }
+    fireEvent.click(
+      within(wideCell).getAllByRole("button", { name: "Fokus-Modus" })[0] as HTMLElement,
+    );
+
+    await waitFor(() => {
+      expect(wideCell.style.position).toBe("absolute");
+    });
+    // Der Kern des Fixes: ohne dieses Inline-`auto` bliebe die Klassenregel
+    // `grid-area: 1/1/2/3` wirksam und die Zelle füllte nur ihre Zeile.
+    expect(wideCell.style.gridArea).toBe("auto");
+
+    // Verlassen räumt beides wieder ab — die Zelle kehrt in ihre
+    // Grid-Fläche zurück.
+    fireEvent.click(
+      within(wideCell).getAllByRole("button", {
+        name: "Fokus-Modus verlassen",
+      })[0] as HTMLElement,
+    );
+    await waitFor(() => {
+      expect(wideCell.style.position).toBe("");
+    });
+    expect(wideCell.style.gridArea).toBe("");
+  });
+
   it("stellt mehrere Terminal-Tabs samt aktivem Index wieder her, ohne einen davon zu killen", async () => {
     // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{}]` ab (genau
     // ein Tab) — die interessante Schleife in `restoreSlot` (App.tsx), die
