@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { paneIdAtPoint, type PaneRect } from "../terminal/dropRouting";
 
 /**
@@ -55,6 +55,27 @@ export interface PaneDrag<TSource> {
   source: TSource | null;
   /** Die Pane, in der ein Loslassen JETZT landen würde, sonst `null`. */
   targetPaneId: string | null;
+  /** Die beim Scharfwerden erlaubten Ziel-Panes (die `candidatePaneIds` der
+   * laufenden Spec), leer außerhalb eines scharfen Zugs. Nachgereicht mit dem
+   * Nutzer-Befund zum Tab-Zug ("er muss mir natürlich auch anzeigen, wo ich
+   * ihn jetzt loslassen könnte"): die Ablehnungslogik wirkte bereits beim
+   * Schweben, aber SICHTBAR wurde ein gültiges Ziel erst, wenn der Zeiger es
+   * zufällig traf — der Aufrufer kann die Kandidaten jetzt sofort beim
+   * Scharfwerden andeuten statt sie den Nutzer suchen zu lassen. */
+  candidatePaneIds: readonly string[];
+  /** Wo der Zeiger beim Scharfwerden stand — Startposition der
+   * Zeigerplakette, sonst `null`. Alles danach schreibt der Bewegungs-Handler
+   * direkt ins DOM (s. `ghostRef`), nicht in den State. */
+  ghostOrigin: { x: number; y: number } | null;
+  /** Die Zeigerplakette ("das habe ich in der Hand"). Bewusst ein Ref und
+   * kein State-Wertepaar — exakt dieselbe Begründung wie beim Explorer-Ziehen
+   * (`useExplorerPathDrag.ts`): `pointermove` feuert bei jeder Mausbewegung,
+   * ein `setState` daraus würde die gesamte App pro Bewegung neu rendern.
+   * Beim Umbau zum geteilten Hook war dieses Element schlicht nicht
+   * mitgekommen — der Zug lief dadurch komplett unsichtbar am Zeiger vorbei
+   * (Nutzer-Befund: "Ich muss erkennen können, dass ich diesen Tab jetzt in
+   * der Hand habe"). */
+  ghostRef: RefObject<HTMLDivElement | null>;
   /** Ob der unmittelbar folgende Klick noch zum eben beendeten Ziehen gehört
    * und deshalb verworfen werden muss. Verbraucht die Markierung. */
   consumeDragClick: () => boolean;
@@ -81,9 +102,17 @@ function candidateAtPoint(
   return paneIdAtPoint(rects, point);
 }
 
+const NO_CANDIDATES: readonly string[] = [];
+
 export function usePaneDrag<TSource>(): PaneDrag<TSource> {
   const [source, setSource] = useState<TSource | null>(null);
   const [targetPaneId, setTargetPaneId] = useState<string | null>(null);
+  const [candidatePaneIds, setCandidatePaneIds] =
+    useState<readonly string[]>(NO_CANDIDATES);
+  const [ghostOrigin, setGhostOrigin] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const ghostRef = useRef<HTMLDivElement | null>(null);
   const suppressClickRef = useRef(false);
 
   const consumeDragClick = useCallback(() => {
@@ -148,6 +177,8 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
         }
         setSource(null);
         setTargetPaneId(null);
+        setCandidatePaneIds(NO_CANDIDATES);
+        setGhostOrigin(null);
       };
 
       const onMove = (moveEvent: PointerEvent) => {
@@ -162,6 +193,18 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
           }
           armed = true;
           setSource(spec.source);
+          setCandidatePaneIds(spec.candidatePaneIds);
+          setGhostOrigin({ x: lastX, y: lastY });
+        }
+        // Direkt ans DOM statt in den State — Begründung an `ghostRef`. Die
+        // Plakette ist im ersten Bild nach dem Scharfwerden noch nicht
+        // gemountet; sie startet deshalb an `ghostOrigin` und wird ab hier
+        // weitergeschoben. Bewusst OHNE Easing/Delay: die Plakette folgt der
+        // Zeigerposition unmittelbar, alles andere fühlte sich gummiband-
+        // artig an (Bewegung aus Interaktion, nie aus Easing).
+        const ghost = ghostRef.current;
+        if (ghost) {
+          ghost.style.transform = `translate3d(${String(lastX)}px, ${String(lastY)}px, 0)`;
         }
         // React lässt identische set-Werte folgenlos verpuffen — gerendert
         // wird nur beim tatsächlichen Wechsel der Ziel-Pane, nicht pro
@@ -182,5 +225,13 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
     [],
   );
 
-  return { startDrag, source, targetPaneId, consumeDragClick };
+  return {
+    startDrag,
+    source,
+    targetPaneId,
+    candidatePaneIds,
+    ghostOrigin,
+    ghostRef,
+    consumeDragClick,
+  };
 }

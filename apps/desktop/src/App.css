@@ -126,6 +126,26 @@ body,
   }
 }
 
+/*
+ * Ankunfts-Bestätigung eines per Drag verschobenen Terminal-Tabs
+ * (PaneTabs.tsx, `dropSettle`): EINMALIGER, kurzer Flächen-Wasch über den
+ * frisch angekommenen Chip — dieselbe Mechanik wie pc-attention-flash
+ * (key-Neumount startet die animation, nur background-color, kein
+ * border-color, kein Glow), aber deutlich kürzer (300ms statt 1400ms): eine
+ * Quittung für eine gerade selbst ausgeführte Handlung braucht keinen langen
+ * Nachhall, sie muss nur den Blick einmal an die Landestelle holen
+ * (150ms-Familie, Motion-Regel oben). Startet satt statt über einen
+ * Zwischenstopp — der Zustandswechsel IST der Anfang, danach nur Abklingen.
+ */
+@keyframes pc-drop-settle {
+  from {
+    background-color: color-mix(in srgb, var(--pc-pane-activeBorder) 34%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 body {
   overflow: hidden;
   background: var(--pc-app-background);
@@ -399,6 +419,18 @@ body {
    nie). Amber ist hier Einladung wie bei den leeren Slots, nicht Fokus. */
 .pc-hud-corner--invite {
   border-color: var(--pc-pane-activeBorder);
+}
+
+/* Gedämpfte Fassung der Einladungs-Ecken: die Kandidaten-Ankündigung der
+   Grid-eigenen Züge (PaneDropInvite.tsx, `engaged={false}`) — sobald ein
+   Slot-Tausch oder Tab-Zug scharf wird, tragen ALLE gültigen Ziel-Panes diese
+   Ecken, nur die unterm Zeiger wechselt in die volle --invite-Fassung samt
+   Plakette. Dieselbe 45%-Abschwächung, mit der auch die Fokus-Hairline
+   unfokussierter Panes spricht (TerminalPane.tsx) — Kandidat und Ziel
+   unterscheiden sich über Sättigung + Plakette, nicht über eine zweite
+   Farbe. color-mix statt Opacity aus demselben Grund wie am pc-hud-emblem. */
+.pc-hud-corner--invite-dim {
+  border-color: color-mix(in srgb, var(--pc-pane-activeBorder) 45%, transparent);
 }
 
 /* Das ASCII-Mini-Terminal, zweifarbig: Rahmen leise (gedimmter

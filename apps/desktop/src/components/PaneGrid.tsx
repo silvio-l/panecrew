@@ -29,6 +29,7 @@
 import {
   useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -49,6 +50,7 @@ import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
+import { TabDragGhost } from "./TabDragGhost";
 import { TerminalPane } from "./TerminalPane";
 
 /** Alles, was für EINE belegte Zelle einmal zentral abgeleitet wird — Zelle
@@ -167,6 +169,14 @@ export function PaneGrid({
   // dieses Grids, ein Umweg über die App-Ebene brächte nur Durchreichung.
   const paneDrag = usePaneDrag<string>();
   const tabDrag = usePaneDrag<{ paneId: string; tabId: string }>();
+  // Ankunfts-Quittung des Tab-Zugs: welcher Tab zuletzt per Drop angekommen
+  // ist — sein Chip in der Ziel-Leiste quittiert das mit einem kurzen Wasch
+  // (`PaneTabs.tsx`, `dropSettle`). `nonce` unterscheidet zwei Züge desselben
+  // Tabs, damit der key-Neumount die Animation jedes Mal neu startet.
+  const [dropSettle, setDropSettle] = useState<{
+    tabId: string;
+    nonce: number;
+  } | null>(null);
   // Im Fokus-Modus ist genau eine Pane sichtbar: es gibt kein Ziel, auf das
   // man zielen könnte, und die ausgeblendeten Nachbarn behalten ihre
   // Rechtecke (`visibility: hidden`, s. u.) — ohne diese Sperre träfe die
@@ -213,10 +223,33 @@ export function PaneGrid({
             ? [slot.paneId]
             : [],
         ),
-        onDrop: (targetPaneId) =>
-          onMoveTerminalTab(pane.paneId, tabId, targetPaneId),
+        onDrop: (targetPaneId) => {
+          onMoveTerminalTab(pane.paneId, tabId, targetPaneId);
+          setDropSettle((prev) => ({ tabId, nonce: (prev?.nonce ?? 0) + 1 }));
+        },
       });
     };
+
+  // Anzeigename des gerade gezogenen Tabs für die Zeiger-Plakette
+  // (`TabDragGhost`) — eigener Name oder "Terminal N", dieselbe Ableitung wie
+  // der Chip selbst. `null`, sobald der Zug endet oder die Quelle während des
+  // Zugs verschwindet (Pane geschlossen): dann verschwindet die Plakette mit.
+  const dragSourceTab = tabDrag.source;
+  const draggedTabText = (() => {
+    if (dragSourceTab === null) return null;
+    const sourcePane = state.slots.find(
+      (slot) => slot?.paneId === dragSourceTab.paneId,
+    );
+    const index =
+      sourcePane?.terminalTabs.findIndex(
+        (tab) => tab.tabId === dragSourceTab.tabId,
+      ) ?? -1;
+    if (!sourcePane || index === -1) return null;
+    return (
+      sourcePane.terminalTabs[index]?.label ??
+      t("paneTabs.terminalTab", { number: index + 1 })
+    );
+  })();
 
   const views: (PaneView | null)[] = state.slots.map((slot, index) => {
     if (!slot) return null;
@@ -263,6 +296,14 @@ export function PaneGrid({
           // Nur was auch wandern könnte, kündigt sich als Griff an.
           draggable: dragEnabled && pane.terminalTabs.length > 1,
         },
+        // Schwebt der Tab-Zug über DIESER Pane, zeigt ihre Leiste den
+        // Platzhalter-Chip am Einfügeort — `moveTerminalTab` hängt ans Ende
+        // an, der Neuzugang bekäme also die nächste freie Nummer.
+        incomingTabNumber:
+          tabDrag.targetPaneId === pane.paneId
+            ? pane.terminalTabs.length + 1
+            : null,
+        dropSettle,
         onSelectTerminalTab: (tabId) =>
           onSwitchToTerminalTab(pane.paneId, tabId),
         onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
@@ -284,15 +325,28 @@ export function PaneGrid({
           rotation={rotation}
         />
       ) : null,
-      // Welcher der beiden Grid-eigenen Züge gerade über dieser Zelle
-      // schwebt — sie schließen einander aus, ein Zeiger zieht immer nur
-      // eines von beidem.
-      dropInvite:
-        tabDrag.targetPaneId === pane.paneId ? (
-          <PaneDropInvite glyph="⇥" label={t("paneDrag.moveTabInvite")} />
-        ) : paneDrag.targetPaneId === pane.paneId ? (
-          <PaneDropInvite glyph="⇄" label={t("paneDrag.swapInvite")} />
-        ) : null,
+      // Welcher der beiden Grid-eigenen Züge diese Zelle betrifft — sie
+      // schließen einander aus, ein Zeiger zieht immer nur eines von beidem.
+      // Seit der Politur-Runde (Nutzer-Befund "er muss mir natürlich auch
+      // anzeigen, wo ich ihn jetzt loslassen könnte") zweistufig: JEDE
+      // gültige Ziel-Pane trägt das Instrument ab dem Scharfwerden des Zugs
+      // (gedämpfte Ecken, `engaged={false}`), die Pane unterm Zeiger spricht
+      // voll samt Plakette. Die Kandidatenliste kommt aus dem Zug selbst
+      // (`usePaneDrag.candidatePaneIds`) — exakt die Ausschluss-Logik, die
+      // auch die Trefferprüfung benutzt, keine zweite Herleitung.
+      dropInvite: tabDrag.candidatePaneIds.includes(pane.paneId) ? (
+        <PaneDropInvite
+          glyph="⇥"
+          label={t("paneDrag.moveTabInvite")}
+          engaged={tabDrag.targetPaneId === pane.paneId}
+        />
+      ) : paneDrag.candidatePaneIds.includes(pane.paneId) ? (
+        <PaneDropInvite
+          glyph="⇄"
+          label={t("paneDrag.swapInvite")}
+          engaged={paneDrag.targetPaneId === pane.paneId}
+        />
+      ) : null,
       dragSource: paneDrag.source === pane.paneId,
       fileDropTarget: pane.paneId === dragTargetPaneId,
       onHeaderPointerDown: startPaneDrag(pane.paneId),
@@ -337,13 +391,14 @@ export function PaneGrid({
     state.maximizedPaneId,
   );
   return (
-    // Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
-    // — Spuren und Spannen aller sieben Geometrien stehen in App.css
-    // (`.pc-layout--*`), die Begründung dafür ebenfalls dort. Der Fokus-Modus
-    // ist orthogonal dazu (`gridState.ts`s Kopfkommentar zu
-    // `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
-    // Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
-    // (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig.
+    <>
+    {/* Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
+        — Spuren und Spannen aller sieben Geometrien stehen in App.css
+        (`.pc-layout--*`), die Begründung dafür ebenfalls dort. Der Fokus-Modus
+        ist orthogonal dazu (`gridState.ts`s Kopfkommentar zu
+        `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
+        Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
+        (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig. */}
     <div ref={workspaceRef} className={`pc-workspace pc-layout--${state.template}`}>
       {views.map((view, index) =>
         view ? (
@@ -385,6 +440,29 @@ export function PaneGrid({
             ),
       )}
     </div>
+    {/* Die Zeiger-Plakette des Tab-Zugs — `fixed`, entkommt also der
+        Grid-Geometrie; hier statt in App.tsx gerendert, weil der Zug
+        vollständig in diesem Baum lebt (s. Kommentar an `usePaneDrag` oben).
+        Bewusst als GESCHWISTER des Arbeitsraums, nicht als sein Kind: die
+        `.pc-workspace > *`-Regeln (App.css) gelten jedem direkten Kind — die
+        `pc-cell-in`-Mount-Animation überschriebe mit ihren transform-
+        Keyframes 200ms lang genau das Inline-`translate3d`, über das der
+        Zieh-Hook die Plakette führt (und die Kinderliste des Arbeitsraums
+        bleibt so exakt die Slot-Liste, `useGridTransitions`' positionsweise
+        Zuordnung eingeschlossen). Als `position: fixed` nimmt sie am Layout
+        des Elternteils ohnehin nicht teil. Der Slot-Tausch braucht kein
+        Pendant: dort tritt die ganze gezogene Zelle sichtbar zurück
+        (opacity-50, `PaneCell`), die Quelle selbst IST das "in der
+        Hand"-Signal. */}
+    {draggedTabText !== null && tabDrag.ghostOrigin !== null && (
+      <TabDragGhost
+        ghostRef={tabDrag.ghostRef}
+        text={draggedTabText}
+        origin={tabDrag.ghostOrigin}
+        overTarget={tabDrag.targetPaneId !== null}
+      />
+    )}
+    </>
   );
 }
 

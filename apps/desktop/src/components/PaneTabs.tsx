@@ -315,6 +315,17 @@ export interface PaneTabsProps {
   onSelectFile: () => void;
   /** Tab-Verschieben zwischen Panes (Ticket 32). */
   tabDrag: PaneTabDrag;
+  /** Die Nummer, unter der ein gerade schwebender Tab-Zug HIER landen würde
+   * (`moveTerminalTab` hängt ans Ende an, also `terminalTabs.length + 1`) —
+   * `null`, solange kein Zug über dieser Pane schwebt. Rendert einen
+   * Platzhalter-Chip am Einfügeort (s. `IncomingTabSlot` unten): die präzise
+   * Antwort auf "wo genau würde er einsortiert", Nutzer-Befund zum Tab-Zug. */
+  incomingTabNumber?: number | null;
+  /** Der zuletzt per Zug angekommene Tab (PaneGrid.tsx setzt es beim Drop) —
+   * sein Chip quittiert die Ankunft mit einem einmaligen, kurzen
+   * `pc-drop-settle`-Wasch (App.css). `nonce` unterscheidet zwei Züge
+   * desselben Tabs (key-Neumount startet die Animation erneut). */
+  dropSettle?: { tabId: string; nonce: number } | null;
   /** Optional: meldet den false→true-Übergang von `unread` zusätzlich zum
    * eigenen Chip-Aufblitz nach außen — TerminalPane.tsx/FileEditor.tsx
    * nutzen das für den Pane-weiten Aufblitz (s. Kopfkommentar dieser Datei,
@@ -335,6 +346,8 @@ export function PaneTabs({
   onRenameTerminalTab,
   onSelectFile,
   tabDrag,
+  incomingTabNumber = null,
+  dropSettle = null,
   onTabAttentionFlash,
 }: PaneTabsProps) {
   const { t } = useTranslation();
@@ -391,6 +404,7 @@ export function PaneTabs({
           onAttentionFlash={
             onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
           }
+          settleNonce={dropSettle?.tabId === tab.tabId ? dropSettle.nonce : null}
           onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
           onSelect={() => {
             // Der Abschlussklick eines Zugs darf den Quell-Tab nicht
@@ -407,6 +421,9 @@ export function PaneTabs({
           onDiscardRename={() => setRenamingTabId(null)}
         />
       ))}
+      {incomingTabNumber !== null && (
+        <IncomingTabSlot number={incomingTabNumber} />
+      )}
       <ChromeTooltip label={t("paneTabs.openTerminalTab")}>
         <button
           type="button"
@@ -445,6 +462,7 @@ function TerminalTabChip({
   draggable,
   dragging,
   renaming,
+  settleNonce,
   onAttentionFlash,
   onPointerDown,
   onSelect,
@@ -465,6 +483,10 @@ function TerminalTabChip({
    * die gezogene Pane beim Slot-Tausch. */
   dragging: boolean;
   renaming: boolean;
+  /** Nicht-`null`, wenn dieser Tab gerade per Zug hier angekommen ist —
+   * startet den einmaligen `pc-drop-settle`-Wasch (s. `PaneTabsProps.
+   * dropSettle`). */
+  settleNonce: number | null;
   onAttentionFlash?: () => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onSelect: () => void;
@@ -601,9 +623,12 @@ function TerminalTabChip({
             // `cursor-grab`/`opacity-50` (Ticket 32): dieselbe Ankündigung
             // und derselbe Rückzug wie beim Pane-Header-Griff — ein Chip, der
             // nirgendwo hinkann (letzter Tab, Fokus-Modus), kündigt sich auch
-            // nicht als Griff an.
+            // nicht als Griff an. Während des Zugs `cursor-grabbing`: das
+            // Pointer-Capture hält den Zeiger am Chip, dessen Cursor gilt
+            // also für den ganzen Zug — die geschlossene Hand ist das
+            // systemübliche "ich halte gerade etwas".
             className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
-              draggable ? "cursor-grab" : ""
+              dragging ? "cursor-grabbing" : draggable ? "cursor-grab" : ""
             } ${dragging ? "opacity-50" : ""} ${
               active
                 ? `${
@@ -615,6 +640,18 @@ function TerminalTabChip({
             } ${CHROME_FOCUS_RING}`}
           >
             {active && paneFocused && <TraceStub />}
+            {settleNonce !== null && (
+              // Ankunfts-Quittung nach einem Tab-Zug: derselbe key-Neumount-
+              // Mechanismus wie der Attention-Flash direkt darunter, nur mit
+              // der kurzen pc-drop-settle-Kurve (App.css) — die Handlung war
+              // die eigene, sie braucht Bestätigung, keinen Alarm.
+              <span
+                key={`settle-${String(settleNonce)}`}
+                aria-hidden="true"
+                data-drop-settle=""
+                className="pointer-events-none absolute inset-0 -z-10 animate-[pc-drop-settle_300ms_ease-out] rounded-t-(--pc-paneControl-radius)"
+              />
+            )}
             {flashKey > 0 && (
               <span
                 key={flashKey}
@@ -790,6 +827,39 @@ function PaneTab({
       <span className="min-w-0 truncate">{label}</span>
       {dirty && <DirtyMark />}
     </button>
+  );
+}
+
+// Der Platzhalter-Chip eines schwebenden Tab-Zugs (Ticket 32, Politur-Runde
+// nach Nutzer-Befund): steht exakt dort in der Leiste, wo `moveTerminalTab`
+// den Tab einhängen würde (am Ende der Terminal-Tabs, vor dem „+"-Knopf), und
+// trägt bereits die Nummer, die er dort bekäme — die Leiste zeigt ihre eigene
+// Zukunft, statt sie den Nutzer raten zu lassen. Chip-Maße wie ein echter
+// `TerminalTabChip` (h-6, min-w-6, px-3, oben gerundet), aber als leere
+// Fassung im PCB-Duktus: 1px gestrichelte Amber-Kontur in der 45%-Dämpfung
+// (ein angekündigter, noch nicht bestromter Footprint — dieselbe Abstufung
+// wie die Kandidaten-Ecken des Drop-HUDs) mit hauchdünner Akzent-Lasur.
+// Bewusst KEINE verdoppelte Unterkante und kein Löt-Steg: beides ist die
+// Sprache des AKTIVEN Tabs, dieser hier existiert noch gar nicht.
+//
+// `aria-hidden` wie das Drop-HUD selbst (ein Zeiger-Zug ist reine
+// Zeigerführung); `data-incoming-tab` ist der Test-Haken, ein verstecktes
+// Deko-Element hat keine Rolle, über die es sich sonst greifen ließe. Das
+// Erscheinen ist ein harter Schnitt wie beim Drop-HUD — sein Auftauchen IST
+// der Zustandswechsel. Dass der „+"-Knopf dabei einen Chip weit nach rechts
+// rückt, ist kein Layout-Sprung, sondern die Vorschau selbst: genau so sähe
+// die Leiste nach dem Loslassen aus.
+function IncomingTabSlot({ number }: { number: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-incoming-tab=""
+      className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-dashed border-(--pc-pane-activeBorder)/45 bg-(--pc-pane-activeBorder)/8 px-3 text-(length:--pc-chrome-fontSizeSmall)"
+    >
+      <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums text-(--pc-pane-activeBorder)/70">
+        {number}
+      </span>
+    </span>
   );
 }
 

@@ -46,10 +46,37 @@ function Harness({
       </button>
       <p>{`quelle:${drag.source ?? "-"}`}</p>
       <p>{`ziel:${drag.targetPaneId ?? "-"}`}</p>
+      <p>{`kandidaten:${drag.candidatePaneIds.join("+") || "-"}`}</p>
+      {/* Die Zeigerplakette, wie die echten Aufrufer sie mounten: erst ab dem
+          Scharfwerden, Startlage aus `ghostOrigin`, danach schiebt der Hook
+          direkt über das Ref — als eigene Komponente mit Props, exakt das
+          `TabDragGhost`-Muster (auch die Lint-Regel gegen Ref-Zugriffe im
+          Render verlangt diese Trennung). */}
+      {drag.ghostOrigin !== null && (
+        <GhostProbe ghostRef={drag.ghostRef} origin={drag.ghostOrigin} />
+      )}
       {Object.keys(PANE_RECTS).map((paneId) => (
         <div key={paneId} data-pane-id={paneId} />
       ))}
     </>
+  );
+}
+
+function GhostProbe({
+  ghostRef,
+  origin,
+}: {
+  ghostRef: React.RefObject<HTMLDivElement | null>;
+  origin: { x: number; y: number };
+}) {
+  return (
+    <div
+      ref={ghostRef}
+      data-testid="ghost"
+      style={{
+        transform: `translate3d(${String(origin.x)}px, ${String(origin.y)}px, 0)`,
+      }}
+    />
   );
 }
 
@@ -164,6 +191,47 @@ describe("usePaneDrag", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("legt die Kandidaten ab dem Scharfwerden offen und räumt sie nach dem Zug wieder weg", () => {
+    // Politur-Runde (Nutzer-Befund: "er muss mir natürlich auch anzeigen, wo
+    // ich ihn jetzt loslassen könnte"): die gültigen Ziele müssen SOFORT beim
+    // Scharfwerden sichtbar werden können, nicht erst beim zufälligen Hover.
+    const { handle } = setup(["pane-rechts"]);
+
+    // Vor dem Scharfwerden: keine Kandidaten offengelegt.
+    expect(screen.getByText("kandidaten:-")).toBeInTheDocument();
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    expect(screen.getByText("kandidaten:-")).toBeInTheDocument();
+
+    // Scharf — noch über keinem Ziel, aber die Kandidaten stehen schon fest.
+    fireEvent.pointerMove(handle, { clientX: 50, clientY: 50 });
+    expect(screen.getByText("kandidaten:pane-rechts")).toBeInTheDocument();
+    expect(screen.getByText("ziel:-")).toBeInTheDocument();
+
+    fireEvent.pointerUp(handle, { clientX: 50, clientY: 50 });
+    expect(screen.getByText("kandidaten:-")).toBeInTheDocument();
+  });
+
+  it("mountet die Zeigerplakette beim Scharfwerden und führt sie über das Ref weiter", () => {
+    // Regressionstest zum Nutzer-Befund "Ich muss erkennen können, dass ich
+    // diesen Tab jetzt in der Hand habe": beim Umbau zum geteilten Hook war
+    // das Ghost-Element des Explorer-Ziehens nicht mitgekommen.
+    const { handle } = setup(["pane-rechts"]);
+
+    expect(screen.queryByTestId("ghost")).not.toBeInTheDocument();
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(handle, { clientX: 30, clientY: 40 });
+
+    // Startlage aus `ghostOrigin` (das erste Bild) …
+    const ghost = screen.getByTestId("ghost");
+    expect(ghost.style.transform).toBe("translate3d(30px, 40px, 0)");
+    // … danach direkt ans DOM, ohne React-Render (der Hook schreibt selbst).
+    fireEvent.pointerMove(handle, { clientX: 150, clientY: 60 });
+    expect(ghost.style.transform).toBe("translate3d(150px, 60px, 0)");
+
+    fireEvent.pointerUp(handle, { clientX: 150, clientY: 60 });
+    expect(screen.queryByTestId("ghost")).not.toBeInTheDocument();
+  });
+
   it("ignoriert die sekundäre Maustaste (sie gehört den Kontextmenüs)", () => {
     const { onDrop, handle } = setup();
 
@@ -172,5 +240,57 @@ describe("usePaneDrag", () => {
     fireEvent.pointerUp(handle, { clientX: 150, clientY: 50 });
 
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("trägt eine Objekt-Quelle (Tab-Zug) genauso wie die String-Quelle des Slot-Tauschs", () => {
+    // Der Hook ist generisch über die Quelle — der Slot-Tausch zieht einen
+    // String (`paneId`), der Tab-Zug ein Objekt (`{paneId, tabId}`). Diese
+    // zweite Instanzierung hier stellt sicher, dass Erweiterungen am
+    // geteilten Hook (Ghost, Kandidaten) beide Formen weiter tragen; die
+    // End-zu-End-Nachweise beider echter Gesten stehen in App.test.tsx.
+    const onDrop = vi.fn();
+    const seen: ({ paneId: string; tabId: string } | null)[] = [];
+    function TabHarness() {
+      const drag = usePaneDrag<{ paneId: string; tabId: string }>();
+      seen.push(drag.source);
+      return (
+        <>
+          <button
+            type="button"
+            onPointerDown={(event) => {
+              drag.startDrag(event, {
+                source: { paneId: "pane-links", tabId: "tab-2" },
+                candidatePaneIds: ["pane-rechts"],
+                onDrop,
+              });
+            }}
+          >
+            {"Chip"}
+          </button>
+          {Object.keys(PANE_RECTS).map((paneId) => (
+            <div key={paneId} data-pane-id={paneId} />
+          ))}
+        </>
+      );
+    }
+    render(<TabHarness />);
+    for (const [paneId, rect] of Object.entries(PANE_RECTS)) {
+      const element = document.querySelector<HTMLElement>(
+        `[data-pane-id="${paneId}"]`,
+      );
+      if (element) element.getBoundingClientRect = () => rect;
+    }
+    const chip = screen.getByRole("button", { name: "Chip" });
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+    expect(seen.at(-1)).toEqual({ paneId: "pane-links", tabId: "tab-2" });
+    fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    expect(onDrop).toHaveBeenCalledWith("pane-rechts");
+    expect(seen.at(-1)).toBeNull();
   });
 });

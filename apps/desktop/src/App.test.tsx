@@ -1606,7 +1606,23 @@ describe("Grid / Mehrfach-Pane", () => {
 
     fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+
+    // Politur-Runde (Nutzer-Befund "es fühlt sich nicht wie ein Drag an"):
+    // WÄHREND des Zugs hängt die Plakette am Zeiger, und die Ziel-Leiste
+    // zeigt den Einfüge-Platzhalter mit der Nummer, die der Tab dort bekäme
+    // (Ziel-Pane hat einen Tab → der Neuzugang würde Nummer 2).
+    expect(container.querySelector("[data-tab-drag-ghost]")).not.toBeNull();
+    const incoming = targetSection.querySelector("[data-incoming-tab]");
+    expect(incoming).not.toBeNull();
+    expect(incoming).toHaveTextContent("2");
+
     fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    // Nach dem Drop: Plakette und Platzhalter sind weg, der angekommene Chip
+    // trägt die einmalige Ankunfts-Quittung (pc-drop-settle, PaneTabs.tsx).
+    expect(container.querySelector("[data-tab-drag-ghost]")).toBeNull();
+    expect(container.querySelector("[data-incoming-tab]")).toBeNull();
+    expect(container.querySelector("[data-drop-settle]")).not.toBeNull();
 
     await waitFor(() => {
       expect(movedSurface.dataset.paneId).toBe(targetPaneId);

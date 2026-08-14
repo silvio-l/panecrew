@@ -135,6 +135,46 @@ describe("PaneTabs", () => {
     expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
   });
 
+  describe("Tab-Zug: Einfüge-Platzhalter und Ankunfts-Quittung", () => {
+    // Politur-Runde nach Nutzer-Befund ("er muss mir natürlich auch
+    // anzeigen, wo ich ihn jetzt loslassen könnte und ihn dort einsortieren
+    // kann"): schwebt ein Tab-Zug über der Pane, zeigt die Leiste einen
+    // Platzhalter-Chip mit der Nummer, die der Tab hier bekäme; nach dem
+    // Drop quittiert der angekommene Chip mit einem einmaligen Wasch.
+    it("zeigt den Platzhalter-Chip mit der künftigen Nummer, solange ein Zug über der Pane schwebt", () => {
+      const { container, rerender } = renderTabs(
+        baseProps({ incomingTabNumber: 3 }),
+      );
+
+      const slot = container.querySelector("[data-incoming-tab]");
+      expect(slot).not.toBeNull();
+      expect(slot).toHaveTextContent("3");
+      // Rein visuell, kein Bedienelement: dem Zeiger gehört der Zug.
+      expect(slot).toHaveAttribute("aria-hidden", "true");
+
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...baseProps({ incomingTabNumber: null })} />
+        </Tooltip.Provider>,
+      );
+      expect(container.querySelector("[data-incoming-tab]")).toBeNull();
+    });
+
+    it("quittiert den angekommenen Tab mit dem Settle-Wasch, nur an genau diesem Chip", () => {
+      const { container } = renderTabs(
+        baseProps({ dropSettle: { tabId: "tab-2", nonce: 1 } }),
+      );
+
+      const washes = container.querySelectorAll("[data-drop-settle]");
+      expect(washes).toHaveLength(1);
+      expect(
+        screen
+          .getByRole("button", { name: "Terminal 2" })
+          .querySelector("[data-drop-settle]"),
+      ).not.toBeNull();
+    });
+  });
+
   describe("Needs-Attention: Ungelesen-Punkt", () => {
     // Umbau 2026-08-13 (Nutzer-Neuspezifikation, s. Kopfkommentar von
     // PaneTabs.tsx, Umbau-Absatz): persistent statt transient. Der
