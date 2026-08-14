@@ -88,3 +88,48 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+  # Dasselbe tauri-action-Verhalten wie in release-nightly.yml (dortiger
+  # Kommentar hat die volle Begründung + empirische Verifikation): latest.json
+  # verlinkt pro Plattform die api.github.com-Asset-URL statt des normalen
+  # github.com/.../releases/download/-Links -- Erstere unterliegt GitHubs
+  # anonymem 60-Requests/Stunde-Limit und lässt "Installieren" im Client
+  # scheitern, obwohl "Nach Updates suchen" zuvor anstandslos funktioniert.
+  # Läuft trotz `releaseDraft: true` unbesorgt gegen den Draft -- der
+  # GITHUB_TOKEN dieses Jobs liest/schreibt Draft-Assets genauso wie
+  # veröffentlichte, nur ein anonymer Client-Download bräuchte erst das
+  # manuelle Publish (unverändertes Vier-Augen-Gate).
+  fix-latest-json:
+    name: latest.json auf Direkt-Download-URLs umbiegen
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Asset-URLs von api.github.com auf browser_download_url umschreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$REPO" --pattern latest.json --output latest.json --clobber
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            const repo = process.env.REPO;
+            const data = JSON.parse(fs.readFileSync("latest.json", "utf8"));
+            for (const platform of Object.values(data.platforms)) {
+              const match = platform.url.match(/\/releases\/assets\/(\d+)$/);
+              if (!match) continue;
+              const assetApiUrl =
+                "repos/" + repo + "/releases/assets/" + match[1];
+              const browserUrl = execSync(
+                "gh api " + assetApiUrl + " --jq .browser_download_url",
+                { encoding: "utf8" },
+              ).trim();
+              platform.url = browserUrl;
+            }
+            fs.writeFileSync("latest.json", JSON.stringify(data, null, 2) + "\n");
+          '
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber

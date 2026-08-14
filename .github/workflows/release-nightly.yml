@@ -161,3 +161,51 @@ jobs:
           # Fenstertitel, Updater-Endpoints landen wie erwartet aus dem
           # Nightly-Overlay) -- s. docs/decisions.md, Ticket 30.
           args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json
+
+  # tauri-action verlinkt in latest.json pro Plattform die GitHub-API-Asset-URL
+  # (api.github.com/repos/.../releases/assets/<id>) statt des normalen
+  # Download-Links (github.com/.../releases/download/...). Die API-URL
+  # unterliegt GitHubs anonymem 60-Requests/Stunde-Limit pro IP -- das trifft
+  # jeden echten Nutzer, dessen Netz dieses Kontingent schon anderweitig
+  # ausgeschöpft hat: `check()` findet das Update trotzdem (liest latest.json
+  # selbst über den unlimitierten .../releases/latest/download/-Pfad), aber
+  # der Download-Schritt beim Klick auf "Installieren" scheitert dann mit
+  # genau diesem Rate-Limit. Empirisch verifiziert 2026-08-14 (curl gegen
+  # dieselbe Asset-URL: 403/remaining:0 anonym, 200 mit Auth-Token). Eigener
+  # Job statt Schritt im Matrix-Build: macOS- und Windows-Job liefen parallel
+  # und tauri-action mergt beide Plattform-Einträge in dieselbe latest.json --
+  # ein Patch mitten in der Matrix liefe der Gegenseite ins offene Messer.
+  fix-latest-json:
+    name: latest.json auf Direkt-Download-URLs umbiegen
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Asset-URLs von api.github.com auf browser_download_url umschreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: nightly-latest
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$REPO" --pattern latest.json --output latest.json --clobber
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            const repo = process.env.REPO;
+            const data = JSON.parse(fs.readFileSync("latest.json", "utf8"));
+            for (const platform of Object.values(data.platforms)) {
+              const match = platform.url.match(/\/releases\/assets\/(\d+)$/);
+              if (!match) continue;
+              const assetApiUrl =
+                "repos/" + repo + "/releases/assets/" + match[1];
+              const browserUrl = execSync(
+                "gh api " + assetApiUrl + " --jq .browser_download_url",
+                { encoding: "utf8" },
+              ).trim();
+              platform.url = browserUrl;
+            }
+            fs.writeFileSync("latest.json", JSON.stringify(data, null, 2) + "\n");
+          '
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber

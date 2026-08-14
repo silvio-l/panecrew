@@ -279,6 +279,7 @@
     "restartConfirm": "Restart now",
     "restartLater": "Later",
     "error": "The update could not be installed.",
+    "retry": "Retry",
     "dismiss": "Dismiss",
     "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
   }

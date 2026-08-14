@@ -375,12 +375,21 @@ function message(
       return state.percent === null
         ? t("updater.downloading")
         : t("updater.downloadingPercent", { percent: state.percent });
-    case "error":
+    case "checkError":
       return (
         <>
           {t("about.checkFailed")}
           <QuietButton onClick={() => void openUrl(RELEASES_URL)}>
             {t("about.checkOnGithub")}
+          </QuietButton>
+        </>
+      );
+    case "installError":
+      return (
+        <>
+          {t("updater.error")}
+          <QuietButton onClick={() => onInstall(state.update)}>
+            {t("updater.retry")}
           </QuietButton>
         </>
       );

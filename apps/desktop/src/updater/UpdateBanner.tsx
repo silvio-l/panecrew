@@ -87,15 +87,29 @@ export function UpdateBanner() {
     );
   }
 
-  if (state.phase === "error") {
+  if (state.phase === "installError") {
     return (
       <Banner>
         <span className="text-(--pc-foreground)">{t("updater.error")}</span>
-        <QuietBannerButton onClick={dismiss}>
-          {t("updater.dismiss")}
-        </QuietBannerButton>
+        <div className="flex items-center gap-3">
+          <BannerButton onClick={() => installAndRestart(state.update)}>
+            {t("updater.retry")}
+          </BannerButton>
+          <QuietBannerButton onClick={dismiss}>
+            {t("updater.dismiss")}
+          </QuietBannerButton>
+        </div>
       </Banner>
     );
+  }
+
+  // Ein fehlgeschlagener Hintergrund-Check (z. B. kein Netz beim Start)
+  // verdient keinen Toast — dieselbe Zurückhaltung wie beim "current"-Zustand
+  // oben (Kommentarkopf dieser Datei). Der manuelle Weg im Über-Fenster zeigt
+  // ihn sichtbar an, hier bliebe er sonst unbeantwortbarer Lärm bei jedem
+  // Start ohne Verbindung.
+  if (state.phase === "checkError") {
+    return null;
   }
 
   return null;

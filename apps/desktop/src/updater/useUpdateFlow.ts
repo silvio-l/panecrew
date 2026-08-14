@@ -11,7 +11,8 @@ export type UpdateFlowState =
   | { phase: "available"; update: Update }
   | { phase: "downloading"; update: Update; percent: number | null }
   | { phase: "confirmRestart"; update: Update }
-  | { phase: "error" };
+  | { phase: "checkError" }
+  | { phase: "installError"; update: Update };
 
 /**
  * Der eine Ablauf für „prüfen → herunterladen & installieren → vor dem
@@ -50,7 +51,7 @@ export function useUpdateFlow(currentVersion: string | null) {
         setState({ phase: "available", update: result.update });
         break;
       case "failed":
-        setState({ phase: "error" });
+        setState({ phase: "checkError" });
         break;
     }
   }, [currentVersion]);
@@ -87,7 +88,7 @@ export function useUpdateFlow(currentVersion: string | null) {
       })
       .catch(() => {
         if (!mounted.current) return;
-        setState({ phase: "error" });
+        setState({ phase: "installError", update });
       });
   }, []);
 
