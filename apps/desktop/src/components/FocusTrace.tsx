@@ -67,12 +67,19 @@ export function FocusTrace({
 
     // Misst Pin, Ziel-Pane und Grid-Kante frisch und schreibt Route + Pad
     // direkt ans SVG. `animate` nur beim Fokuswechsel — reine
-    // Geometrie-Updates (Resize, Template) zeichnen sofort fertig, sonst
-    // spielte jeder Explorer-Resize-Frame die Aufbau-Animation neu an.
+    // Geometrie-Updates (Resize, Template, Selbstkorrektur-Takt) zeichnen
+    // sofort fertig, sonst spielte jeder Explorer-Resize-Frame die
+    // Aufbau-Animation neu an.
+    //
+    // Idempotent (Fix 2026-08-14, „Leiterbahn läuft durch den Pane-Header"):
+    // erst rechnen, nur bei tatsächlich geänderter Geometrie schreiben. Damit
+    // ist jeder stille Nachzieh-Anlass (settle, Observer, Takt) gratis und
+    // bricht insbesondere nie eine gerade laufende Aufbau-Animation ab —
+    // die Voraussetzung dafür, dass unten großzügig nachgemessen werden darf.
     const draw = (animate: boolean): Element | null => {
-      animationRef.current?.cancel();
-      animationRef.current = null;
       if (focusedPaneId === null) {
+        animationRef.current?.cancel();
+        animationRef.current = null;
         hide();
         return null;
       }
@@ -87,6 +94,8 @@ export function FocusTrace({
       );
       const workspaceEl = document.querySelector(".pc-workspace");
       if (!pinEl || !paneEl || !workspaceEl) {
+        animationRef.current?.cancel();
+        animationRef.current = null;
         hide();
         return null;
       }
@@ -94,6 +103,8 @@ export function FocusTrace({
       const pinRect = pinEl.getBoundingClientRect();
       const paneRect = paneEl.getBoundingClientRect();
       if (paneRect.width <= 0 || paneRect.height <= 0) {
+        animationRef.current?.cancel();
+        animationRef.current = null;
         hide();
         return paneEl;
       }
@@ -109,18 +120,32 @@ export function FocusTrace({
         workspaceLeft:
           workspaceEl.getBoundingClientRect().left - origin.left,
       });
-      path.setAttribute("d", chamferedPathD(points, TRACE_CHAMFER_PX));
       const end = points[points.length - 1];
       if (!end) {
+        animationRef.current?.cancel();
+        animationRef.current = null;
         hide();
         return paneEl;
       }
+      const d = chamferedPathD(points, TRACE_CHAMFER_PX);
+      const padX = String(end.x - TRACE_PAD_WIDTH_PX / 2);
+      const padY = String(end.y - TRACE_PAD_HEIGHT_PX);
+      const unchanged =
+        path.getAttribute("d") === d &&
+        pad.getAttribute("x") === padX &&
+        pad.getAttribute("y") === padY &&
+        !pad.hasAttribute("display");
+      if (unchanged && !animate) return paneEl;
+
+      animationRef.current?.cancel();
+      animationRef.current = null;
+      path.setAttribute("d", d);
       // Ganz oberhalb der Kante, nicht mittig auf ihr: mittig geviertelt der
       // 4px-Pad von der 1px-Border praktisch unsichtbar (optisch geprüft,
       // Harness-Screenshot) — als Knubbel VOR der Kante bleibt er ein eigenes
       // Bauteil statt in der Linie zu verschwinden.
-      pad.setAttribute("x", String(end.x - TRACE_PAD_WIDTH_PX / 2));
-      pad.setAttribute("y", String(end.y - TRACE_PAD_HEIGHT_PX));
+      pad.setAttribute("x", padX);
+      pad.setAttribute("y", padY);
       pad.removeAttribute("display");
 
       // Aufbau über stroke-dasharray/-dashoffset am Pfad selbst (WAAPI wie
@@ -144,7 +169,7 @@ export function FocusTrace({
 
     const shouldAnimate = focusedPaneId !== prevFocusedRef.current;
     prevFocusedRef.current = focusedPaneId;
-    const paneEl = draw(shouldAnimate);
+    let observedEl = draw(shouldAnimate);
 
     // Template-/Fokus-Modus-Wechsel bewegen die Zellen über eine 260ms-FLIP-
     // Transform-Animation (useGridTransitions.ts), und getBoundingClientRect
@@ -155,25 +180,44 @@ export function FocusTrace({
     // Explorer-Resize, Fenster-Resize und Template-Geometrie ändern alle die
     // GRÖSSE der Ziel-Pane (fluides fr-Grid) — ein Observer auf genau diesem
     // Element deckt sie gemeinsam ab, ohne ein window-Resize-Listener-Paar
-    // pflegen zu müssen. Positionsänderungen ohne Größenänderung gibt es in
-    // diesem Layout nicht.
+    // pflegen zu müssen. Der Erst-Callback (feuert bei observe() immer) läuft
+    // seit dem Idempotenz-Umbau bewusst MIT: normalerweise ein No-Op, aber
+    // hat sich das Layout zwischen Sofort-Messung und Erst-Zustellung noch
+    // bewegt (Kaltstart-Jank, Session-Restore mit mehreren PTY-Spawns), steckt
+    // die Korrektur genau in dieser sonst verschluckten Zustellung.
     let observer: ResizeObserver | null = null;
-    if (paneEl !== null && typeof ResizeObserver === "function") {
-      let initialCallback = true;
-      observer = new ResizeObserver(() => {
-        // Der Erst-Callback feuert sofort beim observe() — er würde die
-        // gerade gestartete Aufbau-Animation sinnlos abbrechen.
-        if (initialCallback) {
-          initialCallback = false;
-          return;
-        }
-        draw(false);
-      });
-      observer.observe(paneEl);
+    if (typeof ResizeObserver === "function") {
+      observer = new ResizeObserver(() => draw(false));
+      if (observedEl !== null) observer.observe(observedEl);
     }
+
+    // Selbstkorrektur-Takt, der eigentliche Fix hinter dem Befund „Leiterbahn
+    // läuft durch den Pane-Header/Breadcrumb" (2026-08-14): settle + Observer
+    // decken NICHT jede Geometrieänderung ab. Zwei nachgewiesene Löcher:
+    // (a) Positionswechsel ohne Größenänderung — der größengleiche
+    //     Slot-Tausch, dessen FLIP-Transform die 320ms-settle-Messung unter
+    //     Last überdauern kann; der ResizeObserver schweigt dazu prinzipbedingt.
+    // (b) Der beobachtete Knoten stirbt (React-Remount, in der Dev-Instanz
+    //     v. a. via HMR) — ein ResizeObserver auf einem ausgehängten Element
+    //     feuert nie wieder, jede spätere Layout-Änderung liefe ins Leere
+    //     (im Headless-Chrome reproduziert: dauerhaft ~125px Abweichung).
+    // Ein 1s-Takt misst nach (2 querySelector + 4 Rects, Schreiben nur bei
+    // Differenz — im Normalfall also reine Lesearbeit ohne Style-Invalidation)
+    // und hängt den Observer um, wenn das erste `[data-pane-id]`-Match nicht
+    // mehr der beobachtete Knoten ist. Kein rAF-Dauerlauf: der Takt ist die
+    // Rückfallebene, die schnellen Wege oben bleiben zuständig.
+    const verify = window.setInterval(() => {
+      const el = draw(false);
+      if (el !== observedEl && observer !== null) {
+        observer.disconnect();
+        if (el !== null) observer.observe(el);
+      }
+      observedEl = el;
+    }, 1000);
 
     return () => {
       window.clearTimeout(settle);
+      window.clearInterval(verify);
       observer?.disconnect();
       animationRef.current?.cancel();
       animationRef.current = null;

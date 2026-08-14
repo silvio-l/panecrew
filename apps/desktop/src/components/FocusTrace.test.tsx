@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FocusTrace } from "./FocusTrace";
 
 // jsdom rechnet kein Layout — getBoundingClientRect liefert überall Nullen.
@@ -46,9 +46,13 @@ function mountFixture() {
   pin.getBoundingClientRect = () => domRect(0, 92, 16, 16); // Mitte (8, 100)
   workspace.getBoundingClientRect = () => domRect(20, 30, 500, 400);
   pane.getBoundingClientRect = () => domRect(28, 40, 400, 300);
+  return { pin, workspace, pane };
 }
 
 describe("FocusTrace", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("zeichnet die gefaste Route vom Pin zum Pad auf der Pane-Oberkante", () => {
     mountFixture();
     const { container } = render(
@@ -103,6 +107,72 @@ describe("FocusTrace", () => {
     );
 
     expect(container.querySelector("path")?.getAttribute("d")).toBeNull();
+  });
+
+  // Regressionstest zum Befund „Leiterbahn läuft durch den Pane-Header"
+  // (2026-08-14): draw() hatte nach der 320ms-settle-Frist nur noch EINEN
+  // ResizeObserver auf einem konkreten DOM-Knoten als Korrektiv. Verschiebt
+  // sich die Pane ohne Größenänderung (größengleicher Slot-Tausch, dessen
+  // FLIP die settle-Messung verpasst) oder wird der beobachtete Knoten
+  // ersetzt (React-Remount/HMR in der Dev-Instanz), blieb die Leitung
+  // dauerhaft auf der veralteten Geometrie stehen. Der Selbstkorrektur-Takt
+  // misst jetzt periodisch nach — jsdom hat keinen ResizeObserver, der Takt
+  // ist hier also nachweislich der einzige Korrekturweg.
+  it("korrigiert eine veraltete Route auch ohne Resize- oder State-Signal", () => {
+    vi.useFakeTimers();
+    const { pane } = mountFixture();
+    const { container } = render(
+      <FocusTrace
+        focusedPaneId="pane-1"
+        template="quad"
+        slots={[]}
+        maximizedPaneId={null}
+      />,
+    );
+    // settle-Frist verstreichen lassen — danach gab es im alten Code keinen
+    // weiteren Zeichenanlass mehr.
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    // Positionswechsel OHNE Größenänderung, ohne gridState-Änderung:
+    pane.getBoundingClientRect = () => domRect(228, 40, 400, 300);
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const path = container.querySelector("path");
+    expect(path?.getAttribute("d")).toBe(
+      "M 8 100 L 12 100 L 16 96 L 16 42 L 22 36 L 250 36 L 252 38 L 252 40",
+    );
+  });
+
+  // Kehrseite desselben Fixes: der Takt (und jeder andere stille Nachzieh-
+  // Anlass) darf bei UNVERÄNDERTER Geometrie nichts neu schreiben — sonst
+  // würde er u. a. eine gerade laufende Aufbau-Animation grundlos abbrechen.
+  it("schreibt bei unveränderter Geometrie keine neuen Attribute", () => {
+    vi.useFakeTimers();
+    mountFixture();
+    const { container } = render(
+      <FocusTrace
+        focusedPaneId="pane-1"
+        template="quad"
+        slots={[]}
+        maximizedPaneId={null}
+      />,
+    );
+    const path = container.querySelector("path") as SVGPathElement;
+    const writes: string[] = [];
+    const original = path.setAttribute.bind(path);
+    path.setAttribute = (name: string, value: string) => {
+      writes.push(name);
+      original(name, value);
+    };
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(writes.filter((name) => name === "d")).toEqual([]);
   });
 
   it("bleibt für Screenreader unsichtbar und fängt keine Zeigereingaben", () => {
