@@ -10,6 +10,7 @@ import {
   focusPane as focusPaneInState,
   moveTerminalTab as moveTerminalTabInState,
   moveTerminalTabToEmptySlot as moveTerminalTabToEmptySlotInState,
+  movePaneToEmptySlot as movePaneToEmptySlotInState,
   openTerminalTab as openTerminalTabInState,
   renameTerminalTab as renameTerminalTabInState,
   swapPanes as swapPanesInState,
@@ -77,6 +78,11 @@ export interface Grid {
     tabId: string,
     targetSlotIndex: number,
   ) => void;
+  /** Zieht eine GANZE Pane in einen leeren Slot — identisches Pane-Objekt,
+   * unveränderte `paneId` (React-Key der Zelle: keine neue Id, sonst
+   * remountet der gekeyte Teilbaum und die PTYs sterben, s. `gridState.ts`).
+   * No-Op, wenn der Slot inzwischen belegt ist. */
+  movePaneToEmptySlot: (paneId: string, targetSlotIndex: number) => void;
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
   renameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
@@ -183,6 +189,15 @@ export function useGrid(): Grid {
     [],
   );
 
+  const movePaneToEmptySlot = useCallback(
+    (paneId: string, targetSlotIndex: number) => {
+      setState((current) =>
+        movePaneToEmptySlotInState(current, paneId, targetSlotIndex),
+      );
+    },
+    [],
+  );
+
   const renameTerminalTab = useCallback(
     (paneId: string, tabId: string, label: string | null) => {
       setState((current) => renameTerminalTabInState(current, paneId, tabId, label));
@@ -221,6 +236,7 @@ export function useGrid(): Grid {
     closeTerminalTab,
     moveTerminalTab,
     moveTerminalTabToEmptySlot,
+    movePaneToEmptySlot,
     renameTerminalTab,
     switchToTerminalTab,
     switchToFileTab,

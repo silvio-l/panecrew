@@ -2044,6 +2044,87 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(cellSections()[1]).toBe(first);
   });
 
+  it("zieht eine GANZE Pane per Header-Drag auf einen leeren Slot — alle PTYs laufen weiter, nur die Slot-Position ändert sich", async () => {
+    // Nutzer-Wunsch: "ich will ein pane auch drag&droppen können von einem
+    // auf ein freien slot inkl. aller laufenden pty in dem pane, die dürfen
+    // dadurch nicht beeinträchtigt werden." Bewusst mit MEHREREN
+    // Terminal-Tabs und unter StrictMode: das ist exakt die Konstellation
+    // der Placement-Bug-Klasse (Zellen-Umsortieren + Doppel-Effekt-Zyklus,
+    // s. `terminalTabSurfaceOrder`) — eine Pane mit einem Tab hätte den
+    // riskanten Teil gar nicht erst belastet.
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />, { wrapper: StrictMode });
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
+    );
+    await screen.findByRole("button", { name: "Terminal 2" });
+    // Nullpunkt wie in den Zug-Tests darüber: StrictMode-Mount-Rauschen
+    // gehört zum Aufbau, nicht zum Zug.
+    invokeMock.mockClear();
+
+    const surfaces = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-pane-id]"));
+    const surfacesBefore = surfaces();
+    // Zwei Terminal-Flächen, beide derselben Pane.
+    expect(surfacesBefore.length).toBeGreaterThanOrEqual(2);
+    const paneId = surfacesBefore[0]?.dataset.paneId;
+    expect(
+      surfacesBefore.every((surface) => surface.dataset.paneId === paneId),
+    ).toBe(true);
+    const workspace = container.querySelector(".pc-workspace");
+    if (!workspace) throw new Error("Workspace nicht gefunden");
+    // Vorher: die Pane-Zelle ist das ERSTE Grid-Kind (Slot 0).
+    expect(workspace.children[0]?.querySelector("[data-pane-id]")).not.toBeNull();
+
+    // jsdom hat kein Layout: nur der leere Ziel-Slot (Index 1) bekommt ein
+    // Rechteck — die Pane-Flächen bleiben 0×0, es KANN also nur der leere
+    // Slot getroffen werden.
+    const emptyCell = container.querySelector<HTMLElement>('[data-empty-slot="1"]');
+    if (!emptyCell) throw new Error("Leerer Slot 1 nicht gefunden");
+    emptyCell.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 200, bottom: 100 }) as DOMRect;
+
+    const header = container.querySelector("[data-pane-id] header");
+    if (!(header instanceof HTMLElement)) {
+      throw new Error("Pane-Header nicht gefunden");
+    }
+    header.setPointerCapture = vi.fn();
+    header.releasePointerCapture = vi.fn();
+    header.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(header, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(header, { clientX: 150, clientY: 50 });
+    // Während des Schwebens: das Umzugs-Angebot des leeren Slots (nicht das
+    // "Neue Pane"-Angebot des Tab-Zugs — hier zieht die ganze Pane).
+    expect(screen.getByText("Pane hierher")).toBeInTheDocument();
+    fireEvent.pointerUp(header, { clientX: 150, clientY: 50 });
+
+    // Nach dem Drop: Slot 0 zeigt wieder den Picker, die Pane-Zelle ist das
+    // ZWEITE Grid-Kind — und es sind DIESELBEN DOM-Knoten mit der
+    // UNVERÄNDERTEN paneId (eine neue Id hätte den gekeyten Teilbaum
+    // remountet und die PTYs gekillt).
+    await waitFor(() => {
+      expect(container.querySelector('[data-empty-slot="0"]')).not.toBeNull();
+    });
+    expect(workspace.children[1]?.querySelector("[data-pane-id]")).not.toBeNull();
+    const surfacesAfter = surfaces();
+    expect(surfacesAfter).toEqual(surfacesBefore);
+    expect(
+      surfacesAfter.every((surface) => surface.dataset.paneId === paneId),
+    ).toBe(true);
+    // Kern der Zusicherung: beide PTYs der Pane unangetastet.
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
+  }, 25_000);
+
   // Neuzuweisung eines BELEGTEN Slots (dritter der drei im Plan genannten
   // Verlassen-Wege, `App.tsx`s `assignProjectToSlot` guardet und vergisst
   // die verdrängte Pane bereits) hat in diesem Schritt noch keinen

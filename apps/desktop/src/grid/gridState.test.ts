@@ -14,6 +14,7 @@ import {
   focusedProjectPath,
   moveTerminalTab,
   moveTerminalTabToEmptySlot,
+  movePaneToEmptySlot,
   openTerminalTab,
   renameTerminalTab,
   swapPanes,
@@ -711,6 +712,74 @@ describe("gridState", () => {
       expect(
         moveTerminalTabToEmptySlot(start, "pane-0", "gibt-es-nicht", 1, "pane-neu"),
       ).toBe(start);
+    });
+  });
+
+  describe("movePaneToEmptySlot", () => {
+    /** Eine Pane mit zwei Tabs in Slot 0, Slots 1–3 leer. */
+    function onePaneTwoTabs(): GridState {
+      return openTerminalTab(
+        assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+        "pane-0",
+        "tab-0b",
+      );
+    }
+
+    it("stellt die Pane als IDENTISCHES Objekt in den Ziel-Slot und leert die Quelle", () => {
+      // Identität ist hier die eigentliche Zusicherung: die `paneId` ist der
+      // React-Key der Zelle — ein neues Objekt wäre verkraftbar, eine neue
+      // Id würde den Teilbaum remounten und die PTYs killen.
+      const start = onePaneTwoTabs();
+      const paneBefore = start.slots[0] as Pane;
+      const next = movePaneToEmptySlot(start, "pane-0", 2);
+
+      expect(next.slots[2]).toBe(paneBefore);
+      expect(next.slots[0]).toBeNull();
+      expect((next.slots[2] as Pane).terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-0",
+        "tab-0b",
+      ]);
+    });
+
+    it("fokussiert die gezogene Pane (gerichteter Zug, anders als der symmetrische Tausch)", () => {
+      const start = assignProjectToSlot(
+        onePaneTwoTabs(),
+        1,
+        "/repo/b",
+        "pane-1",
+        "tab-1",
+      );
+      // pane-1 ist nach der Zuweisung fokussiert — der Zug von pane-0 holt
+      // den Fokus zu sich.
+      expect(start.focusedPaneId).toBe("pane-1");
+      const next = movePaneToEmptySlot(start, "pane-0", 2);
+      expect(next.focusedPaneId).toBe("pane-0");
+    });
+
+    it("lässt maximizedPaneId unberührt (die Pane existiert weiter)", () => {
+      const start = enterFocusMode(onePaneTwoTabs(), "pane-0");
+      const next = movePaneToEmptySlot(start, "pane-0", 3);
+      expect(next.maximizedPaneId).toBe("pane-0");
+    });
+
+    it("ist ein No-Op auf einen BELEGTEN Slot (Wettlauf mit einer parallelen Zuweisung)", () => {
+      const start = assignProjectToSlot(
+        onePaneTwoTabs(),
+        1,
+        "/repo/b",
+        "pane-1",
+        "tab-1",
+      );
+      expect(movePaneToEmptySlot(start, "pane-0", 1)).toBe(start);
+      // Auch der eigene Slot ist "belegt" — von der Pane selbst.
+      expect(movePaneToEmptySlot(start, "pane-0", 0)).toBe(start);
+    });
+
+    it("ist ein No-Op bei Index außerhalb des Templates und unbekannter Pane", () => {
+      const start = onePaneTwoTabs();
+      expect(movePaneToEmptySlot(start, "pane-0", -1)).toBe(start);
+      expect(movePaneToEmptySlot(start, "pane-0", 4)).toBe(start);
+      expect(movePaneToEmptySlot(start, "gibt-es-nicht", 1)).toBe(start);
     });
   });
 

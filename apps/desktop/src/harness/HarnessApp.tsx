@@ -160,6 +160,7 @@ export function HarnessApp({
                 onAssignProject={() => undefined}
                 onClosePane={grid.closePane}
                 onSwapPanes={grid.swapPanes}
+                onMovePaneToEmptySlot={grid.movePaneToEmptySlot}
                 onFocusPane={grid.focusPane}
                 onOpenTerminalTab={grid.openTerminalTab}
                 onCloseTerminalTab={grid.closeTerminalTab}

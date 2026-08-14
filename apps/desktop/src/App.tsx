@@ -107,6 +107,7 @@ function App() {
     assignProject,
     closePane,
     swapPanes,
+    movePaneToEmptySlot,
     switchTemplate,
     focusPane,
     openTerminalTab,
@@ -971,6 +972,10 @@ function App() {
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
               onSwapPanes={swapPanes}
+              // Ungeguardet wie der Tausch: die Pane bleibt vollständig
+              // bestehen (kein PTY-Ende, kein Editor-Verlust), nur ihre
+              // Slot-Position ändert sich.
+              onMovePaneToEmptySlot={movePaneToEmptySlot}
               onFocusPane={focusPane}
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}

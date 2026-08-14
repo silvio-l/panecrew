@@ -93,6 +93,7 @@ export function PaneGrid({
   onAssignProject,
   onClosePane,
   onSwapPanes,
+  onMovePaneToEmptySlot,
   onFocusPane,
   onOpenTerminalTab,
   onCloseTerminalTab,
@@ -161,6 +162,12 @@ export function PaneGrid({
     tabId: string,
     slotIndex: number,
   ) => void;
+  /** Eine GANZE Pane per Header-Griff auf einen leeren Slot ziehen — die
+   * Pane wandert mitsamt aller Tabs/PTYs als identisches Objekt (die
+   * `paneId` bleibt, s. `gridState.ts`), nur ihre Slot-Position ändert
+   * sich. Das zweite Zielangebot desselben Griffs, der auf belegten Panes
+   * tauscht (`onSwapPanes`). */
+  onMovePaneToEmptySlot: (paneId: string, slotIndex: number) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — der Klick auf den
@@ -200,6 +207,17 @@ export function PaneGrid({
   // Trefferprüfung Panes, die niemand sieht. Gilt für beide Züge.
   const dragEnabled = state.maximizedPaneId === null;
 
+  // Leere Slots als Ziel BEIDER Züge — der Tab-Zug erzeugt dort eine frische
+  // Pane im Projekt der Quelle, der Pane-Zug stellt die ganze Pane dort ab
+  // (Nutzer-Wunsch "ich will ein pane auch drag&droppen können von einem auf
+  // ein freien slot"). Restoring-Slots ausgenommen: die sind bereits an die
+  // laufende Sitzungs-Wiederherstellung vergeben, ein Drop dorthin
+  // konkurrierte mit ihr um denselben Slot (dieselbe Sperre wie der
+  // Picker-Knopf des Slots selbst, `ProjectPicker.tsx`).
+  const emptyTargetSlots = state.slots.flatMap((slot, index) =>
+    slot === null && !restoringSlots.has(index) ? [index] : [],
+  );
+
   const startPaneDrag =
     (paneId: string) => (event: ReactPointerEvent<HTMLElement>) => {
       if (!dragEnabled) return;
@@ -216,17 +234,16 @@ export function PaneGrid({
           slot && slot.paneId !== paneId ? [slot.paneId] : [],
         ),
         onDrop: (targetPaneId) => onSwapPanes(paneId, targetPaneId),
+        // Leere Slots als zweites Zielangebot desselben Griffs: Drop auf eine
+        // belegte Pane tauscht (Ticket 20), Drop auf einen leeren Slot zieht
+        // die Pane dorthin um — vorher lief Letzteres ins Leere, obwohl der
+        // `cursor-grab` auf dem ganzen Header genau so einen Zug versprach
+        // (Nutzer-Befund "das suggeriert, ich könnte das pane selbst auch
+        // drag/droppen").
+        emptySlotIndices: emptyTargetSlots,
+        onDropEmptySlot: (slotIndex) => onMovePaneToEmptySlot(paneId, slotIndex),
       });
     };
-
-  // Leere Slots als drittes Ziel des Tab-Zugs (ein Drop erzeugt dort eine
-  // frische Pane im Projekt der Quelle) — restoring-Slots ausgenommen: die
-  // sind bereits an die laufende Sitzungs-Wiederherstellung vergeben, ein
-  // Drop dorthin konkurrierte mit ihr um denselben Slot (dieselbe Sperre wie
-  // der Picker-Knopf des Slots selbst, `ProjectPicker.tsx`).
-  const emptyTargetSlots = state.slots.flatMap((slot, index) =>
-    slot === null && !restoringSlots.has(index) ? [index] : [],
-  );
 
   const startTabDrag =
     (pane: Pane) => (tabId: string, event: ReactPointerEvent<HTMLElement>) => {
@@ -492,13 +509,21 @@ export function PaneGrid({
             focusModeActive={state.maximizedPaneId !== null}
             // Dasselbe zweistufige Zielangebot wie `dropInvite` der belegten
             // Zellen (gedämpfte Ecken ab dem Scharfwerden, voll unterm
-            // Zeiger) — die Liste kommt aus dem Zug selbst, exakt wie dort.
+            // Zeiger), mit derselben Zwei-Züge-Verzweigung wie dort: der
+            // Tab-Zug verspricht eine NEUE Pane, der Pane-Zug den Umzug der
+            // ganzen Pane — die Listen kommen aus dem jeweiligen Zug selbst.
             dropInvite={
               tabDrag.emptySlotIndices.includes(index) ? (
                 <PaneDropInvite
                   glyph="⊞"
                   label={t("paneDrag.newPaneInvite")}
                   engaged={tabDrag.targetEmptySlot === index}
+                />
+              ) : paneDrag.emptySlotIndices.includes(index) ? (
+                <PaneDropInvite
+                  glyph="⇥"
+                  label={t("paneDrag.movePaneInvite")}
+                  engaged={paneDrag.targetEmptySlot === index}
                 />
               ) : null
             }

@@ -109,7 +109,8 @@
   "paneDrag": {
     "swapInvite": "Swap slots",
     "moveTabInvite": "Move tab here",
-    "newPaneInvite": "New pane here"
+    "newPaneInvite": "New pane here",
+    "movePaneInvite": "Move pane here"
   },
   "paneTabs": {
     "selectView": "Select view",

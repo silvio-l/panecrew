@@ -500,6 +500,49 @@ export function moveTerminalTabToEmptySlot(
   };
 }
 
+/**
+ * Zieht eine GANZE Pane in einen leeren Slot (Nutzer-Wunsch: "ich will ein
+ * pane auch drag&droppen können von einem auf ein freien slot inkl. aller
+ * laufenden pty in dem pane, die dürfen dadurch nicht beeinträchtigt werden
+ * — der pane wird nur in einem anderen slot dargestellt").
+ *
+ * Der entscheidende Unterschied zu `moveTerminalTabToEmptySlot`: hier
+ * entsteht NICHTS neu. Die Pane wandert als IDENTISCHES Objekt mitsamt
+ * unveränderter `paneId` — die ist der React-Key der Zelle (`PaneGrid.tsx`),
+ * eine neue Id würde den gekeyten Teilbaum unmounten und über
+ * `usePtyTerminal`s Cleanup jede laufende PTY der Pane killen (exakt die
+ * Bug-Klasse aus dem Placement-Vorfall, s. `terminalTabSurfaceOrder`).
+ * Slot-Umzug ist damit dieselbe React-Mechanik wie der Slot-Tausch
+ * (Ticket 20): die Kinderliste sortiert um, kein Kind verschwindet.
+ *
+ * `swapPanes` behandelt einen leeren Ziel-Slot bewusst als No-Op (dort wäre
+ * "Tausch mit nichts" undefiniert) — deshalb ein eigener Übergang statt
+ * einer Lockerung dort. No-Op (identische Referenz) bei: unbekannter Pane,
+ * Index außerhalb des Templates und einem nicht (mehr) leeren Ziel-Slot
+ * (deckt den Wettlauf mit einer parallelen Zuweisung ab).
+ *
+ * Der Fokus wandert zur gezogenen Pane — ein Zug ist gerichtet ("DIESE Pane
+ * stelle ich dorthin"), anders als der symmetrische Tausch, der den Fokus
+ * bewusst nicht anfasst. `maximizedPaneId` bleibt unberührt: die Pane
+ * existiert weiter (im Fokus-Modus ist der Zug ohnehin gesperrt,
+ * `PaneGrid.tsx`' `dragEnabled`).
+ */
+export function movePaneToEmptySlot(
+  state: GridState,
+  paneId: string,
+  targetSlotIndex: number,
+): GridState {
+  const sourceIndex = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (sourceIndex === -1) return state;
+  if (targetSlotIndex < 0 || targetSlotIndex >= state.slots.length) return state;
+  if (state.slots[targetSlotIndex] !== null) return state;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[targetSlotIndex] = nextSlots[sourceIndex] as Pane;
+  nextSlots[sourceIndex] = null;
+  return { ...state, slots: nextSlots, focusedPaneId: paneId };
+}
+
 /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
  * "Umbenennen", `PaneTabs.tsx`) — reine Chip-Beschriftung, `tabId`/Nummer
  * bleiben unberührt, die Cmd/Strg+1..9-Kürzel bleiben also weiter
