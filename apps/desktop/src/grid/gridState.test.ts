@@ -515,7 +515,10 @@ describe("gridState", () => {
       expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-1")).toBe(start);
     });
 
-    it("ist ein No-Op, wenn die Quelle nur diesen einen Terminal-Tab hätte", () => {
+    it("leert den Quell-Slot, wenn der LETZTE Tab wegzieht (Präzisions-Runde)", () => {
+      // Nutzer-Entscheidung: "auch das letzte Tab eines Panes soll
+      // verschiebbar sein, das würde dann halt einfach nur anschließend
+      // automatisch den Slot frei machen und das Pane schließen."
       const start = assignProjectToSlot(
         assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
         1,
@@ -523,10 +526,94 @@ describe("gridState", () => {
         "pane-1",
         "tab-1",
       );
-      expect(moveTerminalTab(start, "pane-0", "tab-0", "pane-1")).toBe(start);
+      const next = moveTerminalTab(start, "pane-0", "tab-0", "pane-1");
+
+      expect(next.slots[0]).toBeNull();
+      const target = next.slots[1] as Pane;
+      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-1",
+        "tab-0",
+      ]);
+      expect(target.activeTerminalTabId).toBe("tab-0");
+      expect(next.focusedPaneId).toBe("pane-1");
     });
 
-    it("ist ein No-Op bei unbekannter Pane, unbekanntem Tab und Ziel = Quelle", () => {
+    it("räumt beim Leeren der Quelle einen auf sie zeigenden Fokus-Modus ab (dieselbe Nachsorge wie closePane)", () => {
+      const start = enterFocusMode(
+        assignProjectToSlot(
+          assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+          1,
+          "/repo/a",
+          "pane-1",
+          "tab-1",
+        ),
+        "pane-0",
+      );
+      const next = moveTerminalTab(start, "pane-0", "tab-0", "pane-1");
+      expect(next.maximizedPaneId).toBeNull();
+    });
+
+    it("fügt am übergebenen Einfüge-Slot der Ziel-Leiste ein, nicht nur am Ende", () => {
+      const start = openTerminalTab(twoPanesSameProject(), "pane-1", "tab-1b");
+      // Ziel-Leiste vor dem Zug: [tab-1, tab-1b] — Slot 1 heißt "dazwischen".
+      const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1", 1);
+
+      const target = next.slots[1] as Pane;
+      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-1",
+        "tab-0b",
+        "tab-1b",
+      ]);
+      expect(target.activeTerminalTabId).toBe("tab-0b");
+    });
+
+    it("sortiert innerhalb DERSELBEN Pane um und macht den gezogenen Tab aktiv", () => {
+      // Drei Tabs in pane-0: [tab-0, tab-0b, tab-0c]. tab-0 an Slot 2
+      // (zwischen tab-0b und tab-0c, vor dem Herauslösen gezählt) heißt
+      // End-Position 1.
+      const start = openTerminalTab(twoPanesSameProject(), "pane-0", "tab-0c");
+      const next = moveTerminalTab(start, "pane-0", "tab-0", "pane-0", 2);
+
+      const pane = next.slots[0] as Pane;
+      expect(pane.terminalTabs.map((tab) => tab.tabId)).toEqual([
+        "tab-0b",
+        "tab-0",
+        "tab-0c",
+      ]);
+      expect(pane.activeTerminalTabId).toBe("tab-0");
+      expect(next.focusedPaneId).toBe("pane-0");
+    });
+
+    it("sortiert nach vorn: ein Slot VOR der eigenen Position zählt unverändert", () => {
+      const start = openTerminalTab(twoPanesSameProject(), "pane-0", "tab-0c");
+      const next = moveTerminalTab(start, "pane-0", "tab-0c", "pane-0", 0);
+      expect(
+        (next.slots[0] as Pane).terminalTabs.map((tab) => tab.tabId),
+      ).toEqual(["tab-0c", "tab-0", "tab-0b"]);
+    });
+
+    it("ist ein No-Op beim Umsortieren auf die eigene Position (auch über die Nachbar-Slots)", () => {
+      const start = twoPanesSameProject();
+      // tab-0 steht an Index 0: Slot 0 (direkt davor) und Slot 1 (direkt
+      // dahinter) ergeben beide dieselbe End-Position.
+      expect(moveTerminalTab(start, "pane-0", "tab-0", "pane-0", 0)).toBe(start);
+      expect(moveTerminalTab(start, "pane-0", "tab-0", "pane-0", 1)).toBe(start);
+      // Ohne Slot-Angabe: ans Ende — für den letzten Tab ebenfalls die
+      // eigene Position.
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-0")).toBe(start);
+    });
+
+    it("ist ein No-Op bei einem Einfüge-Slot außerhalb der Ziel-Leiste", () => {
+      const start = twoPanesSameProject();
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-1", -1)).toBe(
+        start,
+      );
+      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-1", 2)).toBe(
+        start,
+      );
+    });
+
+    it("ist ein No-Op bei unbekannter Pane und unbekanntem Tab", () => {
       const start = twoPanesSameProject();
       expect(moveTerminalTab(start, "gibt-es-nicht", "tab-0b", "pane-1")).toBe(
         start,
@@ -537,7 +624,6 @@ describe("gridState", () => {
       expect(moveTerminalTab(start, "pane-0", "gibt-es-nicht", "pane-1")).toBe(
         start,
       );
-      expect(moveTerminalTab(start, "pane-0", "tab-0b", "pane-0")).toBe(start);
     });
   });
 

@@ -18,11 +18,16 @@ const PANE_RECTS: Record<string, DOMRect> = {
 
 function Harness({
   candidatePaneIds,
+  insertionIndexAt,
   onDrop,
   onClick,
 }: {
   candidatePaneIds: readonly string[];
-  onDrop: (targetPaneId: string) => void;
+  insertionIndexAt?: (
+    targetPaneId: string,
+    point: { x: number; y: number },
+  ) => number;
+  onDrop: (targetPaneId: string, insertIndex: number | null) => void;
   onClick: () => void;
 }) {
   const drag = usePaneDrag<string>();
@@ -34,6 +39,7 @@ function Harness({
           drag.startDrag(event, {
             source: "pane-links",
             candidatePaneIds,
+            insertionIndexAt,
             onDrop,
           });
         }}
@@ -46,6 +52,7 @@ function Harness({
       </button>
       <p>{`quelle:${drag.source ?? "-"}`}</p>
       <p>{`ziel:${drag.targetPaneId ?? "-"}`}</p>
+      <p>{`ziel-slot:${drag.targetIndex ?? "-"}`}</p>
       <p>{`kandidaten:${drag.candidatePaneIds.join("+") || "-"}`}</p>
       {/* Die Zeigerplakette, wie die echten Aufrufer sie mounten: erst ab dem
           Scharfwerden, Startlage aus `ghostOrigin`, danach schiebt der Hook
@@ -80,12 +87,19 @@ function GhostProbe({
   );
 }
 
-const setup = (candidatePaneIds: readonly string[] = ["pane-rechts"]) => {
+const setup = (
+  candidatePaneIds: readonly string[] = ["pane-rechts"],
+  insertionIndexAt?: (
+    targetPaneId: string,
+    point: { x: number; y: number },
+  ) => number,
+) => {
   const onDrop = vi.fn();
   const onClick = vi.fn();
   render(
     <Harness
       candidatePaneIds={candidatePaneIds}
+      insertionIndexAt={insertionIndexAt}
       onDrop={onDrop}
       onClick={onClick}
     />,
@@ -124,7 +138,8 @@ describe("usePaneDrag", () => {
     // der Ziel-Pane losgelassen wurde.
     fireEvent.click(handle);
 
-    expect(onDrop).toHaveBeenCalledWith("pane-rechts");
+    // Ohne `insertionIndexAt` (Slot-Tausch) kennt der Zug keine Positionen.
+    expect(onDrop).toHaveBeenCalledWith("pane-rechts", null);
     expect(onClick).not.toHaveBeenCalled();
     // Nach dem Ende ist der Zug vollständig aufgeräumt.
     expect(screen.getByText("quelle:-")).toBeInTheDocument();
@@ -290,7 +305,32 @@ describe("usePaneDrag", () => {
     expect(seen.at(-1)).toEqual({ paneId: "pane-links", tabId: "tab-2" });
     fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
 
-    expect(onDrop).toHaveBeenCalledWith("pane-rechts");
+    expect(onDrop).toHaveBeenCalledWith("pane-rechts", null);
     expect(seen.at(-1)).toBeNull();
+  });
+
+  it("führt die Einfüge-Position über `insertionIndexAt` mit und reicht sie dem Drop nach", () => {
+    // Präzisions-Runde (Nutzer-Befund "ich kann nur Drop in ein Pane, aber
+    // nicht an eine ganz bestimmte Stelle"): der Aufrufer übersetzt den
+    // Zeigerpunkt in einen Einfüge-Slot, der Hook führt ihn als `targetIndex`
+    // nach und liefert ihn beim Loslassen mit aus.
+    const { onDrop, handle } = setup(["pane-rechts"], (_paneId, point) =>
+      // Simple Attrappen-Geometrie: links der Pane-Mitte Slot 0, rechts 1.
+      point.x < 150 ? 0 : 1,
+    );
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10 });
+    // Über keinem Ziel: auch kein Slot.
+    fireEvent.pointerMove(handle, { clientX: 50, clientY: 50 });
+    expect(screen.getByText("ziel-slot:-")).toBeInTheDocument();
+
+    fireEvent.pointerMove(handle, { clientX: 120, clientY: 50 });
+    expect(screen.getByText("ziel-slot:0")).toBeInTheDocument();
+    fireEvent.pointerMove(handle, { clientX: 180, clientY: 50 });
+    expect(screen.getByText("ziel-slot:1")).toBeInTheDocument();
+
+    fireEvent.pointerUp(handle, { clientX: 180, clientY: 50 });
+    expect(onDrop).toHaveBeenCalledWith("pane-rechts", 1);
+    expect(screen.getByText("ziel-slot:-")).toBeInTheDocument();
   });
 });

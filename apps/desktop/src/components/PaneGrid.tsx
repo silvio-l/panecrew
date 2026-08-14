@@ -137,12 +137,17 @@ export function PaneGrid({
   /** Kontextmenü-Aktion "Umbenennen" (`PaneTabs.tsx`) — `label: null` löscht
    * den Namen wieder. */
   onRenameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
-  /** Terminal-Tab in eine andere Pane desselben Projekts verschieben (Ticket
-   * 32) — wie der Slot-Tausch eine hier drin entstehende Geste. */
+  /** Terminal-Tab an eine Position einer Pane desselben Projekts verschieben
+   * (Ticket 32; Ziel darf seit der Präzisions-Runde auch die Quelle selbst
+   * sein — Umsortieren) — wie der Slot-Tausch eine hier drin entstehende
+   * Geste. `insertIndex` ist der Einfüge-Slot der Ziel-Leiste (`null`: ans
+   * Ende, kommt praktisch nicht vor — die Trefferprüfung liefert immer
+   * einen). */
   onMoveTerminalTab: (
     sourcePaneId: string,
     tabId: string,
     targetPaneId: string,
+    insertIndex: number | null,
   ) => void;
   onSwitchToTerminalTab: (paneId: string, tabId: string) => void;
   onSwitchToFileTab: (paneId: string) => void;
@@ -205,37 +210,45 @@ export function PaneGrid({
   const startTabDrag =
     (pane: Pane) => (tabId: string, event: ReactPointerEvent<HTMLElement>) => {
       if (!dragEnabled) return;
-      // Der letzte verbleibende Tab lässt sich nicht wegziehen — dieselbe
-      // Untergrenze wie beim Schließen (`PaneTabs.tsx`' `closable`), und der
-      // Reducer wäre an dieser Stelle ohnehin ein No-Op.
-      if (pane.terminalTabs.length <= 1) return;
       tabDrag.startDrag(event, {
         source: { paneId: pane.paneId, tabId },
         // Nur Panes DESSELBEN Projekts: der `cwd` einer PTY steht beim Spawn
         // fest, ein Tab in einer Pane mit anderem Projektpfad zeigte
         // dauerhaft woanders hin als seine Pane behauptet. Die Ablehnung
         // steckt in dieser Liste und wirkt damit schon beim Schweben — kein
-        // HUD über einer Pane, in der ein Loslassen nichts täte.
+        // HUD über einer Pane, in der ein Loslassen nichts täte. Die EIGENE
+        // Pane ist seit der Präzisions-Runde ebenfalls Ziel (Umsortieren,
+        // Nutzer-Befund "auch das Re-Org von Tabs innerhalb eines Panes geht
+        // noch nicht") — aber nur mit mindestens zwei Tabs: den einzigen Tab
+        // in sich selbst umzusortieren gäbe nichts zu treffen. Auch der
+        // LETZTE Tab darf wegziehen (die Quelle leert dann ihren Slot, s.
+        // `gridState.ts`) — die frühere Schließen-Untergrenze galt hier
+        // nicht mehr, ohne fremde Ziel-Pane bleibt die Kandidatenliste
+        // schlicht leer und `startDrag` lässt die Geste einen Klick sein.
         candidatePaneIds: state.slots.flatMap((slot) =>
-          slot &&
-          slot.paneId !== pane.paneId &&
-          slot.projectPath === pane.projectPath
+          slot?.projectPath === pane.projectPath &&
+          (slot.paneId !== pane.paneId || pane.terminalTabs.length > 1)
             ? [slot.paneId]
             : [],
         ),
-        onDrop: (targetPaneId) => {
-          onMoveTerminalTab(pane.paneId, tabId, targetPaneId);
+        // Zeiger-x gegen die Chip-Mitten der getroffenen Leiste — daraus
+        // entsteht der Einfüge-Slot, den Platzhalter (Anzeige) und Reducer
+        // (Wirkung) gleichermaßen benutzen.
+        insertionIndexAt: terminalTabInsertionIndex,
+        onDrop: (targetPaneId, insertIndex) => {
+          onMoveTerminalTab(pane.paneId, tabId, targetPaneId, insertIndex);
           setDropSettle((prev) => ({ tabId, nonce: (prev?.nonce ?? 0) + 1 }));
         },
       });
     };
 
-  // Anzeigename des gerade gezogenen Tabs für die Zeiger-Plakette
-  // (`TabDragGhost`) — eigener Name oder "Terminal N", dieselbe Ableitung wie
-  // der Chip selbst. `null`, sobald der Zug endet oder die Quelle während des
-  // Zugs verschwindet (Pane geschlossen): dann verschwindet die Plakette mit.
+  // Nummer + Name des gerade gezogenen Tabs für die Zeiger-Plakette
+  // (`TabDragGhost`, seit der Präzisions-Runde ein Chip-Abbild statt einer
+  // Text-Plakette) — dieselbe Ableitung wie der Chip selbst. `null`, sobald
+  // der Zug endet oder die Quelle während des Zugs verschwindet (Pane
+  // geschlossen): dann verschwindet die Plakette mit.
   const dragSourceTab = tabDrag.source;
-  const draggedTabText = (() => {
+  const draggedTab = (() => {
     if (dragSourceTab === null) return null;
     const sourcePane = state.slots.find(
       (slot) => slot?.paneId === dragSourceTab.paneId,
@@ -245,10 +258,10 @@ export function PaneGrid({
         (tab) => tab.tabId === dragSourceTab.tabId,
       ) ?? -1;
     if (!sourcePane || index === -1) return null;
-    return (
-      sourcePane.terminalTabs[index]?.label ??
-      t("paneTabs.terminalTab", { number: index + 1 })
-    );
+    return {
+      number: index + 1,
+      label: sourcePane.terminalTabs[index]?.label ?? null,
+    };
   })();
 
   const views: (PaneView | null)[] = state.slots.map((slot, index) => {
@@ -293,16 +306,42 @@ export function PaneGrid({
             tabDrag.source?.paneId === pane.paneId
               ? tabDrag.source.tabId
               : null,
-          // Nur was auch wandern könnte, kündigt sich als Griff an.
-          draggable: dragEnabled && pane.terminalTabs.length > 1,
+          // Nur was auch wandern könnte, kündigt sich als Griff an: mit
+          // mehreren eigenen Tabs immer (Umsortieren geht dann selbst ohne
+          // zweite Pane), der letzte Tab nur, wenn es eine andere Pane
+          // desselben Projekts als Ziel gibt — exakt die Kandidatenliste,
+          // die `startTabDrag` scharf macht.
+          draggable:
+            dragEnabled &&
+            (pane.terminalTabs.length > 1 ||
+              state.slots.some(
+                (slot) =>
+                  slot &&
+                  slot.paneId !== pane.paneId &&
+                  slot.projectPath === pane.projectPath,
+              )),
         },
         // Schwebt der Tab-Zug über DIESER Pane, zeigt ihre Leiste den
-        // Platzhalter-Chip am Einfügeort — `moveTerminalTab` hängt ans Ende
-        // an, der Neuzugang bekäme also die nächste freie Nummer.
-        incomingTabNumber:
-          tabDrag.targetPaneId === pane.paneId
-            ? pane.terminalTabs.length + 1
-            : null,
+        // Platzhalter-Chip am zeigergenauen Einfüge-Slot. Die angezeigte
+        // Nummer ist die NACH dem Drop: beim Umsortieren nach rechts löst
+        // sich der eigene Chip aus der Zählung (`slot` statt `slot + 1`) —
+        // die Umrechnung passiert hier, weil nur diese Ebene Quelle UND Ziel
+        // desselben Zugs kennt (Reducer-Pendant: `moveTerminalTab`s
+        // `finalIndex`).
+        incomingTab: (() => {
+          if (tabDrag.targetPaneId !== pane.paneId) return null;
+          const slot = tabDrag.targetIndex ?? pane.terminalTabs.length;
+          const ownIndex =
+            tabDrag.source?.paneId === pane.paneId
+              ? pane.terminalTabs.findIndex(
+                  (tab) => tab.tabId === tabDrag.source?.tabId,
+                )
+              : -1;
+          return {
+            index: slot,
+            number: ownIndex !== -1 && slot > ownIndex ? slot : slot + 1,
+          };
+        })(),
         dropSettle,
         onSelectTerminalTab: (tabId) =>
           onSwitchToTerminalTab(pane.paneId, tabId),
@@ -334,7 +373,13 @@ export function PaneGrid({
       // voll samt Plakette. Die Kandidatenliste kommt aus dem Zug selbst
       // (`usePaneDrag.candidatePaneIds`) — exakt die Ausschluss-Logik, die
       // auch die Trefferprüfung benutzt, keine zweite Herleitung.
-      dropInvite: tabDrag.candidatePaneIds.includes(pane.paneId) ? (
+      dropInvite: tabDrag.candidatePaneIds.includes(pane.paneId) &&
+      // Die EIGENE Pane des Zugs bekommt kein "Tab hierher"-HUD, obwohl sie
+      // seit der Präzisions-Runde gültiges Ziel ist (Umsortieren): dort läuft
+      // der Zug sichtbar in der eigenen Leiste (gedimmter Quell-Chip,
+      // wandernder Platzhalter) — ein Ecken-HUD über der ganzen Zelle würde
+      // "woanders hinbringen" behaupten, wo "hier neu ordnen" passiert.
+      tabDrag.source?.paneId !== pane.paneId ? (
         <PaneDropInvite
           glyph="⇥"
           label={t("paneDrag.moveTabInvite")}
@@ -450,16 +495,48 @@ export function PaneGrid({
         Pendant: dort tritt die ganze gezogene Zelle sichtbar zurück
         (opacity-50, `PaneCell`), die Quelle selbst IST das "in der
         Hand"-Signal. */}
-    {draggedTabText !== null && tabDrag.ghostOrigin !== null && (
+    {draggedTab !== null && tabDrag.ghostOrigin !== null && (
       <TabDragGhost
         ghostRef={tabDrag.ghostRef}
-        text={draggedTabText}
+        number={draggedTab.number}
+        label={draggedTab.label}
         origin={tabDrag.ghostOrigin}
         overTarget={tabDrag.targetPaneId !== null}
       />
     )}
     </>
   );
+}
+
+/**
+ * Der Einfüge-Slot, den ein Loslassen an diesem Zeigerpunkt in der Leiste der
+ * getroffenen Pane ergäbe: die Zahl der Terminal-Chips, deren MITTE links vom
+ * Zeiger liegt (0 = vor allen, Chip-Zahl = hinter allen). Gemessen wird am
+ * DOM (`data-terminal-tab-chip`, PaneTabs.tsx), nicht am State — dieselbe
+ * Linie wie `candidateAtPoint` (usePaneDrag.ts): die Rechtecke sind die
+ * Wahrheit des Augenblicks. Jede Pane rendert ihre Leiste zwar mehrfach (ein
+ * Header je Tab-Fläche plus FileEditor, alle deckungsgleich übereinander,
+ * `visibility: hidden` lässt Layout und Maße stehen) — `querySelector` trifft
+ * die erste Fassung, und alle Fassungen messen identisch. Der y-Anteil des
+ * Zeigers bleibt bewusst außen vor: wer über der Terminalfläche schwebt,
+ * meint trotzdem eine Position der Leiste darüber (dasselbe Prinzip wie beim
+ * Ziehen von Browser-Tabs, das auch unterhalb der Tab-Leiste weiter nach x
+ * sortiert).
+ */
+function terminalTabInsertionIndex(
+  paneId: string,
+  point: { x: number; y: number },
+): number {
+  const surface = document.querySelector(
+    `[data-pane-id="${CSS.escape(paneId)}"]`,
+  );
+  if (!surface) return 0;
+  let index = 0;
+  for (const chip of surface.querySelectorAll("[data-terminal-tab-chip]")) {
+    const rect = chip.getBoundingClientRect();
+    if (point.x > rect.left + rect.width / 2) index += 1;
+  }
+  return index;
 }
 
 /**

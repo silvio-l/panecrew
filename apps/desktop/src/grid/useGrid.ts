@@ -55,14 +55,17 @@ export interface Grid {
    * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
   openTerminalTab: (paneId: string) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
-  /** Verschiebt einen Terminal-Tab in eine andere Pane desselben Projekts
-   * (Ticket 32) — die PTY läuft dabei weiter, es ist ein reiner
-   * Besitzerwechsel. No-Op über Projektgrenzen hinweg und beim letzten
-   * verbleibenden Tab der Quelle. */
+  /** Verschiebt einen Terminal-Tab an eine Position (`insertIndex`,
+   * Einfüge-Slot vor dem Herauslösen gezählt; ohne Angabe: ans Ende) einer
+   * Pane desselben Projekts — Ziel darf auch die Quelle selbst sein
+   * (Umsortieren). Die PTY läuft dabei weiter. Zieht der letzte Tab weg,
+   * leert sich der Quell-Slot (s. `gridState.ts`). No-Op über Projektgrenzen
+   * hinweg. */
   moveTerminalTab: (
     sourcePaneId: string,
     tabId: string,
     targetPaneId: string,
+    insertIndex?: number,
   ) => void;
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
@@ -135,9 +138,20 @@ export function useGrid(): Grid {
   }, []);
 
   const moveTerminalTab = useCallback(
-    (sourcePaneId: string, tabId: string, targetPaneId: string) => {
+    (
+      sourcePaneId: string,
+      tabId: string,
+      targetPaneId: string,
+      insertIndex?: number,
+    ) => {
       setState((current) =>
-        moveTerminalTabInState(current, sourcePaneId, tabId, targetPaneId),
+        moveTerminalTabInState(
+          current,
+          sourcePaneId,
+          tabId,
+          targetPaneId,
+          insertIndex,
+        ),
       );
     },
     [],

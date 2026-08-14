@@ -315,12 +315,18 @@ export interface PaneTabsProps {
   onSelectFile: () => void;
   /** Tab-Verschieben zwischen Panes (Ticket 32). */
   tabDrag: PaneTabDrag;
-  /** Die Nummer, unter der ein gerade schwebender Tab-Zug HIER landen würde
-   * (`moveTerminalTab` hängt ans Ende an, also `terminalTabs.length + 1`) —
-   * `null`, solange kein Zug über dieser Pane schwebt. Rendert einen
-   * Platzhalter-Chip am Einfügeort (s. `IncomingTabSlot` unten): die präzise
-   * Antwort auf "wo genau würde er einsortiert", Nutzer-Befund zum Tab-Zug. */
-  incomingTabNumber?: number | null;
+  /** Wo ein gerade schwebender Tab-Zug HIER landen würde — `null`, solange
+   * kein Zug über dieser Pane schwebt. `index` ist der Einfüge-Slot in der
+   * aktuellen Chip-Reihe (0 = vor dem ersten Chip … `länge` = hinter dem
+   * letzten; beim Umsortieren innerhalb der eigenen Pane zählt der gezogene
+   * Chip mit), `number` die Nummer, die der Tab NACH dem Drop trüge (beim
+   * Umsortieren nach rechts nicht `index + 1` — der eigene Chip löst sich ja
+   * heraus; die Umrechnung macht `PaneGrid.tsx`, das Quelle und Ziel kennt).
+   * Rendert einen Platzhalter-Chip an genau dieser Stelle (s.
+   * `IncomingTabSlot` unten): die präzise Antwort auf "wo genau würde er
+   * einsortiert", Nutzer-Befund zum Tab-Zug ("nicht an eine ganz bestimmte
+   * Stelle" droppen zu können). */
+  incomingTab?: { index: number; number: number } | null;
   /** Der zuletzt per Zug angekommene Tab (PaneGrid.tsx setzt es beim Drop) —
    * sein Chip quittiert die Ankunft mit einem einmaligen, kurzen
    * `pc-drop-settle`-Wasch (App.css). `nonce` unterscheidet zwei Züge
@@ -346,7 +352,7 @@ export function PaneTabs({
   onRenameTerminalTab,
   onSelectFile,
   tabDrag,
-  incomingTabNumber = null,
+  incomingTab = null,
   dropSettle = null,
   onTabAttentionFlash,
 }: PaneTabsProps) {
@@ -385,7 +391,15 @@ export function PaneTabs({
       // selbst (aktiv: volle Akzent-Box; inaktiv: gedämpfte 1px-Kontur).
       className="flex min-w-0 shrink-0 items-center gap-px"
     >
-      {terminalTabs.map((tab) => (
+      {/* Der Platzhalter des schwebenden Tab-Zugs steht AN seinem Einfüge-
+          Slot zwischen den Chips (flatMap statt map), nicht mehr fix am Ende
+          — die Leiste zeigt exakt die Reihenfolge, die ein Loslassen jetzt
+          ergäbe. Sein fester Key hält ihn beim Wandern zwischen den Slots
+          als dasselbe Element (kein Neumount pro Position). */}
+      {terminalTabs.flatMap((tab, i) => [
+        ...(incomingTab !== null && incomingTab.index === i
+          ? [<IncomingTabSlot key="incoming-tab" number={incomingTab.number} />]
+          : []),
         <TerminalTabChip
           key={tab.tabId}
           tabId={tab.tabId}
@@ -419,10 +433,10 @@ export function PaneTabs({
             setRenamingTabId(null);
           }}
           onDiscardRename={() => setRenamingTabId(null)}
-        />
-      ))}
-      {incomingTabNumber !== null && (
-        <IncomingTabSlot number={incomingTabNumber} />
+        />,
+      ])}
+      {incomingTab !== null && incomingTab.index >= terminalTabs.length && (
+        <IncomingTabSlot key="incoming-tab" number={incomingTab.number} />
       )}
       <ChromeTooltip label={t("paneTabs.openTerminalTab")}>
         <button
@@ -586,6 +600,12 @@ function TerminalTabChip({
             }}
             aria-pressed={active}
             aria-label={ariaLabel}
+            // Messhaken für die Einfüge-Position des Tab-Zugs
+            // (`PaneGrid.tsx`' `terminalTabInsertionIndex`): die Chip-Mitten
+            // entscheiden, vor oder hinter welchem Chip ein Drop landete.
+            // Ein data-Attribut wie `data-pane-id`, kein aria-Merkmal — für
+            // Screenreader ist der Chip weiterhin nur ein Knopf.
+            data-terminal-tab-chip={tabId}
             // `border-b-2` IMMER gesetzt (Farbe verzweigt, nicht die Kante
             // selbst) — sonst würde die 2px-Zeile beim Aktivwerden neu
             // reserviert und die Zahl spränge einen Frame lang nach oben.
@@ -832,9 +852,10 @@ function PaneTab({
 
 // Der Platzhalter-Chip eines schwebenden Tab-Zugs (Ticket 32, Politur-Runde
 // nach Nutzer-Befund): steht exakt dort in der Leiste, wo `moveTerminalTab`
-// den Tab einhängen würde (am Ende der Terminal-Tabs, vor dem „+"-Knopf), und
-// trägt bereits die Nummer, die er dort bekäme — die Leiste zeigt ihre eigene
-// Zukunft, statt sie den Nutzer raten zu lassen. Chip-Maße wie ein echter
+// den Tab einhängen würde — seit der Präzisions-Runde am zeigergenauen
+// Einfüge-Slot zwischen den Chips (`incomingTab.index`, s. `PaneTabsProps`),
+// nicht mehr fix am Ende — und trägt bereits die Nummer, die er dort bekäme:
+// die Leiste zeigt ihre eigene Zukunft, statt sie den Nutzer raten zu lassen. Chip-Maße wie ein echter
 // `TerminalTabChip` (h-6, min-w-6, px-3, oben gerundet), aber als leere
 // Fassung im PCB-Duktus: 1px gestrichelte Amber-Kontur in der 45%-Dämpfung
 // (ein angekündigter, noch nicht bestromter Footprint — dieselbe Abstufung

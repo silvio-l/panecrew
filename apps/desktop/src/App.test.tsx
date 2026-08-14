@@ -1690,6 +1690,160 @@ describe("Grid / Mehrfach-Pane", () => {
     // auf einer ausgelasteten Maschine nicht, ohne dass etwas defekt wäre.
   }, 25_000);
 
+  it("sortiert einen Terminal-Tab per Chip-Drag innerhalb der eigenen Pane um (Präzisions-Runde)", async () => {
+    // Nutzer-Befund: "auch das Re-Org von Tabs innerhalb eines Panes geht
+    // noch nicht". Eine Pane, zwei Tabs — die eigene Pane ist seit der
+    // Präzisions-Runde selbst Zug-Kandidat, der Einfüge-Slot kommt aus den
+    // Chip-Mitten (`terminalTabInsertionIndex`, PaneGrid.tsx). StrictMode wie
+    // im Zug-Test darüber: auch das Umsortieren darf unter dem Placement-
+    // Doppel-Effekt-Zyklus keine PTY anfassen (`terminalTabSurfaceOrder`
+    // hält die Portal-Liste unabhängig von der Chip-Reihenfolge).
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />, { wrapper: StrictMode });
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
+    );
+    await screen.findByRole("button", { name: "Terminal 2" });
+    invokeMock.mockClear();
+
+    // jsdom hat kein Layout: Pane-Fläche und Chip-Mitten bekommen Rechtecke —
+    // Terminal 1 mittig bei x=50, Terminal 2 bei x=90, ein Drop bei x=10
+    // heißt also Einfüge-Slot 0 (vor beiden).
+    const surfaceRect = { left: 0, top: 0, right: 200, bottom: 100 } as DOMRect;
+    for (const section of container.querySelectorAll<HTMLElement>(
+      "[data-pane-id]",
+    )) {
+      section.getBoundingClientRect = () => surfaceRect;
+    }
+    for (const chipEl of container.querySelectorAll<HTMLElement>(
+      "[data-terminal-tab-chip]",
+    )) {
+      const rect =
+        chipEl.getAttribute("aria-label") === "Terminal 1"
+          ? ({ left: 40, top: 0, right: 60, bottom: 24, width: 20 } as DOMRect)
+          : ({ left: 80, top: 0, right: 100, bottom: 24, width: 20 } as DOMRect);
+      chipEl.getBoundingClientRect = () => rect;
+    }
+
+    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 90, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 10, clientY: 10 });
+
+    // WÄHREND des Zugs: der Platzhalter steht am Einfüge-Slot VOR dem ersten
+    // Chip und trägt die Nummer, die der Tab dort bekäme (1 — der eigene
+    // Chip löst sich aus der Zählung). Kein Ecken-HUD über der eigenen Pane.
+    const incoming = container.querySelector("[data-incoming-tab]");
+    expect(incoming).not.toBeNull();
+    expect(incoming).toHaveTextContent("1");
+    expect(
+      incoming?.nextElementSibling?.querySelector(
+        '[aria-label="Terminal 1"]',
+      ),
+    ).not.toBeNull();
+    // (`--invite` gezielt: die ProjectPicker der leeren Slots tragen eigene,
+    // permanente `--fine`-Ecken, die hier nichts zur Sache tun.)
+    expect(container.querySelector(".pc-hud-corner--invite")).toBeNull();
+
+    fireEvent.pointerUp(chip, { clientX: 10, clientY: 10 });
+
+    // Nach dem Drop: der gezogene Tab steht vorn — er heißt jetzt
+    // "Terminal 1" (die Nummern sind Positionen, die Cmd/Strg+1..9-Kürzel
+    // folgen mit, s. Ticket-Nachtrag) — und ist als aktiver Tab markiert.
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Terminal 1" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+    });
+    // Umsortieren fasst keine PTY an: nichts gekillt, nichts gespawnt.
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
+  }, 15_000);
+
+  it("zieht auch den LETZTEN Tab einer Pane weg — die Quelle gibt ihren Slot frei, die PTY lebt weiter (Präzisions-Runde)", async () => {
+    // Nutzer-Entscheidung: "auch das letzte Tab eines Panes soll
+    // verschiebbar sein, das würde dann halt einfach nur anschließend
+    // automatisch den Slot frei machen und das Pane schließen."
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />, { wrapper: StrictMode });
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+    const pickersBefore = screen.getAllByRole("button", {
+      name: "Projekt wählen",
+    }).length;
+
+    const sections = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-pane-id]"));
+    const [sourceSection, targetSection] = sections();
+    if (!sourceSection || !targetSection) throw new Error("Zwei Panes erwartet");
+    const sourcePaneId = sourceSection.dataset.paneId;
+    const targetPaneId = targetSection.dataset.paneId;
+    const targetCell = targetSection.closest(".pc-workspace > *");
+    if (!targetCell) throw new Error("Ziel-Zelle nicht gefunden");
+    invokeMock.mockClear();
+
+    // Der EINZIGE Tab der Quell-Pane ist der Griff — vor der Runde war er
+    // gar nicht ziehbar.
+    const chip = within(sourceSection).getByRole("button", {
+      name: "Terminal 1",
+    });
+    const movedSurface = chip.closest("[data-pane-id]");
+    if (!(movedSurface instanceof HTMLElement)) {
+      throw new Error("Fläche des gezogenen Tabs nicht gefunden");
+    }
+    const targetRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
+    for (const section of sections()) {
+      if (section.dataset.paneId !== targetPaneId) continue;
+      section.getBoundingClientRect = () => targetRect;
+    }
+    chip.setPointerCapture = vi.fn();
+    chip.releasePointerCapture = vi.fn();
+    chip.hasPointerCapture = vi.fn(() => true);
+
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(chip, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
+
+    // Der DOM-Knoten des Tabs hängt jetzt in der Ziel-Zelle …
+    await waitFor(() => {
+      expect(movedSurface.dataset.paneId).toBe(targetPaneId);
+    });
+    expect(targetCell.contains(movedSurface)).toBe(true);
+    // … die Quelle ist verschwunden, ihr Slot zeigt wieder den Picker …
+    expect(
+      sections().filter((s) => s.dataset.paneId === sourcePaneId),
+    ).toHaveLength(0);
+    expect(
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(pickersBefore + 1);
+    // … und die Sitzung des gezogenen Tabs lebt unverändert weiter.
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
+  }, 15_000);
+
   it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
     openMock
       .mockResolvedValueOnce("/Users/dev/projects/storefront")

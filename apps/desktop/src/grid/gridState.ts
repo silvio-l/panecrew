@@ -313,10 +313,22 @@ export function closeTerminalTab(
 }
 
 /**
- * Verschiebt einen Terminal-Tab in eine andere Pane DESSELBEN Projekts
- * (Ticket 32) — der Tab wechselt den Besitzer, seine PTY läuft unverändert
- * weiter (dass das auch beim Rendern hält, ist die eigentliche Arbeit des
- * Tickets, s. `useTerminalTabHosts.ts`).
+ * Verschiebt einen Terminal-Tab an eine Position einer Pane DESSELBEN
+ * Projekts (Ticket 32) — die Ziel-Pane darf seit der Präzisions-Runde
+ * (Nutzer-Befund "ich möchte aber auch z. B. im Ziel-Pane das Drag-Tab
+ * zwischen zwei andere Tabs platzieren können … auch das Re-Org von Tabs
+ * innerhalb eines Panes") auch die QUELLE selbst sein: ein Zug innerhalb
+ * derselben Pane ist ein reines Umsortieren, ein Zug in eine andere ein
+ * Besitzerwechsel, dessen PTY unverändert weiterläuft (dass das auch beim
+ * Rendern hält, ist die eigentliche Arbeit des Tickets, s.
+ * `useTerminalTabHosts.ts`). EIN Reducer für beide Fälle, keine zwei — die
+ * Geste ist dieselbe, nur die Ziel-Pane unterscheidet sich.
+ *
+ * `insertIndex` ist der Einfüge-SLOT in der Ziel-Leiste, gezählt VOR dem
+ * Herauslösen des Tabs (0 = ganz vorn, `länge` = ganz hinten; ohne Angabe:
+ * ganz hinten). Beim Umsortieren innerhalb derselben Pane zählt der Slot also
+ * inklusive des gezogenen Tabs selbst — exakt das, was die Leiste beim
+ * Schweben anzeigt — und wird intern auf die End-Position umgerechnet.
  *
  * Die Projekt-Gleichheit ist harte Bedingung, nicht Komfort: der `cwd` einer
  * PTY steht beim Spawn fest und ist danach nicht mehr änderbar — ein Tab in
@@ -324,23 +336,32 @@ export function closeTerminalTab(
  * woanders steht als die Pane behauptet (und als der Explorer beim
  * Fokussieren dieser Pane zeigt).
  *
- * No-Op (identische Referenz) bei: unbekannter Quell-/Ziel-Pane, gleicher
- * Quell- und Ziel-Pane, unterschiedlichem Projektpfad, unbekanntem Tab und
- * wenn die Quelle danach ohne Terminal-Tab dastünde (dieselbe Untergrenze
- * wie beim Schließen).
+ * Auch der LETZTE Tab einer Pane darf wegziehen (Nutzer-Entscheidung, hebt
+ * die frühere Schließen-Untergrenze für diesen Weg auf): die Quelle steht
+ * danach ohne Terminal-Tab da — ein Zustand, den `Pane` nicht kennt — und
+ * ihr Slot wird deshalb im selben Übergang geleert, mit derselben Nachsorge
+ * wie `closePane` (der Fokus wandert ohnehin zur Ziel-Pane, ein etwaiger
+ * Fokus-Modus der Quelle endet). Das Aufräumen des Editor-Zustands der
+ * verschwundenen Pane liegt beim Aufrufer (`App.tsx`), wie beim Schließen.
  *
- * Der Tab landet am ENDE der Ziel-Leiste und wird dort sofort aktiv (wie
- * `openTerminalTab`), der Fokus wandert mit ihm — ohne das zeigten
- * Akzentrahmen und Explorer weiter auf die Quelle, während die Eingabe schon
- * in der Ziel-Pane landet.
+ * No-Op (identische Referenz) bei: unbekannter Quell-/Ziel-Pane, unbekanntem
+ * Tab, unterschiedlichem Projektpfad, `insertIndex` außerhalb von
+ * [0, Ziel-Länge] und einem Umsortieren auf die eigene Position.
+ *
+ * Der Tab wird am Ziel sofort aktiv (wie `openTerminalTab`), der Fokus
+ * wandert zur Ziel-Pane — ohne das zeigten Akzentrahmen und Explorer weiter
+ * auf die Quelle, während die Eingabe schon in der Ziel-Pane landet. Das gilt
+ * bewusst auch beim Umsortieren innerhalb einer Pane: wer einen Chip greift
+ * und ablegt, meint diesen Tab — dieselbe Zuwendung wie beim Zug in eine
+ * andere Pane, kein zweites, abweichendes Drop-Verhalten.
  */
 export function moveTerminalTab(
   state: GridState,
   sourcePaneId: string,
   tabId: string,
   targetPaneId: string,
+  insertIndex?: number,
 ): GridState {
-  if (sourcePaneId === targetPaneId) return state;
   const sourceIndex = state.slots.findIndex(
     (slot) => slot?.paneId === sourcePaneId,
   );
@@ -352,21 +373,66 @@ export function moveTerminalTab(
   const source = state.slots[sourceIndex] as Pane;
   const target = state.slots[targetIndex] as Pane;
   if (source.projectPath !== target.projectPath) return state;
-  if (source.terminalTabs.length <= 1) return state;
 
   const tabIndex = source.terminalTabs.findIndex((tab) => tab.tabId === tabId);
   if (tabIndex === -1) return state;
   const movedTab = source.terminalTabs[tabIndex] as TerminalTab;
 
+  const slot = insertIndex ?? target.terminalTabs.length;
+  if (slot < 0 || slot > target.terminalTabs.length) return state;
+
+  if (sourcePaneId === targetPaneId) {
+    // Umsortieren: Slot (vor dem Herauslösen gezählt) auf die End-Position
+    // umrechnen — ein Slot HINTER der eigenen Position rückt um eins auf,
+    // sobald der Tab herausgelöst ist.
+    const finalIndex = slot > tabIndex ? slot - 1 : slot;
+    if (finalIndex === tabIndex) return state;
+    const withoutMoved = source.terminalTabs.filter(
+      (tab) => tab.tabId !== tabId,
+    );
+    const nextTabs = [
+      ...withoutMoved.slice(0, finalIndex),
+      movedTab,
+      ...withoutMoved.slice(finalIndex),
+    ];
+    const nextSlots = state.slots.slice();
+    nextSlots[sourceIndex] = {
+      ...source,
+      terminalTabs: nextTabs,
+      activeTerminalTabId: movedTab.tabId,
+      showingFile: false,
+    };
+    return { ...state, slots: nextSlots, focusedPaneId: sourcePaneId };
+  }
+
   const nextSlots = state.slots.slice();
-  nextSlots[sourceIndex] = { ...source, ...withoutTerminalTab(source, tabIndex) };
+  nextSlots[sourceIndex] =
+    source.terminalTabs.length <= 1
+      ? null
+      : { ...source, ...withoutTerminalTab(source, tabIndex) };
   nextSlots[targetIndex] = {
     ...target,
-    terminalTabs: [...target.terminalTabs, movedTab],
+    terminalTabs: [
+      ...target.terminalTabs.slice(0, slot),
+      movedTab,
+      ...target.terminalTabs.slice(slot),
+    ],
     activeTerminalTabId: movedTab.tabId,
     showingFile: false,
   };
-  return { ...state, slots: nextSlots, focusedPaneId: targetPaneId };
+  return {
+    ...state,
+    slots: nextSlots,
+    focusedPaneId: targetPaneId,
+    maximizedPaneId:
+      // Dieselbe Nachsorge wie `closePane`: eine geleerte Quelle kann nicht
+      // weiter das ganze Grid einnehmen. Praktisch unerreichbar (im
+      // Fokus-Modus ist das Ziehen gesperrt, `PaneGrid.tsx`), aber dieser
+      // Reducer setzt keine Aufrufreihenfolge voraus.
+      nextSlots[sourceIndex] === null && state.maximizedPaneId === sourcePaneId
+        ? null
+        : state.maximizedPaneId,
+  };
 }
 
 /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü

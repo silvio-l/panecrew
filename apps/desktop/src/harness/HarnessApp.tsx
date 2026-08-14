@@ -164,7 +164,14 @@ export function HarnessApp({
                 onOpenTerminalTab={grid.openTerminalTab}
                 onCloseTerminalTab={grid.closeTerminalTab}
                 onRenameTerminalTab={grid.renameTerminalTab}
-                onMoveTerminalTab={grid.moveTerminalTab}
+                onMoveTerminalTab={(sourcePaneId, tabId, targetPaneId, insertIndex) =>
+                  grid.moveTerminalTab(
+                    sourcePaneId,
+                    tabId,
+                    targetPaneId,
+                    insertIndex ?? undefined,
+                  )
+                }
                 onSwitchToTerminalTab={grid.switchToTerminalTab}
                 onSwitchToFileTab={grid.switchToFileTab}
                 onEnterFocusMode={grid.enterFocusMode}

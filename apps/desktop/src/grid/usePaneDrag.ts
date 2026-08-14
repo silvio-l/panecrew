@@ -37,11 +37,24 @@ interface PaneDragSpec<TSource> {
   source: TSource;
   /** Die Panes, auf denen ein Loslassen überhaupt etwas bewirkt. BEWUSST vom
    * Aufrufer bestimmt und nicht hier hergeleitet: der Tab-Zug erlaubt nur
-   * Panes desselben Projekts, der Slot-Tausch nur belegte Slots ≠ Quelle.
+   * Panes desselben Projekts (seit der Präzisions-Runde einschließlich der
+   * eigenen — Umsortieren), der Slot-Tausch nur belegte Slots ≠ Quelle.
    * Wer nicht in dieser Liste steht, wird gar nicht erst getroffen — die
    * Ablehnung passiert beim Schweben, nicht erst beim Loslassen. */
   candidatePaneIds: readonly string[];
-  onDrop: (targetPaneId: string) => void;
+  /** Optional: die POSITION innerhalb der getroffenen Pane, an der ein
+   * Loslassen JETZT einsortieren würde (Nutzer-Befund "ich kann nur Drop in
+   * ein Pane, aber nicht an eine ganz bestimmte Stelle"). Der Hook kennt
+   * keine Tab-Leisten — WAS eine Position bedeutet und wie sie sich aus dem
+   * Zeigerpunkt ergibt, weiß nur der Aufrufer; hier wird sie nur pro
+   * Bewegung nachgeführt (`targetIndex`) und beim Drop mitgereicht. Ohne
+   * Angabe bleibt `targetIndex` `null` (der Slot-Tausch hat keine
+   * Positionen, nur ganze Panes). */
+  insertionIndexAt?: (
+    targetPaneId: string,
+    point: { x: number; y: number },
+  ) => number;
+  onDrop: (targetPaneId: string, insertIndex: number | null) => void;
 }
 
 export interface PaneDrag<TSource> {
@@ -55,6 +68,9 @@ export interface PaneDrag<TSource> {
   source: TSource | null;
   /** Die Pane, in der ein Loslassen JETZT landen würde, sonst `null`. */
   targetPaneId: string | null;
+  /** Die Position innerhalb dieser Pane (s. `insertionIndexAt`) — `null`,
+   * wenn kein Ziel getroffen ist oder der Zug keine Positionen kennt. */
+  targetIndex: number | null;
   /** Die beim Scharfwerden erlaubten Ziel-Panes (die `candidatePaneIds` der
    * laufenden Spec), leer außerhalb eines scharfen Zugs. Nachgereicht mit dem
    * Nutzer-Befund zum Tab-Zug ("er muss mir natürlich auch anzeigen, wo ich
@@ -107,6 +123,7 @@ const NO_CANDIDATES: readonly string[] = [];
 export function usePaneDrag<TSource>(): PaneDrag<TSource> {
   const [source, setSource] = useState<TSource | null>(null);
   const [targetPaneId, setTargetPaneId] = useState<string | null>(null);
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [candidatePaneIds, setCandidatePaneIds] =
     useState<readonly string[]>(NO_CANDIDATES);
   const [ghostOrigin, setGhostOrigin] = useState<{ x: number; y: number } | null>(
@@ -166,17 +183,18 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
           // Tab wechseln).
           suppressClickRef.current = true;
           if (dropped) {
-            const hit = candidateAtPoint(spec.candidatePaneIds, {
-              x: lastX,
-              y: lastY,
-            });
+            const point = { x: lastX, y: lastY };
+            const hit = candidateAtPoint(spec.candidatePaneIds, point);
             // Über keinem erlaubten Ziel losgelassen heißt: nichts tun. Ein
             // Zug ins Leere ist ein Abbruch, keine halbe Handlung.
-            if (hit !== null) spec.onDrop(hit);
+            if (hit !== null) {
+              spec.onDrop(hit, spec.insertionIndexAt?.(hit, point) ?? null);
+            }
           }
         }
         setSource(null);
         setTargetPaneId(null);
+        setTargetIndex(null);
         setCandidatePaneIds(NO_CANDIDATES);
         setGhostOrigin(null);
       };
@@ -207,9 +225,14 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
           ghost.style.transform = `translate3d(${String(lastX)}px, ${String(lastY)}px, 0)`;
         }
         // React lässt identische set-Werte folgenlos verpuffen — gerendert
-        // wird nur beim tatsächlichen Wechsel der Ziel-Pane, nicht pro
-        // Mausbewegung.
-        setTargetPaneId(candidateAtPoint(spec.candidatePaneIds, { x: lastX, y: lastY }));
+        // wird nur beim tatsächlichen Wechsel von Ziel-Pane oder
+        // Einfüge-Position, nicht pro Mausbewegung.
+        const point = { x: lastX, y: lastY };
+        const hit = candidateAtPoint(spec.candidatePaneIds, point);
+        setTargetPaneId(hit);
+        setTargetIndex(
+          hit !== null ? (spec.insertionIndexAt?.(hit, point) ?? null) : null,
+        );
       };
       const onUp = () => {
         finish(true);
@@ -229,6 +252,7 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
     startDrag,
     source,
     targetPaneId,
+    targetIndex,
     candidatePaneIds,
     ghostOrigin,
     ghostRef,

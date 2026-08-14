@@ -638,6 +638,34 @@ function App() {
     setPendingClose({ target: "terminalTab", tabNumber: index + 1, run });
   };
 
+  // Zieht der LETZTE Terminal-Tab einer Pane in eine andere (seit der
+  // Präzisions-Runde erlaubt, Nutzer-Entscheidung), leert sich der
+  // Quell-Slot (`gridState.ts`) — für den Editor-Zustand der Quelle ist das
+  // dasselbe Verlassen wie `closePaneGuarded`: ungespeicherter Stand fragt
+  // per `guardLeave` nach, danach räumt `forget` auf (sonst hielte
+  // `usePaneFileEditors` die verschwundene Pane für immer als
+  // "ungespeichert"). BEWUSST ohne die Sitzungs-Rückfrage (`pendingClose`)
+  // des Schließen-Wegs: hier stirbt keine PTY — der Tab lebt mitsamt seiner
+  // Sitzung in der Ziel-Pane weiter, das ist der ganze Sinn des Zugs. Jeder
+  // andere Zug (Quelle behält Tabs, oder Umsortieren innerhalb einer Pane)
+  // läuft ungefragt durch.
+  const moveTerminalTabGuarded = (
+    sourcePaneId: string,
+    tabId: string,
+    targetPaneId: string,
+    insertIndex: number | null,
+  ) => {
+    const source = gridState.slots.find((slot) => slot?.paneId === sourcePaneId);
+    const emptiesSource =
+      sourcePaneId !== targetPaneId && source?.terminalTabs.length === 1;
+    const run = () => {
+      moveTerminalTab(sourcePaneId, tabId, targetPaneId, insertIndex ?? undefined);
+      if (emptiesSource) paneFileEditors.forget(sourcePaneId);
+    };
+    if (emptiesSource) guardLeave(sourcePaneId, run);
+    else run();
+  };
+
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
   // Zeile UND öffnet die Datei in der Editorfläche. Bewusst kein zusätzlicher
   // Doppelklick-Handler (Nutzerentscheidung, deckt sich mit Story 8 des
@@ -925,7 +953,7 @@ function App() {
               onOpenTerminalTab={openTerminalTab}
               onCloseTerminalTab={closeTerminalTabGuarded}
               onRenameTerminalTab={renameTerminalTab}
-              onMoveTerminalTab={moveTerminalTab}
+              onMoveTerminalTab={moveTerminalTabGuarded}
               onSwitchToTerminalTab={switchToTerminalTab}
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}

@@ -143,7 +143,7 @@ describe("PaneTabs", () => {
     // Drop quittiert der angekommene Chip mit einem einmaligen Wasch.
     it("zeigt den Platzhalter-Chip mit der künftigen Nummer, solange ein Zug über der Pane schwebt", () => {
       const { container, rerender } = renderTabs(
-        baseProps({ incomingTabNumber: 3 }),
+        baseProps({ incomingTab: { index: 2, number: 3 } }),
       );
 
       const slot = container.querySelector("[data-incoming-tab]");
@@ -154,10 +154,34 @@ describe("PaneTabs", () => {
 
       rerender(
         <Tooltip.Provider>
-          <PaneTabs {...baseProps({ incomingTabNumber: null })} />
+          <PaneTabs {...baseProps({ incomingTab: null })} />
         </Tooltip.Provider>,
       );
       expect(container.querySelector("[data-incoming-tab]")).toBeNull();
+    });
+
+    it("stellt den Platzhalter an den Einfüge-Slot ZWISCHEN die Chips, nicht ans Ende (Präzisions-Runde)", () => {
+      // index 1 = zwischen Terminal 1 und Terminal 2 — der Nutzer-Befund
+      // hinter der Runde: "ich möchte … das Drag-Tab zwischen zwei andere
+      // Tabs platzieren können".
+      const { container } = renderTabs(
+        baseProps({ incomingTab: { index: 1, number: 2 } }),
+      );
+
+      const slot = container.querySelector("[data-incoming-tab]");
+      expect(slot).not.toBeNull();
+      expect(slot).toHaveTextContent("2");
+      // DOM-Reihenfolge in der Leiste: Chip 1 davor, Chip 2 dahinter.
+      expect(
+        slot?.previousElementSibling?.querySelector(
+          '[data-terminal-tab-chip="tab-1"]',
+        ),
+      ).not.toBeNull();
+      expect(
+        slot?.nextElementSibling?.querySelector(
+          '[data-terminal-tab-chip="tab-2"]',
+        ),
+      ).not.toBeNull();
     });
 
     it("quittiert den angekommenen Tab mit dem Settle-Wasch, nur an genau diesem Chip", () => {
