@@ -33,10 +33,12 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
-## [0.1.0-nightly.4] - 2026-08-14
+## [0.1.0-nightly.4] - 2026-08-15
 ### Hinzugefügt
 - CI: geschlossene, nicht gemergte Pull-Request-Branches werden jetzt
   automatisch aufgeräumt.
+- Der Datei-Explorer aktualisiert sich jetzt automatisch, wenn sich Dateien
+  oder Ordner außerhalb der App auf der Festplatte ändern.
 
 ### Geändert
 - Die Tastaturkürzel-Referenz und die zugrundeliegenden Beschreibungen sind
@@ -47,6 +49,33 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   für Nutzer.
 - Lesbarkeits-Durchgang auf der Marketing-Website: verbesserte Typografie
   und Kontrast, außerdem ein paar überzogene Feature-Aussagen korrigiert.
+- Marketing-Website: das Seitenlayout skaliert jetzt proportional statt auf
+  eine feste Breite begrenzt zu sein.
+- Mehrere Performance-Verbesserungen: Tool-Erkennung, Settings-Zugriffe,
+  Tastatureingaben im Datei-Editor und Grid-Layout-Übergänge sind jetzt
+  schneller und lösen keine unnötigen Neu-Renderings im Hintergrund mehr
+  aus.
+
+### Behoben
+- Terminal-Panes konnten nach längerem Offenhalten mehrerer Tabs statt
+  lesbarem Text nur noch korrupte, einzelne Buchstabenfragmente anzeigen —
+  Ursache war, dass die App den begrenzten Vorrat gleichzeitiger
+  GPU-beschleunigter Terminal-Renderer der Browser-Engine erschöpfte, indem
+  jeder Tab seinen Renderer auch im verborgenen Zustand am Leben hielt;
+  Renderer sind jetzt nur noch für den gerade sichtbaren Tab aktiv.
+- Unter macOS war ein minimiertes oder verstecktes PaneCrew-Fenster nur noch
+  über die System-Exposé-Übersicht wiederzufinden — die App führt jetzt ein
+  laufend aktuelles „Fenster"-Menü mit allen offenen Fenstern, ein Klick
+  bringt das gewählte Fenster nach vorn.
+- Die App konnte ohne sichtbares Fenster (nur mit Dock-Icon) hängen bleiben,
+  wenn beim Schließen des letzten Inhalts-Fensters gerade das
+  Einstellungen-Fenster offen war.
+- Das Schließen eines Terminal-Tabs beendet jetzt zuverlässig alle davon
+  gestarteten Prozesse; zuvor konnten Kindprozesse im Hintergrund
+  weiterlaufen, nachdem der Tab geschlossen wurde.
+- Die „Kopiert"-Bestätigung im Terminal konnte auch dann erscheinen, wenn
+  das Kopieren tatsächlich fehlgeschlagen war, und kopierter Text konnte
+  eine ungewollte führende Einrückung übernehmen.
 
 ## [0.1.0-nightly.3] - 2026-08-14
 ### Behoben

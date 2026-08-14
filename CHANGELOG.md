@@ -33,10 +33,12 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
-## [0.1.0-nightly.4] - 2026-08-14
+## [0.1.0-nightly.4] - 2026-08-15
 ### Added
 - CI: closed, non-merged pull-request branches are now cleaned up
   automatically.
+- The file explorer now refreshes automatically when files or folders
+  change on disk outside the app.
 
 ### Changed
 - The keyboard shortcut reference and its underlying descriptions are now
@@ -46,6 +48,32 @@ be added to both files, with the same version heading.
   tracked tree — dev-only, no functional change for users.
 - Marketing-site readability pass: improved typography and contrast, and
   corrected a couple of overstated feature claims.
+- Marketing website: the page layout now scales proportionally instead of
+  capping at a fixed width.
+- Several performance improvements: tool detection, settings lookups,
+  file-editor typing, and grid-layout transitions are now faster and no
+  longer trigger unnecessary background re-renders.
+
+### Fixed
+- Terminal panes could render as corrupted, illegible fragments instead of
+  readable text after several tabs had been open for a while — caused by
+  the app exhausting the browser engine's limited pool of concurrent
+  GPU-accelerated terminal renderers by keeping every tab's renderer alive
+  in the background even while hidden; renderers are now only active for
+  the currently visible tab.
+- On macOS, a minimized or hidden PaneCrew window had no way to be found
+  again short of using the system's App Exposé — the app now keeps a live
+  "Window" menu listing every open window, with a click bringing it to the
+  front.
+- The app could end up with no visible window (only a Dock icon) if the
+  Settings window happened to be open when the last content window was
+  closed.
+- Closing a terminal tab now reliably terminates every process it spawned;
+  previously, child processes could keep running in the background after
+  the tab closed.
+- The terminal's "Copied" confirmation could appear even when the copy
+  itself had failed, and copied text could pick up unwanted leading
+  indentation.
 
 ## [0.1.0-nightly.3] - 2026-08-14
 ### Fixed
