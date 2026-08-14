@@ -1,10 +1,16 @@
 ---
-// Shared chrome (nav, footer, brand tokens) for guide/content pages —
-// duplicated from index.astro's tokens rather than extracted
-// out of it, since index.astro is pinned to the approved artifact prototype
+// Shared chrome (nav, footer, brand tokens) for guide/content pages.
+// The identical parts of the tokens/nav/footer CSS now live in
+// ../styles/site-chrome.css, shared with index.astro (performance-audit
+// ticket 11) — index.astro is pinned to the approved artifact prototype
 // (../../../.impeccable/direction-contract-website.md) and must stay
-// structurally untouched. Keep colors/nav/footer here in sync by hand if
-// the homepage's own copy of them changes.
+// structurally untouched, but importing the same stylesheet doesn't touch
+// its structure. Only the values that genuinely differ per page (page
+// width, footer glyph-tile color, footer icon border alpha, plus the
+// guide-only prose styles below) stay local here — see site-chrome.css's
+// own header comment for the split.
+import "../styles/site-chrome.css";
+
 interface Props {
   title: string;
   description: string;
@@ -38,106 +44,21 @@ const canonical = `${siteUrl}${path}`;
 <link rel="icon" type="image/png" href="/favicon.png">
 <slot name="head" />
 <style is:global>
-  :root {
-    --indigo-hi: #333c72;
-    --indigo: #262d58;
-    --indigo-deep: #1f2547;
-    --line-dark: rgba(255, 253, 245, 0.12);
-    --term: #121314;
-    --term-bar: #1d1e1f;
-    --term-xpl: #191a1b;
-    --term-line: rgba(255, 253, 245, 0.09);
-    --cream: #fffdf5;
-    --cream-2: #f8f3e4;
-    --ink: #23283f;
-    --ink-dim: #5b5f75;
-    --amber: #e59656;
-    --amber-deep: #b95f10;
-    --amber-text: #c9741f;
-    --cyan: #29a9ac;
-    --cyan-bright: #5acfd3;
-    --ansi-green: #7ccb6e;
-    --ansi-yellow: #e5c07b;
-    --ansi-blue: #6ea8dc;
-    --display: "Arial Rounded MT Bold", "SF Pro Rounded", ui-rounded, "Segoe UI", system-ui, sans-serif;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
-    --lift: 0.15s ease;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; font-size: 100%; }
+  /* nav/footer/token CSS lives in ../styles/site-chrome.css (imported
+     above) — only the properties that genuinely differ from index.astro's
+     copy stay here (page width, footer glyph-tile color, footer icon
+     border alpha), plus the guide-only prose styles below. */
   body {
     background:
       linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
     background-color: var(--indigo);
-    color: var(--cream);
-    font-family: var(--sans); font-size: 1.03125rem; line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
   }
-  ::selection { background: rgba(229, 150, 86, 0.4); }
-  a { color: inherit; }
-  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
-  img, svg { max-width: 100%; }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 26px; }
-
-  /* ---------- nav (same markup/rules as the homepage) ---------- */
-  .nav {
-    position: relative; z-index: 20;
-    display: flex; align-items: center; gap: 26px;
-    max-width: 1120px; margin: 0 auto; padding: 20px 26px;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-  .logo svg { width: 26px; height: 26px; }
-  .logo b { font-family: var(--display); font-weight: 700; font-size: 1.3125rem; letter-spacing: -0.01em; }
-  .nav-links { display: flex; gap: 22px; margin-left: 8px; }
-  .nav-links a { text-decoration: none; font-size: 0.90625rem; color: rgba(255, 253, 245, 0.82); transition: color var(--lift); position: relative; }
-  /* amber underline slide on hover — kept in sync with index.astro's nav */
-  .nav-links a::after {
-    content: ""; position: absolute; left: 0; bottom: -4px; width: 100%; height: 1px;
-    background: var(--amber); transform: scaleX(0); transform-origin: left;
-    transition: transform var(--lift);
-  }
-  .nav-links a:hover { color: var(--cream); }
-  .nav-links a:hover::after { transform: scaleX(1); }
-  .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-  .nav-cta {
-    text-decoration: none; font-family: var(--mono); font-size: 0.875rem;
-    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
-    border-radius: 999px; padding: 7px 16px;
-    transition: transform var(--lift), background var(--lift);
-  }
-  .nav-cta:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); }
-  .nav-gh {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px;
-    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
-    border-radius: 999px; color: var(--cream); text-decoration: none;
-    transition: transform var(--lift), background var(--lift), border-color var(--lift);
-  }
-  .nav-gh svg { width: 17px; height: 17px; }
-  .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
-
-  /* ---------- footer (same markup/rules as the homepage) ---------- */
-  .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
-  footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
-  .foot { max-width: 1120px; margin: 0 auto; padding: 0 26px; display: flex; align-items: center; gap: 10px; }
-  .glyph-tile {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 9px; background: var(--indigo-deep);
-  }
-  .glyph-tile svg { width: 21px; height: 21px; }
-  .foot b { font-family: var(--display); font-weight: 700; font-size: 1.0625rem; }
-  .foot .cp { color: var(--ink-dim); font-size: 0.90625rem; }
-  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 0.8125rem; color: var(--ink-dim); }
-  .foot-gh {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px; border-radius: 999px;
-    border: 1px solid rgba(35, 40, 63, 0.16); color: var(--ink); text-decoration: none;
-    transition: background var(--lift), border-color var(--lift), transform var(--lift);
-  }
-  .foot-gh svg { width: 16px; height: 16px; }
-  .foot-gh:hover { background: rgba(35, 40, 63, 0.06); border-color: rgba(35, 40, 63, 0.26); transform: translateY(-2px); }
+  .nav { max-width: 1120px; margin: 0 auto; padding: 20px 26px; }
+  .foot { max-width: 1120px; margin: 0 auto; padding: 0 26px; gap: 10px; }
+  .glyph-tile { display: inline-flex; background: var(--indigo-deep); }
+  .foot-gh { border: 1px solid rgba(35, 40, 63, 0.16); }
 
   /* ---------- guide/article content (new — homepage has no prose layout) ---------- */
   .guide { padding: 56px 0 90px; }

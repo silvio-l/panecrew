@@ -4,6 +4,11 @@
 // Ported verbatim from the approved artifact prototype; keep this
 // page's structure/copy/behavior in sync with that contract, not with
 // apps/desktop's own "no-glow"/theming rules (the website has its own).
+// nav/footer/token CSS shared with the guide-page layout lives in
+// ../styles/site-chrome.css (performance-audit ticket 11) — see that
+// file's header comment for exactly what moved and what stayed local.
+import "../styles/site-chrome.css";
+
 const siteUrl = "https://panecrew.dev";
 const title = "PaneCrew — A pane for every agent";
 const description =
@@ -72,47 +77,12 @@ const description =
      focus-follow demo the visitor drives themselves.
      Self-contained, system fonts only.
      ============================================================ */
+  /* Nav/footer/token CSS shared with the guide-page layout lives in
+     ../styles/site-chrome.css (imported above) — this block now only
+     holds the tokens/rules unique to this page, plus the small per-page
+     local halves of the selectors site-chrome.css splits (.nav, .foot,
+     .foot-gh, .glyph-tile — see that file's header comment). */
   :root {
-    /* saturated indigo brand ground (from the icon world, #1F243C ref) */
-    --indigo-hi: #333c72;
-    --indigo: #262d58;
-    --indigo-deep: #1f2547;
-    --line-dark: rgba(255, 253, 245, 0.12);
-    /* terminal/app-window interiors — the desktop app's REAL neutral-dark
-       chrome (2026-08-14, user decision): every surface that depicts the
-       app itself — window frame, explorer, pane interiors, title bars, the
-       crew-card mocks, the brew pill — carries the app's actual grounds
-       (--pc-app-background #121314, --pc-explorer-background #191a1b)
-       instead of the earlier indigo-tinted #12162a/#1b2038. Two color
-       worlds meeting at the window edge: indigo is the site, neutral gray
-       is the app. Exceptions: the footer glyph tile keeps the icon's own
-       indigo ground (platform icons bring their own), and the nav pin
-       capsule stays page-indigo (site chrome), only its pads are app-gray. */
-    --term: #121314;
-    --term-bar: #1d1e1f;
-    --term-xpl: #191a1b;
-    --term-line: rgba(255, 253, 245, 0.09);
-    /* cream product surfaces */
-    --cream: #fffdf5;
-    --cream-2: #f8f3e4;
-    --ink: #23283f;
-    --ink-dim: #5b5f75;
-    /* amber brand accent */
-    --amber: #e59656;
-    --amber-deep: #b95f10;
-    --amber-text: #c9741f;
-    /* cyan second accent (explorer / follow) */
-    --cyan: #29a9ac;
-    --cyan-bright: #5acfd3;
-    /* ANSI as real content */
-    --ansi-green: #7ccb6e;
-    --ansi-yellow: #e5c07b;
-    --ansi-blue: #6ea8dc;
-    /* type */
-    --display: "Arial Rounded MT Bold", "SF Pro Rounded", ui-rounded, "Segoe UI", system-ui, sans-serif;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
-    --lift: 0.15s ease;
     /* cinematic refinement (2026-08-14): shared reveal easing + a single
        tracking token for the small mono labels that were previously four
        uncoordinated one-offs (.kicker, .hint, .xpl .hd). */
@@ -132,8 +102,6 @@ const description =
     --span-wide: min(calc(1140px + 23vw), calc(100% - 2 * var(--page-gut)));
     --span-mid: min(calc(880px + 16vw), calc(100% - 2 * var(--page-gut)));
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; font-size: 100%; }
   body {
     /* faint technical grid, well under the bokeh glow — a board-texture
        hint, not a visible pattern on its own */
@@ -142,12 +110,8 @@ const description =
       repeating-linear-gradient(90deg, rgba(255, 253, 245, 0.025) 0, rgba(255, 253, 245, 0.025) 1px, transparent 1px, transparent 64px),
       linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
     background-color: var(--indigo);
-    color: var(--cream);
-    font-family: var(--sans); font-size: 1.03125rem; line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
-  ::selection { background: rgba(229, 150, 86, 0.4); }
   /* film-grain overlay (reference-site technique: fixed full-viewport noise
      at low opacity, mix-blend-mode overlay) — tactile texture across the
      whole page, indigo ground and cream footer alike. Static texture, not
@@ -160,9 +124,6 @@ const description =
     background-size: 240px 240px;
     opacity: 0.16; mix-blend-mode: overlay;
   }
-  a { color: inherit; }
-  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
-  img, svg { max-width: 100%; }
 
   /* every .wrap is a showcase section (hero, crew cards, closer rows,
      oss grid) — they all ride the wide span; the gutters live inside the
@@ -180,48 +141,9 @@ const description =
   .eyebrow::after { content: "──╮"; letter-spacing: 0; color: rgba(229, 150, 86, 0.55); }
   .eyebrow.left { justify-content: flex-start; }
 
-  /* ---------- nav ---------- */
-  .nav {
-    position: relative; z-index: 20;
-    display: flex; align-items: center; gap: 26px;
-    width: var(--span-wide); margin: 0 auto; padding: 20px 0;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-  .logo svg { width: 26px; height: 26px; }
-  .logo b {
-    font-family: var(--display); font-weight: 700; font-size: 1.3125rem; letter-spacing: -0.01em;
-  }
-  .nav-links { display: flex; gap: 22px; margin-left: 8px; }
-  .nav-links a {
-    text-decoration: none; font-size: 0.90625rem; color: rgba(255, 253, 245, 0.82);
-    transition: color var(--lift);
-    position: relative;
-  }
-  .nav-links a::after {
-    content: ""; position: absolute; left: 0; bottom: -4px; width: 100%; height: 1px;
-    background: var(--amber); transform: scaleX(0); transform-origin: left;
-    transition: transform var(--lift);
-  }
-  .nav-links a:hover { color: var(--cream); }
-  .nav-links a:hover::after { transform: scaleX(1); }
-  .nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-  .nav-cta {
-    text-decoration: none;
-    font-family: var(--mono); font-size: 0.875rem;
-    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
-    border-radius: 999px; padding: 7px 16px;
-    transition: transform var(--lift), background var(--lift);
-  }
-  .nav-cta:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); }
-  .nav-gh {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px;
-    background: rgba(255, 253, 245, 0.1); border: 1px solid var(--line-dark);
-    border-radius: 999px; color: var(--cream); text-decoration: none;
-    transition: transform var(--lift), background var(--lift), border-color var(--lift);
-  }
-  .nav-gh svg { width: 17px; height: 17px; }
-  .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
+  /* ---------- nav (position/display/gap etc. shared, width/margin/padding
+     local — see site-chrome.css) ---------- */
+  .nav { width: var(--span-wide); margin: 0 auto; padding: 20px 0; }
   /* HUD readout — one small reusable instrument-strip component, seeded
      from the footer's pre-existing "panes: 4 · explorers: 1" idiom. Bare
      .hud-readout is inline text (app-bar strips, footer); the --badge
@@ -442,23 +364,25 @@ const description =
   .trace-svg rect { fill: var(--amber); }
   /* "Tron power lane" pass (2026-08-14, user: "wirkt noch nicht wie eine
      tron strom lane") — same dashed-channel-under-solid-overlay language
-     already established for the page seam (#seamPath/#seamPathLive), plus
+     already established for the page seam (#seamPath / .seam-live), plus
      a genuinely moving element: a short bright dash chases along the
      route on an infinite loop, since a focus-trace (unlike the seam) has
      no continuous scroll signal to charge it — the loop stands in for
      "current is flowing". No blur/box-shadow anywhere — the no-glow rule
      stays absolute; "energized" reads through motion and a hot-core color
      step (amber conduit, cream spark), not a halo — a same-color dash on
-     top of the solid amber line would have been invisible. */
+     top of the solid amber line would have been invisible.
+     Perf pass (2026-08-14, performance-audit ticket 10): the chasing dash
+     used to be a `stroke-dasharray`/`stroke-dashoffset` CSS animation on
+     the path itself — a paint-triggering SVG property, repainting the
+     whole stroke every frame for as long as the trace is on screen.
+     Replaced by a small pool of real elements (buildSparkTrain, script
+     below) driven purely by WAAPI `transform`/`opacity` keyframes — the
+     same visual "train of short marks flowing along the route" (the dash
+     pattern's own 4px-on/34px-off period reproduced as one spark per
+     38px), but compositor-only, no repaint. */
   .trace-svg path.trace-base { stroke-width: 1.5; stroke-opacity: 0.3; stroke-dasharray: 2 5; }
-  .trace-svg path.trace-pulse { display: none; }
-  @media (prefers-reduced-motion: no-preference) {
-    .trace-svg path.trace-pulse {
-      display: block; stroke: var(--cream); stroke-width: 2px; stroke-linecap: round;
-      stroke-dasharray: 4 34; animation: tracePulseFlow 1.5s linear infinite;
-    }
-  }
-  @keyframes tracePulseFlow { to { stroke-dashoffset: -38; } }
+  .trace-sparks circle { fill: var(--cream); }
   /* section-seam channel: one vertical bus route running just outside the
      wide content span, jogging sideways at each big section boundary
      (45° chamfers via the same chamferedLine math as the focus trace).
@@ -482,11 +406,21 @@ const description =
     fill: none; stroke: var(--amber); stroke-opacity: 0.55; stroke-width: 1.5;
     stroke-dasharray: 2 5;
   }
-  /* live charge overlay: a second, solid trace on identical geometry whose
-     stroke-dashoffset tracks scroll progress (see updateSeamCharge in the
+  /* live charge overlay: a second, solid trace on identical geometry that
+     "powers up" as the visitor scrolls (see updateSeamCharge in the
      script below) — the dashed #seamPath stays untouched underneath, so
-     "charged" reads as solid-over-dashed, not just brighter-over-dimmer. */
-  .seam-svg path#seamPathLive { fill: none; stroke: var(--amber); stroke-opacity: 0.95; stroke-width: 2; }
+     "charged" reads as solid-over-dashed, not just brighter-over-dimmer.
+     Perf pass (2026-08-14, performance-audit ticket 10): used to be a
+     second <path> whose stroke-dashoffset was written on every scroll
+     frame (a paint-triggering SVG property, repainting the whole route on
+     every scroll tick). Replaced by a small pool of <rect>s — one per
+     segment of the same chamfered-line geometry #seamPath itself uses
+     (straight runs and the 45° corner chamfers alike) — each revealed via
+     a `transform: rotate(...) scaleX(...)` from its own start edge,
+     compositor-only. Only the leg currently mid-charge needs a write per
+     frame; earlier legs sit at scale 1, later ones at scale 0 (see
+     updateSeamCharge). */
+  .seam-live rect { fill: var(--amber); fill-opacity: 0.95; }
   /* latching section pads: outline until the charge reaches them, then
      flip to filled — a functional readout of scroll progress through the
      page's own sections, not decoration. */
@@ -649,8 +583,15 @@ const description =
      relative to viewport center: "par" layers drift at depth-dependent
      speed, "tilt" layers ease from a slight perspective pitch to flat as
      they reach center stage. Desktop + motion-preference only; the
-     engine never runs otherwise, so no CSS fallback state is needed. */
-  [data-vfx] { will-change: transform; }
+     engine never runs otherwise, so no CSS fallback state is needed.
+     Perf pass (2026-08-14, performance-audit ticket 15): will-change used
+     to sit on all six [data-vfx] elements permanently, for the entire
+     page lifetime — an unconditional compositor-layer promotion, most of
+     it wasted while those elements sit off-screen. Scoped to only the
+     elements currently visible (or near-visible) via an IntersectionObserver
+     toggling .vfx-inview (see the vfxVisibility script below); the
+     transform itself is still written by updateVfx() exactly as before. */
+  [data-vfx].vfx-inview { will-change: transform; }
 
   /* ---------- pinned demo sequence (scrollytelling) ----------
      The live demo is the product's core argument, so it gets the page's
@@ -942,31 +883,12 @@ const description =
   }
   .install-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
-  /* ---------- wave + cream footer ---------- */
-  .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
-  footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
-  .foot {
-    width: var(--span-wide); margin: 0 auto;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  }
-  .glyph-tile {
-    width: 34px; height: 34px; border-radius: 9px;
-    background: #1f243c; display: flex; align-items: center; justify-content: center;
-    flex: none;
-  }
-  .glyph-tile svg { width: 21px; height: 21px; }
-  .foot b { font-family: var(--display); font-weight: 700; font-size: 1.0625rem; }
-  .foot .cp { color: var(--ink-dim); font-size: 0.90625rem; }
-  .foot .r { margin-left: auto; font-family: var(--mono); font-size: 0.8125rem; color: var(--ink-dim); }
-  .foot-gh {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px; flex: none;
-    border: 1px solid rgba(35, 40, 63, 0.14); border-radius: 999px;
-    color: var(--ink); text-decoration: none;
-    transition: background var(--lift), border-color var(--lift), transform var(--lift);
-  }
-  .foot-gh svg { width: 16px; height: 16px; }
-  .foot-gh:hover { background: rgba(35, 40, 63, 0.06); border-color: rgba(35, 40, 63, 0.26); transform: translateY(-2px); }
+  /* ---------- wave + cream footer (nav/footer base rules shared, see
+     site-chrome.css — width/gap/background/border below are this page's
+     own values) ---------- */
+  .foot { width: var(--span-wide); margin: 0 auto; gap: 14px; flex-wrap: wrap; }
+  .glyph-tile { display: flex; background: #1f243c; flex: none; }
+  .foot-gh { flex: none; border: 1px solid rgba(35, 40, 63, 0.14); }
   /* footer pad cluster: the readout's own illustration — four powered pane
      pads plus one explorer pad in the site's explorer cyan. Static, no
      interaction; the board's last solder points before the edge. */
@@ -983,7 +905,7 @@ const description =
     .xpl.swap { animation: none; }
     .card:hover, .btn:hover, .brew:hover, .nav-cta:hover, .dpane:hover { transform: none; }
     .reveal, .reveal.in { opacity: 1; animation: none; }
-    #seamPathLive { display: none; }
+    .seam-live { display: none; }
     /* cinematic layer: everything appears finished immediately */
     .kin .kwi { transform: none; animation: none !important; }
     .kin.in .heart { animation: none; }
@@ -1123,7 +1045,7 @@ const description =
        reaches it (updateSeamCharge). -->
   <svg class="seam-svg" aria-hidden="true">
     <path id="seamPath"></path>
-    <path id="seamPathLive"></path>
+    <g id="seamLive" class="seam-live" aria-hidden="true"></g>
     <rect class="seam-via"></rect>
     <rect class="seam-via"></rect>
     <rect class="seam-via"></rect>
@@ -1199,7 +1121,7 @@ const description =
           <svg class="trace-svg" aria-hidden="true">
             <path id="heroTraceBase" class="trace-base"></path>
             <path id="heroTracePath"></path>
-            <path id="heroTracePulse" class="trace-pulse"></path>
+            <g id="heroTraceSparks" class="trace-sparks"></g>
             <rect id="heroTracePad" width="8" height="4"></rect>
           </svg>
         </div>
@@ -1225,7 +1147,7 @@ const description =
   <section id="crew" aria-label="Features">
     <div class="sect-head" data-idx="01">
       <p class="eyebrow reveal">meet the crew</p>
-      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">app.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Six</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">app.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Eight</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
       <p class="reveal" style="--rd:0.25s">These aren't plugins bolted on later — they're what PaneCrew is. Every card below is one facet of the same window.</p>
     </div>
 
@@ -1494,7 +1416,7 @@ const description =
               <svg class="trace-svg" aria-hidden="true">
                 <path id="demoTraceBase" class="trace-base"></path>
                 <path id="demoTracePath"></path>
-                <path id="demoTracePulse" class="trace-pulse"></path>
+                <g id="demoTraceSparks" class="trace-sparks"></g>
                 <rect id="demoTracePad" width="8" height="4"></rect>
               </svg>
             </div>
@@ -1740,7 +1662,117 @@ const description =
     return Math.round(Math.min(350, Math.max(180, len / 2)));
   }
 
-  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, pulseEl) {
+  /* ---- signal-comet spark train (performance-audit ticket 10) ----
+     Replaces the old `.trace-pulse` path's `stroke-dasharray`/
+     `stroke-dashoffset` CSS animation with a pool of small <circle>
+     "sparks" moved via WAAPI `transform: translate()` keyframes — the
+     same visual read (a short train of bright marks chasing along the
+     route, one spark per 38px dash period, looping every 1.5s) without
+     ever touching a paint-triggering SVG property.
+     A circle (not a rotated capsule matching the old dash's exact
+     linecap shape) — translate needs no transform-origin bookkeeping,
+     and at ~3px this reads identically to the old 4×2 rounded dash.
+     Math: for period P and total path length L, spark k (0..ceil(L/P)-1)
+     travels arc [k*P, min((k+1)*P, L)] once per CYCLE_MS, linear, then
+     repeats — since every spark is offset by exactly one period and all
+     share the same clock, the SET of lit positions along the path is
+     continuous across each spark's own loop restart (the original CSS
+     dashoffset animation is exactly as periodic: shifting an infinite
+     dash pattern by one whole period looks identical to not having
+     shifted it at all). Only the last spark's hop can run short of a
+     full period (when L isn't a multiple of P) — it fades out once it
+     reaches the path end and pops back in in sync with the next cycle,
+     instead of overshooting past the trace's actual endpoint. */
+  var SPARK_PERIOD_PX = 38;
+  var SPARK_CYCLE_MS = 1500;
+
+  function pointAtArc(line, cum, arc) {
+    for (var i = 0; i < cum.length - 1; i++) {
+      if (arc <= cum[i + 1] || i === cum.length - 2) {
+        var segLen = cum[i + 1] - cum[i];
+        var t = segLen > 0 ? (arc - cum[i]) / segLen : 0;
+        if (t < 0) t = 0; if (t > 1) t = 1;
+        var a = line[i], b = line[i + 1];
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      }
+    }
+    return line[line.length - 1];
+  }
+
+  function makeSparkTrain(groupEl) {
+    var pool = []; // { circle, anim }
+    function clear() {
+      pool.forEach(function (s) { if (s.anim) s.anim.cancel(); s.circle.remove(); });
+      pool = [];
+    }
+    function update(points, chamfer) {
+      if (!groupEl) return;
+      if (reduced || typeof groupEl.animate !== 'function') { clear(); return; }
+      var line = chamferedLine(points, chamfer);
+      if (line.length < 2) { clear(); return; }
+      var cum = [0];
+      for (var i = 1; i < line.length; i++) {
+        cum.push(cum[i - 1] + Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y));
+      }
+      var total = cum[cum.length - 1];
+      if (total <= 0) { clear(); return; }
+      var count = Math.max(1, Math.ceil(total / SPARK_PERIOD_PX));
+      while (pool.length < count) {
+        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', '1.4');
+        groupEl.appendChild(circle);
+        pool.push({ circle: circle, anim: null });
+      }
+      while (pool.length > count) {
+        var extra = pool.pop();
+        if (extra.anim) extra.anim.cancel();
+        extra.circle.remove();
+      }
+      // a freshly-added spark should join the existing train in phase
+      // rather than starting its own clock at 0 — inherit whichever
+      // sibling's currentTime is already running, if any.
+      var sharedTime = null;
+      for (var s = 0; s < pool.length; s++) {
+        if (pool[s].anim) { sharedTime = pool[s].anim.currentTime; break; }
+      }
+      for (var k = 0; k < count; k++) {
+        var start = k * SPARK_PERIOD_PX;
+        var end = Math.min(start + SPARK_PERIOD_PX, total);
+        var exitOffset = (end - start) / SPARK_PERIOD_PX;
+        var breakpoints = [start];
+        for (var v = 0; v < cum.length; v++) { if (cum[v] > start && cum[v] < end) breakpoints.push(cum[v]); }
+        breakpoints.push(end);
+        var kf = breakpoints.map(function (b) {
+          var p = pointAtArc(line, cum, b);
+          return {
+            transform: 'translate(' + p.x.toFixed(2) + 'px,' + p.y.toFixed(2) + 'px)',
+            opacity: 1,
+            offset: Math.min(1, (b - start) / SPARK_PERIOD_PX),
+          };
+        });
+        if (exitOffset < 1) {
+          var endPt = pointAtArc(line, cum, end);
+          var holdTransform = 'translate(' + endPt.x.toFixed(2) + 'px,' + endPt.y.toFixed(2) + 'px)';
+          kf.push({ transform: holdTransform, opacity: 0, offset: Math.min(1, exitOffset + 0.001) });
+          kf.push({ transform: holdTransform, opacity: 0, offset: 1 });
+        }
+        var entry = pool[k];
+        if (entry.anim && entry.anim.effect && typeof entry.anim.effect.setKeyframes === 'function') {
+          try {
+            entry.anim.effect.setKeyframes(kf);
+            continue;
+          } catch (e) { /* fall through to recreate below */ }
+        }
+        var resumeAt = entry.anim ? entry.anim.currentTime : (sharedTime !== null ? sharedTime : 0);
+        if (entry.anim) entry.anim.cancel();
+        entry.anim = entry.circle.animate(kf, { duration: SPARK_CYCLE_MS, easing: 'linear', iterations: Infinity });
+        entry.anim.currentTime = resumeAt;
+      }
+    }
+    return { update: update, clear: clear };
+  }
+
+  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, sparkTrain) {
     return function draw(idx, animate) {
       var pinEl = pins[idx], paneEl = panes[idx];
       if (!appBodyEl || !pinEl || !paneEl || !pathEl || !padEl) return;
@@ -1759,7 +1791,7 @@ const description =
       var len = pathLength(points, 6);
       pathEl.setAttribute('d', d);
       if (baseEl) baseEl.setAttribute('d', d);
-      if (pulseEl) pulseEl.setAttribute('d', d);
+      if (sparkTrain) sparkTrain.update(points, 6);
       padEl.setAttribute('x', String(padX - 4));
       padEl.setAttribute('y', String(paneTop - 4));
       pathEl.style.strokeDasharray = String(len);
@@ -1781,7 +1813,7 @@ const description =
   var heroDrawTrace = makeTraceDrawer(
     heroApp.querySelector('.app-body'), heroPins, heroPanes,
     document.getElementById('heroTracePath'), document.getElementById('heroTracePad'),
-    document.getElementById('heroTraceBase'), document.getElementById('heroTracePulse')
+    document.getElementById('heroTraceBase'), makeSparkTrain(document.getElementById('heroTraceSparks'))
   );
   var heroIdx = 0, heroTimer = null, heroTraceReady = false;
 
@@ -1851,7 +1883,7 @@ const description =
   var demoDrawTrace = makeTraceDrawer(
     demoApp.querySelector('.app-body'), demoPins, demoPanes,
     document.getElementById('demoTracePath'), document.getElementById('demoTracePad'),
-    document.getElementById('demoTraceBase'), document.getElementById('demoTracePulse')
+    document.getElementById('demoTraceBase'), makeSparkTrain(document.getElementById('demoTraceSparks'))
   );
 
   var demoCur = 0;
@@ -1948,10 +1980,17 @@ const description =
      focus semantics, no interaction, no scroll listener — redrawn only on
      load/resize because the section tops move with layout. */
   var seamPath = document.getElementById('seamPath');
-  var seamPathLive = document.getElementById('seamPathLive');
+  var seamLive = document.getElementById('seamLive');
   var seamViaEls = Array.prototype.slice.call(document.querySelectorAll('.seam-svg rect.seam-via'));
-  var seamStartY = 0, seamEndY = 0, seamLen = 0;
+  var seamStartY = 0, seamEndY = 0;
   var seamViaMeta = []; // { el, t } — t is this via's own scroll-fraction threshold
+  var seamLegs = []; // { rect, len } — one per chamfered-line segment, built fresh on every drawSeam()
+  var seamRawLen = 0; // sum of seamLegs[].len — the arc length the charge fraction below is measured against
+  var seamActiveIdx = -1; // index of the one leg currently mid-charge — the only leg touched every frame
+
+  function setLegScale(leg, frac) {
+    leg.rect.style.transform = leg.rect.style.transform.replace(/scaleX\([^)]*\)/, 'scaleX(' + frac + ')');
+  }
 
   function drawSeam() {
     if (!seamPath) return;
@@ -1981,16 +2020,49 @@ const description =
     var line = simplifyPoints(pts);
     var d = pathD(line, 6);
     seamPath.setAttribute('d', d);
-    if (seamPathLive) seamPathLive.setAttribute('d', d);
 
-    // cache the route's own absolute document-Y range + length for the
+    // rebuild the live-charge rect pool from the SAME chamfered-line
+    // segments #seamPath itself is drawn from (chamferedLine(line, 6)) —
+    // matching geometry, including the 45° corner chamfers, so "charged"
+    // reads as solid-over-dashed with no corner misregistration. Every
+    // segment (straight run or diagonal chamfer alike) becomes one
+    // 2px-tall rect starting at local (0,0), oriented via `rotate` — a
+    // single formula for every angle instead of separate vertical/
+    // horizontal branches (which had a bug: the old vertical branch set
+    // both the rect's own `x` attribute AND an `x` translate, doubling
+    // the offset).
+    if (seamLive) {
+      seamLive.textContent = '';
+      seamLegs = [];
+      seamRawLen = 0;
+      var chLine = chamferedLine(line, 6);
+      for (var p = 1; p < chLine.length; p++) {
+        var A = chLine[p - 1], B = chLine[p];
+        var legLen = Math.hypot(B.x - A.x, B.y - A.y);
+        var angleDeg = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI;
+        var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '0');
+        rect.setAttribute('y', '-1');
+        rect.setAttribute('width', String(legLen));
+        rect.setAttribute('height', '2');
+        rect.style.transformBox = 'view-box';
+        rect.style.transformOrigin = '0px 0px';
+        rect.style.transform =
+          'translate(' + A.x.toFixed(2) + 'px,' + A.y.toFixed(2) + 'px) rotate(' + angleDeg.toFixed(3) + 'deg) scaleX(0)';
+        seamLive.appendChild(rect);
+        seamLegs.push({ rect: rect, len: legLen });
+        seamRawLen += legLen;
+      }
+      seamActiveIdx = -1; // force a full boundary re-commit on the next updateSeamCharge()
+    }
+
+    // cache the route's own absolute document-Y range for the
     // scroll-linked charge below — mapped against the route's own span,
     // not scrollY/documentHeight, or the route would already read "full"
     // somewhere in the footer, well past its own last via.
     var mainTopAbs = originTop + window.scrollY;
     seamStartY = mainTopAbs + viaPts[0].y;
     seamEndY = mainTopAbs + viaPts[viaPts.length - 1].y;
-    seamLen = pathLength(line, 6);
 
     // latching via pads: each one's own threshold is its own Y position
     // within the route's span, so it flips to filled exactly when the
@@ -2010,64 +2082,69 @@ const description =
   window.addEventListener('load', drawSeam);
 
   /* ---- chrome: seam charge (scroll-linked) ----
-     A second, solid path on the seam's identical geometry "powers up" as
+     A row of solid rects on the seam's identical geometry "power up" as
      the visitor scrolls through its own Y-range — the dashed #seamPath
      channel is untouched, this is purely an overlay — plus each via pad
      latches from outline to filled once the charge reaches its own Y, the
      functional "where am I" readout the nav used to attempt with a
-     capsule of loose dots. Reads only window.scrollY in the scroll
-     handler (no getBoundingClientRect there) to avoid layout thrashing;
-     rAF-gated to at most one write per frame. */
-  var seamTicking = false;
+     capsule of loose dots. Reads only window.scrollY here (no
+     getBoundingClientRect) to avoid layout thrashing; called from the
+     shared, rAF-gated scroll ticker below (performance-audit ticket 15) —
+     no rAF gate of its own anymore. */
   var navPct = document.getElementById('navPct');
   var navPctWrap = document.getElementById('navPctWrap');
   if (reduced && navPctWrap) navPctWrap.style.display = 'none';
   function updateSeamCharge() {
-    seamTicking = false;
-    if (!seamLen || seamEndY <= seamStartY) return;
+    if (!seamRawLen || seamEndY <= seamStartY) return;
     var t = (window.scrollY - seamStartY) / (seamEndY - seamStartY);
     if (t < 0) t = 0; if (t > 1) t = 1;
-    if (seamPathLive) {
-      seamPathLive.style.strokeDasharray = String(seamLen);
-      seamPathLive.style.strokeDashoffset = String(seamLen * (1 - t));
+    // same mapping the old stroke-dashoffset used: t (a Y-position
+    // fraction) reused directly as the fraction of the route's own ARC
+    // length that's charged, walked from the route's start. Only the one
+    // leg the charge is currently inside gets a transform write every
+    // frame; legs the charge has already fully passed or hasn't reached
+    // yet only get (re-)committed to scale 1/0 on the rare frame where
+    // the active leg itself changes — not on every scroll tick.
+    var target = t * seamRawLen;
+    var walked = 0;
+    var activeIdx = seamLegs.length - 1;
+    for (var i = 0; i < seamLegs.length; i++) {
+      var legEnd = walked + seamLegs[i].len;
+      if (target <= legEnd || i === seamLegs.length - 1) { activeIdx = i; break; }
+      walked += seamLegs[i].len;
     }
-    for (var i = 0; i < seamViaMeta.length; i++) {
-      seamViaMeta[i].el.classList.toggle('charged', t >= seamViaMeta[i].t);
+    var activeLeg = seamLegs[activeIdx];
+    var activeFrac = activeLeg && activeLeg.len > 0 ? (target - walked) / activeLeg.len : 1;
+    if (activeFrac < 0) activeFrac = 0; if (activeFrac > 1) activeFrac = 1;
+    if (activeLeg) setLegScale(activeLeg, activeFrac);
+    if (activeIdx !== seamActiveIdx) {
+      for (var k = 0; k < seamLegs.length; k++) {
+        if (k < activeIdx) setLegScale(seamLegs[k], 1);
+        else if (k > activeIdx) setLegScale(seamLegs[k], 0);
+      }
+      seamActiveIdx = activeIdx;
+    }
+    for (var j = 0; j < seamViaMeta.length; j++) {
+      seamViaMeta[j].el.classList.toggle('charged', t >= seamViaMeta[j].t);
     }
     // route-progress percent in the nav readout — same t as the seam
     // charge, so both instruments always agree on "how far in are we".
     if (navPct && !reduced) navPct.textContent = String(Math.round(t * 100)).padStart(3, '0') + '%';
   }
-  if (!reduced) {
-    window.addEventListener('scroll', function () {
-      if (!seamTicking) { seamTicking = true; requestAnimationFrame(updateSeamCharge); }
-    }, { passive: true });
-  }
-  updateSeamCharge();
-
   /* ---- chrome: bokeh parallax (hero only) ----
      The whole .bokeh layer drifts at a fraction of scroll speed — never
      its individual blur()'d children, which would re-rasterize the blur
      every frame. Stops reading scroll once the hero has scrolled past;
      the clouds are hero-local atmosphere, not a page-wide effect. */
   var bokeh = document.querySelector('.bokeh');
-  if (bokeh && !reduced) {
-    bokeh.style.willChange = 'transform';
-    var bokehTicking = false;
-    var heroBottom = heroApp ? heroApp.getBoundingClientRect().bottom + window.scrollY + 200 : 900;
-    var updateBokeh = function () {
-      bokehTicking = false;
-      if (window.scrollY > heroBottom) return;
-      bokeh.style.transform = 'translateY(' + (window.scrollY * 0.08).toFixed(1) + 'px)';
-    };
-    window.addEventListener('scroll', function () {
-      if (!bokehTicking) { bokehTicking = true; requestAnimationFrame(updateBokeh); }
-    }, { passive: true });
+  var heroBottom = heroApp ? heroApp.getBoundingClientRect().bottom + window.scrollY + 200 : 900;
+  if (bokeh && !reduced) bokeh.style.willChange = 'transform';
+  function updateBokeh() {
+    if (!bokeh || window.scrollY > heroBottom) return;
+    bokeh.style.transform = 'translateY(' + (window.scrollY * 0.08).toFixed(1) + 'px)';
   }
 
   /* ---- cinematic layer: scroll-linked depth + pinned demo scrub + cue ----
-     One rAF-gated scroll listener for the three scroll-coupled additions
-     (2026-08-14):
      — updateVfx: every [data-vfx] element gets a transform from its offset
        to viewport center — "par" layers drift at depth-dependent speed,
        "tilt" layers pitch slightly in perspective and settle flat at
@@ -2084,6 +2161,21 @@ const description =
   var demoProgress = document.getElementById('demoProgress');
   var scrollCue = document.getElementById('scrollCue');
   var fxWide = matchMedia('(min-width: 941px)').matches;
+
+  /* will-change scoping (performance-audit ticket 15): .vfx-inview (see
+     CSS above) is only present while an element is actually visible or
+     about to be — a 200px rootMargin, more generous than updateVfx's own
+     120px write-skip window above, so the compositor layer is already
+     promoted before the first transform write and doesn't get dropped
+     right before the last one. */
+  if (!reduced && 'IntersectionObserver' in window && vfxEls.length) {
+    var vfxVisibility = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        e.target.classList.toggle('vfx-inview', e.isIntersecting);
+      });
+    }, { rootMargin: '200px 0px' });
+    vfxEls.forEach(function (el) { vfxVisibility.observe(el); });
+  }
 
   function updateVfx() {
     if (!fxWide) return;
@@ -2120,19 +2212,37 @@ const description =
     if (scrollCue) scrollCue.classList.toggle('gone', window.scrollY > 60);
   }
 
+  /* ---- shared scroll ticker (performance-audit ticket 15) ----
+     The seam-charge, bokeh-parallax, and vfx/demo-scrub/cue effects above
+     used to run on three independent `scroll` listeners, each gated by
+     its own rAF "ticking" boolean — up to three separate scroll-event
+     dispatches and up to three separate rAF callbacks queued per actual
+     repaint opportunity. Consolidated into one listener + one rAF gate;
+     update order below (seam, bokeh, vfx, demo-scrub, cue) matches the
+     order the three independent listeners already ran in relative to
+     each other. Initial-call semantics are preserved exactly as before:
+     updateSeamCharge() always ran once regardless of motion preference
+     (kept unconditional, below), bokeh never got an initial call outside
+     a scroll event, and vfx/demoScrub/cue only ran their first pass when
+     motion is not reduced (mirrors the old fxFrame() initial call). */
   if (!reduced) {
-    var fxTicking = false;
-    var fxFrame = function () {
-      fxTicking = false;
+    var scrollTicking = false;
+    var scrollFrame = function () {
+      scrollTicking = false;
+      updateSeamCharge();
+      updateBokeh();
       updateVfx();
       updateDemoScrub();
       updateCue();
     };
     window.addEventListener('scroll', function () {
-      if (!fxTicking) { fxTicking = true; requestAnimationFrame(fxFrame); }
+      if (!scrollTicking) { scrollTicking = true; requestAnimationFrame(scrollFrame); }
     }, { passive: true });
-    fxFrame();
+    updateVfx();
+    updateDemoScrub();
+    updateCue();
   }
+  updateSeamCharge();
 
   /* ---- install: the brew command types itself, once ----
      The one deliberate typing moment on the page (kinetic-type scope,
