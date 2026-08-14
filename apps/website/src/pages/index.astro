@@ -78,9 +78,19 @@ const description =
     --indigo: #262d58;
     --indigo-deep: #1f2547;
     --line-dark: rgba(255, 253, 245, 0.12);
-    /* terminal interiors */
-    --term: #12162a;
-    --term-bar: #1b2038;
+    /* terminal/app-window interiors — the desktop app's REAL neutral-dark
+       chrome (2026-08-14, user decision): every surface that depicts the
+       app itself — window frame, explorer, pane interiors, title bars, the
+       crew-card mocks, the brew pill — carries the app's actual grounds
+       (--pc-app-background #121314, --pc-explorer-background #191a1b)
+       instead of the earlier indigo-tinted #12162a/#1b2038. Two color
+       worlds meeting at the window edge: indigo is the site, neutral gray
+       is the app. Exceptions: the footer glyph tile keeps the icon's own
+       indigo ground (platform icons bring their own), and the nav pin
+       capsule stays page-indigo (site chrome), only its pads are app-gray. */
+    --term: #121314;
+    --term-bar: #1d1e1f;
+    --term-xpl: #191a1b;
     --term-line: rgba(255, 253, 245, 0.09);
     /* cream product surfaces */
     --cream: #fffdf5;
@@ -168,6 +178,25 @@ const description =
   }
   .nav-gh svg { width: 17px; height: 17px; }
   .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
+  /* scroll-spy pin header: the app's J1 pin rail applied to the page's own
+     chrome — one powered pin per visible section, in a thin sticky capsule
+     under the nav (the nav itself is not sticky; the rail is the part that
+     travels). Each pin doubles a .nav-links anchor as a compact jump path,
+     same precedent as the demo pins doubling the panes' click targets. */
+  .nav-pinrow {
+    position: sticky; top: 12px; z-index: 30; height: 0;
+    max-width: 1120px; margin: 0 auto; padding: 0 26px;
+    display: flex; justify-content: flex-end;
+    pointer-events: none;
+  }
+  .nav-pins {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 3px 9px;
+    background: rgba(31, 37, 71, 0.85); /* --indigo-deep at capsule alpha */
+    border: 1px solid var(--line-dark); border-radius: 999px;
+  }
+  .nav-pins .pin-btn { width: 24px; height: 24px; }
 
   /* ---------- hero with bokeh clouds ---------- */
   .hero { position: relative; padding: 40px 0 110px; }
@@ -228,7 +257,7 @@ const description =
 
   /* ---------- the app window (assembly stage) ---------- */
   .app {
-    background: var(--indigo-deep);
+    background: var(--term);
     border: 1px solid rgba(255, 253, 245, 0.14);
     border-radius: 14px; overflow: hidden;
     box-shadow: 0 30px 70px rgba(10, 12, 26, 0.55);
@@ -250,7 +279,7 @@ const description =
   .pinrail { display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 6px 0; }
 
   .xpl {
-    background: rgba(255, 253, 245, 0.05);
+    background: var(--term-xpl);
     border: 1px solid var(--term-line); border-radius: 8px;
     font-family: var(--mono); font-size: 11px; line-height: 1.95;
     color: rgba(255, 253, 245, 0.68);
@@ -279,7 +308,7 @@ const description =
      same brand mechanism, not a lookalike. */
   .pin {
     width: 8px; height: 8px; flex: none; padding: 0; margin: 0;
-    border: 1px solid var(--term-line); background: var(--indigo-deep);
+    border: 1px solid var(--term-line); background: var(--term);
     transition: background var(--lift), border-color var(--lift);
   }
   .pin.on { background: var(--amber); border-color: var(--amber); }
@@ -295,6 +324,20 @@ const description =
   .trace-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
   .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2; }
   .trace-svg rect { fill: var(--amber); }
+  /* section-seam channel: one quiet vertical bus route down the page's left
+     margin, jogging sideways at each big section boundary (45° chamfers via
+     the same chamferedLine math as the focus trace). Pure board-channel
+     ornament — no focus semantics, so it stays dim (unpowered copper, not
+     the powered flat amber) and static: drawn once from measured section
+     tops, redrawn only on resize. Lives in the 26px .wrap gutter, so it
+     never overlaps content; hidden < 560px with the rest of the motif. */
+  main { position: relative; }
+  .seam-svg {
+    position: absolute; top: 0; left: 0; width: 34px; height: 100%;
+    pointer-events: none; overflow: visible;
+  }
+  .seam-svg path { fill: none; stroke: var(--amber); stroke-opacity: 0.3; stroke-width: 1.5; }
+  .seam-svg rect { fill: var(--amber); fill-opacity: 0.3; }
   .hpane {
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
     font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
@@ -467,7 +510,7 @@ const description =
 
   /* the live demo (the 5% novelty) */
   .demo {
-    background: var(--indigo-deep);
+    background: var(--term);
     border: 1px solid rgba(255, 253, 245, 0.14); border-radius: 14px;
     box-shadow: 0 24px 60px rgba(10, 12, 26, 0.5);
     overflow: hidden;
@@ -515,7 +558,7 @@ const description =
   .brew {
     display: inline-flex; align-items: center; gap: 12px;
     font-family: var(--mono); font-size: 15px;
-    background: rgba(18, 22, 42, 0.75); border: 1px solid rgba(229, 150, 86, 0.5);
+    background: rgba(18, 19, 20, 0.75); border: 1px solid rgba(229, 150, 86, 0.5); /* --term at pill alpha */
     color: var(--cream); border-radius: 999px; padding: 14px 26px;
     transition: transform var(--lift), border-color var(--lift);
   }
@@ -550,6 +593,13 @@ const description =
   }
   .foot-gh svg { width: 16px; height: 16px; }
   .foot-gh:hover { background: rgba(35, 40, 63, 0.06); border-color: rgba(35, 40, 63, 0.26); transform: translateY(-2px); }
+  /* footer pad cluster: the readout's own illustration — four powered pane
+     pads plus one explorer pad in the site's explorer cyan. Static, no
+     interaction; the board's last solder points before the edge. */
+  .foot .r { display: inline-flex; align-items: center; gap: 9px; }
+  .foot-pins { display: inline-flex; align-items: center; gap: 3px; }
+  .foot-pins i { width: 6px; height: 6px; flex: none; background: var(--amber); }
+  .foot-pins i.x { margin-left: 4px; background: var(--cyan); }
 
   /* ---------- reduced motion ---------- */
   @media (prefers-reduced-motion: reduce) {
@@ -575,6 +625,7 @@ const description =
     .app-body { grid-template-columns: 1fr; height: auto; }
     .xpl { display: none; }
     .pinrail, .trace-svg { display: none; }
+    .nav-pinrow, .seam-svg { display: none; }
     .demo .app-body { height: auto; grid-template-columns: 1fr; }
     .demo .xpl { display: block; }
     .field { grid-template-rows: none; }
@@ -661,7 +712,25 @@ const description =
   </div>
 </nav>
 
+<!-- scroll-spy pin rail: exactly one pin powered, following the section in
+     view (IntersectionObserver, band around the viewport center). The pins
+     double the .nav-links anchors as a second, compact jump path. -->
+<div class="nav-pinrow">
+  <div class="nav-pins" role="group" aria-label="Section pins">
+    <button type="button" class="pin-btn" data-target="crew" aria-pressed="true" aria-label="Jump to section: The crew"><span class="pin on" aria-hidden="true"></span></button>
+    <button type="button" class="pin-btn" data-target="demo" aria-pressed="false" aria-label="Jump to section: Live demo"><span class="pin" aria-hidden="true"></span></button>
+    <button type="button" class="pin-btn" data-target="oss" aria-pressed="false" aria-label="Jump to section: Open source"><span class="pin" aria-hidden="true"></span></button>
+    <button type="button" class="pin-btn" data-target="install" aria-pressed="false" aria-label="Jump to section: Install"><span class="pin" aria-hidden="true"></span></button>
+  </div>
+</div>
+
 <main id="top">
+  <!-- section-seam channel (decorative): geometry filled in by drawSeam() -->
+  <svg class="seam-svg" aria-hidden="true">
+    <path id="seamPath"></path>
+    <rect id="seamViaA" width="4" height="4"></rect>
+    <rect id="seamViaB" width="4" height="4"></rect>
+  </svg>
   <!-- ================= HERO ================= -->
   <header class="hero">
     <div class="bokeh" aria-hidden="true">
@@ -843,7 +912,7 @@ const description =
           <div class="card-vis">
             <div class="mock" data-title="settings — appearance" aria-hidden="true">
               <div class="swatches">
-                <span class="sw" style="background:linear-gradient(135deg,#262d58,#e59656)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#121314,#e59656)"></span>
                 <span class="sw" style="background:linear-gradient(135deg,#1d1f21,#7ccb6e)"></span>
                 <span class="sw" style="background:linear-gradient(135deg,#272822,#e5c07b)"></span>
                 <span class="sw" style="background:linear-gradient(135deg,#002b36,#5acfd3)"></span>
@@ -1096,7 +1165,7 @@ const description =
     </span>
     <b>PaneCrew</b>
     <span class="cp">© 2026 PaneCrew</span>
-    <span class="r">panes: 4 · explorers: 1</span>
+    <span class="r"><span class="foot-pins" aria-hidden="true"><i></i><i></i><i></i><i></i><i class="x"></i></span>panes: 4 · explorers: 1</span>
     <a class="foot-gh" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener" aria-label="PaneCrew on GitHub">
       <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><use href="#mkGithub"/></svg>
     </a>
@@ -1308,6 +1377,80 @@ const description =
   });
   demoDrawTrace(0, false);
 
+  /* ---- chrome: scroll-spy nav pins ----
+     Same one-powered-pin rule as the app's pin header, driven by which
+     section currently crosses the viewport-center band. State changes are
+     plain class/color toggles (fine under reduced motion); the click-scroll
+     inherits scroll-behavior from CSS, which reduced motion sets to auto. */
+  var navPinBtns = Array.prototype.slice.call(document.querySelectorAll('.nav-pins .pin-btn'));
+  var spyTargets = navPinBtns.map(function (b) { return document.getElementById(b.getAttribute('data-target')); });
+
+  function navSpySet(idx) {
+    navPinBtns.forEach(function (b, i) {
+      var on = i === idx;
+      b.setAttribute('aria-pressed', String(on));
+      var dot = b.querySelector('.pin');
+      if (dot) dot.classList.toggle('on', on);
+    });
+  }
+
+  navPinBtns.forEach(function (b, i) {
+    b.addEventListener('click', function () {
+      if (spyTargets[i]) spyTargets[i].scrollIntoView();
+    });
+  });
+
+  if ('IntersectionObserver' in window && navPinBtns.length) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) navSpySet(spyTargets.indexOf(e.target));
+      });
+    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
+    spyTargets.forEach(function (t) { if (t) spy.observe(t); });
+  }
+
+  /* ---- chrome: section-seam channel ----
+     Static board-channel ornament: measure the big section tops once, run a
+     vertical route down the left gutter that jogs sideways at every seam
+     (same chamfered geometry as the focus trace), and leave it be. No
+     focus semantics, no interaction, no scroll listener — redrawn only on
+     load/resize because the section tops move with layout. */
+  var seamPath = document.getElementById('seamPath');
+  var seamViaA = document.getElementById('seamViaA');
+  var seamViaB = document.getElementById('seamViaB');
+
+  function drawSeam() {
+    if (!seamPath) return;
+    var mainEl = document.getElementById('top');
+    var stops = [
+      document.getElementById('crew'),
+      document.querySelector('.toolwall'),
+      document.querySelector('section[aria-label="Details"]'),
+      document.getElementById('oss'),
+      document.getElementById('install')
+    ];
+    for (var s = 0; s < stops.length; s++) { if (!stops[s]) return; }
+    var originTop = mainEl.getBoundingClientRect().top;
+    var ys = stops.map(function (el) { return el.getBoundingClientRect().top - originTop; });
+    var xA = 13, xB = 23;
+    var pts = [{ x: xA, y: ys[0] + 26 }];
+    for (var i = 1; i < ys.length; i++) {
+      pts.push({ x: (i % 2) ? xA : xB, y: ys[i] });
+      pts.push({ x: (i % 2) ? xB : xA, y: ys[i] });
+    }
+    pts.push({ x: pts[pts.length - 1].x, y: ys[ys.length - 1] + 64 });
+    var line = simplifyPoints(pts);
+    seamPath.setAttribute('d', pathD(line, 6));
+    seamViaA.setAttribute('x', String(line[0].x - 2));
+    seamViaA.setAttribute('y', String(line[0].y - 2));
+    var end = line[line.length - 1];
+    seamViaB.setAttribute('x', String(end.x - 2));
+    seamViaB.setAttribute('y', String(end.y - 2));
+  }
+
+  drawSeam();
+  window.addEventListener('load', drawSeam);
+
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
@@ -1315,6 +1458,7 @@ const description =
       if (heroTraceReady) heroDrawTrace(heroIdx, false);
       var demoFocusedIdx = demoPanes.findIndex(function (p) { return p.classList.contains('focused'); });
       demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
+      drawSeam();
     }, 120);
   });
 })();
