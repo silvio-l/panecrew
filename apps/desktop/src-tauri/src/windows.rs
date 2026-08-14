@@ -127,19 +127,25 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     .background_color(
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
-    .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
-    .accept_first_mouse(ACCEPT_FIRST_MOUSE)
-    .hidden_title(true);
+    .accept_first_mouse(ACCEPT_FIRST_MOUSE);
 
-    // `title_bar_style`/`TitleBarStyle::Overlay` model macOS's inset-traffic-
-    // light chrome and only exist on `WebviewWindowBuilder` when compiled for
-    // macOS (verified against a real Windows CI build failure, 2026-08-14:
-    // E0599 "no method named `title_bar_style`"). `tauri.conf.json`'s own
-    // `titleBarStyle: "Overlay"` is JSON and silently ignored on non-macOS
-    // targets, which is why only *this* runtime-builder call needed gating.
+    // `title_bar_style`/`traffic_light_position`/`hidden_title` model macOS's
+    // inset-traffic-light overlay chrome and are all three `#[cfg(target_os =
+    // "macos")]` on `WebviewWindowBuilder` itself (verified against the
+    // vendored `tauri` 2.11.5 source, `src/webview/webview_window.rs`, after
+    // TWO real Windows CI build failures, 2026-08-14: E0599 on
+    // `title_bar_style` first, then -- once that alone was gated -- the same
+    // on `traffic_light_position`, which the FIRST error had silently
+    // shadowed via rustc's cascading-error suppression on the same chain).
+    // `tauri.conf.json`'s own `titleBarStyle: "Overlay"` is JSON and silently
+    // ignored on non-macOS targets, which is why only these runtime-builder
+    // calls needed gating, not the static config.
     #[cfg(target_os = "macos")]
     {
-        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+            .hidden_title(true);
     }
 
     if let Some(opener) = opener {
@@ -183,14 +189,15 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
     .background_color(
         parse_hex_color(BACKGROUND).expect("BACKGROUND constant must be a valid #rrggbb color"),
     )
-    .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
-    .accept_first_mouse(ACCEPT_FIRST_MOUSE)
-    .hidden_title(true);
+    .accept_first_mouse(ACCEPT_FIRST_MOUSE);
 
     // See the matching comment in `window_open_new` above.
     #[cfg(target_os = "macos")]
     {
-        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+            .hidden_title(true);
     }
 
     builder
