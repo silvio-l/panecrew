@@ -14,6 +14,8 @@
     "resourceUsage": {
       "tooltip": "Memory {{mem}}% / {{memBytes}} ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
       "perTabRow": "{{name}}: memory {{mem}}% / {{memBytes}}, CPU {{cpu}}%",
+      "columnMem": "RAM",
+      "columnCpu": "CPU",
       "status": {
         "normal": "normal",
         "warn": "elevated",
