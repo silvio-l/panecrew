@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { SupportedLanguage } from "../i18n";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
@@ -196,6 +197,8 @@ export function TitleBar({ zoom }: { zoom: number }) {
           )}
 
           <DateTimeReadout t={t} />
+          <Divider />
+          <ResourceUsageReadout t={t} />
         </div>
 
         <Divider className="mx-2" />
@@ -383,6 +386,102 @@ function hudClockParts(date: Date, language: SupportedLanguage): HudClockParts {
   const minute = String(date.getMinutes()).padStart(2, "0");
   const datePart = language === "de" ? `${day}.${month}.` : `${month}/${day}`;
   return { weekday, datePart, hour, minute };
+}
+
+type ResourceStatus = "normal" | "warn" | "critical";
+
+interface ResourceUsagePayload {
+  memPercent: number;
+  cpuPercent: number;
+  memStatus: ResourceStatus;
+  cpuStatus: ResourceStatus;
+}
+
+const RESOURCE_STATUS_COLOR: Record<ResourceStatus, string> = {
+  normal: "text-(--pc-descriptionForeground)",
+  warn: "text-(--pc-status-warn)",
+  critical: "text-(--pc-status-danger)",
+};
+
+function resourceStatusLabel(
+  status: ResourceStatus,
+  t: (key: string) => string,
+): string {
+  switch (status) {
+    case "warn":
+      return t("titleBar.resourceUsage.status.warn");
+    case "critical":
+      return t("titleBar.resourceUsage.status.critical");
+    default:
+      return t("titleBar.resourceUsage.status.normal");
+  }
+}
+
+/**
+ * RAM/CPU von PaneCrew selbst plus allen von ihm gestarteten PTY-Kindern
+ * (den Shells in den Panes) — Rust-seitig alle 5s per `sysinfo` gesampelt
+ * (`resource_monitor.rs`), hier nur passiv empfangen statt selbst zu pollen.
+ * Nur Prozentwerte (kein MB-Wert): genug, um auf einen Blick zu sehen, ob die
+ * App gerade ungewöhnlich viel zieht, ohne mit einer Absolutzahl zu suggerieren,
+ * das wäre für sich genommen schon eine Aussage. Bleibt unsichtbar, bis das
+ * erste Sample eintrifft (kein Platzhalter-Flackern beim Start).
+ */
+function ResourceUsageReadout({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const [usage, setUsage] = useState<ResourceUsagePayload | null>(null);
+
+  useEffect(() => {
+    const unlistenPromise = listen<ResourceUsagePayload>("resource-usage", (event) => {
+      setUsage(event.payload);
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  if (usage === null) {
+    return null;
+  }
+
+  const memPercent = Math.round(usage.memPercent);
+  const cpuPercent = Math.round(usage.cpuPercent);
+  const memStatusLabel = resourceStatusLabel(usage.memStatus, t);
+  const cpuStatusLabel = resourceStatusLabel(usage.cpuStatus, t);
+  const tooltip = t("titleBar.resourceUsage.tooltip", {
+    mem: memPercent,
+    cpu: cpuPercent,
+    memStatus: memStatusLabel,
+    cpuStatus: cpuStatusLabel,
+  });
+
+  return (
+    <ChromeTooltip label={tooltip} align="end">
+      <div
+        data-tauri-drag-region="deep"
+        className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
+      >
+        <span
+          aria-hidden="true"
+          className={`font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-none tracking-[0.04em] tabular-nums ${RESOURCE_STATUS_COLOR[usage.memStatus]}`}
+        >
+          {memPercent}%
+        </span>
+        <span aria-hidden="true" className="text-[10px] leading-none text-(--pc-descriptionForeground)">
+          ·
+        </span>
+        <span
+          aria-hidden="true"
+          className={`font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-none tracking-[0.04em] tabular-nums ${RESOURCE_STATUS_COLOR[usage.cpuStatus]}`}
+        >
+          {cpuPercent}%
+        </span>
+        <span className="sr-only">{tooltip}</span>
+      </div>
+    </ChromeTooltip>
+  );
 }
 
 // App-Marke: Geometrie und Verlauf des echten App-Icons ("K3H — Verzahnung,

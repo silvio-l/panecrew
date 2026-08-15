@@ -10,7 +10,15 @@
     "explorerWidthAria": "Adjust explorer width",
     "windowTitleBarAria": "Window title bar",
     "zoomLevel": "Zoom level {{percent}}%",
-    "dateTime": "Current date and time: {{dateTime}}"
+    "dateTime": "Current date and time: {{dateTime}}",
+    "resourceUsage": {
+      "tooltip": "Memory {{mem}}% ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
+      "status": {
+        "normal": "normal",
+        "warn": "elevated",
+        "critical": "critical"
+      }
+    }
   },
   "explorer": {
     "newFile": "New File",

@@ -13,6 +13,7 @@ pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
+pub mod resource_monitor;
 pub mod session_store;
 pub mod settings_commands;
 pub mod settings_store;
@@ -132,6 +133,7 @@ pub fn run() {
             splash::position_on_cursor_monitor(app.handle());
             splash::arm_watchdog(app.handle());
             settings_window::prewarm(app.handle());
+            resource_monitor::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

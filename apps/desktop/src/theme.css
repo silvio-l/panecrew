@@ -161,6 +161,16 @@
    */
   --pc-focusBorder: #e59656cc;
 
+  /*
+   * Statusfarben der Titelleisten-Ressourcenanzeige — eigenständige Tokens,
+   * NICHT der Akzent: der Akzent bedeutet Fokus, diese beiden bedeuten
+   * tatsächlich Warnung/Gefahr, dürfen sich also klassisch gelb/rot lesen.
+   * Kontrast auf --pc-app-background (#121314), WCAG-Formel: warn 8,6:1,
+   * danger 5,3:1 — beide klar über der 4,5:1-Textuntergrenze.
+   */
+  --pc-status-warn: #e8a33d;
+  --pc-status-danger: #eb5757;
+
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #121314;
 
@@ -463,6 +473,15 @@
    * dämpfen. Ein Akzent in zwei Stärken geht dort also nur über zwei Werte.
    */
   --pc-focusBorder: #b0651f;
+
+  /*
+   * Statusfarben der Titelleisten-Ressourcenanzeige, eigenständig auf Weiß
+   * gerechnet (gleiche Regel wie bei focusBorder oben: auf hellem Grund muss
+   * ein warmer/roter Ton nach UNTEN, nicht nach oben). Kontrast auf #ffffff:
+   * warn 5,2:1, danger 5,35:1.
+   */
+  --pc-status-warn: #a15c00;
+  --pc-status-danger: #cf222e;
 
   /* App-Chrome — Content-Plane (editor.background), Panes trennt nur der Border */
   --pc-app-background: #ffffff;

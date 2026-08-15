@@ -10,7 +10,15 @@
     "explorerWidthAria": "Explorer-Breite anpassen",
     "windowTitleBarAria": "Fenster-Titelzeile",
     "zoomLevel": "Zoomstufe {{percent}} %",
-    "dateTime": "Aktuelles Datum und Uhrzeit: {{dateTime}}"
+    "dateTime": "Aktuelles Datum und Uhrzeit: {{dateTime}}",
+    "resourceUsage": {
+      "tooltip": "Speicher {{mem}} % ({{memStatus}}) · CPU {{cpu}} % ({{cpuStatus}})",
+      "status": {
+        "normal": "normal",
+        "warn": "erhöht",
+        "critical": "kritisch"
+      }
+    }
   },
   "explorer": {
     "newFile": "Neue Datei",

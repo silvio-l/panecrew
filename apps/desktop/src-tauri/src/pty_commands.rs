@@ -19,6 +19,16 @@ use tauri::{Manager, Runtime, State, Window};
 #[derive(Default)]
 pub struct PtyState(Mutex<HashMap<String, PtyHandle>>);
 
+impl PtyState {
+    /// Live child pids (the shells themselves, not their own descendants) for
+    /// every currently tracked PTY — `resource_monitor` folds these into the
+    /// title bar's own footprint. Entries with no pid (job/spawn failure) are
+    /// skipped rather than propagated.
+    pub(crate) fn child_pids(&self) -> Vec<u32> {
+        self.0.lock().unwrap().values().filter_map(PtyHandle::pid).collect()
+    }
+}
+
 /// Where PaneCrew's shell wrappers were written at startup — `None` if that
 /// failed, in which case panes spawn unwrapped rather than not at all.
 pub struct ShellIntegrationDir(pub Option<PathBuf>);
