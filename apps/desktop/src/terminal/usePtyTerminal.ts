@@ -19,6 +19,7 @@ import { copyTextToClipboard, dedentText } from "./clipboard";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { createResizeGate } from "./resizeGate";
+import { attachTerminalLinkProvider } from "./terminalLinkProvider";
 import { loadShellHistory } from "./shellHistory";
 import {
   committedLineCount,
@@ -109,11 +110,12 @@ export function usePtyTerminal(
   onCloseTerminalTab: () => void,
   // Quittiert einen tatsächlich stattgefundenen Kopiervorgang zurück an
   // TerminalPane.tsx' Live-Region. Nur für die Wege nötig, die dort sonst
-  // spurlos blieben: Ctrl+Shift+C unten, natives Cmd+C (läuft komplett an
-  // dieser Komponente vorbei über xterms Helper-Textarea) und die
-  // automatische Kopie einer fertigen Mausauswahl — alle drei über eigene
-  // Listener weiter unten. Der Kontextmenü-Weg (`copySelection`) braucht ihn
-  // nicht — TerminalPane.tsx ruft ihn dort selbst auf.
+  // spurlos blieben: Ctrl+Shift+C unten, natives Cmd+C (löst xterms
+  // copy-ClipboardEvent auf dessen Helper-Textarea aus, wird dort aber von
+  // `handleNativeCopy` abgefangen) und die automatische Kopie einer fertigen
+  // Mausauswahl — alle drei über eigene Listener weiter unten. Der
+  // Kontextmenü-Weg (`copySelection`) braucht ihn nicht — TerminalPane.tsx
+  // ruft ihn dort selbst auf.
   onCopied: () => void,
   // Ob DIESER Tab gerade der sichtbare in seiner Pane ist (PaneGrid.tsx'
   // `isActiveTab`) — entscheidet allein über den WebGL-Kontext (siehe
@@ -196,15 +198,23 @@ export function usePtyTerminal(
     terminal.focus();
     terminalRef.current = terminal;
 
-    // Natives Cmd+C (macOS) schreibt in die Zwischenablage über xterms
-    // eigenes `copy`-ClipboardEvent auf seiner versteckten Helper-Textarea —
-    // an app-eigenem Code komplett vorbei (Begründung beim Ctrl+Shift+C-Zweig
-    // unten). Ohne diesen Listener bliebe die "Kopiert"-Quittung ausschließlich
-    // dem Kontextmenü und Ctrl+Shift+C vorbehalten. `hasSelection()` filtert
-    // ein `copy` ohne Markierung heraus (System-Standardaktion feuert das
-    // Event trotzdem, kopiert dabei aber nichts).
-    const handleNativeCopy = () => {
-      if (terminal.hasSelection()) onCopiedRef.current();
+    // Natives Cmd+C (macOS) löst dieses `copy`-ClipboardEvent auf xterms
+    // versteckter Helper-Textarea aus. Früher lief es unangetastet durch
+    // xterms eigene ClipboardEvent-Behandlung — genau das ließ mehrzeilige
+    // Cmd+C-Kopien OHNE das Dedent aus copySelectionFrom() in der
+    // Zwischenablage landen, selbst wenn eine vorherige Mausauswahl (die über
+    // `mouseup` dedentet) für dieselbe Selektion schon die bereinigte Version
+    // geschrieben hatte — Cmd+C dahinter überschrieb sie wieder mit der
+    // undedenteten. `preventDefault()` unterbindet xterms eigenes Schreiben,
+    // `copySelectionFrom()` übernimmt komplett — dieselbe Funktion wie beim
+    // Mausauswahl- und Ctrl+Shift+C-Pfad, damit alle drei Copy-Wege
+    // garantiert dasselbe Ergebnis liefern. `hasSelection()` filtert ein
+    // `copy` ohne Markierung heraus (System-Standardaktion feuert das Event
+    // trotzdem, kopiert dabei aber nichts).
+    const handleNativeCopy = (event: ClipboardEvent) => {
+      if (!terminal.hasSelection()) return;
+      event.preventDefault();
+      if (copySelectionFrom(terminal)) onCopiedRef.current();
     };
     terminal.textarea?.addEventListener("copy", handleNativeCopy);
 
@@ -433,6 +443,9 @@ export function usePtyTerminal(
       // xterm feuert onResize nur bei tatsächlicher Dimensionsänderung — das
       // ist genau die Bedingung des IPC-Vertrags für pty_resize.
       terminal.onResize(syncSize),
+      // Cmd/Ctrl-klickbare URLs und absolute Pfade im Terminal-Output
+      // (.scratch/terminal-links-and-reveal/), siehe terminalLinkProvider.ts.
+      attachTerminalLinkProvider(terminal),
     ];
 
     // Pane-eigener Schriftzoom. Bewusst NICHT über das globale Token
@@ -542,9 +555,11 @@ export function usePtyTerminal(
       }
 
       // Ctrl+Shift+C/V — die verbreiteten Editor-Bindings auf Windows/Linux. Cmd+C/Cmd+V
-      // (macOS) und Ctrl+C (SIGINT) bleiben bewusst unangetastet: die
-      // Cmd-Varianten bedient xterm.js selbst über die nativen copy/paste-
-      // ClipboardEvents seiner Helper-Textarea.
+      // (macOS) und Ctrl+C (SIGINT) bleiben hier bewusst unangetastet: Cmd+V
+      // läuft weiter über xterms eigenes paste-ClipboardEvent, und Cmd+C läuft
+      // zwar ebenfalls über xterms copy-ClipboardEvent auf der Helper-Textarea,
+      // aber `handleNativeCopy` oben hakt sich dort ein und ersetzt den Inhalt
+      // durch dasselbe `copySelectionFrom()` wie hier.
       if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey) {
         const key = event.key.toLowerCase();
         if (key === "c") {
