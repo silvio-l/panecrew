@@ -13,6 +13,7 @@ import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 import { useDetectedToolId } from "../terminal/useDetectedTool";
 import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
+import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
@@ -551,6 +552,11 @@ function TerminalTabChip({
   // terminalActivity.ts' Kommentar an `viewedTabId`/`unread`) — bleibt
   // gesetzt über Sprechpausen hinweg, bis `markTabViewed` unten feuert.
   const isUnread = useTerminalUnread(tabId);
+  // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "warn" ist die
+  // einzige Stufe, die dieser Chip selbst zeigt — "paused"/"terminated"
+  // übernimmt `TabResourceBanner.tsx` in der Terminalfläche, hier reicht ein
+  // stiller Hinweis, kein Alarm.
+  const isResourceWarn = useTabResourceGuard(tabId).status === "warn";
   const isViewed = active && paneFocused;
   // `markTabViewed` meldet "der Nutzer sieht diesen Tab gerade tatsächlich"
   // an terminalActivity.ts, sobald Auswahl UND Pane-Fokus zusammenfallen —
@@ -574,6 +580,7 @@ function TerminalTabChip({
     wasUnreadRef.current = isUnread;
   }, [isUnread, onAttentionFlash]);
   const needsAttentionLabel = isUnread ? t("paneTabs.unreadActivityLabel") : null;
+  const resourceWarnLabel = isResourceWarn ? t("resourceGuard.warnTabSuffix") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
   // schlicht keinen Akkord im Tooltip.
@@ -586,7 +593,7 @@ function TerminalTabChip({
   // immer gültige Kennung (Cmd/Strg+1..9 bleibt positionsbasiert), beides
   // andere ist zusätzlicher Kontext. Siehe Kopfkommentar dieser Datei zur
   // "am besten als Tooltip"-Entscheidung.
-  const suffixParts = [label, toolLabel, needsAttentionLabel].filter(
+  const suffixParts = [label, toolLabel, needsAttentionLabel, resourceWarnLabel].filter(
     (part): part is string => part !== null,
   );
   // Der Mittelklick-Hinweis hängt sich NUR an den sichtbaren Tooltip, nicht
@@ -742,6 +749,12 @@ function TerminalTabChip({
                 <span
                   aria-hidden="true"
                   className="size-1.5 shrink-0 rounded-full bg-(--pc-icon-red)"
+                />
+              )}
+              {isResourceWarn && (
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-(--pc-status-warn)"
                 />
               )}
               {toolIcon && (

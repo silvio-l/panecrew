@@ -12,6 +12,7 @@ import {
 import { FocusModeButton } from "./FocusModeButton";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
+import { TabResourceBanner } from "./TabResourceBanner";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
 import { usePtyTerminal } from "../terminal/usePtyTerminal";
 
@@ -49,6 +50,7 @@ export function TerminalPane({
   onHeaderPointerDown,
   onToggleFocusMode,
   focusModeHud,
+  onRestartTerminatedTab,
 }: {
   /** Die Pane, zu der dieser Terminal-Tab gehört — trägt weiterhin
    * `data-pane-id` (Drop-Routing, `useWebviewFileDrop.ts`) und geht in
@@ -113,6 +115,12 @@ export function TerminalPane({
    * Fokus-Knopf, `FocusModeHud.tsx`s Kopfkommentar begründet die Andockung
    * dort statt einer freischwebenden Fläche). */
   focusModeHud: ReactNode;
+  /** Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu
+   * starten" im Terminated-Banner (`TabResourceBanner.tsx`) — App.tsx' fertig
+   * orchestrierte Funktion (frischer Tab zuerst, danach der tote ungefragt
+   * geschlossen), unverändert bis hierher durchgereicht, damit diese
+   * Komponente selbst keine Öffnen-/Schließen-Reihenfolge kennen muss. */
+  onRestartTerminatedTab: (paneId: string, tabId: string) => void;
 }) {
   const { t } = useTranslation();
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
@@ -463,6 +471,24 @@ export function TerminalPane({
               </span>
             )}
           </div>
+          {/* Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`):
+              eigenständige Komponente, liest ihren Zustand selbst aus dem
+              modul-globalen Register (`resourceGuard.ts`). "Beenden" nutzt
+              denselben Schutz wie `closeActiveTerminalTab` oben (letzter Tab
+              der Pane → Pane statt Tab schließen, `closeTerminalTab` würde
+              das Tab-Schließen sonst stillschweigend ablehnen). "Neu starten"
+              geht über App.tsx' fertig orchestrierte
+              `onRestartTerminatedTab` (frischer Tab zuerst, toter danach
+              ungefragt geschlossen) — kein Bestätigungsdialog für eine
+              bereits vom Backend beendete Sitzung. */}
+          <TabResourceBanner
+            tabId={tabId}
+            onTerminate={() => {
+              if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+              else onClose();
+            }}
+            onRestart={() => onRestartTerminatedTab(paneId, tabId)}
+          />
         </div>
         <ContextMenu.Portal>
           <ContextMenu.Content

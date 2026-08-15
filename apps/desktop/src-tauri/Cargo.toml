@@ -52,7 +52,14 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["jobapi2", "winnt", "handleapi"] }
+# resource_guard.rs adds "libloaderapi"/"processthreadsapi"/"minwindef" on top
+# of pty_manager.rs's own set: single-process suspend/resume/kill for the
+# per-tab resource guard, distinct from pty_manager's WHOLE-job kill above.
+# NtSuspendProcess/NtResumeProcess are undocumented ntdll exports (the same
+# ones Process Explorer/Task Manager use for "Suspend Process") -- not part of
+# winapi's own bindings, resolved dynamically via LoadLibraryA/GetProcAddress
+# instead, so no extra winapi feature is needed for them specifically.
+winapi = { version = "0.3", features = ["jobapi2", "winnt", "handleapi", "libloaderapi", "processthreadsapi", "minwindef"] }
 
 [dev-dependencies]
 # Only reachable from `cargo run --example gen-cli-docs` (examples get

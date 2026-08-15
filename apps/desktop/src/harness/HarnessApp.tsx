@@ -159,6 +159,14 @@ export function HarnessApp({
                 // ein leerer Slot bleibt im Harness leer.
                 onAssignProject={() => undefined}
                 onClosePane={grid.closePane}
+                // Dieselbe Öffnen-zuerst-dann-schließen-Reihenfolge wie
+                // App.tsx' `restartTerminatedTab` (kein Bestätigungsdialog
+                // hier nötig, s. Kommentar an `onCloseOtherTerminalTabs`
+                // unten — der Harness fragt grundsätzlich nie nach).
+                onRestartTerminatedTab={(paneId, deadTabId) => {
+                  grid.openTerminalTab(paneId);
+                  grid.closeTerminalTab(paneId, deadTabId);
+                }}
                 onSwapPanes={grid.swapPanes}
                 onMovePaneToEmptySlot={grid.movePaneToEmptySlot}
                 onFocusPane={grid.focusPane}

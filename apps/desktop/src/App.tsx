@@ -72,6 +72,13 @@ import {
   remapRenamedPath,
 } from "./explorer/filePath";
 import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
+import {
+  applyPausedEvent,
+  applySingleKillEvent,
+  applyStatusEvent,
+  applyTerminatedEvent,
+  disposeResourceGuardEntry,
+} from "./terminal/resourceGuard";
 import { activePanes, focusedProjectPath } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
@@ -320,6 +327,36 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `refreshExplorer` schließt `focusedPath` bereits über dieselbe Abhängigkeit ein, ein Re-Run bei jeder Neudefinition wäre nur Start/Stop-Lärm ohne Verhaltensänderung.
   }, [focusedPath]);
+
+  // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): einmalig pro
+  // Fensterlebensdauer registriert, genau wie `explorer:changed` oben — die
+  // vier Events landen zentral hier und werden nur ins modul-globale
+  // `resourceGuard.ts`-Register geschrieben, nicht direkt in Komponenten-
+  // Zustand. `PaneTabs.tsx`s Warn-Chip und `TerminalPane.tsx`s Pause-/
+  // Terminated-Banner lesen dieses Register selbst über `useTabResourceGuard`.
+  useEffect(() => {
+    const unlistenPromises = [
+      listen<{ tabId: string; status: "normal" | "warn"; percent: number }>(
+        "pty:tab-resource-status",
+        (event) => applyStatusEvent(event.payload),
+      ),
+      listen<{ tabId: string; percent: number; pid: number }>("pty:tab-paused", (event) =>
+        applyPausedEvent(event.payload),
+      ),
+      listen<{ tabId: string; percent: number }>("pty:tab-single-kill", (event) =>
+        applySingleKillEvent(event.payload),
+      ),
+      listen<{ tabId: string; percent: number; reason: string }>(
+        "pty:tab-terminated",
+        (event) => applyTerminatedEvent(event.payload),
+      ),
+    ];
+    return () => {
+      for (const unlistenPromise of unlistenPromises) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, []);
 
   // Der Editor der fokussierten Pane — das Rechteck der Editorfläche zeigt
   // immer nur sie. Ohne fokussierte Pane (leeres Grid) liest `editorFor("")`
@@ -668,6 +705,22 @@ function App() {
     // nummeriert nach Position, nicht nach Id) — die Rückfrage nennt damit
     // genau die Zahl, die auf dem angeklickten Tab steht.
     setPendingClose({ target: "terminalTab", tabNumber: index + 1, run });
+  };
+
+  // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu starten"
+  // im Terminated-Banner (`TabResourceBanner.tsx`). Öffnet ZUERST den
+  // frischen Tab — das macht den toten sicher nicht mehr zum letzten Tab der
+  // Pane (`closeTerminalTab` lehnt das Schließen des letzten Tabs sonst
+  // stillschweigend ab, s. gridState.ts) — und schließt DANACH den toten
+  // ungefragt: kein `pendingClose`-Dialog wie bei `closeTerminalTabGuarded`,
+  // denn die Sitzung ist bereits vom Backend beendet (Tier 4), es gibt
+  // nichts mehr zu bestätigen, und der übliche Dialogtext ("die laufende
+  // Sitzung endet") wäre für einen bereits toten Tab schlicht falsch. Räumt
+  // zuletzt den Ressourcen-Registereintrag der toten `tabId` weg.
+  const restartTerminatedTab = (paneId: string, deadTabId: string) => {
+    openTerminalTab(paneId);
+    closeTerminalTab(paneId, deadTabId);
+    disposeResourceGuardEntry(deadTabId);
   };
 
   // Gemeinsamer Kern für BEIDE Mehrfach-Schließen-Wege unten — die Ids werden
@@ -1036,6 +1089,7 @@ function App() {
               dragTargetPaneId={dragTargetPaneId ?? explorerDrag.targetPaneId}
               onAssignProject={assignProjectToSlot}
               onClosePane={closePaneGuarded}
+              onRestartTerminatedTab={restartTerminatedTab}
               onSwapPanes={swapPanes}
               // Ungeguardet wie der Tausch: die Pane bleibt vollständig
               // bestehen (kein PTY-Ende, kein Editor-Verlust), nur ihre

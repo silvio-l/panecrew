@@ -114,6 +114,15 @@
     "enterFocusMode": "Focus mode",
     "exitFocusMode": "Exit focus mode"
   },
+  "resourceGuard": {
+    "warnTabSuffix": "High memory usage",
+    "pausedMessage": "Paused due to high memory usage ({{percent}}%)",
+    "resume": "Resume",
+    "terminateTab": "Terminate",
+    "singleKillNotice": "A process was terminated for using too much memory ({{percent}}%)",
+    "terminatedMessage": "Session terminated: memory usage repeatedly exceeded {{percent}}% of system RAM",
+    "restart": "Restart"
+  },
   "focusMode": {
     "positionAria": "Pane {{slot}} of {{total}} in focus mode",
     "rotationStart": "Start rotation",

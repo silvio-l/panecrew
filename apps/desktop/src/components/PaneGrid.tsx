@@ -93,6 +93,7 @@ export function PaneGrid({
   dragTargetPaneId,
   onAssignProject,
   onClosePane,
+  onRestartTerminatedTab,
   onSwapPanes,
   onMovePaneToEmptySlot,
   onFocusPane,
@@ -133,6 +134,10 @@ export function PaneGrid({
   dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
   onClosePane: (paneId: string) => void;
+  /** Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu
+   * starten" im Terminated-Banner — unverändert bis zu `TerminalPane.tsx`
+   * durchgereicht, das `paneId`/`tabId` bereits als eigene Props hält. */
+  onRestartTerminatedTab: (paneId: string, tabId: string) => void;
   /** Slot-Tausch per Drag&Drop (Ticket 20) — die Geste selbst entsteht hier
    * drin (`usePaneDrag`), nach außen geht nur ihr Ergebnis. */
   onSwapPanes: (sourcePaneId: string, targetPaneId: string) => void;
@@ -565,6 +570,7 @@ export function PaneGrid({
             view={view}
             tabId={tabId}
             dropTargets={dropTargets}
+            onRestartTerminatedTab={onRestartTerminatedTab}
           />,
           hosts.containerFor(tabId),
           tabId,
@@ -705,10 +711,12 @@ function TerminalTabSurface({
   view,
   tabId,
   dropTargets,
+  onRestartTerminatedTab,
 }: {
   view: PaneView;
   tabId: string;
   dropTargets: PaneDropRegistration;
+  onRestartTerminatedTab: (paneId: string, tabId: string) => void;
 }) {
   const isActiveTab = tabId === view.pane.activeTerminalTabId;
   const isVisible = isActiveTab && !view.showingFile;
@@ -753,6 +761,7 @@ function TerminalTabSurface({
         onHeaderPointerDown={view.onHeaderPointerDown}
         onToggleFocusMode={view.onToggleFocusMode}
         focusModeHud={view.focusModeHud}
+        onRestartTerminatedTab={onRestartTerminatedTab}
       />
     </div>
   );

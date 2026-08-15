@@ -13,6 +13,7 @@ pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
+pub mod resource_guard;
 pub mod resource_monitor;
 pub mod session_store;
 pub mod settings_commands;
@@ -31,6 +32,7 @@ use config_registry::ConfigRegistry;
 use explorer_watch::ExplorerWatchState;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
+use resource_guard::ResourceGuardState;
 use tool_detect::ToolDetector;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
@@ -69,6 +71,7 @@ pub fn run() {
         .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .manage(QuittingFlag::default())
         .manage(ExplorerWatchState::default())
+        .manage(ResourceGuardState::default())
         .menu(menu::build)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
@@ -142,6 +145,7 @@ pub fn run() {
             pty_commands::pty_resize,
             pty_commands::pty_kill,
             pty_commands::pty_detect_tool,
+            resource_guard::resource_guard_resume,
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,

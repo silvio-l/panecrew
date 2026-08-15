@@ -27,6 +27,19 @@ impl PtyState {
     pub(crate) fn child_pids(&self) -> Vec<u32> {
         self.0.lock().unwrap().values().filter_map(PtyHandle::pid).collect()
     }
+
+    /// `(tab_id, pid)` for every currently tracked PTY's own shell process —
+    /// `resource_guard`'s per-tab tree walk starts from each of these roots,
+    /// unlike `child_pids` above (a flat list with no tab identity, only
+    /// useful for `resource_monitor`'s single app-wide aggregate).
+    pub(crate) fn tab_root_pids(&self) -> Vec<(String, u32)> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(tab_id, handle)| handle.pid().map(|pid| (tab_id.clone(), pid)))
+            .collect()
+    }
 }
 
 /// Where PaneCrew's shell wrappers were written at startup — `None` if that
@@ -58,7 +71,9 @@ impl WindowPtyRegistry {
     /// A tab can move or vanish without the caller knowing which window it
     /// was under (e.g. `pty_kill` only receives a `tab_id`) — removed from
     /// every window's set rather than requiring the label up front.
-    fn unregister(&self, tab_id: &str) {
+    /// `pub(crate)`: `resource_guard`'s tier-4 escalation calls this
+    /// directly, same reasoning as `kill` right below.
+    pub(crate) fn unregister(&self, tab_id: &str) {
         let mut map = self.0.lock().unwrap();
         for tab_ids in map.values_mut() {
             tab_ids.remove(tab_id);
@@ -209,8 +224,10 @@ pub fn pty_kill(
 
 /// The `pty_kill` command's actual work, factored out so window-close
 /// cleanup (Ticket 27) can kill a window's PTYs directly against the shared
-/// state without going through another Tauri IPC round-trip.
-fn kill(state: &PtyState, tab_id: &str) -> Result<(), String> {
+/// state without going through another Tauri IPC round-trip. `pub(crate)`
+/// (not private) since `resource_guard`'s tier-4 escalation calls this same
+/// path directly, the same reasoning as `kill_all_for_window` below.
+pub(crate) fn kill(state: &PtyState, tab_id: &str) -> Result<(), String> {
     let handle = state
         .0
         .lock()

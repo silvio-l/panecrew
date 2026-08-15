@@ -11,6 +11,7 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty_commands::PtyState;
+use crate::resource_guard::{self, ResourceGuardState};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -89,12 +90,28 @@ pub fn start(app: AppHandle) {
 
         loop {
             let pids = collect_pids(&app);
+            // `All` instead of only the own+children pids collected above:
+            // `resource_guard`'s per-tab tree walk needs every process'
+            // parent pointer to find descendants it doesn't already know the
+            // pid of (a build tool, a leaked daemon, ...) — a targeted
+            // refresh of only already-known pids can never surface those.
+            // Same 5-second tick, same thread, no added system load beyond
+            // what a full `ps`-equivalent scan already costs at that cadence.
             system.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&pids),
+                ProcessesToUpdate::All,
                 true,
                 ProcessRefreshKind::nothing().with_memory().with_cpu(),
             );
             system.refresh_memory();
+
+            let tab_roots = app.state::<PtyState>().tab_root_pids();
+            resource_guard::tick_all(
+                &app,
+                &app.state::<ResourceGuardState>(),
+                &system,
+                &tab_roots,
+                system.total_memory(),
+            );
 
             let mut mem_bytes: u64 = 0;
             let mut cpu_sum: f32 = 0.0;

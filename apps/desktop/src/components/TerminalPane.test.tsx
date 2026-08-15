@@ -88,6 +88,7 @@ const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
       onHeaderPointerDown={vi.fn()}
       onToggleFocusMode={vi.fn()}
       focusModeHud={null}
+      onRestartTerminatedTab={vi.fn()}
     />
   </Tooltip.Provider>
 );
@@ -218,6 +219,7 @@ describe("TerminalPane", () => {
           onHeaderPointerDown={vi.fn()}
           onToggleFocusMode={vi.fn()}
           focusModeHud={null}
+          onRestartTerminatedTab={vi.fn()}
         />
       </Tooltip.Provider>
     );
@@ -264,6 +266,7 @@ describe("TerminalPane", () => {
           onHeaderPointerDown={vi.fn()}
           onToggleFocusMode={vi.fn()}
           focusModeHud={null}
+          onRestartTerminatedTab={vi.fn()}
         />
       </Tooltip.Provider>
     );
@@ -305,6 +308,7 @@ describe("TerminalPane", () => {
           onHeaderPointerDown={vi.fn()}
           onToggleFocusMode={vi.fn()}
           focusModeHud={null}
+          onRestartTerminatedTab={vi.fn()}
         />
       </Tooltip.Provider>
     );

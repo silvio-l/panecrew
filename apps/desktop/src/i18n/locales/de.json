@@ -114,6 +114,15 @@
     "enterFocusMode": "Fokus-Modus",
     "exitFocusMode": "Fokus-Modus verlassen"
   },
+  "resourceGuard": {
+    "warnTabSuffix": "Hoher Speicherverbrauch",
+    "pausedMessage": "Pausiert wegen hohem Speicherverbrauch ({{percent}} %)",
+    "resume": "Fortsetzen",
+    "terminateTab": "Beenden",
+    "singleKillNotice": "Ein Prozess wurde beendet, da er zu viel Speicher verbraucht hat ({{percent}} %)",
+    "terminatedMessage": "Sitzung beendet: Speicherverbrauch hat wiederholt {{percent}} % des System-RAMs überschritten",
+    "restart": "Neu starten"
+  },
   "focusMode": {
     "positionAria": "Pane {{slot}} von {{total}} im Fokus-Modus",
     "rotationStart": "Rotation starten",
