@@ -874,6 +874,8 @@ function PaneCell({
           onHeaderPointerDown={view.onHeaderPointerDown}
           onToggleFocusMode={view.onToggleFocusMode}
           focusModeHud={view.focusModeHud}
+          jumpToLine={editor.jumpToLine}
+          onJumpApplied={editor.consumeJumpToLine}
         />
       </div>
       {/* Zuletzt im Zellen-Array und damit über allen Flächen darin: das HUD

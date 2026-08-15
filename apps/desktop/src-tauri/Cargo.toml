@@ -51,6 +51,17 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# dock.rs: das native Rechtsklick-Dock-Menü hat keine Tauri-/muda-API (gegen
+# beide Quellen direkt geprüft). Statt Tauris eigenem `tauri::menu`-Baum baut
+# dock.rs ein EIGENSTÄNDIGES `muda::Menu`, dessen rohes NSMenu über
+# `applicationDockMenu:` an tao's App-Delegate gehängt wird (dazu objc2
+# unten). Beide sind ohnehin transitive Abhängigkeiten (über tao/wry) —
+# hier direkt genutzt, in derselben bereits aufgelösten Version, kein
+# zweiter Build.
+muda = "0.19.3"
+objc2 = "0.6.4"
+
 [target.'cfg(windows)'.dependencies]
 # resource_guard.rs adds "libloaderapi"/"processthreadsapi"/"minwindef" on top
 # of pty_manager.rs's own set: single-process suspend/resume/kill for the

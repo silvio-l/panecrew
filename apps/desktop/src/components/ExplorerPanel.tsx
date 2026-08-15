@@ -6,7 +6,7 @@ import type {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ContextMenu, DropdownMenu } from "radix-ui";
+import { ContextMenu } from "radix-ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Trans, useTranslation } from "react-i18next";
 import {
@@ -25,7 +25,7 @@ import { vscodeIsInstalled } from "../explorer/vscodeDetection";
 import { isMacPlatform } from "../shortcuts/platform";
 import { useSettings } from "../settings/useSettings";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
-import type { Project, TreeNode } from "../types/project";
+import type { ContentMatch, Project, TreeNode } from "../types/project";
 
 // Dieselbe Dauer wie TerminalPane.tsx' Kopier-Bestätigung (Ticket 24 nennt
 // deren Kontextmenü ausdrücklich als Vorbild) — ein zweiter, abweichender
@@ -112,7 +112,10 @@ export function ExplorerPanel({
    * Ordnern — App spiegelt das in `expandedFolders` und damit in den nächsten
    * `session.json`-Schreibvorgang. */
   onExpandedChange: (expanded: readonly string[]) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
    * (`explorer_read_dir` für die Wurzel, dann jeder zuvor beladene Ordner
@@ -553,11 +556,84 @@ export function ExplorerPanel({
       style={{ width }}
       className="group/explorer flex shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)"
     >
+      {/* Werkzeugleiste ÜBER dem Projektnamen statt daneben (Ticket 26,
+          2026-08-15): bei der Standardbreite (224px) blieben sechs Knöpfe
+          neben dem Namen in einer Zeile diesem kaum noch Platz — jetzt hat
+          die Leiste die volle Panel-Breite für sich, alle sechs Aktionen
+          passen direkt nebeneinander, kein Overflow-Menü mehr nötig.
+          h-8 = 32px: (32 - 24px Knopfgröße) / 2 = 4px Rand oben/unten, exakt
+          `pt-1` — die Zahl, an der sich `CollapsedExplorerStrip.pt-1` unten
+          orientiert, damit der Zeiger beim Ein-/Ausklappen nicht springt.
+
+          `justify-between` statt eines rechtsbündigen Blocks: die drei
+          Gruppen — Anlegen, Baum, Panel — spannen sich über die volle Breite
+          auf, mit `ToolbarDivider` an genau den beiden Gruppengrenzen. Das
+          ist dieselbe Trenngrammatik wie `Divider` in `TitleBar.tsx` ("die
+          einzige Trenngrammatik des Instrumenten-Clusters, an jeder
+          Wertegrenze"), hier auf den Explorer-Oberflächenton übertragen statt
+          auf den Glas-Ton der Titelleiste. Eine gleichmäßig verteilte
+          Werkzeugleiste mit sichtbaren Gruppengrenzen liest sich als
+          Instrumenten-Cluster, ein rechtsbündiger Pulk aus sechs Knöpfen
+          dagegen nur als Anhängsel. */}
+      <div className="flex h-8 shrink-0 items-center justify-between px-1.5">
+        {/* Reihenfolge wie im Referenz-Editor, in drei Stufen von innen nach
+            außen: zuerst die Aktionen, die etwas IM Baum anlegen, dann die
+            auf dem ganzen Baum (Filtern, Aktualisieren, Einklappen), zuletzt
+            die auf dem Panel selbst (Ausblenden). Die Suche steht in der
+            mittleren Gruppe, nicht bei den Anlege-Knöpfen: sie legt nichts
+            an, sie verändert die Sicht auf den gesamten Baum. Anders als vor
+            der Zeilentrennung sind alle sechs jetzt dauerhaft sichtbar statt
+            Hover-Reveal — eine eigene Zeile, die erst bei Zeigerkontakt
+            Inhalt zeigt, wäre sonst bloßer Leerraum. */}
+        <div className="flex items-center gap-0.5">
+          <HeaderAction label={t("explorer.newFile")} onClick={() => openDraft("file")}>
+            <NewFileIcon />
+          </HeaderAction>
+          <HeaderAction
+            label={t("explorer.newFolder")}
+            onClick={() => openDraft("directory")}
+          >
+            <NewFolderIcon />
+          </HeaderAction>
+        </div>
+        <ToolbarDivider />
+        <div className="flex items-center gap-0.5">
+          <HeaderAction
+            label={t("explorer.filterFiles")}
+            onClick={toggleSearch}
+            // Ohne lesbaren Baum gibt es nichts zu filtern. Deaktiviert statt
+            // stumm wirkungslos: der Grund steht zwei Zeilen tiefer schon als
+            // Fehlermeldung im Baumbereich, der ausgegraute Knopf verweist
+            // darauf, statt ein Feld anzubieten, das auf nichts arbeitet.
+            // Aktualisieren daneben bleibt aktiv — das ist der Weg heraus.
+            // Bewusst in Kauf genommen: ein deaktivierter Knopf bekommt keine
+            // Zeigerereignisse, sein Tooltip erscheint in diesem Zustand also
+            // nicht. Die Fehlermeldung darunter sagt ohnehin mehr als er.
+            disabled={project.treeError !== null}
+            pressed={searchQuery !== null}
+          >
+            <SearchIcon />
+          </HeaderAction>
+          <HeaderAction label={t("explorer.refreshTree")} onClick={onRefresh}>
+            <RefreshIcon />
+          </HeaderAction>
+          <HeaderAction label={t("explorer.collapseAll")} onClick={collapseAll}>
+            <CollapseAllIcon />
+          </HeaderAction>
+        </div>
+        <ToolbarDivider />
+        <HeaderAction label={t("explorer.hideExplorer")} onClick={onCollapse}>
+          <SidebarIcon />
+        </HeaderAction>
+      </div>
       {/* h-10, nicht h-9: der Projektname steht hier direkt neben demselben
           Projektnamen im Pane-Header, und der sitzt 2px tiefer (das Grid
           darunter hat p-2, der Pane-Header ist h-6 — Mitte also bei 8+12=20).
           Mit h-9 lagen die beiden identischen Wörter sichtbar versetzt
-          nebeneinander; 40/2 = 20 bringt sie auf dieselbe optische Achse. */}
+          nebeneinander; 40/2 = 20 bringt sie auf dieselbe optische Achse.
+          Diese Rechnung gilt unverändert für die NAMENSZEILE selbst — sie ist
+          seit der Zeilentrennung oben (Ticket 26) nur nicht mehr die einzige
+          Kopfzeile, sondern die zweite von zweien. */}
       {/* pl-0.5 + pl-2 am Knopf = 10px bis zum Chevron, exakt das
           paddingLeft, mit dem die Baumzeilen der Tiefe 0 beginnen: die
           Wurzel-Chevrons und die der obersten Ordner stehen damit in einer
@@ -567,14 +643,15 @@ export function ExplorerPanel({
           (border-box!): die Trennlinie kam mit der TUI-Runde 2026-08-13 dazu —
           sie rahmt den Baum wie die Pane-Header ihre Terminals — und hätte
           bei h-10 die optische Mitte der Zeile auf 19,5px gedrückt, aus der
-          Flucht mit dem Projektnamen im Pane-Header (Mitte 20, s. o.). */}
+          Flucht mit dem Projektnamen im Pane-Header (Mitte 20, s. o.). Sie
+          bleibt die einzige Trennlinie des gesamten (jetzt zweizeiligen)
+          Kopfbereichs — zwischen Werkzeugleiste und Namenszeile steht bewusst
+          keine zweite: beide bilden optisch einen Block. */}
       <div className="flex h-[41px] shrink-0 items-center gap-1 border-b border-(--pc-explorer-border) pl-0.5 pr-1.5">
         {/* Die Kopfzeile ist zugleich der Wurzelknoten: ein Klick klappt den
-            gesamten Baum weg. Bewusst KEINE zusätzliche „Explorer"-Titelzeile
-            darüber — der Direction Contract legt genau eine kompakte Kopfzeile
-            fest, sie bekommt hier nur das Verhalten dazu. Der zugängliche Name
-            des Knopfes ist der Projektname selbst, `aria-expanded` trägt den
-            Zustand: das Standardmuster für einen Aufklapp-Abschnitt. */}
+            gesamten Baum weg. Der zugängliche Name des Knopfes ist der
+            Projektname selbst, `aria-expanded` trägt den Zustand: das
+            Standardmuster für einen Aufklapp-Abschnitt. */}
         <button
           type="button"
           aria-expanded={!rootCollapsed}
@@ -597,78 +674,6 @@ export function ExplorerPanel({
             {project.name}
           </span>
         </button>
-        {/* Reihenfolge wie im Referenz-Editor, in drei Stufen von innen nach außen:
-            zuerst die Aktionen, die etwas IM Baum anlegen, dann die auf dem
-            ganzen Baum (Filtern, Aktualisieren, Einklappen), ganz rechts die
-            auf dem Panel selbst (Ausblenden). Die Suche steht in der mittleren
-            Gruppe, nicht bei den Anlege-Knöpfen: sie legt nichts an, sie
-            verändert die Sicht auf den gesamten Baum. */}
-        <HeaderAction label={t("explorer.newFile")} onClick={() => openDraft("file")}>
-          <NewFileIcon />
-        </HeaderAction>
-        <HeaderAction
-          label={t("explorer.newFolder")}
-          onClick={() => openDraft("directory")}
-        >
-          <NewFolderIcon />
-        </HeaderAction>
-        <HeaderAction
-          label={t("explorer.filterFiles")}
-          onClick={toggleSearch}
-          // Ohne lesbaren Baum gibt es nichts zu filtern. Deaktiviert statt
-          // stumm wirkungslos: der Grund steht zwei Zeilen tiefer schon als
-          // Fehlermeldung im Baumbereich, der ausgegraute Knopf verweist
-          // darauf, statt ein Feld anzubieten, das auf nichts arbeitet.
-          // Aktualisieren daneben bleibt aktiv — das ist der Weg heraus.
-          // Bewusst in Kauf genommen: ein deaktivierter Knopf bekommt keine
-          // Zeigerereignisse, sein Tooltip erscheint in diesem Zustand also
-          // nicht. Die Fehlermeldung darunter sagt ohnehin mehr als er.
-          disabled={project.treeError !== null}
-          pressed={searchQuery !== null}
-        >
-          <SearchIcon />
-        </HeaderAction>
-        <HeaderAction label={t("explorer.refreshTree")} onClick={onRefresh}>
-          <RefreshIcon />
-        </HeaderAction>
-        {/* "Alle Ordner einklappen" und "Explorer ausblenden" waren bis
-            2026-08-12 zwei eigene, dauerhaft reservierte Icon-Plätze in dieser
-            Zeile — bei der Standardbreite (224px) blieben dem Projektnamen
-            daneben nur rund 8px, er verschwand faktisch hinter den sechs
-            Knöpfen. Beide sind die mit Abstand seltensten Aktionen hier
-            (Panel-Ebene bzw. — seit der Standard-Einklapp-Änderung oben —
-            meist schon erledigt) und wandern deshalb in ein gemeinsames Menü
-            statt in zwei feste Plätze. Das gibt dem Namen einen Icon-Platz
-            zurück, ohne eine der beiden Funktionen zu verlieren. */}
-        <DropdownMenu.Root>
-          <ChromeTooltip label={t("explorer.moreActions")} align="end">
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label={t("explorer.moreActions")}
-                className={`flex size-6 shrink-0 items-center justify-center rounded-md text-(--pc-descriptionForeground) opacity-0 transition-[opacity,color,background-color] hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) focus-visible:opacity-100 group-hover/explorer:opacity-100 data-[state=open]:opacity-100 data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-              >
-                <MoreIcon />
-              </button>
-            </DropdownMenu.Trigger>
-          </ChromeTooltip>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="end"
-              sideOffset={4}
-              className={`min-w-44 ${CHROME_MENU_CONTENT_CLASS}`}
-            >
-              <DropdownMenu.Item onSelect={collapseAll} className={CHROME_MENU_ITEM_CLASS}>
-                <CollapseAllIcon />
-                {t("explorer.collapseAll")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={onCollapse} className={CHROME_MENU_ITEM_CLASS}>
-                <SidebarIcon />
-                {t("explorer.hideExplorer")}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
       </div>
       {!rootCollapsed && (
         <>
@@ -922,7 +927,10 @@ function TreeList({
    * `ExplorerPanel` braucht `row.node.children`, um zu entscheiden, ob ein
    * Aufklappen einen Lazy-Load auslösen muss. */
   onToggleFolder: (row: FlatRow) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   /** Wie in `ExplorerPanel`, nur schon auf den Baumpfad der Zeile verkürzt —
    * die Umrechnung auf den absoluten Pfad liegt eine Ebene höher. */
   onStartPathDrag: (
@@ -1418,6 +1426,14 @@ interface FlatRow {
    * `explorer_read_dir` zurück sind (`node.children === undefined`) — die
    * einzige Zeile, die `TreeRow` nicht als echten Eintrag rendert. */
   isLoadingPlaceholder?: boolean;
+  /** Nur bei einer Inhaltstreffer-Zeile gesetzt (Ticket 26,
+   * `searchTree.ts`s `matches` an einem Datei-Knoten) — eine Zeile pro
+   * Zeilentreffer, als Kind der Datei-Zeile eingerollt. `path` trägt hier
+   * einen synthetischen, pro Treffer eindeutigen Schlüssel (dieselbe
+   * Konvention wie bei der Lade-Zeile oben), `filePath` den echten
+   * Baumpfad der Datei, zu der der Treffer gehört. */
+  match?: ContentMatch;
+  filePath?: string;
 }
 
 /** Rollt den Baum zu der Zeilenfolge aus, die gerade sichtbar ist: ein
@@ -1448,7 +1464,30 @@ function flattenTree(
       const isOpen = isFolder && (forceOpen || expanded.has(path));
       const isLast = index === level.length - 1;
       rows.push({ node, path, depth, isFolder, isOpen, ancestorGuides, isLast });
-      if (!isOpen) return;
+      if (!isOpen) {
+        // Inhaltstreffer einer Datei rollen als eigene Kindzeilen ein — auch
+        // wenn `isOpen` bei einer Datei nie zutrifft (`isFolder` ist hier
+        // `false`), genau wie die Lade-Zeile unten braucht das dieselbe
+        // Astlagen-Vererbung, sonst hinge die Vertikale in der Luft.
+        if (node.matches !== undefined && node.matches.length > 0) {
+          const childAncestorGuides = [...ancestorGuides, !isLast];
+          const matches = node.matches;
+          matches.forEach((match, matchIndex) => {
+            rows.push({
+              node,
+              path: `${path}//match/${String(matchIndex)}`,
+              filePath: path,
+              depth: depth + 1,
+              isFolder: false,
+              isOpen: false,
+              ancestorGuides: childAncestorGuides,
+              isLast: matchIndex === matches.length - 1,
+              match,
+            });
+          });
+        }
+        return;
+      }
       // Die Kinder erben die Astlage aller Ebenen darüber plus die dieser
       // Zeile: läuft hier unten noch ein Geschwister nach, führt die
       // Vertikale durch den ganzen Teilbaum — sonst endet sie mit dieser
@@ -1482,18 +1521,18 @@ function flattenTree(
   return rows;
 }
 
-// Die Kopfzeilen-Knöpfe unterscheiden sich nur in Beschriftung, Glyph und
-// Handler — ihr Hover-Reveal (unsichtbar bis der Zeiger im Panel steht, aber
-// sofort sichtbar sobald der Fokus sie erreicht: sonst wäre die Tastatur hier
-// blind) stand vorher einmal wörtlich da und wäre fünffach kopiert worden.
+// Die Werkzeugleisten-Knöpfe unterscheiden sich nur in Beschriftung, Glyph
+// und Handler. Bis 2026-08-15 (vor Ticket 26) standen sie noch in der
+// Namenszeile und trugen dort ein Hover-Reveal (unsichtbar bis der Zeiger im
+// Panel stand) gegen die Enge neben dem Projektnamen. Mit der eigenen
+// Werkzeugleisten-Zeile entfällt der Grund dafür: ein Reveal-Verhalten würde
+// aus der ganzen Zeile bloßen Leerraum machen, solange der Zeiger woanders
+// ist — die sechs Knöpfe sind jetzt dauerhaft sichtbar.
 //
-// Farbe und Deckkraft werden hier in JS zu genau EINER Klasse verzweigt statt
-// mehrere Kandidaten nebeneinander in die Klassenliste zu schreiben: zwei
-// gleichrangige Utilities (`opacity-0` neben `opacity-100`, zwei `text-(--…)`)
-// entscheidet nicht die Reihenfolge im JSX, sondern die im erzeugten
-// Stylesheet — das wäre ein Zufallsergebnis. Die Varianten-Regeln
-// (`group-hover/…`, `focus-visible:`) dürfen daneben stehen bleiben, sie haben
-// die höhere Spezifität.
+// Farbe wird hier in JS zu genau EINER Klasse verzweigt statt mehrere
+// Kandidaten nebeneinander in die Klassenliste zu schreiben: zwei
+// gleichrangige `text-(--…)`-Utilities entscheidet nicht die Reihenfolge im
+// JSX, sondern die im erzeugten Stylesheet — das wäre ein Zufallsergebnis.
 function HeaderAction({
   label,
   onClick,
@@ -1507,9 +1546,8 @@ function HeaderAction({
    * Zustand des Panels nichts bewirken könnten. */
   disabled?: boolean;
   /** Nur für Knöpfe, die etwas AUFHALTEN statt einmal auszulösen: trägt den
-   * Zustand als `aria-pressed` und hält den Knopf sichtbar, solange er aktiv
-   * ist — ein offenes Suchfeld ohne den zugehörigen Knopf daneben (weil der
-   * Zeiger das Panel verlassen hat) wäre ein Bedienelement ohne Ausschalter. */
+   * Zustand als `aria-pressed` und zeigt ihn per dauerhaftem Hintergrundton,
+   * solange er aktiv ist. */
   pressed?: boolean;
   children: ReactNode;
 }) {
@@ -1527,11 +1565,25 @@ function HeaderAction({
         aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
-        className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-[opacity,color,background-color] focus-visible:opacity-100 group-hover/explorer:opacity-100 ${pressed === true ? "opacity-100" : "opacity-0"} ${tone} ${CHROME_FOCUS_RING}`}
+        className={`flex size-6 shrink-0 items-center justify-center rounded-md transition-[color,background-color] ${tone} ${CHROME_FOCUS_RING}`}
       >
         {children}
       </button>
     </ChromeTooltip>
+  );
+}
+
+// Trennt die drei Werkzeugleisten-Gruppen (Anlegen | Baum | Panel) an ihren
+// Gruppengrenzen — dieselbe Trenngrammatik wie `Divider` in `TitleBar.tsx`,
+// hier auf `--pc-explorer-border` statt auf den Glas-Ton der Titelleiste
+// übertragen, weil dieser Trenner auf der Explorer-Oberfläche sitzt, nicht
+// auf der Titelleiste. `aria-hidden`: reines Layout-Signal, kein Inhalt.
+function ToolbarDivider() {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-3 w-px shrink-0 self-center bg-(--pc-explorer-border)"
+    />
   );
 }
 
@@ -1540,11 +1592,12 @@ function HeaderAction({
 export function CollapsedExplorerStrip({ onExpand }: { onExpand: () => void }) {
   const { t } = useTranslation();
   return (
-    // pt-2 spiegelt exakt die h-10-Kopfzeile des ausgeklappten Explorers
-    // (40px - 24px Button = 8px oben): sonst springt der Knopf beim Ein- und
-    // Ausklappen um 2px, und genau dieser Knopf ist das Element, auf dem der
-    // Zeiger dabei stehen bleibt.
-    <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-2">
+    // pt-1 spiegelt exakt die h-8-Werkzeugleiste des ausgeklappten Explorers
+    // (32px - 24px Knopfgröße = 8px, hälftig 4px oben): der Knopf hier steht
+    // an derselben Y-Position wie „Explorer ausblenden" ganz rechts in jener
+    // Zeile, sonst springt der Zeiger beim Ein- und Ausklappen — und genau
+    // dieser Knopf ist das Element, auf dem er dabei stehen bleibt.
+    <div className="flex w-8 shrink-0 flex-col items-center border-r border-(--pc-explorer-border) bg-(--pc-explorer-background) pt-1">
       <ChromeTooltip label={t("explorer.showExplorer")} side="right">
         <button
           type="button"
@@ -1573,25 +1626,6 @@ function SidebarIcon() {
     >
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
       <path d="M6 2.75v10.5" />
-    </svg>
-  );
-}
-
-// Drei gefüllte Punkte statt der sonst hier üblichen Strichzeichnung — ein
-// Kebab-Menü besteht konventionell aus Flächen, nicht aus Linien, dieselbe
-// Abweichung wie bei den Git-Punkten in `GitDecorationMark`.
-function MoreIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="3.4" r="1.3" />
-      <circle cx="8" cy="8" r="1.3" />
-      <circle cx="8" cy="12.6" r="1.3" />
     </svg>
   );
 }
@@ -1741,7 +1775,10 @@ interface TreeRowProps {
    * deshalb ohne jede Umrechnung. */
   gitDecorations: GitDecorations;
   onToggleFolder: (row: FlatRow) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   onStartPathDrag: (
     event: ReactPointerEvent<HTMLElement>,
     rowPath: string,
@@ -1842,6 +1879,36 @@ function TreeRow({
         <span aria-hidden="true" className="w-2.5 shrink-0" />
         <span className="truncate">{t("common.loading")}</span>
       </div>
+    );
+  }
+
+  // Eine Inhaltstreffer-Zeile (Ticket 26) — Kind einer Datei-Zeile, kein
+  // eigenständiger Baumeintrag: kein Chevron, kein Kontextmenü, kein
+  // Ziehgriff, keine Auswahl-/Git-Deko-Logik (die gehört der Datei-Zeile
+  // selbst). Ein Klick öffnet die Datei UND springt zur Fundstelle —
+  // `row.filePath` trägt dafür den echten Baumpfad, `row.path` ist hier nur
+  // der pro Treffer eindeutige React-/Virtualizer-Schlüssel.
+  if (row.match) {
+    const filePath = row.filePath ?? path;
+    const { line, preview } = row.match;
+    return (
+      <button
+        type="button"
+        data-row-index={index}
+        onClick={() => onSelectFile(filePath, line)}
+        onKeyDown={(event) => onKeyDown(index, event)}
+        style={{
+          paddingLeft: 10 + depth * 12,
+          transform: `translateY(${String(offset)}px)`,
+        }}
+        className="absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-explorer-foreground) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
+      >
+        <TreeRowGuides ancestorGuides={ancestorGuides} depth={depth} isLast={isLast} />
+        <span className="w-6 shrink-0 text-right text-[10px] leading-none tabular-nums">
+          {line}
+        </span>
+        <span className="truncate">{preview}</span>
+      </button>
     );
   }
 

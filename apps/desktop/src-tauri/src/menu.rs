@@ -1,5 +1,5 @@
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 pub const ABOUT: &str = "about";
 pub const CHECK_UPDATES: &str = "check-updates";
@@ -8,44 +8,24 @@ pub const CHECK_UPDATES: &str = "check-updates";
 /// zu adressieren.
 pub const WINDOW_ITEM_PREFIX: &str = "window:";
 
-/// Ein `CheckMenuItem` je offenem Inhalts-Fenster (`windows::is_content_window`
-/// — schließt „about"/„settings" aus), Haken beim gerade fokussierten. Das ist
-/// die native macOS-„Fenster"-Menü-Konvention (jede echte AppKit-App listet
-/// hier ihre offenen Fenster), die Tauris Menü-API anders als natives AppKit
-/// NICHT von selbst mitbringt — ohne das hier bleibt ein Fenster ohne eigenes
-/// Dock-Icon (normal, eine App hat nur eins) UND ohne Menü-Eintrag komplett
-/// unauffindbar, sobald es minimiert oder auf einem anderen Space liegt
-/// (2026-08-14 Nutzerbefund: nur über App-Exposé wiedergefunden).
-///
-/// Sortiert nach Label statt Erzeugungsreihenfolge: Letztere wird nirgends
-/// separat mitgeführt, und `nanoid()`s Zeitstempel-Suffix ist ohnehin nicht
-/// dafür gedacht, danach sortiert zu werden — Label-Sortierung ist dafür
-/// wenigstens über Rebuilds hinweg stabil. `MAIN` ("main") sortiert dabei
-/// immer zuerst (kürzerer String, Präfix jedes `"main-…"`-Labels), bekommt
-/// also zuverlässig den nummernlosen Titel.
+/// Ein `CheckMenuItem` je offenem Inhalts-Fenster, Haken beim gerade
+/// fokussierten — Daten aus `windows::window_entries` (dort auch die
+/// Sortier-/Titel-Begründung), hier nur noch in Tauris eigenen Item-Typ
+/// übersetzt. Das ist die native macOS-„Fenster"-Menü-Konvention (jede echte
+/// AppKit-App listet hier ihre offenen Fenster), die Tauris Menü-API anders
+/// als natives AppKit NICHT von selbst mitbringt — ohne das hier bliebe ein
+/// Fenster ohne eigenes Dock-Icon (normal, eine App hat nur eins) UND ohne
+/// Menü-Eintrag komplett unauffindbar, sobald es minimiert oder auf einem
+/// anderen Space liegt (2026-08-14 Nutzerbefund: nur über App-Exposé
+/// wiedergefunden). Dieselbe Liste erscheint seit 2026-08-15 auch in
+/// `dock.rs`s Dock-Menü — AppKit reichert ein per `applicationDockMenu:`
+/// geliefertes Menü NICHT selbst um die offenen Fenster an (Annahme aus dem
+/// Referenz-Editor war hier falsch, per Rechtsklick-Test widerlegt), beide
+/// Stellen müssen die Liste also je selbst mitbringen.
 fn window_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuItem<R>>> {
-    let windows = app.webview_windows();
-    let focused_label = windows
-        .values()
-        .find(|w| w.is_focused().unwrap_or(false))
-        .map(|w| w.label().to_string());
-    let mut labels: Vec<String> = windows
-        .keys()
-        .filter(|label| crate::windows::is_content_window(label))
-        .cloned()
-        .collect();
-    labels.sort();
-
-    labels
-        .iter()
-        .enumerate()
-        .map(|(index, label)| {
-            let title = if label == crate::windows::MAIN {
-                "PaneCrew".to_string()
-            } else {
-                format!("PaneCrew — Fenster {}", index + 1)
-            };
-            let checked = focused_label.as_deref() == Some(label.as_str());
+    crate::windows::window_entries(app)
+        .into_iter()
+        .map(|(label, title, checked)| {
             CheckMenuItem::with_id(
                 app,
                 format!("{WINDOW_ITEM_PREFIX}{label}"),

@@ -22,6 +22,13 @@ export type FileKind =
   | "lock"
   | "file";
 
+/** Eine einzelne Zeile eines Volltext-Treffers (`explorer_search_contents`,
+ * `explorer_fs.rs`) — `line` ist 1-indexed wie dort. */
+export interface ContentMatch {
+  line: number;
+  preview: string;
+}
+
 export interface TreeNode {
   name: string;
   kind?: FileKind;
@@ -39,6 +46,12 @@ export interface TreeNode {
    * Datei ist es immer `undefined`. Ein geladener, leerer Ordner trägt `[]`,
    * unterscheidbar von „noch nicht geladen". */
   children?: TreeNode[];
+  /** Nur bei einem Suchtreffer-Baum gesetzt (`searchTree.ts`s
+   * `searchProjectTree`) — die Zeilentreffer einer Inhaltssuche in genau
+   * dieser Datei. Im normalen Projektbaum immer `undefined`, nicht `[]`: der
+   * Explorer liest Dateiinhalte sonst nie ein, „nicht durchsucht" und
+   * „durchsucht, keine Treffer" dürfen nicht gleich aussehen. */
+  matches?: readonly ContentMatch[];
 }
 
 export interface Project {

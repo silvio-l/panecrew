@@ -73,6 +73,45 @@ pub(crate) fn is_content_window(label: &str) -> bool {
     label == MAIN || label.starts_with(SECONDARY_LABEL_PREFIX)
 }
 
+/// `(label, title, checked)` for every open content window, sorted by label
+/// (same rationale as `menu.rs`'s own former copy of this: `MAIN` sorts
+/// first, gets the plain "PaneCrew" title, no creation-order tracking is
+/// needed or kept anywhere else). The one shared source both `menu.rs`'s
+/// "Fenster" list AND `dock.rs`'s dock-menu window list build their own
+/// native item type from — they can't share a native item type directly
+/// (one needs `tauri::menu::CheckMenuItem`, the other a standalone
+/// `muda::CheckMenuItem` outside Tauri's own menu tree, and neither crate
+/// exposes a bridge between the two), but the ENUMERATION itself (which
+/// windows, in what order, which one checked) has exactly one correct
+/// answer and must not drift between the two menus that show it.
+pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String, bool)> {
+    let windows = app.webview_windows();
+    let focused_label = windows
+        .values()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .map(|w| w.label().to_string());
+    let mut labels: Vec<String> = windows
+        .keys()
+        .filter(|label| is_content_window(label))
+        .cloned()
+        .collect();
+    labels.sort();
+
+    labels
+        .into_iter()
+        .enumerate()
+        .map(|(index, label)| {
+            let title = if label == MAIN {
+                "PaneCrew".to_string()
+            } else {
+                format!("PaneCrew — Fenster {}", index + 1)
+            };
+            let checked = focused_label.as_deref() == Some(label.as_str());
+            (label, title, checked)
+        })
+        .collect()
+}
+
 /// The single source for secondary-window labels — shared with the tests so a
 /// regression can't be masked by a hardcoded example label.
 fn new_window_label() -> String {
@@ -152,7 +191,10 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+            .traffic_light_position(tauri::LogicalPosition::new(
+                TRAFFIC_LIGHT_X,
+                TRAFFIC_LIGHT_Y,
+            ))
             .hidden_title(true);
     }
 
@@ -208,7 +250,10 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .traffic_light_position(tauri::LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y))
+            .traffic_light_position(tauri::LogicalPosition::new(
+                TRAFFIC_LIGHT_X,
+                TRAFFIC_LIGHT_Y,
+            ))
             .hidden_title(true);
     }
 
@@ -217,7 +262,9 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
         .visible(false)
         .build()
         .map(|_| ())
-        .map_err(|error| format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}"));
+        .map_err(|error| {
+            format!("Fenster „{label}“ konnte nicht wiederhergestellt werden: {error}")
+        });
     if result.is_ok() {
         crate::menu::refresh(app);
     }
@@ -347,8 +394,75 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 /// cannot drift apart again unnoticed.
 #[cfg(test)]
 mod tests {
-    use super::{new_window_label, MAIN};
+    use super::{new_window_label, window_entries, MAIN};
     use std::collections::BTreeSet;
+
+    /// `window_entries` on a freshly built mock app with no windows of its
+    /// own: `mock_builder().build(...)` still creates zero windows, so this
+    /// pins the empty case rather than assuming it from reading the code.
+    #[test]
+    fn no_windows_yields_no_entries() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app should build");
+        assert_eq!(window_entries(app.handle()), Vec::new());
+    }
+
+    /// `"main"` sorts first purely from the label scheme (it is a strict
+    /// prefix of every `"main-<nanoid>"` secondary label, and a prefix always
+    /// sorts before the string it prefixes) and gets the plain "PaneCrew"
+    /// title; secondary windows are numbered from the sorted position, not
+    /// creation order — this is the part `window_entries` actually computes,
+    /// as opposed to just forwarding `webview_windows()`.
+    #[test]
+    fn main_sorts_first_and_secondary_windows_are_numbered_by_label_order() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app should build");
+        for label in ["main-zzz", MAIN, "main-aaa"] {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                label,
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .build()
+            .unwrap_or_else(|error| panic!("building window {label:?} should succeed: {error}"));
+        }
+
+        let entries = window_entries(app.handle());
+        let labels: Vec<&str> = entries.iter().map(|(label, _, _)| label.as_str()).collect();
+        assert_eq!(labels, vec![MAIN, "main-aaa", "main-zzz"]);
+
+        let titles: Vec<&str> = entries.iter().map(|(_, title, _)| title.as_str()).collect();
+        assert_eq!(
+            titles,
+            vec!["PaneCrew", "PaneCrew — Fenster 2", "PaneCrew — Fenster 3"]
+        );
+    }
+
+    /// Utility windows (about/settings) must not pollute the "Fenster"/dock
+    /// list — `is_content_window` is meant to filter exactly these out.
+    #[test]
+    fn non_content_windows_are_excluded() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app should build");
+        for label in [MAIN, "about", "settings"] {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                label,
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .build()
+            .unwrap_or_else(|error| panic!("building window {label:?} should succeed: {error}"));
+        }
+
+        let labels: Vec<String> = window_entries(app.handle())
+            .into_iter()
+            .map(|(label, _, _)| label)
+            .collect();
+        assert_eq!(labels, vec![MAIN.to_string()]);
+    }
 
     /// Every capability the app ships, by the filename Tauri picks them up from.
     const CAPABILITY_FILES: &[(&str, &str)] = &[

@@ -3,6 +3,8 @@ pub mod cli;
 pub mod config_core;
 pub mod config_manifest;
 pub mod config_registry;
+#[cfg(target_os = "macos")]
+pub mod dock;
 pub mod explorer_fs;
 pub mod explorer_watch;
 pub mod external_editor;
@@ -33,11 +35,11 @@ use explorer_watch::ExplorerWatchState;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
 use resource_guard::ResourceGuardState;
-use tool_detect::ToolDetector;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
 use tauri::{Manager, RunEvent};
+use tool_detect::ToolDetector;
 use windows::QuittingFlag;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -83,6 +85,14 @@ pub fn run() {
                     if let Some(window) = app.get_webview_window(label) {
                         let _ = window.unminimize();
                         let _ = window.set_focus();
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                _ if id == dock::NEW_WINDOW_ITEM_ID => {
+                    if let Err(error) = windows::window_open_new(app.clone()) {
+                        eprintln!(
+                            "PaneCrew: Neues Fenster aus dem Dock-Menü fehlgeschlagen: {error}"
+                        );
                     }
                 }
                 _ => {}
@@ -132,6 +142,8 @@ pub fn run() {
                     }
                 });
             app.manage(ShellIntegrationDir(root));
+            #[cfg(target_os = "macos")]
+            dock::install(app.handle());
             windows::restore_persisted_windows(app.handle());
             splash::position_on_cursor_monitor(app.handle());
             splash::arm_watchdog(app.handle());
@@ -149,6 +161,7 @@ pub fn run() {
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,
+            explorer_fs::explorer_search_contents,
             explorer_fs::explorer_read_file,
             explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
