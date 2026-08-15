@@ -47,6 +47,20 @@ enum Status {
     Critical,
 }
 
+/// Eine flache Liste statt bereits pro Pane gruppiert: welche Tabs zu welcher
+/// Pane gehören, weiß nur der Grid-Store im Frontend (`gridState.ts`) —
+/// dieser Rust-Sampler kennt nur `tabId`s, keine `paneId`s (dieselbe
+/// Trennung wie überall sonst zwischen PTY-Prozessverwaltung und
+/// UI-Layout). `TitleBar.tsx`s Hover-Popover gruppiert selbst anhand des
+/// bestehenden Grid-Zustands.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TabUsage {
+    tab_id: String,
+    mem_percent: f32,
+    cpu_percent: f32,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResourceUsage {
@@ -54,6 +68,7 @@ struct ResourceUsage {
     cpu_percent: f32,
     mem_status: Status,
     cpu_status: Status,
+    tabs: Vec<TabUsage>,
 }
 
 fn classify(percent: f32, warn: f32, critical: f32) -> Status {
@@ -105,12 +120,13 @@ pub fn start(app: AppHandle) {
             system.refresh_memory();
 
             let tab_roots = app.state::<PtyState>().tab_root_pids();
-            resource_guard::tick_all(
+            let tab_samples = resource_guard::tick_all(
                 &app,
                 &app.state::<ResourceGuardState>(),
                 &system,
                 &tab_roots,
                 system.total_memory(),
+                cpu_cores,
             );
 
             let mut mem_bytes: u64 = 0;
@@ -141,6 +157,14 @@ pub fn start(app: AppHandle) {
                 cpu_percent,
                 mem_status: classify(mem_percent, MEM_WARN_PERCENT, MEM_CRITICAL_PERCENT),
                 cpu_status: classify(cpu_percent, CPU_WARN_PERCENT, CPU_CRITICAL_PERCENT),
+                tabs: tab_samples
+                    .into_iter()
+                    .map(|sample| TabUsage {
+                        tab_id: sample.tab_id,
+                        mem_percent: sample.mem_percent,
+                        cpu_percent: sample.cpu_percent,
+                    })
+                    .collect(),
             };
             let _ = app.emit(EVENT_NAME, &usage);
 

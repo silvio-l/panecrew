@@ -226,19 +226,25 @@ fn step(input: StepInput) -> (StageKind, Option<u32>, u8, Vec<Action>) {
     }
 }
 
-/// Rekursive RSS-Summe eines Tab-Prozessbaums ab `root` (Shell + alle
-/// Nachfahren, per Eltern-Zeiger gefunden — nicht nur Prozessgruppen-Mitglieder,
-/// s. Modul-Kopfkommentar: auch ein Vordergrund-Job, der seine eigene Gruppe
-/// bekommen hat, muss mitgezählt werden). `children` wird einmal pro Tick für
-/// ALLE Tabs gemeinsam aus dem vollständig refreshten Prozesstisch aufgebaut
-/// (s. `tick_all`), nicht pro Tab neu. Leer, wenn `root` selbst schon nicht
-/// mehr existiert (Wettlauf mit einem parallelen Schließen).
+/// Rekursive RSS- und CPU-Summe eines Tab-Prozessbaums ab `root` (Shell +
+/// alle Nachfahren, per Eltern-Zeiger gefunden — nicht nur
+/// Prozessgruppen-Mitglieder, s. Modul-Kopfkommentar: auch ein
+/// Vordergrund-Job, der seine eigene Gruppe bekommen hat, muss mitgezählt
+/// werden). `children` wird einmal pro Tick für ALLE Tabs gemeinsam aus dem
+/// vollständig refreshten Prozesstisch aufgebaut (s. `tick_all`), nicht pro
+/// Tab neu. Leer, wenn `root` selbst schon nicht mehr existiert (Wettlauf mit
+/// einem parallelen Schließen). Der CPU-Wert ist roh in sysinfos
+/// Konvention (0-100 PRO KERN) — dieselbe Rohgröße, die
+/// `resource_monitor.rs`s eigene App-weite Aggregation vor der Division durch
+/// `cpu_cores` verwendet; die Normalisierung (und für die App-weite Anzeige
+/// zusätzlich die 15s-Glättung) bleibt Sache des jeweiligen Aufrufers.
 fn walk_tree(
     system: &System,
     children: &HashMap<Pid, Vec<Pid>>,
     root: Pid,
-) -> (u64, Vec<(Pid, u64)>) {
-    let mut total: u64 = 0;
+) -> (u64, f32, Vec<(Pid, u64)>) {
+    let mut total_rss: u64 = 0;
+    let mut total_cpu: f32 = 0.0;
     let mut members = Vec::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([root]);
@@ -248,14 +254,15 @@ fn walk_tree(
         }
         if let Some(process) = system.process(pid) {
             let rss = process.memory();
-            total += rss;
+            total_rss += rss;
+            total_cpu += process.cpu_usage();
             members.push((pid, rss));
         }
         if let Some(kids) = children.get(&pid) {
             queue.extend(kids.iter().copied());
         }
     }
-    (total, members)
+    (total_rss, total_cpu, members)
 }
 
 fn execute(app: &AppHandle, tab_id: &str, percent: f32, action: Action) {
@@ -317,19 +324,51 @@ fn execute(app: &AppHandle, tab_id: &str, percent: f32, action: Action) {
     }
 }
 
+/// Normalisiert die rohen Baumsummen aus `walk_tree` auf dieselben 0-100-
+/// Prozentskalen wie die App-weite Anzeige (RAM: Anteil am System-Gesamt-RAM,
+/// CPU: sysinfos Pro-Kern-Rohgröße geteilt durch die Kernzahl) — reine
+/// Arithmetik, für sich testbar ohne `System`/`AppHandle`.
+fn tab_percentages(
+    total_rss: u64,
+    total_cpu_raw: f32,
+    total_memory: u64,
+    cpu_cores: f32,
+) -> (f32, f32) {
+    let mem_percent = (total_rss as f32 / total_memory as f32) * 100.0;
+    let cpu_percent = if cpu_cores > 0.0 { total_cpu_raw / cpu_cores } else { 0.0 };
+    (mem_percent, cpu_percent)
+}
+
+/// Ein Tick-Ergebnis pro noch lebendem Tab, an `resource_monitor.rs`
+/// zurückgereicht, damit dessen Titelleisten-Hover-Popover (Pane→Tab-
+/// Baumansicht) dieselbe Baumsumme anzeigen kann, die auch die
+/// Eskalationskette selbst schon berechnet hat — kein zweiter Tree-Walk über
+/// denselben, ohnehin schon einmal pro Tick vollständig refreshten
+/// Prozesstisch.
+pub struct TabResourceSample {
+    pub tab_id: String,
+    pub mem_percent: f32,
+    pub cpu_percent: f32,
+}
+
 /// Von `resource_monitor`s 5-Sekunden-Tick zusätzlich zu dessen eigener
 /// App-weiten Aggregation aufgerufen. `system` muss der Aufrufer bereits mit
-/// `ProcessesToUpdate::All` (inkl. Speicher) refresht haben — dieser Aufruf
-/// selbst refresht nichts, er liest nur.
+/// `ProcessesToUpdate::All` (inkl. Speicher UND CPU) refresht haben — dieser
+/// Aufruf selbst refresht nichts, er liest nur. `cpu_cores` normalisiert die
+/// pro Baum aufsummierte sysinfo-Rohgröße (0-100 pro Kern) auf denselben
+/// 0-100-Gesamtmaßstab, den auch `resource_monitor.rs`s eigene App-weite
+/// CPU-Zahl verwendet — ohne die dortige 15s-Glättung, die ist Sache der
+/// App-weiten Anzeige, nicht der einzelnen Tab-Zeile.
 pub fn tick_all(
     app: &AppHandle,
     guard: &ResourceGuardState,
     system: &System,
     tab_roots: &[(String, u32)],
     total_memory: u64,
-) {
+    cpu_cores: f32,
+) -> Vec<TabResourceSample> {
     if total_memory == 0 {
-        return;
+        return Vec::new();
     }
 
     let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
@@ -348,15 +387,23 @@ pub fn tick_all(
     let live: HashSet<&str> = tab_roots.iter().map(|(id, _)| id.as_str()).collect();
     map.retain(|tab_id, _| live.contains(tab_id.as_str()));
 
+    let mut samples = Vec::with_capacity(tab_roots.len());
+
     for (tab_id, root_pid) in tab_roots {
         let root = Pid::from_u32(*root_pid);
-        let (total_rss, members) = walk_tree(system, &children, root);
+        let (total_rss, total_cpu_raw, members) = walk_tree(system, &children, root);
         if members.is_empty() {
             // Prozess bereits weg (Wettlauf mit einem parallelen Schließen) —
-            // kein Zustand für einen Tab führen, der gerade verschwindet.
+            // kein Zustand für einen Tab führen, der gerade verschwindet, und
+            // auch keine Stichprobe dafür melden.
             continue;
         }
-        let percent = (total_rss as f32 / total_memory as f32) * 100.0;
+        let (percent, cpu_percent) = tab_percentages(total_rss, total_cpu_raw, total_memory, cpu_cores);
+        samples.push(TabResourceSample {
+            tab_id: tab_id.clone(),
+            mem_percent: percent,
+            cpu_percent,
+        });
         let offender = members
             .iter()
             .max_by_key(|(_, rss)| *rss)
@@ -395,6 +442,8 @@ pub fn tick_all(
             execute(app, tab_id, percent, action);
         }
     }
+
+    samples
 }
 
 /// Vom Frontend-Knopf "Fortsetzen" im Pause-Banner aufgerufen — setzt den
@@ -682,7 +731,7 @@ mod tests {
         // reicht, um zu belegen, dass ein Root ohne bekannte Kinder korrekt
         // nur sich selbst summiert.
         let own_pid = sysinfo::get_current_pid().expect("own pid should be resolvable");
-        let (total, members) = walk_tree(&system, &children, own_pid);
+        let (total, _cpu, members) = walk_tree(&system, &children, own_pid);
         assert_eq!(members.len(), 1);
         assert_eq!(members[0].0, own_pid);
         assert!(total > 0, "a running process should report non-zero RSS");
@@ -690,7 +739,7 @@ mod tests {
         // Ein unbekannter Nachfahre bleibt außen vor, solange `children` ihn
         // nicht unter diesem Root führt.
         children.insert(own_pid, vec![]);
-        let (total_again, members_again) = walk_tree(&system, &children, own_pid);
+        let (total_again, _cpu_again, members_again) = walk_tree(&system, &children, own_pid);
         assert_eq!(total_again, total);
         assert_eq!(members_again.len(), 1);
     }
@@ -701,9 +750,26 @@ mod tests {
         system.refresh_all();
         let children: HashMap<Pid, Vec<Pid>> = HashMap::new();
         // Eine absurd hohe pid existiert auf keinem realen System.
-        let (total, members) = walk_tree(&system, &children, Pid::from_u32(u32::MAX - 1));
+        let (total, cpu, members) = walk_tree(&system, &children, Pid::from_u32(u32::MAX - 1));
         assert_eq!(total, 0);
+        assert_eq!(cpu, 0.0);
         assert!(members.is_empty());
+    }
+
+    #[test]
+    fn tab_percentages_normalizes_ram_against_total_and_cpu_against_core_count() {
+        let (mem, cpu) = tab_percentages(200, 150.0, 1000, 2.0);
+        assert_eq!(mem, 20.0);
+        assert_eq!(cpu, 75.0);
+    }
+
+    #[test]
+    fn tab_percentages_reports_zero_cpu_instead_of_dividing_by_zero_cores() {
+        // Derselbe Schutz wie `resource_monitor.rs`s eigene
+        // `available_parallelism()`-Herleitung — hier zusätzlich abgesichert,
+        // falls `tick_all` je mit 0 aufgerufen würde (kaputte Systemauskunft).
+        let (_, cpu) = tab_percentages(0, 50.0, 1000, 0.0);
+        assert_eq!(cpu, 0.0);
     }
 
     /// Proves the actual OS-level effect of the three primitives against a

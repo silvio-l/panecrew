@@ -963,7 +963,7 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="relative flex h-full flex-col">
-        <TitleBar zoom={zoom} />
+        <TitleBar zoom={zoom} panes={activePanes(gridState)} />
         {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch

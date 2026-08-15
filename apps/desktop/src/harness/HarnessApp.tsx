@@ -101,7 +101,7 @@ export function HarnessApp({
     <PtyBackendContext.Provider value={demoBackend}>
       <Tooltip.Provider delayDuration={300}>
         <div className="relative flex h-full flex-col">
-          <TitleBar zoom={1} />
+          <TitleBar zoom={1} panes={activePanes(grid.state)} />
           {/* `relative`: Anker fürs FocusTrace-Overlay, s. App.tsx. Der
               Harness hat keinen Resize-Separator (keine echte Explorer-
               Breitenbedienung), der Pin-Header dockt hier direkt hinter dem

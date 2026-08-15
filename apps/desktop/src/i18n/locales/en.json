@@ -13,6 +13,7 @@
     "dateTime": "Current date and time: {{dateTime}}",
     "resourceUsage": {
       "tooltip": "Memory {{mem}}% ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
+      "perTabRow": "{{name}}: memory {{mem}}%, CPU {{cpu}}%",
       "status": {
         "normal": "normal",
         "warn": "elevated",

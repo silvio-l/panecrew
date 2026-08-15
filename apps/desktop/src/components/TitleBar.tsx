@@ -3,10 +3,13 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SupportedLanguage } from "../i18n";
+import type { Pane } from "../grid/gridState";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
 import { DEFAULT_APP_ZOOM } from "../shortcuts/zoom";
+import { groupTabUsageByPane } from "../terminal/resourceUsageTree";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
+import { ResourceUsageTreeTooltip } from "./ResourceUsageTree";
 
 // Titelzeile als schwebende Glaskapsel (titleBarStyle Overlay, native
 // Traffic-Lights links freigehalten): ein einzelnes abgerundetes Element mit
@@ -70,7 +73,7 @@ export const TITLE_BAR_ZONE_HEIGHT = CAPSULE_INSET * 2 + CAPSULE_HEIGHT;
 // Marke-plus-Schriftzug-Block vor sich, den es nicht mehr gibt.
 const TRAFFIC_LIGHT_INSET = 84;
 
-export function TitleBar({ zoom }: { zoom: number }) {
+export function TitleBar({ zoom, panes }: { zoom: number; panes: readonly Pane[] }) {
   const { t } = useTranslation();
   // Dasselbe "Kürzel-in-Klammern-an-Tooltip-anhängen"-Muster wie
   // PaneTabs.tsx' Terminal-Tab-Chips — kein neuer Formatierungsweg.
@@ -198,7 +201,7 @@ export function TitleBar({ zoom }: { zoom: number }) {
 
           <DateTimeReadout t={t} />
           <Divider />
-          <ResourceUsageReadout t={t} />
+          <ResourceUsageReadout t={t} panes={panes} />
         </div>
 
         <Divider className="mx-2" />
@@ -390,11 +393,22 @@ function hudClockParts(date: Date, language: SupportedLanguage): HudClockParts {
 
 type ResourceStatus = "normal" | "warn" | "critical";
 
+interface TabUsagePayload {
+  tabId: string;
+  memPercent: number;
+  cpuPercent: number;
+}
+
 interface ResourceUsagePayload {
   memPercent: number;
   cpuPercent: number;
   memStatus: ResourceStatus;
   cpuStatus: ResourceStatus;
+  /** Flache Liste (kein Pane-Bezug — der lebt nur im Grid-Store), eine
+   * Stichprobe pro noch lebendem Tab (`resource_monitor.rs`, aus
+   * `resource_guard::tick_all` durchgereicht). Das Popover unten gruppiert
+   * sie selbst per `groupTabUsageByPane` anhand des aktuellen Grid-Zustands. */
+  tabs: TabUsagePayload[];
 }
 
 const RESOURCE_STATUS_COLOR: Record<ResourceStatus, string> = {
@@ -428,8 +442,10 @@ function resourceStatusLabel(
  */
 function ResourceUsageReadout({
   t,
+  panes,
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
+  panes: readonly Pane[];
 }) {
   const [usage, setUsage] = useState<ResourceUsagePayload | null>(null);
 
@@ -456,9 +472,10 @@ function ResourceUsageReadout({
     memStatus: memStatusLabel,
     cpuStatus: cpuStatusLabel,
   });
+  const groups = groupTabUsageByPane(panes, usage.tabs);
 
   return (
-    <ChromeTooltip label={tooltip} align="end">
+    <ResourceUsageTreeTooltip summary={tooltip} groups={groups}>
       <div
         data-tauri-drag-region="deep"
         className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
@@ -480,7 +497,7 @@ function ResourceUsageReadout({
         </span>
         <span className="sr-only">{tooltip}</span>
       </div>
-    </ChromeTooltip>
+    </ResourceUsageTreeTooltip>
   );
 }
 
