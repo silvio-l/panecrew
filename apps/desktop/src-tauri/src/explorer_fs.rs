@@ -949,6 +949,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hits the real OS trash (Finder Trash / Recycle Bin) — not part \
+                of the default suite so `cargo test` doesn't litter the user's \
+                actual trash on every run; verify manually with \
+                `cargo test -- --ignored deletes_a_file_to_trash`"]
     fn deletes_a_file_to_trash() {
         let fixture = Fixture::new("delete-file", &["gone.txt"]);
         let path = fixture.0.join("gone.txt");
@@ -959,6 +963,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hits the real OS trash (Finder Trash / Recycle Bin) — not part \
+                of the default suite so `cargo test` doesn't litter the user's \
+                actual trash on every run; verify manually with \
+                `cargo test -- --ignored deletes_a_non_empty_directory_to_trash`"]
     fn deletes_a_non_empty_directory_to_trash() {
         let fixture = Fixture::new("delete-dir", &["gone/inside.txt"]);
         let path = fixture.0.join("gone");
