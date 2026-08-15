@@ -349,6 +349,12 @@ pub struct TabResourceSample {
     pub tab_id: String,
     pub mem_percent: f32,
     pub cpu_percent: f32,
+    /// Rohe RSS-Summe des Tab-Prozessbaums in Bytes — dieselbe Zahl, aus der
+    /// `mem_percent` oben abgeleitet ist. Getrennt mitgereicht statt vom
+    /// Frontend aus dem Prozentwert zurückgerechnet: das bräuchte dort
+    /// zusätzlich das App-weite Gesamt-RAM UND würde Rundungsdrift einführen
+    /// (der Prozentwert ist schon auf zwei Nachkommastellen im f32 gerundet).
+    pub mem_bytes: u64,
 }
 
 /// Von `resource_monitor`s 5-Sekunden-Tick zusätzlich zu dessen eigener
@@ -403,6 +409,7 @@ pub fn tick_all(
             tab_id: tab_id.clone(),
             mem_percent: percent,
             cpu_percent,
+            mem_bytes: total_rss,
         });
         let offender = members
             .iter()

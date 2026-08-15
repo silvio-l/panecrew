@@ -59,6 +59,7 @@ struct TabUsage {
     tab_id: String,
     mem_percent: f32,
     cpu_percent: f32,
+    mem_bytes: u64,
 }
 
 #[derive(Serialize)]
@@ -68,6 +69,12 @@ struct ResourceUsage {
     cpu_percent: f32,
     mem_status: Status,
     cpu_status: Status,
+    /// Rohe App-weite RSS-Summe (eigener Prozess + alle PTY-Kinder) in Bytes
+    /// — dieselbe Zahl, aus der `mem_percent` oben abgeleitet ist. Roh
+    /// mitgeschickt statt dem Frontend das Zurückrechnen aus dem
+    /// Prozentwert zu überlassen (bräuchte dort zusätzlich das
+    /// System-Gesamt-RAM und würde Rundungsdrift einführen).
+    mem_bytes_total: u64,
     tabs: Vec<TabUsage>,
 }
 
@@ -157,12 +164,14 @@ pub fn start(app: AppHandle) {
                 cpu_percent,
                 mem_status: classify(mem_percent, MEM_WARN_PERCENT, MEM_CRITICAL_PERCENT),
                 cpu_status: classify(cpu_percent, CPU_WARN_PERCENT, CPU_CRITICAL_PERCENT),
+                mem_bytes_total: mem_bytes,
                 tabs: tab_samples
                     .into_iter()
                     .map(|sample| TabUsage {
                         tab_id: sample.tab_id,
                         mem_percent: sample.mem_percent,
                         cpu_percent: sample.cpu_percent,
+                        mem_bytes: sample.mem_bytes,
                     })
                     .collect(),
             };

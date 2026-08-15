@@ -14,11 +14,16 @@ import { projectNameFromPath } from "../types/project";
 
 /** Flaches Sample, wie es `resource_monitor.rs`s `resource-usage`-Event
  * mitliefert (`tabs`-Feld) — eine Zeile pro noch lebendem Tab, ohne
- * Pane-Zuordnung (die kennt nur der Grid-Store). */
+ * Pane-Zuordnung (die kennt nur der Grid-Store). `memBytes` ist die rohe
+ * RSS-Summe des Tab-Prozessbaums, roh vom Backend mitgeschickt (nicht aus
+ * `memPercent` zurückgerechnet — bräuchte hier zusätzlich das
+ * System-Gesamt-RAM und würde Rundungsdrift einführen, s.
+ * `resource_guard.rs`s `TabResourceSample`-Kommentar). */
 export interface TabUsageSample {
   tabId: string;
   memPercent: number;
   cpuPercent: number;
+  memBytes: number;
 }
 
 export interface TabUsageRow extends TabUsageSample {
@@ -79,4 +84,22 @@ export function groupTabUsageByPane(
   }
   groups.sort((a, b) => b.topPercent - a.topPercent);
   return groups.map(({ group }) => group);
+}
+
+const BYTES_PER_MB = 1024 * 1024;
+const BYTES_PER_GB = 1024 * BYTES_PER_MB;
+
+/** Binärer Byte-Formatierer für die absoluten RAM-Werte im Popover (Ticket:
+ * "MB unter ca. 1024, sonst GB mit einer Nachkommastelle") — sprachneutral
+ * (dieselben Ziffern/Einheiten in DE/EN, wie schon die Prozentwerte daneben),
+ * deshalb kein `Intl.NumberFormat`. Rundet ZUERST auf ganze MB und prüft DANN
+ * die Schwelle, statt den rohen Bytewert gegen 1 GB zu prüfen — sonst könnte
+ * ein Wert knapp unter 1 GB (z. B. 1023,6 MB) als "1024 MB" statt als GB
+ * erscheinen. */
+export function formatMemoryBytes(bytes: number): string {
+  const roundedMb = Math.round(bytes / BYTES_PER_MB);
+  if (roundedMb < 1024) {
+    return `${roundedMb} MB`;
+  }
+  return `${(bytes / BYTES_PER_GB).toFixed(1)} GB`;
 }

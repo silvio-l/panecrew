@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Tooltip } from "radix-ui";
 import { useTranslation } from "react-i18next";
-import type { PaneUsageGroup, TabUsageRow } from "../terminal/resourceUsageTree";
+import { formatMemoryBytes, type PaneUsageGroup, type TabUsageRow } from "../terminal/resourceUsageTree";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 
 // Dieselbe Radix-Root/Trigger/Portal/Content-Struktur und dieselben
@@ -82,17 +82,18 @@ function TabUsageRowLine({ row }: { row: TabUsageRow }) {
   const name = row.label ?? t("paneTabs.terminalTab", { number: row.number });
   const memPercent = Math.round(row.memPercent);
   const cpuPercent = Math.round(row.cpuPercent);
+  const memBytes = formatMemoryBytes(row.memBytes);
 
   return (
     <div className="flex items-center justify-between gap-2 tabular-nums">
       <span aria-hidden="true" className="truncate">
         {name}
       </span>
-      <span aria-hidden="true" className={`shrink-0 ${GUARD_STATUS_COLOR[status]}`}>
-        {memPercent}&nbsp;% · {cpuPercent}&nbsp;%
+      <span aria-hidden="true" className={`shrink-0 leading-none ${GUARD_STATUS_COLOR[status]}`}>
+        {memPercent}&nbsp;% ({memBytes}) · {cpuPercent}&nbsp;%
       </span>
       <span className="sr-only">
-        {t("titleBar.resourceUsage.perTabRow", { name, mem: memPercent, cpu: cpuPercent })}
+        {t("titleBar.resourceUsage.perTabRow", { name, mem: memPercent, memBytes, cpu: cpuPercent })}
       </span>
     </div>
   );

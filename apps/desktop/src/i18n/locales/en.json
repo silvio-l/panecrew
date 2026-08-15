@@ -12,8 +12,8 @@
     "zoomLevel": "Zoom level {{percent}}%",
     "dateTime": "Current date and time: {{dateTime}}",
     "resourceUsage": {
-      "tooltip": "Memory {{mem}}% ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
-      "perTabRow": "{{name}}: memory {{mem}}%, CPU {{cpu}}%",
+      "tooltip": "Memory {{mem}}% / {{memBytes}} ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
+      "perTabRow": "{{name}}: memory {{mem}}% / {{memBytes}}, CPU {{cpu}}%",
       "status": {
         "normal": "normal",
         "warn": "elevated",

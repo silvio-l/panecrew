@@ -7,7 +7,7 @@ import type { Pane } from "../grid/gridState";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
 import { DEFAULT_APP_ZOOM } from "../shortcuts/zoom";
-import { groupTabUsageByPane } from "../terminal/resourceUsageTree";
+import { formatMemoryBytes, groupTabUsageByPane } from "../terminal/resourceUsageTree";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { ResourceUsageTreeTooltip } from "./ResourceUsageTree";
 
@@ -397,6 +397,9 @@ interface TabUsagePayload {
   tabId: string;
   memPercent: number;
   cpuPercent: number;
+  /** Rohe RSS-Summe des Tab-Prozessbaums in Bytes, s. `resource_guard.rs`s
+   * `TabResourceSample`-Kommentar (nicht aus `memPercent` zurückgerechnet). */
+  memBytes: number;
 }
 
 interface ResourceUsagePayload {
@@ -404,6 +407,9 @@ interface ResourceUsagePayload {
   cpuPercent: number;
   memStatus: ResourceStatus;
   cpuStatus: ResourceStatus;
+  /** Rohe App-weite RSS-Summe in Bytes, s. `resource_monitor.rs`s
+   * `ResourceUsage`-Kommentar (nicht aus `memPercent` zurückgerechnet). */
+  memBytesTotal: number;
   /** Flache Liste (kein Pane-Bezug — der lebt nur im Grid-Store), eine
    * Stichprobe pro noch lebendem Tab (`resource_monitor.rs`, aus
    * `resource_guard::tick_all` durchgereicht). Das Popover unten gruppiert
@@ -435,10 +441,12 @@ function resourceStatusLabel(
  * RAM/CPU von PaneCrew selbst plus allen von ihm gestarteten PTY-Kindern
  * (den Shells in den Panes) — Rust-seitig alle 5s per `sysinfo` gesampelt
  * (`resource_monitor.rs`), hier nur passiv empfangen statt selbst zu pollen.
- * Nur Prozentwerte (kein MB-Wert): genug, um auf einen Blick zu sehen, ob die
- * App gerade ungewöhnlich viel zieht, ohne mit einer Absolutzahl zu suggerieren,
- * das wäre für sich genommen schon eine Aussage. Bleibt unsichtbar, bis das
- * erste Sample eintrifft (kein Platzhalter-Flackern beim Start).
+ * Der kompakte, immer sichtbare Cluster in der Titelleiste bleibt bewusst auf
+ * Prozentwerte beschränkt (genug, um auf einen Blick zu sehen, ob die App
+ * gerade ungewöhnlich viel zieht) — die absoluten MB/GB-Werte kommen erst im
+ * Hover-Popover (`ResourceUsageTree.tsx`), sowohl in dessen Kopfzeile
+ * (App-weite Summe) als auch pro Tab-Zeile. Bleibt unsichtbar, bis das erste
+ * Sample eintrifft (kein Platzhalter-Flackern beim Start).
  */
 function ResourceUsageReadout({
   t,
@@ -469,6 +477,7 @@ function ResourceUsageReadout({
   const tooltip = t("titleBar.resourceUsage.tooltip", {
     mem: memPercent,
     cpu: cpuPercent,
+    memBytes: formatMemoryBytes(usage.memBytesTotal),
     memStatus: memStatusLabel,
     cpuStatus: cpuStatusLabel,
   });
