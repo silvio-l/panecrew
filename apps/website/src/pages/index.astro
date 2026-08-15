@@ -388,7 +388,14 @@ const description =
      compositor-only, no repaint, and irregular/eased exactly like the
      original round-2 design intended. */
   .trace-svg path.trace-base { stroke-width: 1.5; stroke-opacity: 0.3; stroke-dasharray: 2 5; }
+  /* comet coloring: hot cream core everywhere. On the page seam the tail
+     is amber (energy trailing off into the conduit's own metal); on the
+     mockup traces the route underneath is already SOLID amber, so amber
+     tail circles would vanish into it — there the whole packet stays
+     cream (the original round-2 rule). Flat fills only, no glow. */
   .trace-sparks circle { fill: var(--cream); }
+  .seam-svg .trace-sparks circle { fill: var(--amber); }
+  .seam-svg .trace-sparks circle:first-child { fill: var(--cream); }
   /* section-seam channel: one vertical bus route running just outside the
      wide content span, jogging sideways at each big section boundary
      (45° chamfers via the same chamferedLine math as the focus trace).
@@ -402,11 +409,23 @@ const description =
   main { position: relative; }
   .seam-svg {
     position: absolute; top: 0;
-    /* anchored to the wide span's left edge (minus its own 40px offset),
-       tracking the proportional column instead of the old fixed 1120px. */
-    left: max(6px, calc((100% - var(--span-wide)) / 2 - 40px));
+    /* anchored to the wide span's left edge, tracking the proportional
+       column instead of the old fixed 1120px. Offset widened -40px →
+       -68px (2026-08-15, user: the lane hugs the content) — with the
+       route's own jog legs reaching x=26 (drawSeam), the closest leg now
+       keeps ~42px of air to the column instead of the old 4px. The 6px
+       floor still stops the svg from leaving the viewport on narrower
+       spans; < 560px it stays hidden entirely (responsive block below). */
+    left: max(6px, calc((100% - var(--span-wide)) / 2 - 68px));
     width: 48px; height: 100%;
     pointer-events: none; overflow: visible;
+  }
+  /* conduit bed: a wider, flat amber band on the same route, under the
+     dashed core — the milled lane the light runs in (Tron pass,
+     2026-08-15). Flat constant opacity with hard edges: material, not
+     halo — the no-glow rule holds. */
+  .seam-svg path#seamBed {
+    fill: none; stroke: var(--amber); stroke-opacity: 0.1; stroke-width: 9;
   }
   .seam-svg path#seamPath {
     fill: none; stroke: var(--amber); stroke-opacity: 0.55; stroke-width: 1.5;
@@ -436,6 +455,12 @@ const description =
     transition: fill var(--lift), fill-opacity var(--lift), stroke-opacity var(--lift);
   }
   .seam-svg rect.seam-via.charged { fill: var(--amber); fill-opacity: 0.95; stroke-opacity: 1; }
+  /* comet-pass blip: the instant a packet crosses a via pad it flashes
+     cream (hot-core color step, same language as the packet head), then
+     relaxes back through the pad's own transition — energy visibly
+     hitting the station, not just riding past it. Declared after
+     .charged so a latched pad still flashes. */
+  .seam-svg rect.seam-via.blip { fill: var(--cream); fill-opacity: 1; stroke: var(--cream); stroke-opacity: 1; }
   .hpane {
     background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
     font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
@@ -708,9 +733,14 @@ const description =
   .card-vis {
     margin: 12px 12px 0; border-radius: 10px;
     background: var(--term); border: 1px solid rgba(255, 253, 245, 0.06);
-    /* grows a little with the wide span so bigger cards don't carry
-       letterboxed mini-mocks */
-    min-height: clamp(168px, 11vw, 216px); position: relative; overflow: hidden;
+    /* proportion follows the card's own width (2026-08-15, user: mocks
+       read as squashed letterbox banners on the wide span) — the old
+       viewport-clamped min-height grew far slower than the 3fr card
+       column, leaving 4.7:1 strips. aspect-ratio keeps every vis at a
+       plausible terminal-window shape whatever the span resolves to;
+       the max-height stops the widest cards from towering. */
+    aspect-ratio: 2.9 / 1; min-height: 168px; max-height: 320px;
+    position: relative; overflow: hidden;
     display: flex; align-items: stretch;
   }
   .card-body { padding: 16px 20px 20px; }
@@ -814,6 +844,13 @@ const description =
   }
   .closer-row.rev { grid-template-columns: minmax(320px, 500px) minmax(0, 1fr); }
   .closer-row.rev .closer-vis { order: 2; }
+  /* plain (non-demo) app-window mocks in a closer row: the visual column
+     is the growing 1fr span, so a five-line terminal stretched across it
+     read as a 5.6:1 banner (2026-08-15, user: mocks too wide). Cap the
+     window itself and give it real terminal height — the empty run below
+     the prompt is exactly what a freshly-started terminal looks like.
+     #demoApp keeps its own .app-body height clamp and full-width stage. */
+  .closer-vis > .app:not(.demo) { max-width: 640px; min-height: 300px; margin: 0 auto; }
   .closer-copy h3 {
     font-family: var(--display); font-weight: 700;
     font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -0.015em; line-height: 1.08;
@@ -1050,8 +1087,12 @@ const description =
        one terminus, each latching from outline to filled as scroll charge
        reaches it (updateSeamCharge). -->
   <svg class="seam-svg" aria-hidden="true">
+    <path id="seamBed"></path>
     <path id="seamPath"></path>
     <g id="seamLive" class="seam-live" aria-hidden="true"></g>
+    <!-- comet packets riding the seam route (makeCometTrain) — the same
+         energy-lane motif as the focus-trace sparks in the mockups -->
+    <g id="seamSparks" class="trace-sparks" aria-hidden="true"></g>
     <rect class="seam-via"></rect>
     <rect class="seam-via"></rect>
     <rect class="seam-via"></rect>
@@ -1698,10 +1739,15 @@ const description =
      head's own keyframes but start `k * lag` ms later on the same
      duration, so they visibly trail the head by that time-distance
      instead of needing a second geometry pass. */
-  var COMET_TAIL_COUNT = 4;
+  /* head bumped 1.9 → 3.1 and the tail lengthened 4 → 6 circles
+     (2026-08-15, user: couldn't see the animation at all, then: make the
+     lane read as a proper Tron energy packet) — a sub-2px cream dot on a
+     1.5px dashed channel was below the perception floor at reading
+     distance, and a 4-dot tail read as loose dots, not a streak. */
+  var COMET_TAIL_COUNT = 8;
   var COMET_TAIL_LAG_MS = 55;
-  var COMET_TAIL_RADII = [1.9, 1.5, 1.15, 0.85];
-  var COMET_TAIL_OPACITY = [1, 0.62, 0.34, 0.16];
+  var COMET_TAIL_RADII = [3.2, 2.75, 2.4, 2.1, 1.8, 1.5, 1.2, 0.95];
+  var COMET_TAIL_OPACITY = [1, 0.85, 0.7, 0.55, 0.42, 0.3, 0.2, 0.12];
 
   function makeCometTrain(groupEl, opts) {
     var pool = []; // { circle, anim }
@@ -1739,15 +1785,28 @@ const description =
       if (!started && total > 0) { started = true; schedule(0); }
     }
     function travelKeyframes(peakOpacity) {
+      /* fade in/out over a short fixed arc (~26px, capped at 18% of the
+         route) instead of the previous whole-first/last-segment fade —
+         on the short mockup traces that old rule kept the packet
+         semi-transparent for most of its flight (2026-08-15 visibility
+         fix). Keyframes sit at every route vertex plus the two fade
+         boundaries, sorted, so offsets stay monotonic for WAAPI. */
+      if (total <= 0) return [];
+      var fade = Math.min(0.18, 26 / total);
+      var offs = cum.map(function (c) { return Math.min(1, Math.max(0, c / total)); });
+      offs.push(fade, 1 - fade);
+      offs.sort(function (a, b) { return a - b; });
       var kf = [];
-      for (var v = 0; v < cum.length; v++) {
-        var p = pointAtArc(line, cum, cum[v]);
-        var op = peakOpacity;
-        if (cum.length > 2 && (v === 0 || v === cum.length - 1)) op = 0;
+      for (var v = 0; v < offs.length; v++) {
+        var off = offs[v];
+        if (v > 0 && off - offs[v - 1] < 0.0005) continue;
+        var p = pointAtArc(line, cum, off * total);
+        var edge = Math.min(off, 1 - off);
+        var op = peakOpacity * (fade > 0 ? Math.min(1, edge / fade) : 1);
         kf.push({
           transform: 'translate(' + p.x.toFixed(2) + 'px,' + p.y.toFixed(2) + 'px)',
           opacity: op,
-          offset: total > 0 ? Math.min(1, Math.max(0, cum[v] / total)) : 0,
+          offset: off,
         });
       }
       return kf;
@@ -1755,14 +1814,39 @@ const description =
     function onFlightEnd(circle) {
       return function () { circle.style.opacity = '0'; };
     }
+    /* reports the head's EASED route fraction each frame while a packet
+       is in flight (getComputedTiming().progress is post-easing, so no
+       bezier inversion needed) — lets the caller sync one-off events to
+       the packet's actual position (the seam's via-pad blips). Reads
+       animation timing only, no style/layout reads; the loop exists
+       only between fire() and that flight's end. */
+    function watchProgress(anim) {
+      function step() {
+        var state = anim.playState;
+        if (state !== 'running' && state !== 'pending') return;
+        var ct = anim.effect.getComputedTiming();
+        if (typeof ct.progress === 'number') opts.onProgress(ct.progress);
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
     function fire() {
       timer = null;
       if (total <= 0) { schedule(0); return; }
       ensurePool();
       var spark = Math.random() < opts.sparkChance;
-      var speed = opts.speed * (spark ? 1.7 : 1) * (0.82 + Math.random() * 0.4);
-      var dur = Math.max(260, total / speed);
-      var lag = Math.round(COMET_TAIL_LAG_MS * (spark ? 0.6 : 1));
+      var speed = opts.speed * (0.82 + Math.random() * 0.4);
+      /* per-instance duration floor (2026-08-15 visibility fix): the old
+         fixed 260ms floor meant a whole flight on the ~50–150px mockup
+         traces was over in a quarter second — with 1.4–3.6s gaps the
+         packet was on screen < 10% of the time and read as "nothing
+         there". The spark variant stays a faster cut of the same base. */
+      var dur = Math.max(opts.minDur || 260, total / speed);
+      if (spark) dur = Math.max(240, dur * 0.55);
+      /* tail lag is time-based, so the px spacing it produces scales with
+         travel speed — the fast seam route needs a much shorter lag than
+         the slow mockup zips or the tail breaks into separate dots. */
+      var lag = Math.round((opts.tailLag || COMET_TAIL_LAG_MS) * (spark ? 0.6 : 1));
       var tailCount = spark ? 2 : pool.length;
       for (var k = 0; k < pool.length; k++) {
         var entry = pool[k];
@@ -1774,6 +1858,7 @@ const description =
         );
         entry.anim.onfinish = onFlightEnd(entry.circle);
       }
+      if (opts.onProgress && pool[0].anim) watchProgress(pool[0].anim);
       schedule(dur + (tailCount - 1) * lag);
     }
     function schedule(extra) {
@@ -1783,9 +1868,17 @@ const description =
     return { update: update, clear: clear };
   }
   /* short trace, quick zips: a cream packet over the already-solid amber
-     conduit (an amber packet would be invisible there) — values ported
-     verbatim from the original round-2 redesign. */
-  var traceCometOpts = { speed: 0.9, sparkChance: 0.35, minGap: 1400, maxGap: 3600, easing: 'cubic-bezier(0.55, 0, 0.3, 1)' };
+     conduit (an amber packet would be invisible there). Retuned
+     2026-08-15 (user: animation not visible): 650ms duration floor so a
+     flight on the short mockup routes is actually perceivable, and
+     tighter gaps so a visitor glancing at the mockup catches one. */
+  var traceCometOpts = { speed: 0.9, sparkChance: 0.35, minGap: 900, maxGap: 2600, minDur: 650, easing: 'cubic-bezier(0.55, 0, 0.3, 1)' };
+  /* the page seam: a long route (thousands of px), so speed matters and
+     the duration floor never binds — a packet takes a few seconds to run
+     the page, passing whatever section is on screen. Easing is a power
+     surge, not a glide: shot out of the start fast, decelerating into
+     the terminus (2026-08-15 Tron pass). */
+  var seamCometOpts = { speed: 1.1, sparkChance: 0.3, minGap: 1200, maxGap: 2800, minDur: 900, tailLag: 6, easing: 'cubic-bezier(0.16, 0.6, 0.55, 1)' };
 
   function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, cometTrain) {
     return function draw(idx, animate) {
@@ -1995,7 +2088,32 @@ const description =
      focus semantics, no interaction, no scroll listener — redrawn only on
      load/resize because the section tops move with layout. */
   var seamPath = document.getElementById('seamPath');
+  var seamBed = document.getElementById('seamBed');
   var seamLive = document.getElementById('seamLive');
+  /* comet packets on the seam itself (2026-08-15, user: the left energy
+     lane showed no motion at all) — the scroll-linked charge only ever
+     moves while the visitor scrolls; the same makeCometTrain the mockup
+     traces use gives the lane idle-state life. */
+  var seamComet = makeCometTrain(document.getElementById('seamSparks'), seamCometOpts);
+  /* via-pad blips: as a packet's head crosses a pad, the pad flashes
+     cream and relaxes back through its own transition. Pad thresholds
+     (seamViaMeta[].t) are Y-fractions of the route span; the route is
+     near-vertical (the jogs are ~20px against thousands), so using them
+     as arc fractions is the same approximation updateSeamCharge already
+     leans on. prev>frac marks a new flight. */
+  var seamBlipPrev = 1;
+  function blipVia(el) {
+    el.classList.add('blip');
+    setTimeout(function () { el.classList.remove('blip'); }, 300);
+  }
+  seamCometOpts.onProgress = function (frac) {
+    if (frac < seamBlipPrev) { seamBlipPrev = frac; return; }
+    for (var j = 0; j < seamViaMeta.length; j++) {
+      var t = seamViaMeta[j].t;
+      if (t > seamBlipPrev && t <= frac) blipVia(seamViaMeta[j].el);
+    }
+    seamBlipPrev = frac;
+  };
   var seamViaEls = Array.prototype.slice.call(document.querySelectorAll('.seam-svg rect.seam-via'));
   var seamStartY = 0, seamEndY = 0;
   var seamViaMeta = []; // { el, t } — t is this via's own scroll-fraction threshold
@@ -2020,7 +2138,18 @@ const description =
     for (var s = 0; s < stops.length; s++) { if (!stops[s]) return; }
     var originTop = mainEl.getBoundingClientRect().top;
     var ys = stops.map(function (el) { return el.getBoundingClientRect().top - originTop; });
-    var xA = 14, xB = 36;
+    /* 14/36 → gutter-adaptive (2026-08-15): paired with the wider
+       .seam-svg CSS offset. On clamped mid-width viewports the CSS
+       `max(6px, …)` floor eats the offset and the fixed route x-coords
+       ended up hugging (or crossing) the content column — so the route
+       measures the real gutter and slims itself to keep ≥20px of air to
+       the content edge, narrowing the jog before giving up ground. */
+    var wrapEl = document.querySelector('main .wrap');
+    var svgLeft = seamPath.ownerSVGElement.getBoundingClientRect().left;
+    var contentLeft = wrapEl ? wrapEl.getBoundingClientRect().left : 120;
+    var maxX = contentLeft - svgLeft - 20;
+    var xB = Math.max(12, Math.min(26, maxX));
+    var xA = Math.max(4, xB - 18);
     var pts = [{ x: xA, y: ys[0] + 26 }];
     var viaPts = [{ x: xA, y: ys[0] + 26 }]; // one via per stop, plus the terminus below
     for (var i = 1; i < ys.length; i++) {
@@ -2035,6 +2164,8 @@ const description =
     var line = simplifyPoints(pts);
     var d = pathD(line, 6);
     seamPath.setAttribute('d', d);
+    if (seamBed) seamBed.setAttribute('d', d);
+    if (seamComet) seamComet.update(line, 6);
 
     // rebuild the live-charge rect pool from the SAME chamfered-line
     // segments #seamPath itself is drawn from (chamferedLine(line, 6)) —
