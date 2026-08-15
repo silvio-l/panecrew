@@ -33,6 +33,42 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+## [0.1.0-nightly.5] - 2026-08-15
+### Hinzugefügt
+- Die Titelleiste zeigt jetzt eine laufende RAM/CPU-Anzeige für PaneCrew und
+  seine Terminal-Sitzungen, mit einer Hover-Übersicht pro Pane/Tab
+  (Prozentwerte plus absolute MB/GB) und Warn-/Kritisch-Farbzuständen.
+- Außer Kontrolle geratene Terminal-Sitzungen werden jetzt automatisch
+  abgefangen: ein Tab mit übermäßigem Speicherverbrauch wird zuerst markiert,
+  dann wird nur der einzelne größte Verursacher-Prozess pausiert (nicht
+  beendet), sodass er fortsetzbar bleibt — erst bei wiederholter oder
+  anhaltender Überlastung wird gezielt nur dieser eine Prozess beendet, und
+  nur als letztes Mittel der ganze Tab. Ein so beendeter Tab zeigt einen
+  klaren Grund und eine Neustart-Option, statt kommentarlos zu verschwinden.
+- Terminal-Ausgaben erkennen jetzt URLs und absolute Dateipfade als klickbare
+  Links.
+- Marketing-Website: neuer Guide zum gleichzeitigen Arbeiten mit mehreren
+  Terminal-Fenstern und CLI-Agent-Sitzungen.
+
+### Geändert
+- Standard-Zoomstufe auf 1,2x und Standard-Terminal-Schriftgröße auf 14
+  angehoben, für bessere Lesbarkeit direkt nach der Installation.
+- Neue Fenster positionieren sich jetzt korrekt bei mehreren Monitoren, statt
+  gelegentlich an der falschen Stelle zu landen.
+- Werte in der Titelleiste (Zoom, Uhr, Ressourcenanzeige, Icon-Buttons) sind
+  jetzt durchgehend sauber vertikal zentriert und optisch getrennt.
+- Marketing-Website: visueller Redesign-Pass und ein geteiltes
+  Navigation/Footer-Stylingsystem über alle Seiten hinweg.
+- Intern: ein Test, der ungewollt bei jedem Testlauf echte Dateien in den
+  System-Papierkorb verschob, läuft jetzt nicht mehr standardmäßig —
+  reine Entwicklungsangelegenheit, keine Auswirkung für Nutzer.
+
+### Behoben
+- Der Kontextmenü-Eintrag "Tab schließen" tat sichtbar nichts; dazu kam
+  außerdem eine Option zum Batch-Schließen mehrerer Tabs.
+- Kopieren mit Cmd+C konnte dem kopierten Text ungewollte zusätzliche
+  Einrückung hinzufügen.
+
 ## [0.1.0-nightly.4] - 2026-08-15
 ### Hinzugefügt
 - CI: geschlossene, nicht gemergte Pull-Request-Branches werden jetzt

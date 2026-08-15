@@ -33,6 +33,41 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+## [0.1.0-nightly.5] - 2026-08-15
+### Added
+- Title bar now shows a live RAM/CPU indicator for PaneCrew and its terminal
+  sessions, with a hover breakdown per pane/tab (percentages plus absolute
+  MB/GB) and warning/critical color states.
+- Runaway terminal sessions are now caught automatically: a tab using
+  excessive memory is first flagged, then the single worst-offending process
+  is paused (not killed) so it stays resumable; only repeated or unresolved
+  overload escalates to terminating that one process, and only as a last
+  resort the whole tab. A tab terminated this way shows a clear reason and a
+  restart option instead of silently vanishing.
+- Terminal output now recognizes URLs and absolute file paths as clickable
+  links.
+- Marketing website: new guide on running multiple terminal windows and CLI
+  agent sessions side by side.
+
+### Changed
+- Default zoom level raised to 1.2x and default terminal font size to 14 for
+  better out-of-the-box readability.
+- New windows now position correctly across multiple monitors instead of
+  occasionally landing in the wrong place.
+- Title bar values (zoom, clock, resource indicator, icon buttons) are now
+  consistently vertically centered and visually separated.
+- Marketing website: visual redesign pass and a shared navigation/footer
+  styling system across pages.
+- Internal: a test that unintentionally moved files to the real system trash
+  on every test run no longer runs by default — dev-only, no functional
+  change for users.
+
+### Fixed
+- The tab context menu's "Close tab" action could silently do nothing; it
+  also gained a batch-close option.
+- Copying with Cmd+C could add unwanted extra indentation to the copied
+  text.
+
 ## [0.1.0-nightly.4] - 2026-08-15
 ### Added
 - CI: closed, non-merged pull-request branches are now cleaned up
