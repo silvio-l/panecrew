@@ -61,6 +61,10 @@ be added to both files, with the same version heading.
 - Internal: a test that unintentionally moved files to the real system trash
   on every test run no longer runs by default — dev-only, no functional
   change for users.
+- Internal: corrected stale release-workflow documentation and fixed the
+  repository's default Actions token permissions, which had been silently
+  blocking the automated Nightly release step — dev-only, no functional
+  change for users.
 
 ### Fixed
 - The tab context menu's "Close tab" action could silently do nothing; it

@@ -62,6 +62,10 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
 - Intern: ein Test, der ungewollt bei jedem Testlauf echte Dateien in den
   System-Papierkorb verschob, läuft jetzt nicht mehr standardmäßig —
   reine Entwicklungsangelegenheit, keine Auswirkung für Nutzer.
+- Intern: veraltete Release-Workflow-Dokumentation korrigiert und die
+  Standard-Berechtigungen des Repository-Actions-Tokens gefixt, die den
+  automatischen Nightly-Release-Schritt stillschweigend blockiert hatten —
+  reine Entwicklungsangelegenheit, keine Auswirkung für Nutzer.
 
 ### Behoben
 - Der Kontextmenü-Eintrag "Tab schließen" tat sichtbar nichts; dazu kam
