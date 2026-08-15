@@ -365,22 +365,28 @@ const description =
   /* "Tron power lane" pass (2026-08-14, user: "wirkt noch nicht wie eine
      tron strom lane") — same dashed-channel-under-solid-overlay language
      already established for the page seam (#seamPath / .seam-live), plus
-     a genuinely moving element: a short bright dash chases along the
-     route on an infinite loop, since a focus-trace (unlike the seam) has
-     no continuous scroll signal to charge it — the loop stands in for
+     a genuinely moving element, since a focus-trace (unlike the seam) has
+     no continuous scroll signal to charge it — motion stands in for
      "current is flowing". No blur/box-shadow anywhere — the no-glow rule
      stays absolute; "energized" reads through motion and a hot-core color
      step (amber conduit, cream spark), not a halo — a same-color dash on
      top of the solid amber line would have been invisible.
-     Perf pass (2026-08-14, performance-audit ticket 10): the chasing dash
-     used to be a `stroke-dasharray`/`stroke-dashoffset` CSS animation on
-     the path itself — a paint-triggering SVG property, repainting the
+     Round 2 (2026-08-14, this pass's own follow-up, lost to a rebase and
+     restored 2026-08-15): a metronomic evenly-spaced dash march read as a
+     loading bar / distant road, not current — redesigned as an irregular
+     comet-shaped packet (hot short head, dimmer decaying tail) that fires
+     at randomized intervals with eased non-linear travel and an
+     occasional fast "spark" variant, rather than a constant train.
+     Perf pass (2026-08-14, performance-audit ticket 10, landed in
+     parallel with round 2 above): whichever shape chases the route, it
+     must never be a `stroke-dasharray`/`stroke-dashoffset` CSS animation
+     on the path itself — a paint-triggering SVG property, repainting the
      whole stroke every frame for as long as the trace is on screen.
-     Replaced by a small pool of real elements (buildSparkTrain, script
-     below) driven purely by WAAPI `transform`/`opacity` keyframes — the
-     same visual "train of short marks flowing along the route" (the dash
-     pattern's own 4px-on/34px-off period reproduced as one spark per
-     38px), but compositor-only, no repaint. */
+     makeCometTrain (script below) drives a small pool of real elements
+     (head + shrinking/dimming tail) purely via WAAPI `transform`/
+     `opacity` keyframes sampled from the route's own geometry —
+     compositor-only, no repaint, and irregular/eased exactly like the
+     original round-2 design intended. */
   .trace-svg path.trace-base { stroke-width: 1.5; stroke-opacity: 0.3; stroke-dasharray: 2 5; }
   .trace-sparks circle { fill: var(--cream); }
   /* section-seam channel: one vertical bus route running just outside the
@@ -1662,30 +1668,6 @@ const description =
     return Math.round(Math.min(350, Math.max(180, len / 2)));
   }
 
-  /* ---- signal-comet spark train (performance-audit ticket 10) ----
-     Replaces the old `.trace-pulse` path's `stroke-dasharray`/
-     `stroke-dashoffset` CSS animation with a pool of small <circle>
-     "sparks" moved via WAAPI `transform: translate()` keyframes — the
-     same visual read (a short train of bright marks chasing along the
-     route, one spark per 38px dash period, looping every 1.5s) without
-     ever touching a paint-triggering SVG property.
-     A circle (not a rotated capsule matching the old dash's exact
-     linecap shape) — translate needs no transform-origin bookkeeping,
-     and at ~3px this reads identically to the old 4×2 rounded dash.
-     Math: for period P and total path length L, spark k (0..ceil(L/P)-1)
-     travels arc [k*P, min((k+1)*P, L)] once per CYCLE_MS, linear, then
-     repeats — since every spark is offset by exactly one period and all
-     share the same clock, the SET of lit positions along the path is
-     continuous across each spark's own loop restart (the original CSS
-     dashoffset animation is exactly as periodic: shifting an infinite
-     dash pattern by one whole period looks identical to not having
-     shifted it at all). Only the last spark's hop can run short of a
-     full period (when L isn't a multiple of P) — it fades out once it
-     reaches the path end and pops back in in sync with the next cycle,
-     instead of overshooting past the trace's actual endpoint. */
-  var SPARK_PERIOD_PX = 38;
-  var SPARK_CYCLE_MS = 1500;
-
   function pointAtArc(line, cum, arc) {
     for (var i = 0; i < cum.length - 1; i++) {
       if (arc <= cum[i + 1] || i === cum.length - 2) {
@@ -1699,80 +1681,113 @@ const description =
     return line[line.length - 1];
   }
 
-  function makeSparkTrain(groupEl) {
+  /* ---- comet packets (performance-audit ticket 10 + the 2026-08-14
+     "Tron energy-lane" round-2 redesign, merged 2026-08-15 after the
+     redesign was lost to a rebase and restored against this later
+     architecture) ----
+     A small pool of <circle>s — one bright head plus a shrinking/dimming
+     tail — fires as a single packet along the route at irregular
+     intervals, eased, with an occasional fast "spark" variant: the same
+     firing model the original redesign drove via stroke-dashoffset WAAPI
+     sweeps on stacked <path> layers (a paint-triggering SVG property).
+     Ported onto the ticket-10 architecture instead: every circle moves
+     via WAAPI `transform: translate()` + `opacity` keyframes sampled
+     from the route's own polyline vertices (pointAtArc/chamferedLine,
+     shared with makeTraceDrawer below) — compositor-only, no repaint,
+     and idle (not just looping) between packets. Tail circles reuse the
+     head's own keyframes but start `k * lag` ms later on the same
+     duration, so they visibly trail the head by that time-distance
+     instead of needing a second geometry pass. */
+  var COMET_TAIL_COUNT = 4;
+  var COMET_TAIL_LAG_MS = 55;
+  var COMET_TAIL_RADII = [1.9, 1.5, 1.15, 0.85];
+  var COMET_TAIL_OPACITY = [1, 0.62, 0.34, 0.16];
+
+  function makeCometTrain(groupEl, opts) {
     var pool = []; // { circle, anim }
+    var line = [], cum = [], total = 0;
+    var timer = null, started = false;
+
+    function ensurePool() {
+      while (pool.length < COMET_TAIL_COUNT) {
+        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', String(COMET_TAIL_RADII[pool.length]));
+        circle.style.opacity = '0';
+        groupEl.appendChild(circle);
+        pool.push({ circle: circle, anim: null });
+      }
+    }
     function clear() {
       pool.forEach(function (s) { if (s.anim) s.anim.cancel(); s.circle.remove(); });
       pool = [];
+      if (timer) { clearTimeout(timer); timer = null; }
+      started = false;
     }
     function update(points, chamfer) {
       if (!groupEl) return;
       if (reduced || typeof groupEl.animate !== 'function') { clear(); return; }
-      var line = chamferedLine(points, chamfer);
-      if (line.length < 2) { clear(); return; }
-      var cum = [0];
-      for (var i = 1; i < line.length; i++) {
-        cum.push(cum[i - 1] + Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y));
+      var newLine = chamferedLine(points, chamfer);
+      if (newLine.length < 2) { clear(); return; }
+      var newCum = [0];
+      for (var i = 1; i < newLine.length; i++) {
+        newCum.push(newCum[i - 1] + Math.hypot(newLine[i].x - newLine[i - 1].x, newLine[i].y - newLine[i - 1].y));
       }
-      var total = cum[cum.length - 1];
-      if (total <= 0) { clear(); return; }
-      var count = Math.max(1, Math.ceil(total / SPARK_PERIOD_PX));
-      while (pool.length < count) {
-        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('r', '1.4');
-        groupEl.appendChild(circle);
-        pool.push({ circle: circle, anim: null });
-      }
-      while (pool.length > count) {
-        var extra = pool.pop();
-        if (extra.anim) extra.anim.cancel();
-        extra.circle.remove();
-      }
-      // a freshly-added spark should join the existing train in phase
-      // rather than starting its own clock at 0 — inherit whichever
-      // sibling's currentTime is already running, if any.
-      var sharedTime = null;
-      for (var s = 0; s < pool.length; s++) {
-        if (pool[s].anim) { sharedTime = pool[s].anim.currentTime; break; }
-      }
-      for (var k = 0; k < count; k++) {
-        var start = k * SPARK_PERIOD_PX;
-        var end = Math.min(start + SPARK_PERIOD_PX, total);
-        var exitOffset = (end - start) / SPARK_PERIOD_PX;
-        var breakpoints = [start];
-        for (var v = 0; v < cum.length; v++) { if (cum[v] > start && cum[v] < end) breakpoints.push(cum[v]); }
-        breakpoints.push(end);
-        var kf = breakpoints.map(function (b) {
-          var p = pointAtArc(line, cum, b);
-          return {
-            transform: 'translate(' + p.x.toFixed(2) + 'px,' + p.y.toFixed(2) + 'px)',
-            opacity: 1,
-            offset: Math.min(1, (b - start) / SPARK_PERIOD_PX),
-          };
+      line = newLine; cum = newCum; total = cum[cum.length - 1];
+      // geometry only feeds the NEXT firing (see fire()) — an in-flight
+      // packet finishes on whatever route it started on, same as the
+      // original stroke-based redesign left a mid-sweep dash alone.
+      if (!started && total > 0) { started = true; schedule(0); }
+    }
+    function travelKeyframes(peakOpacity) {
+      var kf = [];
+      for (var v = 0; v < cum.length; v++) {
+        var p = pointAtArc(line, cum, cum[v]);
+        var op = peakOpacity;
+        if (cum.length > 2 && (v === 0 || v === cum.length - 1)) op = 0;
+        kf.push({
+          transform: 'translate(' + p.x.toFixed(2) + 'px,' + p.y.toFixed(2) + 'px)',
+          opacity: op,
+          offset: total > 0 ? Math.min(1, Math.max(0, cum[v] / total)) : 0,
         });
-        if (exitOffset < 1) {
-          var endPt = pointAtArc(line, cum, end);
-          var holdTransform = 'translate(' + endPt.x.toFixed(2) + 'px,' + endPt.y.toFixed(2) + 'px)';
-          kf.push({ transform: holdTransform, opacity: 0, offset: Math.min(1, exitOffset + 0.001) });
-          kf.push({ transform: holdTransform, opacity: 0, offset: 1 });
-        }
-        var entry = pool[k];
-        if (entry.anim && entry.anim.effect && typeof entry.anim.effect.setKeyframes === 'function') {
-          try {
-            entry.anim.effect.setKeyframes(kf);
-            continue;
-          } catch (e) { /* fall through to recreate below */ }
-        }
-        var resumeAt = entry.anim ? entry.anim.currentTime : (sharedTime !== null ? sharedTime : 0);
-        if (entry.anim) entry.anim.cancel();
-        entry.anim = entry.circle.animate(kf, { duration: SPARK_CYCLE_MS, easing: 'linear', iterations: Infinity });
-        entry.anim.currentTime = resumeAt;
       }
+      return kf;
+    }
+    function onFlightEnd(circle) {
+      return function () { circle.style.opacity = '0'; };
+    }
+    function fire() {
+      timer = null;
+      if (total <= 0) { schedule(0); return; }
+      ensurePool();
+      var spark = Math.random() < opts.sparkChance;
+      var speed = opts.speed * (spark ? 1.7 : 1) * (0.82 + Math.random() * 0.4);
+      var dur = Math.max(260, total / speed);
+      var lag = Math.round(COMET_TAIL_LAG_MS * (spark ? 0.6 : 1));
+      var tailCount = spark ? 2 : pool.length;
+      for (var k = 0; k < pool.length; k++) {
+        var entry = pool[k];
+        if (entry.anim) { entry.anim.cancel(); entry.anim = null; }
+        if (k >= tailCount) { entry.circle.style.opacity = '0'; continue; }
+        entry.anim = entry.circle.animate(
+          travelKeyframes(COMET_TAIL_OPACITY[k]),
+          { duration: dur, delay: k * lag, easing: opts.easing, fill: 'forwards' }
+        );
+        entry.anim.onfinish = onFlightEnd(entry.circle);
+      }
+      schedule(dur + (tailCount - 1) * lag);
+    }
+    function schedule(extra) {
+      var gap = opts.minGap + Math.random() * (opts.maxGap - opts.minGap);
+      timer = setTimeout(fire, extra + gap);
     }
     return { update: update, clear: clear };
   }
+  /* short trace, quick zips: a cream packet over the already-solid amber
+     conduit (an amber packet would be invisible there) — values ported
+     verbatim from the original round-2 redesign. */
+  var traceCometOpts = { speed: 0.9, sparkChance: 0.35, minGap: 1400, maxGap: 3600, easing: 'cubic-bezier(0.55, 0, 0.3, 1)' };
 
-  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, sparkTrain) {
+  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, cometTrain) {
     return function draw(idx, animate) {
       var pinEl = pins[idx], paneEl = panes[idx];
       if (!appBodyEl || !pinEl || !paneEl || !pathEl || !padEl) return;
@@ -1791,7 +1806,7 @@ const description =
       var len = pathLength(points, 6);
       pathEl.setAttribute('d', d);
       if (baseEl) baseEl.setAttribute('d', d);
-      if (sparkTrain) sparkTrain.update(points, 6);
+      if (cometTrain) cometTrain.update(points, 6);
       padEl.setAttribute('x', String(padX - 4));
       padEl.setAttribute('y', String(paneTop - 4));
       pathEl.style.strokeDasharray = String(len);
@@ -1813,7 +1828,7 @@ const description =
   var heroDrawTrace = makeTraceDrawer(
     heroApp.querySelector('.app-body'), heroPins, heroPanes,
     document.getElementById('heroTracePath'), document.getElementById('heroTracePad'),
-    document.getElementById('heroTraceBase'), makeSparkTrain(document.getElementById('heroTraceSparks'))
+    document.getElementById('heroTraceBase'), makeCometTrain(document.getElementById('heroTraceSparks'), traceCometOpts)
   );
   var heroIdx = 0, heroTimer = null, heroTraceReady = false;
 
@@ -1883,7 +1898,7 @@ const description =
   var demoDrawTrace = makeTraceDrawer(
     demoApp.querySelector('.app-body'), demoPins, demoPanes,
     document.getElementById('demoTracePath'), document.getElementById('demoTracePad'),
-    document.getElementById('demoTraceBase'), makeSparkTrain(document.getElementById('demoTraceSparks'))
+    document.getElementById('demoTraceBase'), makeCometTrain(document.getElementById('demoTraceSparks'), traceCometOpts)
   );
 
   var demoCur = 0;
