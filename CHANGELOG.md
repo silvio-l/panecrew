@@ -33,6 +33,20 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+## [0.1.0-nightly.6] - 2026-08-15
+### Added
+- Right-clicking the Dock icon on macOS now shows a native menu with "New
+  Window" plus a live list of all open windows, matching how other
+  multi-window Mac apps behave.
+- The file explorer's search now also searches file contents, not just
+  file/folder names — matching lines show a preview and jump straight to
+  that exact line (with the match highlighted) when clicked.
+
+### Changed
+- The file explorer's toolbar now sits on its own row above the project
+  name instead of competing with it for space, and its icons are always
+  visible instead of only appearing on hover.
+
 ## [0.1.0-nightly.5] - 2026-08-15
 ### Added
 - Title bar now shows a live RAM/CPU indicator for PaneCrew and its terminal

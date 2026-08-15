@@ -33,6 +33,20 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+## [0.1.0-nightly.6] - 2026-08-15
+### Hinzugefügt
+- Ein Rechtsklick auf das Dock-Icon zeigt unter macOS jetzt ein natives Menü
+  mit "Neues Fenster" plus einer laufend aktuellen Liste aller offenen
+  Fenster — wie bei anderen Mac-Apps mit mehreren Fenstern üblich.
+- Die Suche im Datei-Explorer durchsucht jetzt auch Dateiinhalte, nicht nur
+  Datei-/Ordnernamen — Treffer-Zeilen zeigen eine Vorschau und springen per
+  Klick direkt zur genauen Zeile (mit markierter Fundstelle).
+
+### Geändert
+- Die Werkzeugleiste des Datei-Explorers steht jetzt in einer eigenen Zeile
+  über dem Projektnamen statt mit ihm um Platz zu konkurrieren, ihre Icons
+  sind jetzt dauerhaft sichtbar statt nur bei Hover.
+
 ## [0.1.0-nightly.5] - 2026-08-15
 ### Hinzugefügt
 - Die Titelleiste zeigt jetzt eine laufende RAM/CPU-Anzeige für PaneCrew und
