@@ -88,6 +88,7 @@ pub fn install(app: &AppHandle<Wry>) {
     // (`&AnyObject, Sel, *mut AnyObject) -> *mut AnyObject`) entspricht der
     // Objective-C-Signatur `- (id)applicationDockMenu:(id)sender`, die
     // `types` ("@@:@": id-Rückgabe, self, _cmd, ein id-Argument) kodiert.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- Objective-C-Laufzeit-Methodenregistrierung auf einer bereits registrierten, per `AnyClass::get` gefundenen Klasse; Begründung im SAFETY-Kommentar direkt darüber.
     unsafe {
         class_addMethod(
             (class as *const AnyClass).cast_mut(),
