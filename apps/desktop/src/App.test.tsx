@@ -608,6 +608,14 @@ describe("App", () => {
           truncated: false,
         });
       }
+      // Ticket 26: `searchProjectTree` fragt Namens- UND Inhaltstreffer
+      // parallel ab (`Promise.all`) — ohne eigenen Zweig läuft dieser Aufruf
+      // ins generische `Promise.resolve()` (also `undefined`) und lässt den
+      // Zugriff auf `.nodes` danach reject werfen, was die Suche über den
+      // Catch-Pfad in ExplorerPanel.tsx still auf "keine Treffer" umschaltet.
+      if (cmd === "explorer_search_contents") {
+        return Promise.resolve({ nodes: [], truncated: false });
+      }
       return Promise.resolve();
     });
     render(<App />);
@@ -625,6 +633,63 @@ describe("App", () => {
     expect(screen.queryByText("README.md")).not.toBeInTheDocument();
   });
 
+  // Ticket 26: ein Klick auf eine Inhaltstreffer-Zeile öffnet die Datei UND
+  // springt zur Fundstelle — geprüft über die tatsächliche Selektion im
+  // (seit Ticket 05 unkontrollierten) Editor-Puffer, nicht nur über das
+  // bloße Öffnen der Datei.
+  it("öffnet eine Inhaltstreffer-Zeile und markiert ihre Fundstelle im Editor", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "main.rs", is_dir: false }]);
+      }
+      if (cmd === "explorer_search_names") {
+        return Promise.resolve({ nodes: [], truncated: false });
+      }
+      if (cmd === "explorer_search_contents") {
+        return Promise.resolve({
+          nodes: [
+            {
+              name: "main.rs",
+              is_dir: false,
+              matches: [{ line: 2, preview: 'println!("hallo");' }],
+            },
+          ],
+          truncated: false,
+        });
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    await screen.findByText("main.rs");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dateien filtern" }));
+    fireEvent.change(screen.getByLabelText("Dateien im Projekt filtern"), {
+      target: { value: "hallo" },
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /println!\("hallo"\);/ }),
+    );
+
+    const textboxElement = await screen.findByRole("textbox", {
+      name: "Inhalt von main.rs",
+    });
+    const textbox = textboxElement as HTMLTextAreaElement;
+    expect(textbox).toHaveValue(FILE_CONTENTS.text);
+    expect(document.activeElement).toBe(textbox);
+    // Zeile 2 beginnt bei Zeichen 12 (Zeile 1 "fn main() {" plus \n) und ist
+    // "    println!(\"hallo\");" lang (22 Zeichen, inklusive der 4
+    // führenden Leerzeichen — die trägt der Puffer, aber NICHT die
+    // getrimmte `preview` aus der Suche).
+    expect(textbox.selectionStart).toBe(12);
+    expect(textbox.selectionEnd).toBe(34);
+  });
+
   it("meldet eine eigene 'keine Treffer'-Auskunft statt des Leer-Platzhalters", async () => {
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) => {
@@ -632,6 +697,9 @@ describe("App", () => {
         return Promise.resolve([{ name: "README.md", is_dir: false }]);
       }
       if (cmd === "explorer_search_names") {
+        return Promise.resolve({ nodes: [], truncated: false });
+      }
+      if (cmd === "explorer_search_contents") {
         return Promise.resolve({ nodes: [], truncated: false });
       }
       return Promise.resolve();
@@ -669,6 +737,9 @@ describe("App", () => {
           nodes: [{ name: "main.tsx", is_dir: false }],
           truncated: false,
         });
+      }
+      if (cmd === "explorer_search_contents") {
+        return Promise.resolve({ nodes: [], truncated: false });
       }
       return Promise.resolve();
     });

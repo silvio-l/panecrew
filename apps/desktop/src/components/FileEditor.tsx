@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -56,6 +56,8 @@ export function FileEditor({
   onHeaderPointerDown,
   onToggleFocusMode,
   focusModeHud,
+  jumpToLine,
+  onJumpApplied,
 }: {
   state: FileEditorState;
   /** Dieselbe Pane-Fokus-Aussage wie in TerminalPane.tsx (`state.focusedPaneId`
@@ -103,6 +105,16 @@ export function FileEditor({
    * Fläche platziert das fertige Element nur noch an derselben Stelle im
    * Header wie dort. */
   focusModeHud: ReactNode;
+  /** Ticket 26 (Inhaltssuche): eine noch nicht angewendete Sprungzeile aus
+   * `usePaneFileEditors.ts`s `open(path, line)`, `null` ohne offenen
+   * Sprungwunsch. Angewendet wird sie erst, sobald `state.status` „ready"
+   * ist — vorher existiert der Puffer noch nicht, an dem sich Zeile 1 als
+   * Position festmachen ließe. */
+  jumpToLine: number | null;
+  /** Meldet einen angewendeten Sprung an den Hook zurück (setzt `jumpToLine`
+   * dort auf `null`) — sonst liefe derselbe Sprung bei jedem weiteren Render
+   * dieser Fläche erneut. */
+  onJumpApplied: () => void;
 }) {
   const { t } = useTranslation();
   // Pane-weiter Aufblitz (PaneTabs.tsx' Kopfkommentar, Nachtrag zum
@@ -115,6 +127,44 @@ export function FileEditor({
   // jeder Tastendruck den React-Zustand nachführt (`state.content` kann
   // hinter ihm zurückbleiben, s. `usePaneFileEditors.ts`s `editContent`).
   const bufferRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Ticket 26 (Inhaltssuche): wendet einen offenen Sprungwunsch an, sobald
+  // der Puffer wirklich existiert — `EditorBuffer` ist unkontrolliert
+  // (Ticket 05) und trägt ihren Text erst ab dem Commit dieses "ready"-
+  // Renders im DOM, der Ref davor ist leer. Exakte Positionsrechnung statt
+  // bloßem "ins Sichtfeld scrollen": `EditorBuffer` setzt `wrap="off"`
+  // (Begründung dort), also entspricht eine sichtbare Bildschirmzeile immer
+  // genau einer logischen Zeile, und `getComputedStyle` liefert die
+  // tatsächliche Zeilenhöhe in Pixeln (der Puffer setzt sie selbst über
+  // `--pc-terminal-lineHeight`, oft ein einheitenloser Multiplikator — erst
+  // die berechnete Form ist ein fester Pixelwert).
+  useEffect(() => {
+    if (jumpToLine === null) return;
+    if (state.status !== "ready") return;
+    const textarea = bufferRef.current;
+    if (!textarea) return;
+
+    const lines = textarea.value.split("\n");
+    const targetIndex = Math.min(Math.max(jumpToLine - 1, 0), lines.length - 1);
+    let charOffset = 0;
+    for (let i = 0; i < targetIndex; i++) {
+      charOffset += (lines[i]?.length ?? 0) + 1;
+    }
+    const lineLength = lines[targetIndex]?.length ?? 0;
+    textarea.focus();
+    textarea.setSelectionRange(charOffset, charOffset + lineLength);
+
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight);
+    if (!Number.isNaN(lineHeight)) {
+      textarea.scrollTop = Math.max(
+        0,
+        targetIndex * lineHeight - textarea.clientHeight / 2 + lineHeight / 2,
+      );
+    }
+
+    onJumpApplied();
+  }, [jumpToLine, state.status, onJumpApplied]);
+
   // Ohne offene Datei gibt es keine Fläche: App.tsx rendert diese Komponente
   // bedingungslos und stellt die Bedingung damit genau einmal — hier.
   if (state.status === "idle") return null;

@@ -816,7 +816,12 @@ function App() {
   // `${eltern}/${name}`, Tiefe 0 der bloße Name), `explorer_read_file` will
   // einen absoluten — zusammengesetzt wird genau hier, im selben Muster, das
   // die Anlege-Zeile des Explorers schon für `explorer_create_file` verwendet.
-  const selectFile = (path: string) => {
+  //
+  // `line` (Ticket 26, Inhaltssuche): kommt von einer angeklickten
+  // Treffer-Zeile statt vom Dateinamen selbst — `fileEditor.open` reicht sie
+  // nur durch, den tatsächlichen Sprung im Puffer macht `FileEditor.tsx`
+  // erst, sobald der Ladevorgang fertig ist.
+  const selectFile = (path: string, line?: number) => {
     // Der Explorer wird nur sichtbar, solange eine Pane fokussiert ist und
     // deren Projekt geladen ist (s. u.) — `focusedPaneId`/`project` sind hier
     // also praktisch immer gesetzt. Die Prüfung steht für TypeScript, nicht
@@ -840,7 +845,7 @@ function App() {
     // während die Fläche daneben unverändert die alte Datei zeigt.
     guardLeave(focusedPaneId, () => {
       setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
-      fileEditor.open(absolutePath);
+      fileEditor.open(absolutePath, line);
       switchToFileTab(focusedPaneId);
     });
   };

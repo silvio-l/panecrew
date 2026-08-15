@@ -37,8 +37,12 @@ interface FileEditorHandle {
   state: FileEditorState;
   /** Lädt `path` (absoluter Dateipfad) über `explorer_read_file`. Eine
    * bereits laufende, inzwischen überholte Anfrage wird beim Eintreffen
-   * ignoriert (siehe `fileEditorState.ts`s `loadSucceeded`/`loadFailed`). */
-  open: (path: string) => void;
+   * ignoriert (siehe `fileEditorState.ts`s `loadSucceeded`/`loadFailed`).
+   * `line` (Ticket 26, Inhaltssuche): landet unverändert in `jumpToLine`
+   * unten, sobald der Ladevorgang „ready" wird — angewendet wird der Sprung
+   * selbst erst in `FileEditor.tsx`, das dort den Puffer und dessen
+   * Zeilenhöhe kennt. */
+  open: (path: string, line?: number) => void;
   close: () => void;
   /** Ändert den Puffertext (nur wirksam aus "ready"/"save-error" heraus, sonst
    * No-Op — siehe `fileEditorState.ts`s `edit`). Ticket 05 (Performance-
@@ -60,6 +64,18 @@ interface FileEditorHandle {
   /** Würde ein Wechsel (andere Datei, Projekt, Pane schließen) gerade
    * ungespeicherte Arbeit verwerfen? */
   wouldLoseWork: boolean;
+  /** Nicht-`null`, solange ein von `open(path, line)` angeforderter Sprung
+   * noch aussteht — `null` sowohl vor jeder Anfrage als auch, sobald
+   * `FileEditor.tsx` ihn per `consumeJumpToLine` angewendet hat. Bleibt
+   * während des Ladens stehen (der Puffer existiert erst ab "ready") und
+   * verschwindet bei jedem `open()` ohne `line`, damit ein späterer Klick auf
+   * eine normale Zeile keinen alten Sprungwunsch aus einer anderen Datei
+   * erbt. */
+  jumpToLine: number | null;
+  /** Meldet einen angewendeten Sprung zurück — sonst würde derselbe
+   * Sprungwunsch bei jedem weiteren Render von `FileEditor.tsx` erneut
+   * ausgeführt. */
+  consumeJumpToLine: () => void;
 }
 
 export interface PaneFileEditors {
@@ -108,8 +124,18 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     }));
   };
 
-  const open = (paneId: string, path: string) => {
+  // Getrennt von `states` statt als Feld auf `FileEditorState` (Ticket 26):
+  // ein Sprungwunsch ist eine einmalige Randnotiz zu genau EINEM `open()`,
+  // keine dauerhafte Eigenschaft eines "ready"-Puffers — er wäre sonst über
+  // jede Zustandsübergangsfunktion in `fileEditorState.ts` mitzuführen, ohne
+  // dass eine davon ihn tatsächlich braucht.
+  const [jumpLines, setJumpLines] = useState<Record<string, number | null>>(
+    {},
+  );
+
+  const open = (paneId: string, path: string, line?: number) => {
     updateState(paneId, () => startLoading(path));
+    setJumpLines((current) => ({ ...current, [paneId]: line ?? null }));
     void invoke<RawFileContents>("explorer_read_file", { path })
       .then((raw) =>
         updateState(paneId, (current) => loadSucceeded(current, path, raw)),
@@ -119,6 +145,10 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
           loadFailed(current, path, String(error)),
         );
       });
+  };
+
+  const consumeJumpToLine = (paneId: string) => {
+    setJumpLines((current) => ({ ...current, [paneId]: null }));
   };
 
   const save = (paneId: string, options?: { force?: boolean; content?: string }) => {
@@ -212,17 +242,25 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     const state = stateFor(paneId);
     return {
       state,
-      open: (path: string) => open(paneId, path),
+      open: (path: string, line?: number) => open(paneId, path, line),
       close: () => updateState(paneId, () => closeFile()),
       editContent: (content: string) => editContent(paneId, content),
       save: (options?: { force?: boolean; content?: string }) =>
         save(paneId, options),
       wouldLoseWork: wouldLoseWork(state),
+      jumpToLine: jumpLines[paneId] ?? null,
+      consumeJumpToLine: () => consumeJumpToLine(paneId),
     };
   };
 
   const forget = (paneId: string) => {
     setStates((current) => {
+      if (!(paneId in current)) return current;
+      return Object.fromEntries(
+        Object.entries(current).filter(([key]) => key !== paneId),
+      );
+    });
+    setJumpLines((current) => {
       if (!(paneId in current)) return current;
       return Object.fromEntries(
         Object.entries(current).filter(([key]) => key !== paneId),

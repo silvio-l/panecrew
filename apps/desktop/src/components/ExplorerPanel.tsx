@@ -25,7 +25,7 @@ import { vscodeIsInstalled } from "../explorer/vscodeDetection";
 import { isMacPlatform } from "../shortcuts/platform";
 import { useSettings } from "../settings/useSettings";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
-import type { Project, TreeNode } from "../types/project";
+import type { ContentMatch, Project, TreeNode } from "../types/project";
 
 // Dieselbe Dauer wie TerminalPane.tsx' Kopier-Bestätigung (Ticket 24 nennt
 // deren Kontextmenü ausdrücklich als Vorbild) — ein zweiter, abweichender
@@ -112,7 +112,10 @@ export function ExplorerPanel({
    * Ordnern — App spiegelt das in `expandedFolders` und damit in den nächsten
    * `session.json`-Schreibvorgang. */
   onExpandedChange: (expanded: readonly string[]) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   onCollapse: () => void;
   /** Liest den Dateibaum dieses Projekts neu von der Platte. Der Lesepfad
    * (`explorer_read_dir` für die Wurzel, dann jeder zuvor beladene Ordner
@@ -924,7 +927,10 @@ function TreeList({
    * `ExplorerPanel` braucht `row.node.children`, um zu entscheiden, ob ein
    * Aufklappen einen Lazy-Load auslösen muss. */
   onToggleFolder: (row: FlatRow) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   /** Wie in `ExplorerPanel`, nur schon auf den Baumpfad der Zeile verkürzt —
    * die Umrechnung auf den absoluten Pfad liegt eine Ebene höher. */
   onStartPathDrag: (
@@ -1420,6 +1426,14 @@ interface FlatRow {
    * `explorer_read_dir` zurück sind (`node.children === undefined`) — die
    * einzige Zeile, die `TreeRow` nicht als echten Eintrag rendert. */
   isLoadingPlaceholder?: boolean;
+  /** Nur bei einer Inhaltstreffer-Zeile gesetzt (Ticket 26,
+   * `searchTree.ts`s `matches` an einem Datei-Knoten) — eine Zeile pro
+   * Zeilentreffer, als Kind der Datei-Zeile eingerollt. `path` trägt hier
+   * einen synthetischen, pro Treffer eindeutigen Schlüssel (dieselbe
+   * Konvention wie bei der Lade-Zeile oben), `filePath` den echten
+   * Baumpfad der Datei, zu der der Treffer gehört. */
+  match?: ContentMatch;
+  filePath?: string;
 }
 
 /** Rollt den Baum zu der Zeilenfolge aus, die gerade sichtbar ist: ein
@@ -1450,7 +1464,30 @@ function flattenTree(
       const isOpen = isFolder && (forceOpen || expanded.has(path));
       const isLast = index === level.length - 1;
       rows.push({ node, path, depth, isFolder, isOpen, ancestorGuides, isLast });
-      if (!isOpen) return;
+      if (!isOpen) {
+        // Inhaltstreffer einer Datei rollen als eigene Kindzeilen ein — auch
+        // wenn `isOpen` bei einer Datei nie zutrifft (`isFolder` ist hier
+        // `false`), genau wie die Lade-Zeile unten braucht das dieselbe
+        // Astlagen-Vererbung, sonst hinge die Vertikale in der Luft.
+        if (node.matches !== undefined && node.matches.length > 0) {
+          const childAncestorGuides = [...ancestorGuides, !isLast];
+          const matches = node.matches;
+          matches.forEach((match, matchIndex) => {
+            rows.push({
+              node,
+              path: `${path}//match/${String(matchIndex)}`,
+              filePath: path,
+              depth: depth + 1,
+              isFolder: false,
+              isOpen: false,
+              ancestorGuides: childAncestorGuides,
+              isLast: matchIndex === matches.length - 1,
+              match,
+            });
+          });
+        }
+        return;
+      }
       // Die Kinder erben die Astlage aller Ebenen darüber plus die dieser
       // Zeile: läuft hier unten noch ein Geschwister nach, führt die
       // Vertikale durch den ganzen Teilbaum — sonst endet sie mit dieser
@@ -1738,7 +1775,10 @@ interface TreeRowProps {
    * deshalb ohne jede Umrechnung. */
   gitDecorations: GitDecorations;
   onToggleFolder: (row: FlatRow) => void;
-  onSelectFile: (path: string) => void;
+  /** `line` (Ticket 26, Inhaltssuche): gesetzt, wenn der Klick von einer
+   * Treffer-Zeile kam — springt der Editor zur passenden Stelle, statt nur
+   * die Datei zu öffnen. */
+  onSelectFile: (path: string, line?: number) => void;
   onStartPathDrag: (
     event: ReactPointerEvent<HTMLElement>,
     rowPath: string,
@@ -1839,6 +1879,36 @@ function TreeRow({
         <span aria-hidden="true" className="w-2.5 shrink-0" />
         <span className="truncate">{t("common.loading")}</span>
       </div>
+    );
+  }
+
+  // Eine Inhaltstreffer-Zeile (Ticket 26) — Kind einer Datei-Zeile, kein
+  // eigenständiger Baumeintrag: kein Chevron, kein Kontextmenü, kein
+  // Ziehgriff, keine Auswahl-/Git-Deko-Logik (die gehört der Datei-Zeile
+  // selbst). Ein Klick öffnet die Datei UND springt zur Fundstelle —
+  // `row.filePath` trägt dafür den echten Baumpfad, `row.path` ist hier nur
+  // der pro Treffer eindeutige React-/Virtualizer-Schlüssel.
+  if (row.match) {
+    const filePath = row.filePath ?? path;
+    const { line, preview } = row.match;
+    return (
+      <button
+        type="button"
+        data-row-index={index}
+        onClick={() => onSelectFile(filePath, line)}
+        onKeyDown={(event) => onKeyDown(index, event)}
+        style={{
+          paddingLeft: 10 + depth * 12,
+          transform: `translateY(${String(offset)}px)`,
+        }}
+        className="absolute left-0 top-0 flex h-(--pc-list-rowHeight) w-full items-center gap-1.5 pr-2 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-explorer-foreground) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--pc-focusBorder)"
+      >
+        <TreeRowGuides ancestorGuides={ancestorGuides} depth={depth} isLast={isLast} />
+        <span className="w-6 shrink-0 text-right text-[10px] leading-none tabular-nums">
+          {line}
+        </span>
+        <span className="truncate">{preview}</span>
+      </button>
     );
   }
 
