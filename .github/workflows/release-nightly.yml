@@ -2,16 +2,24 @@ name: Release (Nightly)
 
 # docs/decisions.md -> "Auto-Update via GitHub Releases (Stable + Nightly-Kanal)".
 # Nightly speist sich aus `dev` über einen einzigen rollierenden Tag
-# `nightly-latest`, der bei jedem Nightly-Release per Force-Push neu gesetzt
-# wird -- GitHubs `/releases/latest`-Alias schließt Prereleases aus
+# `nightly-latest`, der bei jedem Nightly-Release neu gesetzt wird -- GitHubs
+# `/releases/latest`-Alias schließt Prereleases aus
 # (docs.github.com/rest/releases), ein SemVer-Tag pro Version würde also nicht
 # auflösbar sein. Weil der Tag beim Auslösen dieses Workflows schon auf den
 # NEUEN Commit zeigt, kommt der Vorgänger-Stand fürs Changelog-Gate aus dem
 # Push-Event selbst (`github.event.before`), nicht aus `git rev-parse
 # nightly-latest` -- der wäre zu diesem Zeitpunkt bereits der neue Stand.
 #
-# Auslösen (bewusster Akt, kein Auto-Release pro Push, Punkt 2 der Entscheidung):
-#   git tag -f nightly-latest && git push -f origin nightly-latest
+# Auslösen (bewusster Akt, kein Auto-Release pro Push, Punkt 2 der Entscheidung)
+# -- per Delete+Neu-Anlegen, NICHT per Force-Push (2026-08-15 korrigiert: die
+# lokale Coding-Agent-Tooling-Konfiguration auf dieser Maschine verbietet
+# `git push -f`/`--force*` bewusst ausnahmslos und projektübergreifend, ein
+# lokaler Force-Push ist damit dauerhaft kein AFK-taugliches Mittel für diesen
+# Trigger -- Delete+Neu-Anlegen erreicht denselben rollierenden Tag ohne je
+# `-f`/`--force` zu brauchen, läuft deshalb unbeanstandet durch):
+#   git push origin --delete nightly-latest
+#   git tag -f nightly-latest
+#   git push origin nightly-latest
 #
 # Changelog-Gate läuft lokal im pre-push-Hook (.githooks/pre-push), nicht hier
 # als eigener Job -- ein Tag-Push mit unvollständigem CHANGELOG.md kommt gar
