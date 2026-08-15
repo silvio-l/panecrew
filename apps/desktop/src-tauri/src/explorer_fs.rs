@@ -399,15 +399,15 @@ pub struct ContentMatch {
 /// Same shape as `SearchTreeNode` (pruned ancestor chain, folders carry
 /// `children`), but a leaf also carries its own line matches instead of just
 /// existing/not-existing — content search has no equivalent of a name search's
-/// single match-or-not per file. `#[serde(default)]` on `matches` lets a
-/// directory node round-trip through JSON without an explicit empty array.
+/// single match-or-not per file. `skip_serializing_if` on `matches` keeps a
+/// directory node's JSON free of a pointless empty array.
 #[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct ContentSearchNode {
     pub name: String,
     pub is_dir: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<ContentSearchNode>>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub matches: Vec<ContentMatch>,
 }
 
@@ -524,12 +524,21 @@ fn search_file_contents(
     needle: &str,
     matches: &mut usize,
 ) -> io::Result<Vec<ContentMatch>> {
-    let metadata = std::fs::metadata(path)?;
+    // `metadata`/`read` use `let Ok(..) = .. else` rather than `?`: a broken
+    // symlink, a permission-restricted file, or a file deleted between
+    // `read_dir_entries` and this read must not abort the whole search —
+    // skipping one unreadable file is the same convention `read_dir_entries`
+    // already applies to unreadable directory entries via `.flatten()`.
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return Ok(Vec::new());
+    };
     if metadata.len() > MAX_SEARCHABLE_FILE_BYTES {
         return Ok(Vec::new());
     }
 
-    let bytes = std::fs::read(path)?;
+    let Ok(bytes) = std::fs::read(path) else {
+        return Ok(Vec::new());
+    };
     if bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
         return Ok(Vec::new());
     }
@@ -909,6 +918,34 @@ mod tests {
         .expect("search should succeed");
 
         assert!(result.nodes.is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn search_contents_survives_a_broken_symlink() {
+        let fixture = Fixture::new("content-broken-symlink", &[]);
+        fixture.write("real.txt", b"needle here");
+        std::os::unix::fs::symlink(
+            fixture.0.join("does-not-exist"),
+            fixture.0.join("dangling.txt"),
+        )
+        .expect("symlink creation should succeed");
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("a broken symlink elsewhere in the tree must not abort the search");
+
+        assert_eq!(
+            result.nodes,
+            vec![content_node(
+                "real.txt",
+                false,
+                None,
+                vec![content_match(1, "needle here")]
+            )]
+        );
     }
 
     #[test]
