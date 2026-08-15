@@ -445,7 +445,13 @@ function resourceStatusLabel(
  * Prozentwerte beschränkt (genug, um auf einen Blick zu sehen, ob die App
  * gerade ungewöhnlich viel zieht) — die absoluten MB/GB-Werte kommen erst im
  * Hover-Popover (`ResourceUsageTree.tsx`), sowohl in dessen Kopfzeile
- * (App-weite Summe) als auch pro Tab-Zeile. Bleibt unsichtbar, bis das erste
+ * (App-weite Summe) als auch pro Tab-Zeile. Der Trenner zwischen RAM- und
+ * CPU-Wert ist `<Divider>` (dieselbe geometrische Regel wie zwischen JEDEM
+ * anderen Wertepaar im Instrumenten-Cluster, s. Kommentar dort), NICHT ein
+ * eigener "·"-Textknoten wie ursprünglich — ein Textglyph hat kein festes
+ * optisches Zentrum in seiner (durch leading-none kollabierten) Box, und
+ * dieser hier hatte zudem eine andere Schriftgröße/-familie als seine
+ * Nachbarn, was ihn zusätzlich sichtbar verschob. Bleibt unsichtbar, bis das erste
  * Sample eintrifft (kein Platzhalter-Flackern beim Start).
  */
 function ResourceUsageReadout({
@@ -487,7 +493,7 @@ function ResourceUsageReadout({
     <ResourceUsageTreeTooltip summary={tooltip} groups={groups}>
       <div
         data-tauri-drag-region="deep"
-        className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
+        className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
       >
         <span
           aria-hidden="true"
@@ -495,9 +501,7 @@ function ResourceUsageReadout({
         >
           {memPercent}%
         </span>
-        <span aria-hidden="true" className="text-[10px] leading-none text-(--pc-descriptionForeground)">
-          ·
-        </span>
+        <Divider />
         <span
           aria-hidden="true"
           className={`font-(family-name:--pc-terminal-fontFamily) text-[11px] leading-none tracking-[0.04em] tabular-nums ${RESOURCE_STATUS_COLOR[usage.cpuStatus]}`}
