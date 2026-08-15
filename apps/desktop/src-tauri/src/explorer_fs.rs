@@ -387,6 +387,182 @@ fn search_walk(
     Ok(result)
 }
 
+/// A single line match inside one file — `line` is 1-indexed (the convention
+/// every text editor and `grep -n` use, not the 0-indexed offset
+/// `text.lines().enumerate()` produces internally).
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct ContentMatch {
+    pub line: u32,
+    pub preview: String,
+}
+
+/// Same shape as `SearchTreeNode` (pruned ancestor chain, folders carry
+/// `children`), but a leaf also carries its own line matches instead of just
+/// existing/not-existing — content search has no equivalent of a name search's
+/// single match-or-not per file. `#[serde(default)]` on `matches` lets a
+/// directory node round-trip through JSON without an explicit empty array.
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct ContentSearchNode {
+    pub name: String,
+    pub is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ContentSearchNode>>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub matches: Vec<ContentMatch>,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct ContentSearchResult {
+    pub nodes: Vec<ContentSearchNode>,
+    pub truncated: bool,
+}
+
+/// Total line-match budget across the whole search, mirroring
+/// `MAX_SEARCH_MATCHES`'s name-search budget and the same
+/// capped-not-dropped/`truncated`-flagged contract.
+const MAX_CONTENT_SEARCH_MATCHES: usize = 500;
+
+/// A second, per-file budget on top of the total one above: without it, one
+/// huge generated file (a lockfile, a minified bundle) full of matches could
+/// alone exhaust the entire search's budget before any other file gets a
+/// look-in.
+const MAX_CONTENT_MATCHES_PER_FILE: usize = 20;
+
+/// Files above this size are skipped by `metadata()` alone, no bytes read —
+/// generous enough for real source files, small enough that a search never
+/// has to load a multi-megabyte asset into memory just to scan it.
+const MAX_SEARCHABLE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// How many leading bytes are checked for a NUL byte to sniff "this is
+/// binary, not text" — same heuristic `git` and most greps use, cheaper than
+/// a full UTF-8 decode attempt on a multi-megabyte binary just to reject it.
+const BINARY_SNIFF_BYTES: usize = 8000;
+
+/// A single matched line is capped this long in the returned preview — a
+/// minified file with a match on an otherwise multi-thousand-character line
+/// must not blow up the response size over one hit.
+const PREVIEW_MAX_CHARS: usize = 200;
+
+/// Full-tree file-*contents* search, the sibling of `explorer_search_names`
+/// above for full-text rather than filename matches. Same walk shape (full
+/// tree, denylist-filtered, pruned-to-ancestors result, capped-with-
+/// `truncated`-flag) — see that function's doc comment for the shared
+/// rationale. Case-insensitive like the name search, for the same reason: a
+/// search that's case-sensitive for contents but not names would be a bug
+/// users feel, not a deliberate distinction.
+#[tauri::command(async)]
+pub fn explorer_search_contents(
+    root: String,
+    query: String,
+) -> Result<ContentSearchResult, String> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Ok(ContentSearchResult {
+            nodes: Vec::new(),
+            truncated: false,
+        });
+    }
+    let mut matches = 0usize;
+    let mut truncated = false;
+    let nodes = content_search_walk(Path::new(&root), &needle, &mut matches, &mut truncated)
+        .map_err(|error| format!("Inhaltssuche fehlgeschlagen: {error}"))?;
+    Ok(ContentSearchResult { nodes, truncated })
+}
+
+fn content_search_walk(
+    dir: &Path,
+    needle: &str,
+    matches: &mut usize,
+    truncated: &mut bool,
+) -> io::Result<Vec<ContentSearchNode>> {
+    let entries = read_dir_entries(dir)?;
+    let mut result = Vec::new();
+
+    for entry in entries {
+        if *matches >= MAX_CONTENT_SEARCH_MATCHES {
+            *truncated = true;
+            break;
+        }
+
+        let path = dir.join(&entry.name);
+        if entry.is_dir {
+            let children = content_search_walk(&path, needle, matches, truncated)?;
+            if !children.is_empty() {
+                result.push(ContentSearchNode {
+                    name: entry.name,
+                    is_dir: true,
+                    children: Some(children),
+                    matches: Vec::new(),
+                });
+            }
+        } else {
+            let file_matches = search_file_contents(&path, needle, matches)?;
+            if !file_matches.is_empty() {
+                result.push(ContentSearchNode {
+                    name: entry.name,
+                    is_dir: false,
+                    children: None,
+                    matches: file_matches,
+                });
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// Scans one file for `needle`, capped both against the shared total budget
+/// (`matches`, so `truncated` stays accurate across the whole search) and
+/// `MAX_CONTENT_MATCHES_PER_FILE` (a silent, unflagged cap — unlike the total
+/// budget it isn't reported back, the same way the denylist itself isn't:
+/// both are search-shape decisions, not something dropped un-intentionally).
+/// Skips anything too large to be a real source file, anything that sniffs as
+/// binary, and anything that isn't valid UTF-8 — "refuse rather than guess",
+/// the same rule `explorer_read_file` already applies to the editor.
+fn search_file_contents(
+    path: &Path,
+    needle: &str,
+    matches: &mut usize,
+) -> io::Result<Vec<ContentMatch>> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_SEARCHABLE_FILE_BYTES {
+        return Ok(Vec::new());
+    }
+
+    let bytes = std::fs::read(path)?;
+    if bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
+        return Ok(Vec::new());
+    }
+    let Ok(text) = String::from_utf8(bytes) else {
+        return Ok(Vec::new());
+    };
+
+    let mut found = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        if *matches >= MAX_CONTENT_SEARCH_MATCHES || found.len() >= MAX_CONTENT_MATCHES_PER_FILE {
+            break;
+        }
+        if line.to_lowercase().contains(needle) {
+            *matches += 1;
+            found.push(ContentMatch {
+                line: (index + 1) as u32,
+                preview: truncate_preview(line),
+            });
+        }
+    }
+    Ok(found)
+}
+
+fn truncate_preview(line: &str) -> String {
+    let trimmed = line.trim();
+    if trimmed.chars().count() > PREVIEW_MAX_CHARS {
+        let head: String = trimmed.chars().take(PREVIEW_MAX_CHARS).collect();
+        format!("{head}…")
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +593,18 @@ mod tests {
             }
             Self(root)
         }
+
+        /// Writes real content to `relative` (creating parent directories as
+        /// needed) — `new`'s own `entries` shorthand always writes `b"x"`,
+        /// which is enough for name-search/listing tests but useless for
+        /// content-search tests, which need to control what's actually on
+        /// each line.
+        fn write(&self, relative: &str, content: &[u8]) {
+            let path = self.0.join(relative);
+            std::fs::create_dir_all(path.parent().expect("fixture path has a parent"))
+                .expect("fixture parent dir should be creatable");
+            std::fs::write(path, content).expect("fixture file should be writable");
+        }
     }
 
     impl Drop for Fixture {
@@ -438,11 +626,26 @@ mod tests {
         assert_eq!(
             entries,
             vec![
-                DirEntryNode { name: "Alpha".to_string(), is_dir: true },
-                DirEntryNode { name: "zeta".to_string(), is_dir: true },
-                DirEntryNode { name: "beta.rs".to_string(), is_dir: false },
-                DirEntryNode { name: "Cargo.toml".to_string(), is_dir: false },
-                DirEntryNode { name: "readme.md".to_string(), is_dir: false },
+                DirEntryNode {
+                    name: "Alpha".to_string(),
+                    is_dir: true
+                },
+                DirEntryNode {
+                    name: "zeta".to_string(),
+                    is_dir: true
+                },
+                DirEntryNode {
+                    name: "beta.rs".to_string(),
+                    is_dir: false
+                },
+                DirEntryNode {
+                    name: "Cargo.toml".to_string(),
+                    is_dir: false
+                },
+                DirEntryNode {
+                    name: "readme.md".to_string(),
+                    is_dir: false
+                },
             ]
         );
     }
@@ -584,6 +787,210 @@ mod tests {
 
         assert!(result.nodes.is_empty());
         assert!(!result.truncated);
+    }
+
+    fn content_node(
+        name: &str,
+        is_dir: bool,
+        children: Option<Vec<ContentSearchNode>>,
+        matches: Vec<ContentMatch>,
+    ) -> ContentSearchNode {
+        ContentSearchNode {
+            name: name.to_string(),
+            is_dir,
+            children,
+            matches,
+        }
+    }
+
+    fn content_match(line: u32, preview: &str) -> ContentMatch {
+        ContentMatch {
+            line,
+            preview: preview.to_string(),
+        }
+    }
+
+    #[test]
+    fn search_contents_finds_a_nested_match_without_expanding_it_first() {
+        let fixture = Fixture::new("content-nested", &[]);
+        fixture.write(
+            "src/deep/needle.rs",
+            b"fn main() {\n    let needle = 1;\n}\n",
+        );
+        fixture.write("readme.md", b"nothing here");
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert!(!result.truncated);
+        assert_eq!(
+            result.nodes,
+            vec![content_node(
+                "src",
+                true,
+                Some(vec![content_node(
+                    "deep",
+                    true,
+                    Some(vec![content_node(
+                        "needle.rs",
+                        false,
+                        None,
+                        vec![content_match(2, "let needle = 1;")]
+                    )]),
+                    vec![]
+                )]),
+                vec![]
+            )]
+        );
+    }
+
+    #[test]
+    fn search_contents_excludes_denylisted_directories() {
+        let fixture = Fixture::new("content-denylist", &[]);
+        fixture.write("node_modules/lib/index.js", b"needle inside a dependency");
+        fixture.write("src/app.rs", b"// needle marker");
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert_eq!(
+            result.nodes,
+            vec![content_node(
+                "src",
+                true,
+                Some(vec![content_node(
+                    "app.rs",
+                    false,
+                    None,
+                    vec![content_match(1, "// needle marker")]
+                )]),
+                vec![]
+            )]
+        );
+    }
+
+    #[test]
+    fn search_contents_is_case_insensitive() {
+        let fixture = Fixture::new("content-case", &[]);
+        fixture.write("file.txt", b"This Line Has NEEDLE in it");
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert_eq!(
+            result.nodes,
+            vec![content_node(
+                "file.txt",
+                false,
+                None,
+                vec![content_match(1, "This Line Has NEEDLE in it")]
+            )]
+        );
+    }
+
+    #[test]
+    fn search_contents_skips_binary_files() {
+        let fixture = Fixture::new("content-binary", &[]);
+        fixture.write("binary.dat", &[b'n', b'e', b'e', b'd', b'l', b'e', 0, 1, 2]);
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert!(result.nodes.is_empty());
+    }
+
+    #[test]
+    fn search_contents_returns_empty_for_a_blank_query() {
+        let fixture = Fixture::new("content-blank", &[]);
+        fixture.write("file.txt", b"anything");
+
+        let result =
+            explorer_search_contents(fixture.0.to_string_lossy().into_owned(), "   ".to_string())
+                .expect("search should succeed");
+
+        assert!(result.nodes.is_empty());
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn search_contents_per_file_cap_does_not_starve_a_sibling_file() {
+        let fixture = Fixture::new("content-per-file-cap", &[]);
+        let many_lines: String = (0..100)
+            .map(|index| format!("needle line {index}\n"))
+            .collect();
+        fixture.write("huge.txt", many_lines.as_bytes());
+        fixture.write("small.txt", b"needle once\n");
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        let huge = result
+            .nodes
+            .iter()
+            .find(|node| node.name == "huge.txt")
+            .expect("huge.txt should still be listed");
+        assert_eq!(huge.matches.len(), MAX_CONTENT_MATCHES_PER_FILE);
+        let small = result
+            .nodes
+            .iter()
+            .find(|node| node.name == "small.txt")
+            .expect("small.txt must not be starved by huge.txt's own cap");
+        assert_eq!(small.matches.len(), 1);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn search_contents_reports_truncated_once_the_total_cap_is_exceeded() {
+        let fixture = Fixture::new("content-total-cap", &[]);
+        let per_file: String = (0..MAX_CONTENT_MATCHES_PER_FILE)
+            .map(|index| format!("needle {index}\n"))
+            .collect();
+        // 26 files × 20 matches each (the per-file cap) = 520, past
+        // MAX_CONTENT_SEARCH_MATCHES (500).
+        for file_index in 0..26 {
+            fixture.write(&format!("file{file_index}.txt"), per_file.as_bytes());
+        }
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn search_contents_truncates_an_overly_long_matched_line_in_the_preview() {
+        let fixture = Fixture::new("content-long-line", &[]);
+        let long_line = format!("{}needle{}", "a".repeat(300), "b".repeat(300));
+        fixture.write("long.txt", long_line.as_bytes());
+
+        let result = explorer_search_contents(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        let matches = &result.nodes[0].matches;
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].preview.chars().count(), PREVIEW_MAX_CHARS + 1);
+        assert!(matches[0].preview.ends_with('…'));
     }
 
     #[test]

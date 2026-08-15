@@ -161,6 +161,7 @@ pub fn run() {
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,
+            explorer_fs::explorer_search_contents,
             explorer_fs::explorer_read_file,
             explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
