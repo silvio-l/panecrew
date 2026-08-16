@@ -44,6 +44,25 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.10] - 2026-08-16
+### Geändert
+- Das Fenster-Ressourcenverbrauchs-Popover in der Titelleiste listet jetzt
+  alle offenen Fenster auf, nicht mehr nur das gerade betrachtete.
+
+### Behoben
+- Der Fokuswechsel zwischen Panes konnte die App kurzzeitig einfrieren
+  lassen (Beachball unter macOS): eine Hintergrundprüfung baute die
+  komplette native Menüleiste weit öfter neu, als nötig. Sie baut jetzt nur
+  noch neu, wenn sich tatsächlich etwas geändert hat.
+- Das Menü "Zuletzt geöffnete Projekte" konnte nach dem Öffnen oder
+  Schließen von Projekten hinterherhinken oder veraltete Einträge zeigen —
+  behoben durch dieselbe Änderung wie oben.
+- Das Öffnen eines Projekts über das Menü "Zuletzt geöffnete Projekte" oder
+  Cmd+O konnte stillschweigend ersetzen, was gerade in der fokussierten
+  Pane lief. Es öffnet jetzt nur noch in eine leere Pane; sind alle Panes
+  bereits belegt, fragt PaneCrew stattdessen nach, ob das Projekt in einem
+  neuen Fenster geöffnet werden soll.
+
 ## [0.1.0-nightly.9] - 2026-08-16
 ### Behoben
 - Die Speicherwarnung in der Titelleiste konnte auf Rechnern mit weniger

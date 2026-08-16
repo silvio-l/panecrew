@@ -42,6 +42,23 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.10] - 2026-08-16
+### Changed
+- The window resource usage popover in the title bar now lists every open
+  window, not just the one you're currently looking at.
+
+### Fixed
+- Switching focus between panes could occasionally make the app briefly
+  unresponsive (beachball on macOS): a background check was rebuilding the
+  whole native menu bar far more often than needed. It now only rebuilds
+  when something actually changed.
+- The "Recent Projects" menu could lag behind or show stale entries after
+  opening or closing projects; fixed by the same change as above.
+- Opening a project from the "Recent Projects" menu or Cmd+O could silently
+  replace whatever was running in the currently focused pane. It now only
+  opens into an empty pane; if every pane is already in use, PaneCrew asks
+  whether to open the project in a new window instead.
+
 ## [0.1.0-nightly.9] - 2026-08-16
 ### Fixed
 - The title bar's memory warning could trigger far too easily on machines
