@@ -80,6 +80,36 @@ export interface SessionState {
    * bereits über `App.tsx`s Resize-Handle, hier kommt nur die Persistenz
    * dazu). */
   explorer_width?: number | null;
+  /** Zuletzt geöffnete Projektpfade (Ticket 22), zuletzt geöffnet zuerst —
+   * App-weit wie `expanded_folders`/`explorer_width`, nicht je Fenster/Slot.
+   * Auf max. `RECENT_PROJECTS_MAX` Einträge gekappt; kein Pinning. */
+  recent_projects?: string[];
+}
+
+/** Max. Einträge der Recent-Projects-Liste (Ticket 22). */
+export const RECENT_PROJECTS_MAX = 8;
+
+/** Rückt `path` an den Anfang der Liste — verschiebt einen bereits
+ * vorhandenen Eintrag statt ihn zu duplizieren — und kappt auf
+ * `RECENT_PROJECTS_MAX`. */
+export function withRecentProject(
+  recentProjects: readonly string[],
+  path: string,
+): string[] {
+  return [path, ...recentProjects.filter((existing) => existing !== path)].slice(
+    0,
+    RECENT_PROJECTS_MAX,
+  );
+}
+
+/** Entfernt genau `path` aus der Liste ("Aus Liste entfernen") — löscht nur
+ * den Listeneintrag, nie das Projekt selbst. No-Op, wenn `path` nicht
+ * enthalten ist. */
+export function withoutRecentProject(
+  recentProjects: readonly string[],
+  path: string,
+): string[] {
+  return recentProjects.filter((existing) => existing !== path);
 }
 
 /** Baut den zu persistierenden Zustand EINES Fensters (Ticket 27) aus dem

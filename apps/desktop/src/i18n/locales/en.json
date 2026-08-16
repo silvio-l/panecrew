@@ -167,7 +167,8 @@
   },
   "projectPicker": {
     "choose": "Choose project",
-    "hint": "PaneCrew starts a real shell in it."
+    "hint": "PaneCrew starts a real shell in it.",
+    "removeRecent": "Remove from list"
   },
   "templateSwitcher": {
     "selectTemplate": "Choose template",

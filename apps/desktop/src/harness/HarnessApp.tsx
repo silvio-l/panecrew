@@ -169,6 +169,9 @@ export function HarnessApp({
                 // Storyboard-getriebene Panes klicken sich nie selbst zu —
                 // ein leerer Slot bleibt im Harness leer.
                 onAssignProject={() => undefined}
+                recentProjects={[]}
+                onOpenRecentProject={() => undefined}
+                onRemoveRecentProject={() => undefined}
                 onClosePane={grid.closePane}
                 // Dieselbe Öffnen-zuerst-dann-schließen-Reihenfolge wie
                 // App.tsx' `restartTerminatedTab` (kein Bestätigungsdialog

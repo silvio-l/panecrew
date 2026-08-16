@@ -419,11 +419,21 @@ describe("App", () => {
       );
     });
 
-    // Der Ordnername trägt Pane-Header und Explorer-Kopf.
+    // Der Ordnername trägt Pane-Header und Explorer-Kopf. Gescopte Queries
+    // (Ticket 22): die drei noch leeren Slots zeigen "storefront" jetzt auch
+    // in ihrer eigenen Zuletzt-geöffnet-Liste, ein blankes `getAllByText`
+    // zählte die mit.
     expect(
       await screen.findByLabelText("Terminal storefront"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("storefront")).toHaveLength(2);
+    expect(
+      within(screen.getByRole("complementary")).getAllByText("storefront"),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Terminal storefront")).getAllByText(
+        "storefront",
+      ),
+    ).toHaveLength(1);
     expect(screen.getByText("Kein Dateibaum geladen.")).toBeInTheDocument();
   });
 
@@ -2318,12 +2328,24 @@ describe("Grid / Mehrfach-Pane", () => {
     await screen.findByLabelText("Terminal admin");
 
     // admin wurde zuletzt zugewiesen und ist damit fokussiert: sein Name
-    // steht doppelt (eigener Pane-Header + Explorer-Kopf), storefronts nur
-    // noch in seinem eigenen Pane-Header.
+    // steht im Explorer-Kopf UND im eigenen Pane-Header, storefronts nur
+    // noch in seinem eigenen Pane-Header. Gescopte Queries statt blankem
+    // `getAllByText` (Ticket 22): die beiden noch leeren Slots zeigen jetzt
+    // ebenfalls "admin"/"storefront" in ihrer Zuletzt-geöffnet-Liste — ein
+    // legitimer weiterer Fundort, den diese Zusicherung nicht meint.
+    const explorer = screen.getByRole("complementary");
     await waitFor(() => {
-      expect(screen.getAllByText("admin")).toHaveLength(2);
+      expect(within(explorer).getByText("admin")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("storefront")).toHaveLength(1);
+    expect(within(explorer).queryByText("storefront")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Terminal admin")).getAllByText("admin"),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Terminal storefront")).getAllByText(
+        "storefront",
+      ),
+    ).toHaveLength(1);
   });
 
   it("blendet beim Datei-Öffnen nur das Terminal der fokussierten Pane aus, die andere bleibt sichtbar", async () => {
@@ -2642,6 +2664,102 @@ describe("Titelleisten-Pfeile (Pane-Navigation)", () => {
     expect(
       screen.getByRole("button", { name: "Rotation starten" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  it("öffnet einen Eintrag der Liste direkt im leeren Slot und schiebt ihn an den Listenanfang", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: [
+            "/Users/dev/projects/newest",
+            "/Users/dev/projects/older",
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    const olderRow = await screen.findByRole("button", { name: "older" });
+    fireEvent.click(olderRow);
+
+    expect(await screen.findByLabelText("Terminal older")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/older" }),
+      );
+    });
+
+    // Der geöffnete Eintrag rückt an den Listenanfang, "newest" bleibt
+    // erhalten, nur die Reihenfolge dreht sich.
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        ([cmd]) => cmd === "session_save_window",
+      );
+      const last = calls[calls.length - 1]?.[1] as
+        | { recentProjects?: string[] }
+        | undefined;
+      expect(last?.recentProjects).toEqual([
+        "/Users/dev/projects/older",
+        "/Users/dev/projects/newest",
+      ]);
+    });
+  });
+
+  it("entfernt einen Eintrag über das Kontextmenü, ohne ihn zu öffnen", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: [
+            "/Users/dev/projects/keep",
+            "/Users/dev/projects/drop",
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    const dropRow = await screen.findByRole("button", { name: "drop" });
+    fireEvent.contextMenu(dropRow);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Aus Liste entfernen" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "drop" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "keep" })).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_spawn",
+      expect.objectContaining({ cwd: "/Users/dev/projects/drop" }),
+    );
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        ([cmd]) => cmd === "session_save_window",
+      );
+      const last = calls[calls.length - 1]?.[1] as
+        | { recentProjects?: string[] }
+        | undefined;
+      expect(last?.recentProjects).toEqual(["/Users/dev/projects/keep"]);
+    });
   });
 });
 

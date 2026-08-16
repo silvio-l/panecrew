@@ -84,7 +84,13 @@ import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
-import { buildWindowState, restoredSlots, restoredTemplate } from "./session/sessionState";
+import {
+  buildWindowState,
+  restoredSlots,
+  restoredTemplate,
+  withRecentProject,
+  withoutRecentProject,
+} from "./session/sessionState";
 import { loadSession, saveSessionWindow } from "./session/sessionStore";
 import { windowIdentity } from "./window/useWindowIdentity";
 import { isMacPlatform } from "./shortcuts/platform";
@@ -282,6 +288,13 @@ function App() {
   // Eintrag heißt "nichts weicht vom Default ab" — `ExplorerPanel` bleibt dann
   // bei ihrem eigenen Alles-eingeklappt-Default.
   const [expandedFolders, setExpandedFolders] = useState<Record<string, string[]>>({});
+  // App-weite Liste zuletzt geöffneter Projekte (Ticket 22), zuletzt zuerst —
+  // wie `expandedFolders`/`explorerWidth` ein window-agnostischer Global, der
+  // über `saveSessionWindow`s Globals-Kanal mitläuft statt eine eigene
+  // Persistenz-Anbindung zu brauchen.
+  const [recentProjects, setRecentProjects] = useState<string[]>([]);
+  const recordRecentProject = (path: string) =>
+    setRecentProjects((current) => withRecentProject(current, path));
   // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
@@ -481,6 +494,7 @@ function App() {
         // Felder sind window-agnostische Globals (Ticket 27) — jedes Fenster
         // liest denselben Stand, unabhängig von seinem eigenen `label`.
         setExpandedFolders(session.expanded_folders ?? {});
+        setRecentProjects(session.recent_projects ?? []);
         if (session.explorer_width) {
           const restoredWidth = Math.min(
             EXPLORER_MAX_WIDTH,
@@ -530,7 +544,10 @@ function App() {
         : null;
       if (!isCancelled() && launchPath) {
         const project = await loadProject(launchPath);
-        if (!isCancelled()) assignProject(0, project.path);
+        if (!isCancelled()) {
+          assignProject(0, project.path);
+          recordRecentProject(project.path);
+        }
       }
 
       if (!isCancelled()) setHydrated(true);
@@ -578,8 +595,17 @@ function App() {
       buildWindowState(windowId.label, gridState, selectedFile),
       expandedFolders,
       persistedExplorerWidth,
+      recentProjects,
     );
-  }, [hydrated, gridState, selectedFile, expandedFolders, persistedExplorerWidth, windowId.label]);
+  }, [
+    hydrated,
+    gridState,
+    selectedFile,
+    expandedFolders,
+    persistedExplorerWidth,
+    recentProjects,
+    windowId.label,
+  ]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -666,6 +692,7 @@ function App() {
           if (!next) return;
           if (outgoing) paneFileEditors.forget(outgoing.paneId);
           assignProject(slotIndex, next.path);
+          recordRecentProject(next.path);
         })
         .catch((error: unknown) => {
           console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
@@ -675,6 +702,35 @@ function App() {
     if (outgoing) guardLeave(outgoing.paneId, proceed);
     else proceed();
   };
+
+  // Öffnet einen Eintrag der Recent-Projects-Liste (Ticket 22) direkt in
+  // `slotIndex`, ohne den Dateiauswahldialog — derselbe Verdrängungs-Guard
+  // wie `assignProjectToSlot` oben, weil ein belegter Zielslot genauso eine
+  // laufende PTY beendet. `loadProject` scheitert für einen inzwischen
+  // verschwundenen Ordner nicht (leerer Baum + `treeError`, s.
+  // `loadProject.ts`), also kein gesonderter Fehlerpfad hier — derselbe
+  // Zustand, den ein manuell über den Dialog erneut gewähltes, seitdem
+  // gelöschtes Projekt auch hätte.
+  const openRecentProject = (path: string, slotIndex: number) => {
+    const outgoing = gridState.slots[slotIndex];
+    const proceed = () => {
+      setPickingSlot(slotIndex);
+      void loadProject(path)
+        .then((next) => {
+          if (outgoing) paneFileEditors.forget(outgoing.paneId);
+          assignProject(slotIndex, next.path);
+          recordRecentProject(next.path);
+        })
+        .finally(() => setPickingSlot(null));
+    };
+    if (outgoing) guardLeave(outgoing.paneId, proceed);
+    else proceed();
+  };
+
+  // Kontextmenü-Eintrag „Aus Liste entfernen" (Ticket 22) — löscht nur den
+  // Listeneintrag, nie das Projekt selbst.
+  const removeRecentProject = (path: string) =>
+    setRecentProjects((current) => withoutRecentProject(current, path));
 
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.
@@ -1116,6 +1172,9 @@ function App() {
               // eine Baumzeile ziehen und eine Datei aus dem Finder halten.
               dragTargetPaneId={dragTargetPaneId ?? explorerDrag.targetPaneId}
               onAssignProject={assignProjectToSlot}
+              recentProjects={recentProjects}
+              onOpenRecentProject={openRecentProject}
+              onRemoveRecentProject={removeRecentProject}
               onClosePane={closePaneGuarded}
               onRestartTerminatedTab={restartTerminatedTab}
               onSwapPanes={swapPanes}

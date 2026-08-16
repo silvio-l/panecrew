@@ -92,6 +92,9 @@ export function PaneGrid({
   dropTargets,
   dragTargetPaneId,
   onAssignProject,
+  recentProjects,
+  onOpenRecentProject,
+  onRemoveRecentProject,
   onClosePane,
   onRestartTerminatedTab,
   onSwapPanes,
@@ -133,6 +136,14 @@ export function PaneGrid({
    * entstehen dagegen hier drin, s. u.) */
   dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
+  /** App-weite Liste zuletzt geöffneter Projekte (Ticket 22), zuletzt zuerst
+   * — an jeden leeren Slot gereicht, unabhängig vom Fenster/Slot selbst. */
+  recentProjects: readonly string[];
+  /** Klick auf einen Recent-Projects-Eintrag: öffnet ihn direkt in
+   * `slotIndex`, ohne den Dateiauswahldialog. */
+  onOpenRecentProject: (path: string, slotIndex: number) => void;
+  /** Kontextmenü „Aus Liste entfernen" eines Recent-Projects-Eintrags. */
+  onRemoveRecentProject: (path: string) => void;
   onClosePane: (paneId: string) => void;
   /** Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu
    * starten" im Terminated-Banner — unverändert bis zu `TerminalPane.tsx`
@@ -537,6 +548,9 @@ export function PaneGrid({
             restoring={restoringSlots.has(index)}
             slotIndex={index}
             focusModeActive={state.maximizedPaneId !== null}
+            recentProjects={recentProjects}
+            onOpenRecent={(path) => onOpenRecentProject(path, index)}
+            onRemoveRecent={onRemoveRecentProject}
             // Dasselbe zweistufige Zielangebot wie `dropInvite` der belegten
             // Zellen (gedämpfte Ecken ab dem Scharfwerden, voll unterm
             // Zeiger), mit derselben Zwei-Züge-Verzweigung wie dort: der

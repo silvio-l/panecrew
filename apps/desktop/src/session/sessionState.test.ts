@@ -7,7 +7,15 @@ import {
   switchToFileTab,
   switchToTerminalTab,
 } from "../grid/gridState";
-import { buildWindowState, restoredSlots, restoredTemplate, type SessionState } from "./sessionState";
+import {
+  RECENT_PROJECTS_MAX,
+  buildWindowState,
+  restoredSlots,
+  restoredTemplate,
+  withRecentProject,
+  withoutRecentProject,
+  type SessionState,
+} from "./sessionState";
 
 const LABEL = "main";
 
@@ -189,5 +197,47 @@ describe("restoredSlots", () => {
     };
 
     expect(restoredSlots(session, LABEL)).toEqual([]);
+  });
+});
+
+// Recent-Projects (Ticket 22): App-weite Liste, "zuletzt geöffnet zuerst",
+// max. 8 Einträge, kein Pinning. Reine Funktionen, damit App.tsx nur noch
+// verdrahtet, nicht selbst die Sortier-/Kappungslogik trägt.
+describe("withRecentProject", () => {
+  it("stellt einen neuen Pfad an den Anfang", () => {
+    expect(withRecentProject(["/repo/b"], "/repo/a")).toEqual([
+      "/repo/a",
+      "/repo/b",
+    ]);
+  });
+
+  it("verschiebt einen bereits vorhandenen Pfad an den Anfang, statt ihn zu duplizieren", () => {
+    expect(withRecentProject(["/repo/a", "/repo/b"], "/repo/b")).toEqual([
+      "/repo/b",
+      "/repo/a",
+    ]);
+  });
+
+  it(`kappt bei ${RECENT_PROJECTS_MAX} Einträgen`, () => {
+    const full = Array.from({ length: RECENT_PROJECTS_MAX }, (_, i) => `/repo/${i}`);
+    const next = withRecentProject(full, "/repo/new");
+
+    expect(next).toHaveLength(RECENT_PROJECTS_MAX);
+    expect(next[0]).toBe("/repo/new");
+    expect(next).not.toContain(`/repo/${RECENT_PROJECTS_MAX - 1}`);
+  });
+});
+
+describe("withoutRecentProject", () => {
+  it("entfernt genau den angegebenen Pfad", () => {
+    expect(
+      withoutRecentProject(["/repo/a", "/repo/b"], "/repo/a"),
+    ).toEqual(["/repo/b"]);
+  });
+
+  it("ist ein No-Op, wenn der Pfad nicht in der Liste steht", () => {
+    expect(withoutRecentProject(["/repo/a"], "/repo/z")).toEqual([
+      "/repo/a",
+    ]);
   });
 });
