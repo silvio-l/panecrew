@@ -230,22 +230,18 @@ mod tests {
     /// so it silently dropped whatever that shell spawned (an agent CLI, a
     /// dev server, ...) even though the tab breakdown directly below it — fed
     /// by the same recursive `walk_tree` exercised here — kept counting it
-    /// fully.
-    #[cfg(unix)]
-    #[test]
-    fn app_total_includes_what_a_tab_shell_spawns_not_just_the_shell_itself() {
+    /// fully. Platform-neutral: only spawning the real shell+child tree
+    /// differs per OS (see the two `#[cfg]`-gated callers below), everything
+    /// from sampling onward is identical sysinfo/`resource_guard` logic on
+    /// every platform.
+    #[cfg(any(unix, windows))]
+    fn assert_app_total_beats_the_old_shell_only_figure(root_pid: sysinfo::Pid) {
         use crate::resource_guard;
         use std::collections::HashMap;
         use sysinfo::Pid;
 
-        let mut shell = std::process::Command::new("sh")
-            .args(["-c", "sleep 30 & wait"])
-            .spawn()
-            .expect("spawning a real shell + child process tree should succeed");
-        let root_pid = Pid::from_u32(shell.id());
-
-        // Give the shell a moment to actually fork its child before sampling.
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Give the shell a moment to actually spawn its child before sampling.
+        std::thread::sleep(std::time::Duration::from_millis(300));
 
         let mut system = System::new();
         system.refresh_processes_specifics(
@@ -293,6 +289,36 @@ mod tests {
             "the fixed header total ({fixed_total}) must exceed what the old, pre-fix logic \
              would have reported ({old_naive_total}) for a tab whose shell has spawned a child"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_total_includes_what_a_tab_shell_spawns_not_just_the_shell_itself() {
+        let mut shell = std::process::Command::new("sh")
+            .args(["-c", "sleep 30 & wait"])
+            .spawn()
+            .expect("spawning a real shell + child process tree should succeed");
+
+        assert_app_total_beats_the_old_shell_only_figure(sysinfo::Pid::from_u32(shell.id()));
+
+        let _ = shell.kill();
+        let _ = shell.wait();
+    }
+
+    /// Windows twin of the Unix test above: `cmd.exe /c "ping ... >NUL"` gives
+    /// the same real two-level tree (`cmd.exe` waits on a spawned `ping.exe`
+    /// child) without the classic `timeout.exe` trap — it refuses to run at
+    /// all ("Input redirection is not supported") when spawned without an
+    /// inherited console, which `std::process::Command` doesn't give it here.
+    #[cfg(windows)]
+    #[test]
+    fn app_total_includes_what_a_tab_shell_spawns_not_just_the_shell_itself() {
+        let mut shell = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 31 127.0.0.1 >NUL"])
+            .spawn()
+            .expect("spawning a real shell + child process tree should succeed");
+
+        assert_app_total_beats_the_old_shell_only_figure(sysinfo::Pid::from_u32(shell.id()));
 
         let _ = shell.kill();
         let _ = shell.wait();

@@ -1244,6 +1244,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn preserves_the_original_files_permissions_after_a_write() {
         use std::os::unix::fs::PermissionsExt;
 
