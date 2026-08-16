@@ -238,7 +238,7 @@ fn step(input: StepInput) -> (StageKind, Option<u32>, u8, Vec<Action>) {
 /// `resource_monitor.rs`s eigene App-weite Aggregation vor der Division durch
 /// `cpu_cores` verwendet; die Normalisierung (und für die App-weite Anzeige
 /// zusätzlich die 15s-Glättung) bleibt Sache des jeweiligen Aufrufers.
-fn walk_tree(
+pub(crate) fn walk_tree(
     system: &System,
     children: &HashMap<Pid, Vec<Pid>>,
     root: Pid,
@@ -355,6 +355,12 @@ pub struct TabResourceSample {
     /// zusätzlich das App-weite Gesamt-RAM UND würde Rundungsdrift einführen
     /// (der Prozentwert ist schon auf zwei Nachkommastellen im f32 gerundet).
     pub mem_bytes: u64,
+    /// Rohe (nicht auf Kernzahl normalisierte) CPU-Summe des Tab-Prozessbaums
+    /// in sysinfos Pro-Kern-Konvention — dasselbe Prinzip wie `mem_bytes`
+    /// oben: getrennt von `cpu_percent` mitgereicht, damit `resource_monitor.rs`
+    /// die App-weite CPU-Summe daraus aufbauen kann, statt sie aus dem schon
+    /// normalisierten, schon gerundeten Prozentwert zurückzurechnen.
+    pub cpu_raw: f32,
 }
 
 /// Von `resource_monitor`s 5-Sekunden-Tick zusätzlich zu dessen eigener
@@ -410,6 +416,7 @@ pub fn tick_all(
             mem_percent: percent,
             cpu_percent,
             mem_bytes: total_rss,
+            cpu_raw: total_cpu_raw,
         });
         let offender = members
             .iter()

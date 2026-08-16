@@ -1,13 +1,14 @@
 //! Hintergrund-Sampler für die Ressourcenanzeige der Titelleiste: PaneCrews
-//! eigener Prozess plus jeder lebende PTY-Kindprozess (die von der App selbst
-//! gestarteten Shells), auf niedrigem, festem Takt refresht — günstig genug,
-//! um über die gesamte Prozesslaufzeit mitzulaufen.
+//! eigener Prozess plus, für jede lebende PTY, deren gesamter rekursiver
+//! Prozessbaum (Shell + alle Nachfahren — ein Agent-CLI, ein Dev-Server, ...,
+//! s. `resource_guard::tick_all`), auf niedrigem, festem Takt refresht —
+//! günstig genug, um über die gesamte Prozesslaufzeit mitzulaufen.
 
 use std::collections::VecDeque;
 use std::time::Duration;
 
 use serde::Serialize;
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty_commands::PtyState;
@@ -21,7 +22,7 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 // über Zeit auf statt kurz zu zappeln.
 const CPU_SMOOTHING_WINDOW: usize = 3;
 
-// RAM = (eigene RSS + Summe aller PTY-Kind-RSS) / Gesamt-RAM. Ein einzelner
+// RAM = (eigene RSS + Summe aller PTY-Prozessbaum-RSS) / Gesamt-RAM. Ein einzelner
 // Prozess mit wenigen Panes bleibt üblicherweise deutlich unter 5 %; auch
 // mehrere schwere Dev-Tools parallel in den Panes (Cargo, rust-analyzer,
 // weitere Agents) treiben das transient auf 10-15 %, ohne dass etwas kaputt
@@ -69,7 +70,7 @@ struct ResourceUsage {
     cpu_percent: f32,
     mem_status: Status,
     cpu_status: Status,
-    /// Rohe App-weite RSS-Summe (eigener Prozess + alle PTY-Kinder) in Bytes
+    /// Rohe App-weite RSS-Summe (eigener Prozess + alle PTY-Prozessbäume) in Bytes
     /// — dieselbe Zahl, aus der `mem_percent` oben abgeleitet ist. Roh
     /// mitgeschickt statt dem Frontend das Zurückrechnen aus dem
     /// Prozentwert zu überlassen (bräuchte dort zusätzlich das
@@ -88,14 +89,20 @@ fn classify(percent: f32, warn: f32, critical: f32) -> Status {
     }
 }
 
-fn collect_pids(app: &AppHandle) -> Vec<Pid> {
-    let mut pids: Vec<Pid> = Vec::new();
-    if let Ok(own) = sysinfo::get_current_pid() {
-        pids.push(own);
-    }
-    let state = app.state::<PtyState>();
-    pids.extend(state.child_pids().into_iter().map(Pid::from_u32));
-    pids
+/// App-weite RSS/CPU-Summe: PaneCrews eigener Prozess plus jede Tab-Baumsumme,
+/// die `resource_guard::tick_all` bereits rekursiv gebildet hat (Shell + jeder
+/// Nachfahre, den sie startet — ein Agent-CLI, ein Dev-Server, ...). Vorher
+/// summierte diese Schleife stattdessen je Tab nur die nackte Shell-Pid über
+/// `PtyState::child_pids()` — alles, was eine Shell selbst startet, fiel aus
+/// der Titelleisten-Gesamtsumme heraus, während die Tab-Aufschlüsselung
+/// direkt darunter (gespeist aus demselben rekursiven Tree-Walk) es weiter
+/// vollständig zählte: die Kopfzeile konnte einen Bruchteil dessen zeigen, was
+/// ein einzelner darunter aufgelisteter Tab schon für sich allein auswies.
+/// Kein `System`-Zugriff, vollständig ohne `AppHandle`/`System` testbar.
+fn aggregate_app_totals(own_mem: u64, own_cpu_raw: f32, tab_samples: &[resource_guard::TabResourceSample]) -> (u64, f32) {
+    let mem_bytes = tab_samples.iter().map(|s| s.mem_bytes).fold(own_mem, |acc, m| acc + m);
+    let cpu_raw = tab_samples.iter().map(|s| s.cpu_raw).fold(own_cpu_raw, |acc, c| acc + c);
+    (mem_bytes, cpu_raw)
 }
 
 /// Startet den Sampler-Thread; läuft für die gesamte Prozesslebensdauer —
@@ -111,8 +118,7 @@ pub fn start(app: AppHandle) {
         let mut cpu_history: VecDeque<f32> = VecDeque::with_capacity(CPU_SMOOTHING_WINDOW);
 
         loop {
-            let pids = collect_pids(&app);
-            // `All` instead of only the own+children pids collected above:
+            // `All` instead of only PaneCrew's own pid and its PTY shells:
             // `resource_guard`'s per-tab tree walk needs every process'
             // parent pointer to find descendants it doesn't already know the
             // pid of (a build tool, a leaked daemon, ...) — a targeted
@@ -136,14 +142,12 @@ pub fn start(app: AppHandle) {
                 cpu_cores,
             );
 
-            let mut mem_bytes: u64 = 0;
-            let mut cpu_sum: f32 = 0.0;
-            for pid in &pids {
-                if let Some(process) = system.process(*pid) {
-                    mem_bytes += process.memory();
-                    cpu_sum += process.cpu_usage();
-                }
-            }
+            let (own_mem, own_cpu_raw) = sysinfo::get_current_pid()
+                .ok()
+                .and_then(|pid| system.process(pid))
+                .map(|process| (process.memory(), process.cpu_usage()))
+                .unwrap_or((0, 0.0));
+            let (mem_bytes, cpu_sum) = aggregate_app_totals(own_mem, own_cpu_raw, &tab_samples);
 
             let total_memory = system.total_memory();
             let mem_percent = if total_memory == 0 {
@@ -193,5 +197,104 @@ mod tests {
         assert!(matches!(classify(8.1, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.0, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.1, 8.0, 20.0), Status::Critical));
+    }
+
+    #[test]
+    fn aggregate_app_totals_sums_own_process_and_every_tab_tree() {
+        let samples = vec![
+            resource_guard::TabResourceSample {
+                tab_id: "a".to_string(),
+                mem_percent: 1.0,
+                cpu_percent: 1.0,
+                mem_bytes: 200,
+                cpu_raw: 10.0,
+            },
+            resource_guard::TabResourceSample {
+                tab_id: "b".to_string(),
+                mem_percent: 2.0,
+                cpu_percent: 2.0,
+                mem_bytes: 300,
+                cpu_raw: 20.0,
+            },
+        ];
+        let (mem_bytes, cpu_raw) = aggregate_app_totals(100, 5.0, &samples);
+        assert_eq!(mem_bytes, 600, "own process (100) + tab a (200) + tab b (300)");
+        assert_eq!(cpu_raw, 35.0, "own process (5) + tab a (10) + tab b (20)");
+    }
+
+    /// Reproduces the reported bug against a REAL two-level process tree (a
+    /// shell that forks a child and waits on it) — same proof style as
+    /// `resource_guard.rs`'s own `primitives_against_a_real_process` module.
+    /// Before this fix, the header total was built from each tab's bare shell
+    /// pid alone (`PtyState::child_pids()`, i.e. exactly `root_only` below),
+    /// so it silently dropped whatever that shell spawned (an agent CLI, a
+    /// dev server, ...) even though the tab breakdown directly below it — fed
+    /// by the same recursive `walk_tree` exercised here — kept counting it
+    /// fully.
+    #[cfg(unix)]
+    #[test]
+    fn app_total_includes_what_a_tab_shell_spawns_not_just_the_shell_itself() {
+        use crate::resource_guard;
+        use std::collections::HashMap;
+        use sysinfo::Pid;
+
+        let mut shell = std::process::Command::new("sh")
+            .args(["-c", "sleep 30 & wait"])
+            .spawn()
+            .expect("spawning a real shell + child process tree should succeed");
+        let root_pid = Pid::from_u32(shell.id());
+
+        // Give the shell a moment to actually fork its child before sampling.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_memory().with_cpu(),
+        );
+        system.refresh_memory();
+
+        let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+        for (pid, process) in system.processes() {
+            if let Some(parent) = process.parent() {
+                children.entry(parent).or_default().push(*pid);
+            }
+        }
+
+        let (recursive_total, _cpu, members) = resource_guard::walk_tree(&system, &children, root_pid);
+        assert!(members.len() >= 2, "the shell should have spawned at least one live descendant");
+
+        let root_only = system.process(root_pid).map(|p| p.memory()).unwrap_or(0);
+        assert!(
+            recursive_total > root_only,
+            "the tab's recursive tree sum ({recursive_total}) must exceed the bare shell's own \
+             RSS ({root_only}) once it has spawned a child — this is exactly the number the \
+             header total was silently missing before `aggregate_app_totals` started folding in \
+             the recursive `TabResourceSample.mem_bytes` instead of only each tab's bare shell pid"
+        );
+
+        let (own_mem, own_cpu_raw) = sysinfo::get_current_pid()
+            .ok()
+            .and_then(|pid| system.process(pid))
+            .map(|p| (p.memory(), p.cpu_usage()))
+            .unwrap_or((0, 0.0));
+        let old_naive_total = own_mem + root_only;
+        let sample = resource_guard::TabResourceSample {
+            tab_id: "tab-1".to_string(),
+            mem_percent: 0.0,
+            cpu_percent: 0.0,
+            mem_bytes: recursive_total,
+            cpu_raw: 0.0,
+        };
+        let (fixed_total, _) = aggregate_app_totals(own_mem, own_cpu_raw, std::slice::from_ref(&sample));
+        assert!(
+            fixed_total > old_naive_total,
+            "the fixed header total ({fixed_total}) must exceed what the old, pre-fix logic \
+             would have reported ({old_naive_total}) for a tab whose shell has spawned a child"
+        );
+
+        let _ = shell.kill();
+        let _ = shell.wait();
     }
 }
