@@ -1,8 +1,22 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import "./jsdomStorageFix";
 import { setLanguage } from "../i18n";
+
+// `@tauri-apps/plugin-log`'s functions reach for the real Tauri IPC bridge
+// (`window.__TAURI_INTERNALS__`) synchronously, which doesn't exist under
+// jsdom — unmocked, any `debug()`/`info()`/`warn()`/`error()` call throws
+// past its own `void` call site instead of just rejecting. One global mock
+// here instead of per-test-file, since `src/logging/log.ts` is called from
+// ordinary app code paths (e.g. `PaneTabs.tsx`), not something each test
+// file exercising them would think to mock itself.
+vi.mock("@tauri-apps/plugin-log", () => ({
+  debug: vi.fn(() => Promise.resolve()),
+  info: vi.fn(() => Promise.resolve()),
+  warn: vi.fn(() => Promise.resolve()),
+  error: vi.fn(() => Promise.resolve()),
+}));
 
 // Die Test-Suite selbst ist auf deutsche UI-Strings geschrieben (jede
 // Assertion erwartet z. B. "Kopiert", nicht "Copied") — unabhängig davon,

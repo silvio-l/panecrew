@@ -16,7 +16,15 @@ import { useDetectedToolId } from "../terminal/useDetectedTool";
 import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
-import { logBug2 } from "../terminal/debugBug2";
+import { debug } from "../logging/log";
+
+// [DEBUG-a4f2] Kept at debug level through the general sink (src/logging/log.ts)
+// for the still-open intermittent context-menu bug — grep `[bug2]`. Migrate to
+// a real regression test / delete once the bug is fixed and reproduced once
+// through this logging.
+function logBug2(line: string): void {
+  void debug(`[bug2] ${line}`);
+}
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert) plus höchstens ein File-Tab, immer hinter allen

@@ -92,14 +92,9 @@ fn to_dto(entry: &crate::config_registry::SchemaEntry) -> SchemaEntryDto {
 /// app-data dir outright — the one seam that lets a second, automation-driven
 /// instance run against an isolated session/settings store while still
 /// inheriting the real `$HOME` (and therefore real shell/tool auth) for
-/// everything else. Settings I/O, PTY session persistence, and the settings
-/// registry all route through this function rather than
-/// `app.path().app_data_dir()` directly, so the override is honored there.
-/// Known gap: `windows.rs`'s persisted-window restore/save paths still call
-/// `app.path().app_data_dir()` directly and are not yet covered — an
-/// override-isolated instance's window layout still reads/writes the real
-/// session file. Fold in before relying on this for anything beyond
-/// settings/PTY-session isolation.
+/// everything else. Every call site in the crate that needs the app-data dir
+/// routes through this function rather than `app.path().app_data_dir()`
+/// directly, so the override is honored everywhere or nowhere.
 pub(crate) fn app_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, String> {
     if let Ok(override_dir) = std::env::var("PANECREW_DATA_DIR_OVERRIDE") {
         return Ok(std::path::PathBuf::from(override_dir));

@@ -103,7 +103,7 @@ pub fn prewarm(app: &AppHandle) {
     // No opener at app-start — same primary-monitor `.center()` fallback as
     // always; `show()`'s first real invocation repositions it anyway.
     if let Err(error) = build_hidden(app, None) {
-        eprintln!("PaneCrew: Einstellungen-Fenster konnte nicht vorgewärmt werden: {error}");
+        log::warn!("settings window could not be prewarmed: {error}");
     }
     // Bewusst KEIN arm_reveal_watchdog: dieses Fenster soll unsichtbar
     // bleiben, bis `show()` es explizit anfordert (setzt OPEN_REQUESTED) —
@@ -141,7 +141,7 @@ pub fn show(app: &AppHandle, opener: &Window) {
     }
 
     if let Err(error) = build_hidden(app, position) {
-        eprintln!("PaneCrew: Einstellungen-Fenster konnte nicht geöffnet werden: {error}");
+        log::warn!("settings window could not be opened: {error}");
         return;
     }
     arm_reveal_watchdog(app);

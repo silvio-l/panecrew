@@ -274,14 +274,12 @@ fn execute(app: &AppHandle, tab_id: &str, percent: f32, action: Action) {
     match action {
         Action::Suspend(pid) => {
             if let Err(error) = suspend_process(pid) {
-                eprintln!("PaneCrew: resource_guard: Pausieren von pid {pid} fehlgeschlagen: {error}");
+                log::warn!("resource_guard: suspending pid {pid} failed: {error}");
             }
         }
         Action::KillSingle(pid) => {
             if let Err(error) = kill_single_process(pid) {
-                eprintln!(
-                    "PaneCrew: resource_guard: gezielter Kill von pid {pid} fehlgeschlagen: {error}"
-                );
+                log::warn!("resource_guard: targeted kill of pid {pid} failed: {error}");
             }
         }
         Action::KillTab => {
@@ -289,7 +287,7 @@ fn execute(app: &AppHandle, tab_id: &str, percent: f32, action: Action) {
             let registry = app.state::<WindowPtyRegistry>();
             registry.unregister(tab_id);
             if let Err(error) = pty_commands::kill(&state, tab_id) {
-                eprintln!("PaneCrew: resource_guard: Tab-Kill fehlgeschlagen: {error}");
+                log::warn!("resource_guard: tab kill failed: {error}");
             }
         }
         Action::EmitNormal => {
@@ -509,7 +507,7 @@ pub fn resource_guard_kill_manual(app: AppHandle, tab_id: String) {
     let registry = app.state::<WindowPtyRegistry>();
     registry.unregister(&tab_id);
     if let Err(error) = pty_commands::kill(&state, &tab_id) {
-        eprintln!("PaneCrew: resource_guard: manueller Kill fehlgeschlagen: {error}");
+        log::warn!("resource_guard: manual kill failed: {error}");
     }
     let _ = app.emit(
         EVENT_TERMINATED,
