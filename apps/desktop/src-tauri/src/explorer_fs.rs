@@ -9,13 +9,23 @@
 use std::io;
 use std::path::Path;
 
-/// Directories skipped at any depth, alongside `.git`: build output and
-/// dependency trees nobody browses through the explorer, and which can
-/// dwarf a project's actual source by orders of magnitude.
+/// Build output and dependency trees, large enough to dwarf a project's
+/// actual source by orders of magnitude. Once also hid these from the plain
+/// tree view (`explorer_read_dir`) — reverted (2026-08-16): the reference
+/// editor's own `files.exclude` default only hides `.git`/`.svn`/`.hg`/
+/// `.DS_Store`/`Thumbs.db`, NOT `node_modules` (that's `search.exclude`, a
+/// completely separate, search-only list) — its Explorer shows the real
+/// directory as it is, dependency/build noise included, and only keeps it
+/// out of search results and (via its own `files.watcherExclude`, narrower
+/// still) out of the heaviest watch churn. This list is now exactly that: a
+/// search/watch-only exclusion, shared between `search_walk`/
+/// `content_search_walk` below and `explorer_watch.rs`, never applied to the
+/// tree itself.
 const DENYLIST: &[&str] = &["node_modules", "target", "dist", "build", ".next", "out"];
 
-/// Shared with `explorer_watch.rs` so the tree reader and the filesystem
-/// watcher can never drift apart on which directories to skip.
+/// Shared with `explorer_watch.rs` so recursive search and the filesystem
+/// watcher can never drift apart on which directories to skip. NOT used by
+/// the plain tree view (`explorer_read_dir`) — see `DENYLIST`'s doc comment.
 pub(crate) fn is_ignored_entry(name: &str) -> bool {
     name == ".git" || DENYLIST.contains(&name)
 }
@@ -36,13 +46,15 @@ pub struct DirEntryNode {
 
 #[tauri::command(async)]
 pub fn explorer_read_dir(path: String) -> Result<Vec<DirEntryNode>, String> {
-    // `include_git: true` — anders als beim rekursiven Name-/Inhaltssuchlauf
-    // (`search_walk`/`content_search_walk`, beide bewusst weiter ohne `.git`)
-    // ist das hier die direkte, nicht-rekursive Baum-Ansicht: der Nutzer
-    // klappt `.git` selbst auf, wenn er hineinschauen will, es kann hier also
-    // nicht wie bei einer Volltextsuche unbemerkt tausende Git-Objekte
-    // durchpflügen.
-    read_dir_entries(Path::new(&path), true)
+    // `filter: false` — the plain tree view shows the real directory as it
+    // is, unlike the rekursiven Suchläufe unten (`search_walk`/
+    // `content_search_walk`, beide weiter mit `filter: true`): anders als
+    // eine Volltextsuche, die unbemerkt tausende Git-Objekte oder
+    // Dependency-Dateien durchpflügen könnte, klappt der Nutzer hier jeden
+    // Ordner selbst auf, wenn er hineinschauen will (siehe `DENYLIST`s
+    // Kopfkommentar für die Referenz-Editor-Recherche, an der sich diese
+    // Trennung orientiert).
+    read_dir_entries(Path::new(&path), false)
         .map_err(|error| format!("Verzeichnis konnte nicht gelesen werden: {error}"))
 }
 
@@ -267,30 +279,25 @@ pub fn explorer_write_file(
     file_stamp(&metadata)
 }
 
-/// One directory level, denylist-filtered and sorted folders-before-files
-/// (both case-insensitive — same convention `path_probe.rs` uses for its own
-/// directory listing). No recursion, no budget: the shared primitive behind
-/// `explorer_read_dir` (lazy expansion), `search_walk` (full-tree name
-/// search) and `content_search_walk` (full-tree content search).
+/// One directory level, sorted folders-before-files (both case-insensitive —
+/// same convention `path_probe.rs` uses for its own directory listing). No
+/// recursion, no budget: the shared primitive behind `explorer_read_dir`
+/// (lazy expansion), `search_walk` (full-tree name search) and
+/// `content_search_walk` (full-tree content search).
 ///
-/// `include_git` lets `explorer_read_dir` show a `.git` entry instead of
-/// hiding it like the rest of the denylist — it's a real, browsable
-/// directory the user may deliberately want to look inside, unlike
-/// `node_modules`/`target`/etc., which are pure build/dependency noise. The
-/// two recursive search walks always pass `false`: unlike the flat tree
-/// view, a search silently descending into `.git`'s object store would
-/// walk thousands of opaque blobs for no benefit.
-fn read_dir_entries(dir: &Path, include_git: bool) -> io::Result<Vec<DirEntryNode>> {
+/// `filter` applies `is_ignored_entry`'s denylist (`node_modules`/`target`/…
+/// and `.git`) — `true` for the two recursive search walks, which would
+/// otherwise silently churn through thousands of dependency files or opaque
+/// git objects for no benefit. `explorer_read_dir` passes `false`: the plain
+/// tree view shows the real directory as it is, the same split the reference
+/// editor itself draws between `files.exclude` (near-empty by default) and
+/// `search.exclude` (see `DENYLIST`'s doc comment).
+fn read_dir_entries(dir: &Path, filter: bool) -> io::Result<Vec<DirEntryNode>> {
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.flatten().collect();
 
-    entries.retain(|entry| {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if include_git && name == ".git" {
-            return true;
-        }
-        !is_ignored_entry(&name)
-    });
+    if filter {
+        entries.retain(|entry| !is_ignored_entry(&entry.file_name().to_string_lossy()));
+    }
 
     // `is_dir()` on the resolved path, not `DirEntry::file_type()` — the
     // latter doesn't follow symlinks on Unix, which would flip a symlinked
@@ -370,7 +377,7 @@ fn search_walk(
     matches: &mut usize,
     truncated: &mut bool,
 ) -> io::Result<Vec<SearchTreeNode>> {
-    let entries = read_dir_entries(dir, false)?;
+    let entries = read_dir_entries(dir, true)?;
     let mut result = Vec::new();
 
     for entry in entries {
@@ -493,7 +500,7 @@ fn content_search_walk(
     matches: &mut usize,
     truncated: &mut bool,
 ) -> io::Result<Vec<ContentSearchNode>> {
-    let entries = read_dir_entries(dir, false)?;
+    let entries = read_dir_entries(dir, true)?;
     let mut result = Vec::new();
 
     for entry in entries {
@@ -740,14 +747,18 @@ mod tests {
     }
 
     #[test]
-    fn read_dir_shows_git_but_excludes_denylisted_directories() {
-        // `.git` used to be filtered identically to `node_modules` — the
-        // reported bug: the user could never browse their own repo's `.git`
-        // folder in the tree at all. It's a real, deliberately-openable
-        // directory (unlike the pure build/dependency noise in `DENYLIST`),
-        // so `explorer_read_dir` now lists it; only the two recursive search
-        // walks still skip it (see `search_names_excludes_git_directory`
-        // below).
+    fn read_dir_shows_everything_including_git_and_denylisted_directories() {
+        // The plain tree view used to filter BOTH `.git` and `DENYLIST`
+        // (`node_modules`/`target`/…) — the reported bug: the user could
+        // never browse their own repo's real directory in the tree, `.git`
+        // included. The reference editor's actual `files.exclude` default
+        // only hides `.git`/`.svn`/`.hg`/`.DS_Store`/`Thumbs.db`, NOT
+        // `node_modules` (that's the separate, search-only
+        // `search.exclude`) — its Explorer just shows the real directory.
+        // `explorer_read_dir` now
+        // matches that: no filtering at all. Only the two recursive search
+        // walks still skip both (see `search_names_excludes_git_directory`
+        // and `search_names_excludes_denylisted_directories` below).
         let fixture = Fixture::new(
             "read-dir-denylist",
             &[".git/HEAD", "node_modules/left-pad/index.js", "src/main.rs"],
@@ -757,7 +768,7 @@ mod tests {
             explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
 
         let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
-        assert_eq!(names, vec![".git", "src"]);
+        assert_eq!(names, vec![".git", "node_modules", "src"]);
     }
 
     #[test]
