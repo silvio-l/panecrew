@@ -188,7 +188,7 @@
     "hint": {
       "empty": {
         "title": "Mehrere Projekte, gleichzeitig sichtbar",
-        "body": "Öffne hier dein erstes Projekt — der Explorer links folgt automatisch der aktiven Pane."
+        "body": "Öffne hier dein erstes Projekt, um loszulegen."
       },
       "hasPanes": {
         "title": "Der Explorer folgt der aktiven Pane",

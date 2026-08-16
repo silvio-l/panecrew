@@ -72,7 +72,7 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     registry.register(entry(
         "appearance.theme",
         SettingType::Enum(vec!["system".into(), "light".into(), "dark".into()]),
-        serde_json::json!("system"),
+        serde_json::json!("dark"),
     ))?;
     registry.register(entry(
         "appearance.language",
@@ -84,10 +84,16 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     // Bewusst von `terminal.fontSize` getrennt: Zoom skaliert die ganze
     // Oberfläche über den nativen Webview-Zoom, die Terminal-Schriftgröße nur
     // den Zellraster-Text in den Panes.
+    //
+    // Default 1.2 statt der neutralen 1.0, passend zu `DEFAULT_APP_ZOOM` in
+    // `shortcuts/zoom.ts` (2026-08-14, Nutzerentscheidung: native Stufe war
+    // auf den getesteten Monitoren spürbar zu klein) — beide Defaults müssen
+    // synchron bleiben, sonst zeigt ein frischer Start kurz 100% Chrome-Zoom,
+    // bevor `useAppZoom.ts`s eigener Default greift.
     registry.register(entry(
         "appearance.zoom",
         SettingType::Number,
-        serde_json::json!(1.0),
+        serde_json::json!(1.2),
     ))?;
 
     // Grid — dieselben sieben Werte wie `TemplateId` in gridState.ts
@@ -152,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn appearance_zoom_defaults_to_1_and_is_a_plain_number() {
+    fn appearance_zoom_defaults_to_1_2_and_is_a_plain_number() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
 
@@ -160,12 +166,12 @@ mod tests {
             .find("appearance.zoom")
             .expect("should be registered");
 
-        assert_eq!(entry.default, serde_json::json!(1.0));
+        assert_eq!(entry.default, serde_json::json!(1.2));
         assert_eq!(entry.setting_type, SettingType::Number);
     }
 
     #[test]
-    fn appearance_theme_defaults_to_system_with_the_three_documented_options() {
+    fn appearance_theme_defaults_to_dark_with_the_three_documented_options() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
 
@@ -173,7 +179,7 @@ mod tests {
             .find("appearance.theme")
             .expect("should be registered");
 
-        assert_eq!(entry.default, serde_json::json!("system"));
+        assert_eq!(entry.default, serde_json::json!("dark"));
         assert_eq!(
             entry.setting_type,
             SettingType::Enum(vec!["system".into(), "light".into(), "dark".into()])

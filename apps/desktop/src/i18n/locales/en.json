@@ -188,7 +188,7 @@
     "hint": {
       "empty": {
         "title": "Multiple projects, side by side",
-        "body": "Open your first project here — the explorer on the left always follows the active pane."
+        "body": "Open your first project here to get started."
       },
       "hasPanes": {
         "title": "The explorer follows the active pane",
