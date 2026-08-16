@@ -105,6 +105,12 @@ pub fn run() {
                         let _ = window.close();
                     }
                 }
+                _ if id.starts_with(menu::RECENT_PROJECT_ITEM_PREFIX) => {
+                    let path = &id[menu::RECENT_PROJECT_ITEM_PREFIX.len()..];
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_OPEN_RECENT_PROJECT, path);
+                    }
+                }
                 menu::CLOSE_ALL_WINDOWS => {
                     for window in windows::content_windows(app) {
                         let _ = window.close();
