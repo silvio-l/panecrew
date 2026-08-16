@@ -19,7 +19,7 @@ export function useNewWindowShortcut(): void {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matchesShortcut(event, NEW_WINDOW_SHORTCUT, isMac)) return;
       event.preventDefault();
-      void invoke("window_open_new");
+      void invoke("window_open_new", { initialProject: null });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

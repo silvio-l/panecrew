@@ -41,7 +41,7 @@ use splash::RevealGate;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent};
 use tool_detect::ToolDetector;
-use windows::{ConfirmedCloseWindows, DeferredQuitState, QuittingFlag};
+use windows::{ConfirmedCloseWindows, DeferredQuitState, PendingWindowProjects, QuittingFlag};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -77,6 +77,7 @@ pub fn run() {
         .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .manage(QuittingFlag::default())
         .manage(ConfirmedCloseWindows::default())
+        .manage(PendingWindowProjects::default())
         .manage(DeferredQuitState::default())
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
@@ -147,7 +148,7 @@ pub fn run() {
                 }
                 #[cfg(target_os = "macos")]
                 _ if id == dock::NEW_WINDOW_ITEM_ID => {
-                    if let Err(error) = windows::window_open_new(app.clone()) {
+                    if let Err(error) = windows::window_open_new(app.clone(), None) {
                         log::warn!("new window from dock menu failed: {error}");
                     }
                 }
@@ -257,6 +258,7 @@ pub fn run() {
             settings_commands::settings_open_window,
             settings_window::settings_visible,
             windows::window_open_new,
+            windows::take_pending_window_project,
             windows::window_close_confirmed,
         ])
         .build(tauri::generate_context!())

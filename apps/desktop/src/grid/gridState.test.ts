@@ -9,6 +9,7 @@ import {
   closeTerminalTab,
   enterFocusMode,
   exitFocusMode,
+  firstEmptySlotIndex,
   focusModeSelectSlot,
   focusPane,
   focusedProjectPath,
@@ -203,6 +204,50 @@ describe("gridState", () => {
     const shrunk = switchTemplate(empty, "single");
     expect(shrunk.template).toBe("single");
     expect(shrunk.slots).toEqual([null]);
+  });
+
+  // Regressionstest für den Bugfix 2026-08-16 (User-Report: ein Klick auf
+  // "Zuletzt geöffnet" hat vorher stillschweigend die fokussierte Pane
+  // überschrieben) — `App.tsx`s menü-getriebenes Öffnen zielt jetzt
+  // ausschließlich über diese Funktion, nie mehr über eine
+  // fokussierte-Pane-zuerst-Regel.
+  describe("firstEmptySlotIndex", () => {
+    it("findet den ersten leeren Slot in Template-Reihenfolge", () => {
+      const withGapAtTwo = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        3,
+        "/repo/storefront",
+        "pane-1",
+        "tab-1",
+      );
+      expect(firstEmptySlotIndex(withGapAtTwo)).toBe(0);
+    });
+
+    it("überspringt bereits belegte Slots", () => {
+      let state = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/storefront",
+        "pane-1",
+        "tab-1",
+      );
+      state = assignProjectToSlot(state, 1, "/repo/api", "pane-2", "tab-2");
+      expect(firstEmptySlotIndex(state)).toBe(2);
+    });
+
+    it("liefert -1 bei komplett vollem Grid — niemals einen belegten Index", () => {
+      let state = INITIAL_GRID_STATE;
+      state.slots.forEach((_, index) => {
+        state = assignProjectToSlot(
+          state,
+          index,
+          `/repo/project-${index}`,
+          `pane-${index}`,
+          `tab-${index}`,
+        );
+      });
+      expect(firstEmptySlotIndex(state)).toBe(-1);
+    });
   });
 
   describe("nextGrowthTemplate ('Pane teilen')", () => {

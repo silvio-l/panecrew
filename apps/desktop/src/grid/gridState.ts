@@ -246,6 +246,20 @@ export function setSplitRatios(
   return { ...state, splitRatios };
 }
 
+/** Index des ersten LEEREN Slots in Template-Reihenfolge, -1 wenn das Grid
+ * komplett voll ist. Die eine Stelle, an der "ist noch Platz im Grid?"
+ * entschieden wird — `App.tsx`s menü-/tastaturkürzel-getriebenes "Ordner
+ * öffnen …"/"Zuletzt geöffnet" zielt NUR je auf einen leeren Slot, NIEMALS
+ * auf einen belegten (Bugfix 2026-08-16: ein Öffnen über diesen Weg darf
+ * niemals stillschweigend eine laufende, unbeteiligte Pane ersetzen — bei
+ * -1 fragt `App.tsx` stattdessen nach, ob PaneCrew das Projekt in einem
+ * neuen Fenster öffnen soll). Ein direkter Klick auf einen konkreten Slot
+ * (leer oder belegt, `onAssignProject`/Drag&Drop) geht NICHT über diese
+ * Funktion — dort ist der Zielslot bereits eindeutig vom Nutzer gewählt. */
+export function firstEmptySlotIndex(state: GridState): number {
+  return state.slots.findIndex((slot) => slot === null);
+}
+
 /** Schreibt die Zuordnung, setzt `focusedPaneId` auf die neue Pane. Die neue
  * Pane bekommt genau einen Terminal-Tab (`tabId`), sofort aktiv, kein
  * File-Tab. Ein ungültiger Index lässt den State unverändert (identische

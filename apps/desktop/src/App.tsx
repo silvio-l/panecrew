@@ -83,6 +83,7 @@ import {
 } from "./terminal/resourceGuard";
 import {
   activePanes,
+  firstEmptySlotIndex,
   focusedProjectPath,
   GRID_TEMPLATES,
   nextGrowthTemplate,
@@ -613,6 +614,23 @@ function App() {
         }
       }
 
+      // Fensterseitiges Gegenstück zum CLI-Startpfad oben: ein Fenster, das
+      // `window_open_new` mit einem Projekt erzeugt hat (die "Grid ist
+      // voll — neues Fenster öffnen?"-Rückfrage weiter unten), holt sich
+      // das genau einmal hier ab (`main` kann nie eine wartende Zuweisung
+      // haben — es entsteht nie über `window_open_new`, daher dieselbe
+      // `isMain`-Weiche wie oben, nur umgekehrt).
+      const pendingProjectPath = !windowId.isMain
+        ? await invoke<string | null>("take_pending_window_project")
+        : null;
+      if (!isCancelled() && pendingProjectPath) {
+        const project = await loadProject(pendingProjectPath);
+        if (!isCancelled()) {
+          assignProject(0, project.path);
+          recordRecentProject(project.path);
+        }
+      }
+
       if (!isCancelled()) setHydrated(true);
     };
 
@@ -715,6 +733,14 @@ function App() {
     // wirklich laufende Terminal-Sitzungen hat.
     | { target: "window"; run: () => void }
     | null
+  >(null);
+
+  // Die dritte, unabhängige Rückfrage-Fläche: "Ordner öffnen …"/"Zuletzt
+  // geöffnet" bei komplett vollem Grid (`openProjectPathInEmptySlotOrNewWindow`
+  // weiter unten) — der Projektpfad selbst trägt die ganze wartende
+  // Handlung, ein neues Fenster braucht keinen weiteren Kontext als das.
+  const [pendingGridFullOpen, setPendingGridFullOpen] = useState<
+    string | null
   >(null);
 
   // Rust hat einen Schließversuch dieses Fensters (Ampel-Kreuz oder Cmd+Q)
@@ -821,35 +847,52 @@ function App() {
   const removeRecentProject = (path: string) =>
     setRecentProjects((current) => withoutRecentProject(current, path));
 
-  // Zwei native Menüpunkte teilen sich dasselbe Ziel-Slot-Muster: "Ordner
+  // Zwei native Menüpunkte teilen sich dasselbe Ziel-Verhalten: "Ordner
   // öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) und ein Eintrag aus
-  // "Zuletzt geöffnete Projekte" (RECENT_PROJECT_ITEM_PREFIX) landen beide im
-  // ersten LEEREN Slot, wenn einer existiert — ein explizites "Öffnen" soll
-  // kein bestehendes, unbeteiligtes Pane verdrängen, solange noch Platz im
-  // Grid ist. Erst wenn das Grid komplett voll ist, fällt es auf die
-  // fokussierte Pane zurück (ersetzt deren Projekt, genauso geguardet wie ein
-  // Klick auf ihren eigenen Ordner-Wechsel) — bis 2026-08-16 war das die
-  // EINZIGE Regel (fokussierte Pane immer zuerst), was ein Öffnen aus der
-  // "Zuletzt geöffnet"-Liste auch bei freiem Platz im Grid die fokussierte
-  // Pane überschreiben ließ (User-Bugreport). Kein Ziel-Slot bedeutet: Grid
-  // voll UND nichts fokussiert — kann praktisch nicht vorkommen (ein volles
-  // Grid hat immer eine fokussierte Pane), aber dann bewusst wirkungslos
-  // statt zu raten.
-  const resolveMenuTargetSlot = () => {
-    const emptyIndex = gridState.slots.findIndex((slot) => slot === null);
-    if (emptyIndex !== -1) return emptyIndex;
-    return gridState.slots.findIndex((slot) => slot?.paneId === focusedPaneId);
+  // "Zuletzt geöffnete Projekte" (RECENT_PROJECT_ITEM_PREFIX) landen immer im
+  // ersten LEEREN Slot — ein explizites "Öffnen" darf NIEMALS eine
+  // bestehende, unbeteiligte Pane überschreiben (User-Entscheidung
+  // 2026-08-16, nach einem Bugreport: bis dahin fiel das bei vollem Grid
+  // stillschweigend auf die fokussierte Pane zurück, was ein Öffnen aus der
+  // "Zuletzt geöffnet"-Liste die fokussierte Pane überschreiben ließ, egal ob
+  // das Grid überhaupt voll war). Ist das Grid komplett voll, fragt
+  // `pendingGridFullOpen` (Rückfrage weiter unten) stattdessen nach, ob
+  // PaneCrew das Projekt in einem NEUEN Fenster öffnen soll — nie in einem
+  // bereits belegten Slot.
+  const openProjectPathInEmptySlotOrNewWindow = (path: string) => {
+    const emptyIndex = firstEmptySlotIndex(gridState);
+    if (emptyIndex === -1) {
+      setPendingGridFullOpen(path);
+      return;
+    }
+    setPickingSlot(emptyIndex);
+    void loadProject(path)
+      .then((next) => {
+        assignProject(emptyIndex, next.path);
+        recordRecentProject(next.path);
+      })
+      .catch((error: unknown) => {
+        console.error("PaneCrew: Projekt konnte nicht geöffnet werden", error);
+      })
+      .finally(() => setPickingSlot(null));
   };
   const openFolderMenuHandlerRef = useRef<(() => void) | null>(null);
   const openRecentProjectMenuHandlerRef = useRef<((path: string) => void) | null>(null);
   useEffect(() => {
     openFolderMenuHandlerRef.current = () => {
-      const slotIndex = resolveMenuTargetSlot();
-      if (slotIndex !== -1) assignProjectToSlot(slotIndex);
+      void defaultProjectPickerPath()
+        .then((defaultPath) =>
+          openFolderDialog({ directory: true, multiple: false, defaultPath }),
+        )
+        .then((selected) => {
+          if (typeof selected === "string") openProjectPathInEmptySlotOrNewWindow(selected);
+        })
+        .catch((error: unknown) => {
+          console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
+        });
     };
     openRecentProjectMenuHandlerRef.current = (path) => {
-      const slotIndex = resolveMenuTargetSlot();
-      if (slotIndex !== -1) openRecentProject(path, slotIndex);
+      openProjectPathInEmptySlotOrNewWindow(path);
     };
   });
   // Letzter der zehn Referenz-Editor-Menüaudit-Punkte: die native
@@ -1504,6 +1547,38 @@ function App() {
             cancelLabel={t("closeDialog.cancel")}
             onConfirm={pendingClose.run}
             onClose={() => setPendingClose(null)}
+          />
+        )}
+        {/* Die dritte Rückfrage-Fläche, dieselbe Form, wieder andere Worte:
+            "Ordner öffnen …"/"Zuletzt geöffnet" bei komplett vollem Grid.
+            Anders als die beiden oben ist diese hier nicht destruktiv im
+            eigentlichen Sinn (nichts geht verloren, egal wie geantwortet
+            wird) — aber `ConfirmDialog` ist die einzige Rückfrage-Fläche
+            dieser App, und ein zweites, undestruktives Hinweis-Widget nur
+            für diesen einen Fall wäre mehr eigene Form, als der Anlass
+            rechtfertigt. */}
+        {pendingGridFullOpen !== null && (
+          <ConfirmDialog
+            title={t("gridFullDialog.title")}
+            description={
+              <Trans
+                i18nKey="gridFullDialog.description"
+                values={{ projectName: projectNameFromPath(pendingGridFullOpen) }}
+                components={{
+                  bold: (
+                    <span className="font-medium text-(--pc-foreground)" />
+                  ),
+                }}
+              />
+            }
+            confirmLabel={t("gridFullDialog.confirm")}
+            cancelLabel={t("closeDialog.cancel")}
+            onConfirm={() => {
+              void invoke("window_open_new", {
+                initialProject: pendingGridFullOpen,
+              });
+            }}
+            onClose={() => setPendingGridFullOpen(null)}
           />
         )}
         {/* Ganz außen, damit die Plakette über Explorer UND Panes liegt — im

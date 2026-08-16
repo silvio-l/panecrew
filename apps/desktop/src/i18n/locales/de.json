@@ -113,6 +113,11 @@
     "confirmWindow": "Fenster schließen",
     "cancel": "Abbrechen"
   },
+  "gridFullDialog": {
+    "title": "Grid ist voll",
+    "description": "Alle Panes in diesem Fenster sind bereits belegt, <bold>{{projectName}}</bold> kann hier nicht geöffnet werden, ohne eine davon zu ersetzen. Stattdessen in einem neuen Fenster öffnen?",
+    "confirm": "In neuem Fenster öffnen"
+  },
   "terminalPane": {
     "terminalAria": "Terminal {{projectName}}",
     "closePane": "Pane schließen",

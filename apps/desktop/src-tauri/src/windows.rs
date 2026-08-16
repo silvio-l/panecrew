@@ -228,6 +228,30 @@ impl ConfirmedCloseWindows {
     }
 }
 
+/// Project path to preload into slot 0 of a just-opened secondary window,
+/// keyed by that window's generated label — set by `window_open_new` when the
+/// caller supplies one (the grid-full "open in a new window" confirmation,
+/// `App.tsx`'s `pendingGridFullOpen`), consumed once by the new window's own
+/// startup effect (`take_pending_window_project`), mirroring `main`'s
+/// existing one-shot CLI-launch-path handoff (`get_launch_project`). An entry
+/// nobody ever claims (the window closes before mounting) just sits there
+/// harmlessly — process-lifetime only, never persisted.
+#[derive(Default)]
+pub struct PendingWindowProjects(Mutex<std::collections::HashMap<String, String>>);
+
+impl PendingWindowProjects {
+    fn set(&self, window_label: &str, project_path: String) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(window_label.to_string(), project_path);
+    }
+
+    fn take(&self, window_label: &str) -> Option<String> {
+        self.0.lock().unwrap().remove(window_label)
+    }
+}
+
 /// Remembers, per window, whether `QuittingFlag` was set at the moment its
 /// `CloseRequested` got halted for confirmation — captured there because
 /// `QuittingFlag` itself is cleared at that same moment (see its doc comment)
@@ -276,9 +300,22 @@ pub fn window_close_confirmed<R: Runtime>(
 /// grid. Returns the generated label so nothing else needs to — the new
 /// window bootstraps its own state client-side from its own `?window=`
 /// query param (`useWindowIdentity`), it is never driven from here.
+///
+/// `initial_project`, if given, is stashed in `PendingWindowProjects` for the
+/// new window to claim into its slot 0 on its own startup effect — the
+/// grid-full "open in a new window instead" confirmation (`App.tsx`) is the
+/// only caller that passes one; the "+"/Cmd+Shift+N/menu "Neues Fenster"
+/// paths all pass `None` and open an empty grid exactly as before.
 #[tauri::command]
-pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
+pub fn window_open_new<R: Runtime>(
+    app: AppHandle<R>,
+    initial_project: Option<String>,
+) -> Result<String, String> {
     let label = new_window_label();
+    if let Some(project_path) = initial_project {
+        app.state::<PendingWindowProjects>()
+            .set(&label, project_path);
+    }
 
     let opener = app.get_webview_window(MAIN).or_else(|| {
         app.webview_windows()
@@ -351,6 +388,19 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
         crate::menu::refresh(&app);
     }
     result
+}
+
+/// One-shot counterpart to `window_open_new`'s `initial_project`: called by
+/// every new window's own startup effect (not just ones that actually have a
+/// pending project — the common case is simply nobody set one, `None`, same
+/// cost as `main`'s existing `get_launch_project` check). Consumes the entry
+/// so a later re-mount (hot reload during development) doesn't reapply it.
+#[tauri::command]
+pub fn take_pending_window_project<R: Runtime>(
+    window: Window<R>,
+    pending: State<PendingWindowProjects>,
+) -> Option<String> {
+    pending.take(window.label())
 }
 
 /// Startup restore counterpart to `window_open_new` (Ticket 27): reopens one
@@ -561,7 +611,10 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 /// cannot drift apart again unnoticed.
 #[cfg(test)]
 mod tests {
-    use super::{new_window_label, window_entries, ConfirmedCloseWindows, DeferredQuitState, MAIN};
+    use super::{
+        new_window_label, window_entries, ConfirmedCloseWindows, DeferredQuitState,
+        PendingWindowProjects, MAIN,
+    };
     use std::collections::BTreeSet;
 
     /// `WindowEvent::CloseRequested`'s `api` can only be constructed by the
@@ -590,6 +643,35 @@ mod tests {
         confirmed.mark("main");
         assert!(!confirmed.take("main-other"));
         assert!(confirmed.take("main"));
+    }
+
+    /// `window_open_new`'s handoff to a new window's own startup effect
+    /// (grid-full "open in a new window instead", `App.tsx`): set once, then
+    /// consumed exactly once, same one-shot contract as `ConfirmedCloseWindows`
+    /// above.
+    #[test]
+    fn pending_window_project_is_set_once_and_consumed_once() {
+        let pending = PendingWindowProjects::default();
+        assert_eq!(pending.take("window-2"), None, "nothing set yet");
+
+        pending.set("window-2", "/tmp/project-a".to_string());
+        assert_eq!(pending.take("window-2"), Some("/tmp/project-a".to_string()));
+        assert_eq!(
+            pending.take("window-2"),
+            None,
+            "a second claim by the same window must find nothing left"
+        );
+    }
+
+    /// Two windows opened with different initial projects must not cross-wire.
+    #[test]
+    fn pending_window_project_does_not_leak_across_windows() {
+        let pending = PendingWindowProjects::default();
+        pending.set("window-2", "/tmp/project-a".to_string());
+        pending.set("window-3", "/tmp/project-b".to_string());
+
+        assert_eq!(pending.take("window-3"), Some("/tmp/project-b".to_string()));
+        assert_eq!(pending.take("window-2"), Some("/tmp/project-a".to_string()));
     }
 
     /// Pins the exact bug a cancelled Cmd+Q used to reintroduce: without

@@ -113,6 +113,11 @@
     "confirmWindow": "Close window",
     "cancel": "Cancel"
   },
+  "gridFullDialog": {
+    "title": "Grid is full",
+    "description": "All panes in this window are already in use, so <bold>{{projectName}}</bold> can't open here without replacing one of them. Open it in a new window instead?",
+    "confirm": "Open in new window"
+  },
   "terminalPane": {
     "terminalAria": "Terminal {{projectName}}",
     "closePane": "Close pane",

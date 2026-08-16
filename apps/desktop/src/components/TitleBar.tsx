@@ -269,7 +269,7 @@ export function TitleBar({
               // `window_open_new` generiert Label und Kaskaden-Position selbst
               // (`windows.rs`) — aus JEDEM Fenster heraus aufrufbar, kein
               // "main"-exklusiver Command wie `get_launch_project`.
-              onClick={() => void invoke("window_open_new")}
+              onClick={() => void invoke("window_open_new", { initialProject: null })}
               className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
             >
               <NewWindowIcon />
