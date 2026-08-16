@@ -108,6 +108,9 @@
     "terminalTabsBatchDescription_other": "<bold>{{count}} Terminal-Tabs</bold> werden geschlossen, die darin laufenden Sitzungen werden beendet.",
     "confirmTerminalTabsBatch_one": "1 Tab schließen",
     "confirmTerminalTabsBatch_other": "{{count}} Tabs schließen",
+    "windowTitle": "Fenster schließen?",
+    "windowDescription": "In diesem Fenster laufen noch Terminal-Sitzungen. Beim Schließen werden sie beendet.",
+    "confirmWindow": "Fenster schließen",
     "cancel": "Abbrechen"
   },
   "terminalPane": {

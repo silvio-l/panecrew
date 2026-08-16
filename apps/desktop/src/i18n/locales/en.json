@@ -108,6 +108,9 @@
     "terminalTabsBatchDescription_other": "<bold>{{count}} terminal tabs</bold> will be closed and the sessions running in them ended.",
     "confirmTerminalTabsBatch_one": "Close 1 tab",
     "confirmTerminalTabsBatch_other": "Close {{count}} tabs",
+    "windowTitle": "Close window?",
+    "windowDescription": "This window still has terminal sessions running. Closing it will end them.",
+    "confirmWindow": "Close window",
     "cancel": "Cancel"
   },
   "terminalPane": {

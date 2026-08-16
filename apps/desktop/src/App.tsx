@@ -661,8 +661,34 @@ function App() {
     // dieselbe Rückfrage-Form (nur eine Zahl, keine Richtung), ein eigener
     // Zweig pro Weg hätte nur wortgleiche Übersetzungs-Keys verdoppelt.
     | { target: "terminalTabsBatch"; count: number; run: () => void }
+    // Das ganze Fenster schließen (Ampel-Kreuz oder Cmd+Q) — die Rust-Seite
+    // hat die Prüfung "gibt es überhaupt etwas zu verlieren" bereits selbst
+    // gemacht (siehe der Listener unten) und fragt nur, wenn dieses Fenster
+    // wirklich laufende Terminal-Sitzungen hat.
+    | { target: "window"; run: () => void }
     | null
   >(null);
+
+  // Rust hat einen Schließversuch dieses Fensters (Ampel-Kreuz oder Cmd+Q)
+  // bereits per `api.prevent_close()` angehalten, weil laufende PTYs daran
+  // hängen — sonst wäre es hier nie eingetroffen. Bestätigt der Nutzer, ruft
+  // `run()` denselben Schließversuch über den eigens dafür vorgesehenen
+  // Befehl noch einmal auf, diesmal als bereits bestätigt.
+  useEffect(() => {
+    const unlistenPromise = listen("pc://window-close-requested", () => {
+      setPendingClose({
+        target: "window",
+        run: () => {
+          invoke("window_close_confirmed").catch((error: unknown) => {
+            console.error("PaneCrew: Fenster konnte nicht geschlossen werden", error);
+          });
+        },
+      });
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
   // absichtlich zwischen Absicht und Ausführung statt in den Aufrufern:
@@ -1265,7 +1291,9 @@ function App() {
                 ? "closeDialog.paneTitle"
                 : pendingClose.target === "terminalTab"
                   ? "closeDialog.terminalTabTitle"
-                  : "closeDialog.terminalTabsBatchTitle",
+                  : pendingClose.target === "terminalTabsBatch"
+                    ? "closeDialog.terminalTabsBatchTitle"
+                    : "closeDialog.windowTitle",
               pendingClose.target === "terminalTabsBatch"
                 ? { count: pendingClose.count }
                 : undefined,
@@ -1294,7 +1322,7 @@ function App() {
                     ),
                   }}
                 />
-              ) : (
+              ) : pendingClose.target === "terminalTabsBatch" ? (
                 <Trans
                   i18nKey="closeDialog.terminalTabsBatchDescription"
                   count={pendingClose.count}
@@ -1305,6 +1333,8 @@ function App() {
                     ),
                   }}
                 />
+              ) : (
+                t("closeDialog.windowDescription")
               )
             }
             confirmLabel={t(
@@ -1312,7 +1342,9 @@ function App() {
                 ? "closeDialog.confirmPane"
                 : pendingClose.target === "terminalTab"
                   ? "closeDialog.confirmTerminalTab"
-                  : "closeDialog.confirmTerminalTabsBatch",
+                  : pendingClose.target === "terminalTabsBatch"
+                    ? "closeDialog.confirmTerminalTabsBatch"
+                    : "closeDialog.confirmWindow",
               pendingClose.target === "terminalTabsBatch"
                 ? { count: pendingClose.count }
                 : undefined,
