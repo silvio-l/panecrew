@@ -5,7 +5,13 @@
 //
 // Die Slot-*Zahl* ist Store-Wissen (Invariante: `slots.length ===
 // slotCount(template)`), die Slot-*Geometrie* (welche Zelle wo, welche
-// breiter) lebt vollständig in CSS.
+// breiter) lebt vollständig in CSS. Die Track-*Form* (Spalten×Zeilen, s.
+// `GridTemplate.columns`/`.rows`) ist seit Ticket 21 (Schnittkanten-Splitter)
+// die eine Ausnahme: `grid/splitRatios.ts`s reine Resize-/Positions-Mathematik
+// und `components/GridSplitters.tsx`s Rendering brauchen diese Zahl, ohne sie
+// aus `templateGlyph.css`s Klassennamen zurückzulesen — die CSS-Datei bleibt
+// trotzdem die Quelle der TATSÄCHLICHEN `grid-template-columns/rows`-Werte,
+// diese Zahlen hier sind nur ihr Duplikat als Store-Wissen.
 
 export type TemplateId =
   | "single"
@@ -24,16 +30,23 @@ export interface GridTemplate {
    * (`TemplateSwitcher.tsx`), der ohnehin schon `useTranslation()` hält. */
   labelKey: string;
   slotCount: number;
+  /** Spalten × Zeilen der `grid-template-columns/rows`-Spuren in
+   * `templateGlyph.css`s `.pc-layout--<id>` — Duplikat, nicht Quelle (s.
+   * Kopfkommentar). Zusammen mit `slotCount` UNABHÄNGIG: `two-over-one`/
+   * `one-over-two` haben 3 Slots auf einem 2×2-Traster (eine Zelle spannt
+   * zwei Tracks, `templateGlyph.css`s `grid-area`-Override). */
+  columns: number;
+  rows: number;
 }
 
 export const GRID_TEMPLATES: readonly GridTemplate[] = [
-  { id: "single", labelKey: "templateSwitcher.templates.single", slotCount: 1 },
-  { id: "split", labelKey: "templateSwitcher.templates.split", slotCount: 2 },
-  { id: "two-over-one", labelKey: "templateSwitcher.templates.twoOverOne", slotCount: 3 },
-  { id: "one-over-two", labelKey: "templateSwitcher.templates.oneOverTwo", slotCount: 3 },
-  { id: "row-3", labelKey: "templateSwitcher.templates.row3", slotCount: 3 },
-  { id: "quad", labelKey: "templateSwitcher.templates.quad", slotCount: 4 },
-  { id: "row-4", labelKey: "templateSwitcher.templates.row4", slotCount: 4 },
+  { id: "single", labelKey: "templateSwitcher.templates.single", slotCount: 1, columns: 1, rows: 1 },
+  { id: "split", labelKey: "templateSwitcher.templates.split", slotCount: 2, columns: 2, rows: 1 },
+  { id: "two-over-one", labelKey: "templateSwitcher.templates.twoOverOne", slotCount: 3, columns: 2, rows: 2 },
+  { id: "one-over-two", labelKey: "templateSwitcher.templates.oneOverTwo", slotCount: 3, columns: 2, rows: 2 },
+  { id: "row-3", labelKey: "templateSwitcher.templates.row3", slotCount: 3, columns: 3, rows: 1 },
+  { id: "quad", labelKey: "templateSwitcher.templates.quad", slotCount: 4, columns: 2, rows: 2 },
+  { id: "row-4", labelKey: "templateSwitcher.templates.row4", slotCount: 4, columns: 4, rows: 1 },
 ];
 
 export const DEFAULT_TEMPLATE: TemplateId = "quad";
@@ -86,6 +99,13 @@ export interface GridState {
    * Terminal-Tabs/PTYs), nur ihre Sichtbarkeit ändert sich beim Rendern
    * (`PaneGrid.tsx`), nicht ihr Zustand hier. */
   maximizedPaneId: string | null;
+  /** Track-Verhältnisse der Schnittkanten des aktuellen Templates (Ticket 21)
+   * — flach kodiert, Spalten-Anteile vor Zeilen-Anteilen (`grid/
+   * splitRatios.ts`s Kopfkommentar). Leer heißt "Template-Default verwenden",
+   * dieselbe Semantik wie `sessionState.ts`s `PersistedWindow.split_ratios`.
+   * `switchTemplate` setzt sie IMMER auf leer zurück — ein Verhältnis für
+   * eine andere Track-Form wäre bedeutungslos. */
+  splitRatios: readonly number[];
 }
 
 export const INITIAL_GRID_STATE: GridState = {
@@ -93,6 +113,7 @@ export const INITIAL_GRID_STATE: GridState = {
   slots: [null, null, null, null],
   focusedPaneId: null,
   maximizedPaneId: null,
+  splitRatios: [],
 };
 
 function slotCount(template: TemplateId): number {
@@ -101,6 +122,15 @@ function slotCount(template: TemplateId): number {
   // Programmierfehler in dieser Datei, kein Laufzeitfall.
   if (!found) throw new Error(`Unbekanntes Template: ${template}`);
   return found.slotCount;
+}
+
+/** Spalten × Zeilen eines Templates (`GridTemplate.columns`/`.rows`) — die
+ * eine Stelle, die `grid/splitRatios.ts`s reine Funktionen und
+ * `components/GridSplitters.tsx` dafür brauchen. */
+export function trackShape(template: TemplateId): { columns: number; rows: number } {
+  const found = GRID_TEMPLATES.find((t) => t.id === template);
+  if (!found) throw new Error(`Unbekanntes Template: ${template}`);
+  return { columns: found.columns, rows: found.rows };
 }
 
 /** Belegte Slots in Reihenfolge (leere übersprungen). */
@@ -179,7 +209,24 @@ export function switchTemplate(state: GridState, target: TemplateId): GridState 
     slots: nextSlots,
     focusedPaneId: state.focusedPaneId,
     maximizedPaneId: nextMaximized,
+    // Ein Verhältnis für die ALTE Track-Form wäre auf der neuen bedeutungslos
+    // (andere Spurenzahl, andere Indizes) — immer zurück auf "Default
+    // verwenden", nie ein Best-Effort-Remapping.
+    splitRatios: [],
   };
+}
+
+/** Schreibt die Schnittkanten-Verhältnisse des aktuellen Templates (Ticket
+ * 21) — reiner Setter, die Anteile selbst berechnet der Aufrufer
+ * (`grid/splitRatios.ts`s `resizeAxisRatios`/`normalizeRatios`, dieses Modul
+ * bleibt frei von Pixel-/DOM-Wissen). Keine Validierung gegen die Track-Form
+ * hier: `normalizeRatios` beim Restore und `resizeAxisRatios` beim Live-Drag
+ * garantieren beide bereits eine passende Länge. */
+export function setSplitRatios(
+  state: GridState,
+  splitRatios: readonly number[],
+): GridState {
+  return { ...state, splitRatios };
 }
 
 /** Schreibt die Zuordnung, setzt `focusedPaneId` auf die neue Pane. Die neue
@@ -685,4 +732,32 @@ export function focusModeSelectSlot(
   const target = state.slots[slotIndex];
   if (!target) return state;
   return enterFocusMode(state, target.paneId);
+}
+
+/** Die nächste (oder vorherige) Pane in Slot-Reihenfolge, umlaufend — die
+ * Ordnung hinter den Titelleisten-Pfeilen (`pane-navigation-titlebar/01+02`).
+ * Arbeitet auf der bereits belegten, kompaktierten Liste (`activePanes`),
+ * anders als `focusModeSelectSlot`, das auf dem rohen `slots`-Array
+ * indiziert und bei einem leeren Ziel-Slot no-opt statt zu überspringen — die
+ * Pfeile sollen immer auf einer echten Pane landen. `null`, wenn keine Pane
+ * belegt ist; bei genau einer Pane liefert beide Richtungen dieselbe (einzige)
+ * Pane zurück, die Titelleiste deaktiviert die Pfeile für diesen Fall ohnehin.
+ * Eine unbekannte oder fehlende `currentId` (z. B. noch keine Pane fokussiert)
+ * startet am Anfang der Liste (next) bzw. am Ende (previous). */
+export function nextPaneId(
+  panes: readonly Pane[],
+  currentId: string | null,
+  direction: "next" | "previous",
+): string | null {
+  if (panes.length === 0) return null;
+  const currentIndex = panes.findIndex((pane) => pane.paneId === currentId);
+  if (direction === "next") {
+    const index = currentIndex === -1 ? 0 : (currentIndex + 1) % panes.length;
+    return panes[index]?.paneId ?? null;
+  }
+  const index =
+    currentIndex === -1
+      ? panes.length - 1
+      : (currentIndex - 1 + panes.length) % panes.length;
+  return panes[index]?.paneId ?? null;
 }

@@ -79,12 +79,20 @@ import {
   applyTerminatedEvent,
   disposeResourceGuardEntry,
 } from "./terminal/resourceGuard";
-import { activePanes, focusedProjectPath } from "./grid/gridState";
+import { activePanes, focusedProjectPath, nextPaneId, trackShape } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
-import { buildWindowState, restoredSlots, restoredTemplate } from "./session/sessionState";
+import {
+  buildWindowState,
+  restoredSlots,
+  restoredSplitRatios,
+  restoredTemplate,
+  withRecentProject,
+  withoutRecentProject,
+} from "./session/sessionState";
+import { normalizeRatios } from "./grid/splitRatios";
 import { loadSession, saveSessionWindow } from "./session/sessionStore";
 import { windowIdentity } from "./window/useWindowIdentity";
 import { isMacPlatform } from "./shortcuts/platform";
@@ -128,6 +136,7 @@ function App() {
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,
+    setSplitRatios,
   } = useGrid();
   // Ticket 27: natives Tauri-Fensterlabel + ob dies "main" ist — ändert sich
   // nie über die Lebenszeit des Fensters (`useWindowIdentity.ts`), deshalb
@@ -163,6 +172,29 @@ function App() {
     },
   });
   const notifyRotationInput = focusRotation.notifyInput;
+
+  // Titelleisten-Pfeile (Ticket pane-navigation-titlebar/01+02): dieselbe
+  // Reihenfolge wie die Zahlen-Hotkeys 1–4 (`nextPaneId` traversiert
+  // `activePanes`, die kompaktierte, belegte Teilmenge des rohen
+  // `slots`-Arrays, das auch die Hotkeys indizieren — für belegte Slots
+  // dieselbe Reihenfolge). Im Fokus-Modus wechselt der Klick
+  // `maximizedPaneId` weiter (wie ein Zahlen-Hotkey), sonst nur den
+  // Grid-Fokus. `notifyRotationInput()` explizit statt sich auf den
+  // Capture-Phase-`pointerdown`-Listener unten zu verlassen: der feuert bei
+  // einem echten Klick zwar mit, in Tests (`fireEvent.click`) aber nicht von
+  // selbst — Ticket 02 verlangt den vollständigen Rotationsstopp bei jedem
+  // Klick auf einen der Pfeile, nicht nur "meistens".
+  const navigatePane = (direction: "next" | "previous") => {
+    notifyRotationInput();
+    const panes = activePanes(gridState);
+    if (gridState.maximizedPaneId !== null) {
+      const target = nextPaneId(panes, gridState.maximizedPaneId, direction);
+      if (target !== null) enterFocusMode(target);
+      return;
+    }
+    const target = nextPaneId(panes, focusedPaneId, direction);
+    if (target !== null) focusPane(target);
+  };
 
   // Fokus-Modus-Kürzel (Ticket 19) — EIN Fenster-Listener statt drei
   // verstreuten, weil alle drei dieselbe Reihenfolgefrage gegen
@@ -259,6 +291,13 @@ function App() {
   // Eintrag heißt "nichts weicht vom Default ab" — `ExplorerPanel` bleibt dann
   // bei ihrem eigenen Alles-eingeklappt-Default.
   const [expandedFolders, setExpandedFolders] = useState<Record<string, string[]>>({});
+  // App-weite Liste zuletzt geöffneter Projekte (Ticket 22), zuletzt zuerst —
+  // wie `expandedFolders`/`explorerWidth` ein window-agnostischer Global, der
+  // über `saveSessionWindow`s Globals-Kanal mitläuft statt eine eigene
+  // Persistenz-Anbindung zu brauchen.
+  const [recentProjects, setRecentProjects] = useState<string[]>([]);
+  const recordRecentProject = (path: string) =>
+    setRecentProjects((current) => withRecentProject(current, path));
   // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
@@ -451,13 +490,26 @@ function App() {
     const run = async () => {
       const session = await loadSession();
       if (!isCancelled() && session) {
-        switchTemplate(restoredTemplate(session, windowId.label));
+        const restoredTemplateId = restoredTemplate(session, windowId.label);
+        switchTemplate(restoredTemplateId);
+        // `switchTemplate` setzt `splitRatios` selbst immer auf leer zurück
+        // (`gridState.ts`s Kommentar dort) — die gespeicherten Verhältnisse
+        // kommen deshalb als EIGENER, nachgelagerter Schritt, gegen die
+        // Track-Form GENAU dieses (frisch gewechselten) Templates validiert.
+        setSplitRatios(
+          normalizeRatios(
+            restoredSplitRatios(session, windowId.label),
+            trackShape(restoredTemplateId).columns,
+            trackShape(restoredTemplateId).rows,
+          ),
+        );
         // Projektpfad-geschlüsselt wie im Live-Zustand — anders als
         // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
         // gespeicherte Zustand passt unverändert auf `expandedFolders`. Beide
         // Felder sind window-agnostische Globals (Ticket 27) — jedes Fenster
         // liest denselben Stand, unabhängig von seinem eigenen `label`.
         setExpandedFolders(session.expanded_folders ?? {});
+        setRecentProjects(session.recent_projects ?? []);
         if (session.explorer_width) {
           const restoredWidth = Math.min(
             EXPLORER_MAX_WIDTH,
@@ -507,7 +559,10 @@ function App() {
         : null;
       if (!isCancelled() && launchPath) {
         const project = await loadProject(launchPath);
-        if (!isCancelled()) assignProject(0, project.path);
+        if (!isCancelled()) {
+          assignProject(0, project.path);
+          recordRecentProject(project.path);
+        }
       }
 
       if (!isCancelled()) setHydrated(true);
@@ -555,8 +610,17 @@ function App() {
       buildWindowState(windowId.label, gridState, selectedFile),
       expandedFolders,
       persistedExplorerWidth,
+      recentProjects,
     );
-  }, [hydrated, gridState, selectedFile, expandedFolders, persistedExplorerWidth, windowId.label]);
+  }, [
+    hydrated,
+    gridState,
+    selectedFile,
+    expandedFolders,
+    persistedExplorerWidth,
+    recentProjects,
+    windowId.label,
+  ]);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -597,8 +661,34 @@ function App() {
     // dieselbe Rückfrage-Form (nur eine Zahl, keine Richtung), ein eigener
     // Zweig pro Weg hätte nur wortgleiche Übersetzungs-Keys verdoppelt.
     | { target: "terminalTabsBatch"; count: number; run: () => void }
+    // Das ganze Fenster schließen (Ampel-Kreuz oder Cmd+Q) — die Rust-Seite
+    // hat die Prüfung "gibt es überhaupt etwas zu verlieren" bereits selbst
+    // gemacht (siehe der Listener unten) und fragt nur, wenn dieses Fenster
+    // wirklich laufende Terminal-Sitzungen hat.
+    | { target: "window"; run: () => void }
     | null
   >(null);
+
+  // Rust hat einen Schließversuch dieses Fensters (Ampel-Kreuz oder Cmd+Q)
+  // bereits per `api.prevent_close()` angehalten, weil laufende PTYs daran
+  // hängen — sonst wäre es hier nie eingetroffen. Bestätigt der Nutzer, ruft
+  // `run()` denselben Schließversuch über den eigens dafür vorgesehenen
+  // Befehl noch einmal auf, diesmal als bereits bestätigt.
+  useEffect(() => {
+    const unlistenPromise = listen("pc://window-close-requested", () => {
+      setPendingClose({
+        target: "window",
+        run: () => {
+          invoke("window_close_confirmed").catch((error: unknown) => {
+            console.error("PaneCrew: Fenster konnte nicht geschlossen werden", error);
+          });
+        },
+      });
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
   // absichtlich zwischen Absicht und Ausführung statt in den Aufrufern:
@@ -643,6 +733,7 @@ function App() {
           if (!next) return;
           if (outgoing) paneFileEditors.forget(outgoing.paneId);
           assignProject(slotIndex, next.path);
+          recordRecentProject(next.path);
         })
         .catch((error: unknown) => {
           console.error("PaneCrew: Ordnerauswahl fehlgeschlagen", error);
@@ -652,6 +743,35 @@ function App() {
     if (outgoing) guardLeave(outgoing.paneId, proceed);
     else proceed();
   };
+
+  // Öffnet einen Eintrag der Recent-Projects-Liste (Ticket 22) direkt in
+  // `slotIndex`, ohne den Dateiauswahldialog — derselbe Verdrängungs-Guard
+  // wie `assignProjectToSlot` oben, weil ein belegter Zielslot genauso eine
+  // laufende PTY beendet. `loadProject` scheitert für einen inzwischen
+  // verschwundenen Ordner nicht (leerer Baum + `treeError`, s.
+  // `loadProject.ts`), also kein gesonderter Fehlerpfad hier — derselbe
+  // Zustand, den ein manuell über den Dialog erneut gewähltes, seitdem
+  // gelöschtes Projekt auch hätte.
+  const openRecentProject = (path: string, slotIndex: number) => {
+    const outgoing = gridState.slots[slotIndex];
+    const proceed = () => {
+      setPickingSlot(slotIndex);
+      void loadProject(path)
+        .then((next) => {
+          if (outgoing) paneFileEditors.forget(outgoing.paneId);
+          assignProject(slotIndex, next.path);
+          recordRecentProject(next.path);
+        })
+        .finally(() => setPickingSlot(null));
+    };
+    if (outgoing) guardLeave(outgoing.paneId, proceed);
+    else proceed();
+  };
+
+  // Kontextmenü-Eintrag „Aus Liste entfernen" (Ticket 22) — löscht nur den
+  // Listeneintrag, nie das Projekt selbst.
+  const removeRecentProject = (path: string) =>
+    setRecentProjects((current) => withoutRecentProject(current, path));
 
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.
@@ -968,7 +1088,7 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="relative flex h-full flex-col">
-        <TitleBar zoom={zoom} panes={activePanes(gridState)} />
+        <TitleBar zoom={zoom} panes={activePanes(gridState)} onNavigatePane={navigatePane} />
         {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch
@@ -1093,6 +1213,9 @@ function App() {
               // eine Baumzeile ziehen und eine Datei aus dem Finder halten.
               dragTargetPaneId={dragTargetPaneId ?? explorerDrag.targetPaneId}
               onAssignProject={assignProjectToSlot}
+              recentProjects={recentProjects}
+              onOpenRecentProject={openRecentProject}
+              onRemoveRecentProject={removeRecentProject}
               onClosePane={closePaneGuarded}
               onRestartTerminatedTab={restartTerminatedTab}
               onSwapPanes={swapPanes}
@@ -1112,6 +1235,7 @@ function App() {
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}
               onExitFocusMode={exitFocusMode}
+              onChangeSplitRatios={setSplitRatios}
               rotation={focusRotation}
             />
           </main>
@@ -1167,7 +1291,9 @@ function App() {
                 ? "closeDialog.paneTitle"
                 : pendingClose.target === "terminalTab"
                   ? "closeDialog.terminalTabTitle"
-                  : "closeDialog.terminalTabsBatchTitle",
+                  : pendingClose.target === "terminalTabsBatch"
+                    ? "closeDialog.terminalTabsBatchTitle"
+                    : "closeDialog.windowTitle",
               pendingClose.target === "terminalTabsBatch"
                 ? { count: pendingClose.count }
                 : undefined,
@@ -1196,7 +1322,7 @@ function App() {
                     ),
                   }}
                 />
-              ) : (
+              ) : pendingClose.target === "terminalTabsBatch" ? (
                 <Trans
                   i18nKey="closeDialog.terminalTabsBatchDescription"
                   count={pendingClose.count}
@@ -1207,6 +1333,8 @@ function App() {
                     ),
                   }}
                 />
+              ) : (
+                t("closeDialog.windowDescription")
               )
             }
             confirmLabel={t(
@@ -1214,7 +1342,9 @@ function App() {
                 ? "closeDialog.confirmPane"
                 : pendingClose.target === "terminalTab"
                   ? "closeDialog.confirmTerminalTab"
-                  : "closeDialog.confirmTerminalTabsBatch",
+                  : pendingClose.target === "terminalTabsBatch"
+                    ? "closeDialog.confirmTerminalTabsBatch"
+                    : "closeDialog.confirmWindow",
               pendingClose.target === "terminalTabsBatch"
                 ? { count: pendingClose.count }
                 : undefined,

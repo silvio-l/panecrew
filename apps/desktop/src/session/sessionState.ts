@@ -80,6 +80,36 @@ export interface SessionState {
    * bereits über `App.tsx`s Resize-Handle, hier kommt nur die Persistenz
    * dazu). */
   explorer_width?: number | null;
+  /** Zuletzt geöffnete Projektpfade (Ticket 22), zuletzt geöffnet zuerst —
+   * App-weit wie `expanded_folders`/`explorer_width`, nicht je Fenster/Slot.
+   * Auf max. `RECENT_PROJECTS_MAX` Einträge gekappt; kein Pinning. */
+  recent_projects?: string[];
+}
+
+/** Max. Einträge der Recent-Projects-Liste (Ticket 22). */
+export const RECENT_PROJECTS_MAX = 8;
+
+/** Rückt `path` an den Anfang der Liste — verschiebt einen bereits
+ * vorhandenen Eintrag statt ihn zu duplizieren — und kappt auf
+ * `RECENT_PROJECTS_MAX`. */
+export function withRecentProject(
+  recentProjects: readonly string[],
+  path: string,
+): string[] {
+  return [path, ...recentProjects.filter((existing) => existing !== path)].slice(
+    0,
+    RECENT_PROJECTS_MAX,
+  );
+}
+
+/** Entfernt genau `path` aus der Liste ("Aus Liste entfernen") — löscht nur
+ * den Listeneintrag, nie das Projekt selbst. No-Op, wenn `path` nicht
+ * enthalten ist. */
+export function withoutRecentProject(
+  recentProjects: readonly string[],
+  path: string,
+): string[] {
+  return recentProjects.filter((existing) => existing !== path);
 }
 
 /** Baut den zu persistierenden Zustand EINES Fensters (Ticket 27) aus dem
@@ -125,7 +155,7 @@ export function buildWindowState(
         adapter_id: null,
       };
     }),
-    split_ratios: [],
+    split_ratios: [...grid.splitRatios],
     maximized_pane_id: grid.maximizedPaneId,
   };
 }
@@ -158,4 +188,14 @@ export function restoredTemplate(session: SessionState, label: string): Template
  * unverdrahteten Feldern (Terminal-Tab-Array, `adapter_id`, …). */
 export function restoredSlots(session: SessionState, label: string): (PersistedPane | null)[] {
   return restoredWindow(session, label)?.slots ?? [];
+}
+
+/** Die gespeicherten Schnittkanten-Verhältnisse dieses Fensters (Ticket 21) —
+ * roh, noch NICHT gegen die Track-Form des (ggf. inzwischen anderen)
+ * restaurierten Templates validiert. Das übernimmt der Aufrufer
+ * (`App.tsx`) über `grid/splitRatios.ts`s `normalizeRatios`, dieselbe
+ * Arbeitsteilung wie bei `restoredTemplate`s Validierung gegen
+ * `GRID_TEMPLATES`. */
+export function restoredSplitRatios(session: SessionState, label: string): number[] {
+  return restoredWindow(session, label)?.split_ratios ?? [];
 }

@@ -24,6 +24,7 @@ import { searchProjectTree } from "../explorer/searchTree";
 import { vscodeIsInstalled } from "../explorer/vscodeDetection";
 import { isMacPlatform } from "../shortcuts/platform";
 import { useSettings } from "../settings/useSettings";
+import { copyTextToClipboard } from "../terminal/clipboard";
 import type { GitChangeStatus, GitDecorations } from "../types/gitStatus";
 import type { ContentMatch, Project, TreeNode } from "../types/project";
 
@@ -533,21 +534,21 @@ export function ExplorerPanel({
       }
     },
     onCopyPath: (row) => {
-      void navigator.clipboard
-        .writeText(`${project.path}/${row.path}`)
-        .then(() => flashCopied(t("explorer.contextMenu.pathCopied")))
-        .catch(() => {
-          /* Zwischenablage ohne Berechtigung — kein Feedback ist hier
-             ehrlicher als ein Erfolgs-Flash, der nicht stattgefunden hat. */
-        });
+      // `copyTextToClipboard` statt der rohen Async Clipboard API — dieselbe
+      // WKWebView-"transient activation"-Falle, die `terminal/clipboard.ts`s
+      // Kopfkommentar für Terminal-Kontextmenü/Mausauswahl dokumentiert, traf
+      // hier ein zweites Mal zu: ein Radix-`onSelect`, das erst nach der
+      // Schließ-Animation feuert, verliert die Geste, `writeText()` schlägt
+      // lautlos fehl, der Kopiert-Flash erschien aber trotzdem (Bugreport:
+      // Toast da, Zwischenablage leer).
+      if (copyTextToClipboard(`${project.path}/${row.path}`)) {
+        flashCopied(t("explorer.contextMenu.pathCopied"));
+      }
     },
     onCopyRelativePath: (row) => {
-      void navigator.clipboard
-        .writeText(row.path)
-        .then(() => flashCopied(t("explorer.contextMenu.relativePathCopied")))
-        .catch(() => {
-          // Dasselbe stille Fallback wie bei `onCopyPath` oben.
-        });
+      if (copyTextToClipboard(row.path)) {
+        flashCopied(t("explorer.contextMenu.relativePathCopied"));
+      }
     },
   };
 

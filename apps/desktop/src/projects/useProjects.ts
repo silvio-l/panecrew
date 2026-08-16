@@ -71,22 +71,49 @@ export function useProjects(): ProjectsCache {
       "",
     );
     const promise = (async () => {
-      let project = await buildProject(path);
-      setProjects((current) => ({ ...current, [path]: project }));
-      for (const relPath of previouslyLoaded) {
-        try {
-          const children = await readDirEntries(`${path}/${relPath}`);
-          project = { ...project, tree: withChildrenAt(project.tree, relPath, children) };
-          setProjects((current) => ({ ...current, [path]: project }));
-        } catch (error) {
-          // Ein Ordner, der zwischen dem alten und dem neuen Baum verschwunden
-          // ist (gelöscht, umbenannt), bleibt einfach unbeladen zurück, statt
-          // den ganzen Refresh scheitern zu lassen.
-          console.error("PaneCrew: Ordner konnte nach Aktualisieren nicht neu geladen werden", error);
-        }
+      // Wurzel UND alle vorher aufgeklappten Ordner parallel anfragen
+      // (`Promise.all`), nicht die Wurzel zuerst committen und die Ordner
+      // danach einzeln in einer `for`-Schleife nachladen: die alte,
+      // sequenzielle Fassung rief für jeden zurückkommenden Ordner ein
+      // eigenes `setProjects` auf, und `buildProject`s frische Wurzel trägt
+      // JEDEN Ordner zunächst als `children: undefined` — ein echter
+      // Tauri-IPC-Roundtrip pro Zwischenschritt heißt: ein bereits
+      // aufgeklappter Ordner klappte im laufenden Programm sichtbar für
+      // einen Render-Zyklus zu und beim nächsten Roundtrip wieder auf,
+      // bei mehreren offenen Ebenen entsprechend oft hintereinander (der
+      // gemeldete Flacker-Bug). Ein einziges `setProjects` am Ende, erst
+      // wenn alles zusammengeführt ist, macht diesen Zwischenzustand
+      // strukturell unmöglich statt ihn nur seltener zu machen.
+      const [project, reloadedChildren] = await Promise.all([
+        buildProject(path),
+        Promise.all(
+          previouslyLoaded.map(async (relPath) => {
+            try {
+              return [relPath, await readDirEntries(`${path}/${relPath}`)] as const;
+            } catch (error) {
+              // Ein Ordner, der zwischen dem alten und dem neuen Baum
+              // verschwunden ist (gelöscht, umbenannt), bleibt einfach
+              // unbeladen zurück, statt den ganzen Refresh scheitern zu
+              // lassen.
+              console.error(
+                "PaneCrew: Ordner konnte nach Aktualisieren nicht neu geladen werden",
+                error,
+              );
+              return null;
+            }
+          }),
+        ),
+      ]);
+      let tree = project.tree;
+      for (const entry of reloadedChildren) {
+        if (entry === null) continue;
+        const [relPath, children] = entry;
+        tree = withChildrenAt(tree, relPath, children);
       }
+      const finalProject = { ...project, tree };
+      setProjects((current) => ({ ...current, [path]: finalProject }));
       inFlightRef.current.delete(path);
-      return project;
+      return finalProject;
     })();
     inFlightRef.current.set(path, promise);
     return promise;

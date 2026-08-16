@@ -419,11 +419,21 @@ describe("App", () => {
       );
     });
 
-    // Der Ordnername trägt Pane-Header und Explorer-Kopf.
+    // Der Ordnername trägt Pane-Header und Explorer-Kopf. Gescopte Queries
+    // (Ticket 22): die drei noch leeren Slots zeigen "storefront" jetzt auch
+    // in ihrer eigenen Zuletzt-geöffnet-Liste, ein blankes `getAllByText`
+    // zählte die mit.
     expect(
       await screen.findByLabelText("Terminal storefront"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("storefront")).toHaveLength(2);
+    expect(
+      within(screen.getByRole("complementary")).getAllByText("storefront"),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Terminal storefront")).getAllByText(
+        "storefront",
+      ),
+    ).toHaveLength(1);
     expect(screen.getByText("Kein Dateibaum geladen.")).toBeInTheDocument();
   });
 
@@ -2318,12 +2328,24 @@ describe("Grid / Mehrfach-Pane", () => {
     await screen.findByLabelText("Terminal admin");
 
     // admin wurde zuletzt zugewiesen und ist damit fokussiert: sein Name
-    // steht doppelt (eigener Pane-Header + Explorer-Kopf), storefronts nur
-    // noch in seinem eigenen Pane-Header.
+    // steht im Explorer-Kopf UND im eigenen Pane-Header, storefronts nur
+    // noch in seinem eigenen Pane-Header. Gescopte Queries statt blankem
+    // `getAllByText` (Ticket 22): die beiden noch leeren Slots zeigen jetzt
+    // ebenfalls "admin"/"storefront" in ihrer Zuletzt-geöffnet-Liste — ein
+    // legitimer weiterer Fundort, den diese Zusicherung nicht meint.
+    const explorer = screen.getByRole("complementary");
     await waitFor(() => {
-      expect(screen.getAllByText("admin")).toHaveLength(2);
+      expect(within(explorer).getByText("admin")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("storefront")).toHaveLength(1);
+    expect(within(explorer).queryByText("storefront")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Terminal admin")).getAllByText("admin"),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Terminal storefront")).getAllByText(
+        "storefront",
+      ),
+    ).toHaveLength(1);
   });
 
   it("blendet beim Datei-Öffnen nur das Terminal der fokussierten Pane aus, die andere bleibt sichtbar", async () => {
@@ -2523,6 +2545,221 @@ describe("Grid / Mehrfach-Pane", () => {
     ).toHaveLength(0);
     expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
     expect(screen.getByLabelText("Terminal admin")).toBeInTheDocument();
+  });
+});
+
+// Titelleisten-Pfeile (Ticket pane-navigation-titlebar/01+02): dieselben zwei
+// Knöpfe wechseln je nach Modus entweder den Grid-Fokus (und mit ihm den
+// Explorer-Follow, sichtbar am `explorer_watch_start`-Aufruf für den neuen
+// fokussierten Pfad) oder, im Fokus-Modus, `maximizedPaneId` — und stoppen
+// dabei jeweils eine laufende Rotation vollständig.
+describe("Titelleisten-Pfeile (Pane-Navigation)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  const explorerWatchPaths = () =>
+    invokeMock.mock.calls
+      .filter(([cmd]) => cmd === "explorer_watch_start")
+      .map(([, args]) => (args as { path: string }).path);
+
+  it("sind bei nur einer belegten Pane deaktiviert", async () => {
+    openMock.mockResolvedValueOnce("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(screen.getByRole("button", { name: "Vorherige Pane" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nächste Pane" })).toBeDisabled();
+  });
+
+  it("wechselt in der Grid-Ansicht Fokus und Explorer-Follow zur nächsten/vorherigen Pane, umlaufend", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const nextButton = screen.getByRole("button", { name: "Nächste Pane" });
+    const previousButton = screen.getByRole("button", {
+      name: "Vorherige Pane",
+    });
+    expect(nextButton).not.toBeDisabled();
+    invokeMock.mockClear();
+
+    // Zuletzt zugewiesen (admin) ist bereits fokussiert (`assignProjectToSlot`)
+    // — "nächste" wrapt also zur ersten Pane zurück.
+    fireEvent.click(nextButton);
+    await waitFor(() => {
+      expect(explorerWatchPaths()).toContain("/Users/dev/projects/storefront");
+    });
+
+    invokeMock.mockClear();
+    fireEvent.click(previousButton);
+    await waitFor(() => {
+      expect(explorerWatchPaths()).toContain("/Users/dev/projects/admin");
+    });
+  });
+
+  it("wechselt im Fokus-Modus stattdessen maximizedPaneId zur nächsten Pane und stoppt eine laufende Rotation vollständig", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const workspace = container.querySelector(".pc-workspace");
+    if (!workspace) throw new Error("Workspace nicht gefunden");
+    const firstCell = workspace.children[0];
+    if (!(firstCell instanceof HTMLElement)) {
+      throw new Error("Erste Zelle nicht gefunden");
+    }
+    fireEvent.click(
+      within(firstCell).getAllByRole("button", { name: "Fokus-Modus" })[0] as HTMLElement,
+    );
+    await screen.findByRole("button", { name: "Fokus-Modus verlassen" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rotation starten" }));
+    await screen.findByRole("button", { name: "Rotation stoppen" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Nächste Pane" }));
+
+    // Fokus-Modus wechselt weiter (admin ist jetzt maximiert, "Fokus-Modus
+    // verlassen" erscheint jetzt nur noch in DEREN Zelle, nicht mehr in
+    // storefronts) — und die Rotation ist vollständig gestoppt, nicht nur
+    // pausiert (sonst stünde weiterhin "Rotation stoppen" da).
+    await waitFor(() => {
+      const secondCell = workspace.children[1];
+      if (!(secondCell instanceof HTMLElement)) {
+        throw new Error("Zweite Zelle nicht gefunden");
+      }
+      expect(
+        within(secondCell).getAllByRole("button", {
+          name: "Fokus-Modus verlassen",
+        }),
+      ).toHaveLength(1);
+    });
+    expect(
+      screen.getAllByRole("button", { name: "Fokus-Modus verlassen" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: "Rotation starten" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  it("öffnet einen Eintrag der Liste direkt im leeren Slot und schiebt ihn an den Listenanfang", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: [
+            "/Users/dev/projects/newest",
+            "/Users/dev/projects/older",
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    const olderRow = await screen.findByRole("button", { name: "older" });
+    fireEvent.click(olderRow);
+
+    expect(await screen.findByLabelText("Terminal older")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/older" }),
+      );
+    });
+
+    // Der geöffnete Eintrag rückt an den Listenanfang, "newest" bleibt
+    // erhalten, nur die Reihenfolge dreht sich.
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        ([cmd]) => cmd === "session_save_window",
+      );
+      const last = calls[calls.length - 1]?.[1] as
+        | { recentProjects?: string[] }
+        | undefined;
+      expect(last?.recentProjects).toEqual([
+        "/Users/dev/projects/older",
+        "/Users/dev/projects/newest",
+      ]);
+    });
+  });
+
+  it("entfernt einen Eintrag über das Kontextmenü, ohne ihn zu öffnen", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: [
+            "/Users/dev/projects/keep",
+            "/Users/dev/projects/drop",
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    const dropRow = await screen.findByRole("button", { name: "drop" });
+    fireEvent.contextMenu(dropRow);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Aus Liste entfernen" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "drop" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "keep" })).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "pty_spawn",
+      expect.objectContaining({ cwd: "/Users/dev/projects/drop" }),
+    );
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        ([cmd]) => cmd === "session_save_window",
+      );
+      const last = calls[calls.length - 1]?.[1] as
+        | { recentProjects?: string[] }
+        | undefined;
+      expect(last?.recentProjects).toEqual(["/Users/dev/projects/keep"]);
+    });
   });
 });
 
@@ -2831,6 +3068,106 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         expect.objectContaining({ cwd: "/Users/dev/projects/storefront" }),
       );
     });
+  });
+
+  it("wendet wiederhergestellte Schnittkanten-Ratios als echte Grid-Track-Größen an (Ticket 21)", async () => {
+    // jsdom rechnet kein CSS-Grid-Layout (`grid/splitRatios.ts`s
+    // Kopfkommentar) — dieser Test sichert deshalb, wie der Test oben zum
+    // Fokus-Modus-`grid-area`, nur die VERDRAHTUNG: das restorete
+    // `split_ratios` muss als Inline-`gridTemplateColumns` auf `.pc-workspace`
+    // ankommen, nicht bei der gleichverteilten CSS-Klassenvorgabe bleiben.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "split",
+              split_ratios: [0.7, 0.3],
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+    const workspace = container.querySelector<HTMLElement>(".pc-workspace");
+    expect(workspace?.style.gridTemplateColumns).toBe(
+      "minmax(0, 70fr) minmax(0, 30fr)",
+    );
+  });
+
+  it("lässt die echten Grid-Tracks WÄHREND des Pointer-Drags live mitwandern, nicht erst bei pointerup (Ticket 21)", async () => {
+    // Modelliert nach dem Explorer-Resize-Handle: `explorerWidth` (die echte
+    // Breite) ist live, nur die Persistenz (`persistedExplorerWidth`) wird
+    // bis `pointerup` aufgeschoben (`App.tsx`s `startExplorerResize`). Der
+    // ursprüngliche Ticket-21-Bug bestand genau darin, dass die Splitter-UI
+    // zwar lief, aber `.pc-workspace`s echte Tracks erst beim Loslassen
+    // sprangen — dieser Test fasst also VOR `pointerup` nach.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 1600,
+      height: 800,
+      top: 0,
+      left: 0,
+      right: 1600,
+      bottom: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => "",
+    });
+
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "split",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+
+    const separator = screen.getByRole("separator", { name: /Spaltenbreite/ });
+    separator.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(separator, { clientX: 800 });
+    fireEvent.pointerMove(separator, { clientX: 900 });
+
+    const workspace = container.querySelector<HTMLElement>(".pc-workspace");
+    // Noch VOR pointerup: 1600px Nutzfläche, 0 Lücke, +100px Zeigerbewegung
+    // aus der 50/50-Ausgangslage -> 900px/700px, bereits als echte Tracks.
+    expect(workspace?.style.gridTemplateColumns).toBe(
+      "minmax(0, 56.25fr) minmax(0, 43.75fr)",
+    );
+
+    fireEvent.pointerUp(separator);
+    vi.restoreAllMocks();
   });
 
   it("setzt im Fokus-Modus der breiten volle-Zeile-Pane das grid-area inline auf auto zurück (3er-Grid, one-over-two)", async () => {

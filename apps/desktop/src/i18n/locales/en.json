@@ -6,6 +6,8 @@
   "titleBar": {
     "searchPlaceholder": "Search or run a command",
     "newWindow": "New Window",
+    "previousPane": "Previous Pane",
+    "nextPane": "Next Pane",
     "settings": "Settings",
     "explorerWidthAria": "Adjust explorer width",
     "windowTitleBarAria": "Window title bar",
@@ -89,6 +91,10 @@
     "terminals_one": "{{count}} running terminal session in total",
     "terminals_other": "{{count}} running terminal sessions in total"
   },
+  "gridSplitters": {
+    "columnAria": "Adjust column width between column {{left}} and {{right}}",
+    "rowAria": "Adjust row height between row {{top}} and {{bottom}}"
+  },
   "closeDialog": {
     "paneTitle": "Close pane?",
     "paneDescription": "The pane <bold>{{projectName}}</bold> will be closed and its running terminal sessions ended.",
@@ -102,6 +108,9 @@
     "terminalTabsBatchDescription_other": "<bold>{{count}} terminal tabs</bold> will be closed and the sessions running in them ended.",
     "confirmTerminalTabsBatch_one": "Close 1 tab",
     "confirmTerminalTabsBatch_other": "Close {{count}} tabs",
+    "windowTitle": "Close window?",
+    "windowDescription": "This window still has terminal sessions running. Closing it will end them.",
+    "confirmWindow": "Close window",
     "cancel": "Cancel"
   },
   "terminalPane": {
@@ -165,7 +174,8 @@
   },
   "projectPicker": {
     "choose": "Choose project",
-    "hint": "PaneCrew starts a real shell in it."
+    "hint": "PaneCrew starts a real shell in it.",
+    "removeRecent": "Remove from list"
   },
   "templateSwitcher": {
     "selectTemplate": "Choose template",

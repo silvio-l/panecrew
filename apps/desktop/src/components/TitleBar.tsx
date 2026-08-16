@@ -73,8 +73,23 @@ export const TITLE_BAR_ZONE_HEIGHT = CAPSULE_INSET * 2 + CAPSULE_HEIGHT;
 // Marke-plus-Schriftzug-Block vor sich, den es nicht mehr gibt.
 const TRAFFIC_LIGHT_INSET = 84;
 
-export function TitleBar({ zoom, panes }: { zoom: number; panes: readonly Pane[] }) {
+export function TitleBar({
+  zoom,
+  panes,
+  onNavigatePane,
+}: {
+  zoom: number;
+  panes: readonly Pane[];
+  /** Wechselt Fokus (Grid-Ansicht) bzw. `maximizedPaneId` (Fokus-Modus) zur
+   * vorherigen/nächsten Pane in Slot-Reihenfolge (`gridState.ts::nextPaneId`)
+   * — `App.tsx` entscheidet, welcher der beiden Fälle gerade gilt, diese
+   * Komponente kennt nur die Richtung. */
+  onNavigatePane: (direction: "next" | "previous") => void;
+}) {
   const { t } = useTranslation();
+  // Bei nur einer (oder keiner) Pane gibt es kein "woandershin" — die Pfeile
+  // bleiben dann inert, wie leere Grid-Slots nie klickbare Ziele sind.
+  const navigationDisabled = panes.length <= 1;
   // Dasselbe "Kürzel-in-Klammern-an-Tooltip-anhängen"-Muster wie
   // PaneTabs.tsx' Terminal-Tab-Chips — kein neuer Formatierungsweg.
   const newWindowShortcut = SHORTCUTS.find(
@@ -110,6 +125,35 @@ export function TitleBar({ zoom, panes }: { zoom: number; panes: readonly Pane[]
         }}
         className="pointer-events-auto relative flex h-full items-center rounded-[13px] border border-(--pc-glass-border) bg-(--pc-glass-background) pr-[3px] shadow-[0_1px_4px_var(--pc-glass-shadow),inset_0_1px_0_var(--pc-glass-sheen)] backdrop-blur-lg backdrop-saturate-150"
       >
+        {/* Vor/Zurück-Pfeile (Ticket pane-navigation-titlebar/01+02): links der
+            Suchfläche, wie ein Referenz-Editor seine Verlaufs-Navigation platziert. Kein
+            eigenes Tastaturkürzel (Ticket 01 nennt das explizit) — nur der
+            Klick selbst. */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ChromeTooltip label={t("titleBar.previousPane")} align="start">
+            <button
+              type="button"
+              aria-label={t("titleBar.previousPane")}
+              disabled={navigationDisabled}
+              onClick={() => onNavigatePane("previous")}
+              className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-40 ${CHROME_FOCUS_RING}`}
+            >
+              <ChevronIcon direction="previous" />
+            </button>
+          </ChromeTooltip>
+          <ChromeTooltip label={t("titleBar.nextPane")} align="start">
+            <button
+              type="button"
+              aria-label={t("titleBar.nextPane")}
+              disabled={navigationDisabled}
+              onClick={() => onNavigatePane("next")}
+              className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-40 ${CHROME_FOCUS_RING}`}
+            >
+              <ChevronIcon direction="next" />
+            </button>
+          </ChromeTooltip>
+        </div>
+
         {/* Ziehfläche zwischen Ampeln und Feld — als reine Lücke wäre der
             halbe linke Kapselbereich nicht ziehbar. */}
         <div data-tauri-drag-region className="min-w-0 flex-1" />
@@ -661,6 +705,24 @@ function AppMark() {
 // bei 24er viewBox auf 15px braucht 1,1px gerendert den Wert 1,76.
 // Fensterrahmen mit zentriertem Plus — dieselbe strokeWidth-Herleitung wie
 // `GearIcon` (1,1px gerendert bei 15px auf 24er viewBox).
+function ChevronIcon({ direction }: { direction: "next" | "previous" }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.76"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={direction === "previous" ? "M15 5 8 12l7 7" : "M9 5l7 7-7 7"} />
+    </svg>
+  );
+}
+
 function NewWindowIcon() {
   return (
     <svg

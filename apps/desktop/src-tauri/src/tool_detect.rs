@@ -216,7 +216,6 @@ fn match_tool(process: &Process) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
     use std::process::{Child, Command, Stdio};
     use std::sync::{Arc, Barrier};
     use std::time::{Duration, Instant};
@@ -256,7 +255,10 @@ mod tests {
     /// script's own path in argv still carries the recognizable name, which
     /// is what `match_tool` must find.
     #[test]
+    #[cfg(unix)]
     fn matches_a_known_tool_by_argv_even_when_the_process_itself_is_named_after_the_interpreter() {
+        use std::os::unix::fs::PermissionsExt;
+
         // Test-only fixture, not a security operation: no untrusted input in
         // the path, PID keeps it unique for the test's lifetime, and it's
         // removed at the end of this function.

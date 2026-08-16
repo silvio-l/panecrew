@@ -19,6 +19,7 @@ const state = (slots: (Pane | null)[]): GridState => ({
   slots,
   focusedPaneId: slots.find((slot) => slot !== null)?.paneId ?? null,
   maximizedPaneId: null,
+  splitRatios: [],
 });
 
 describe("GridStatusRail", () => {

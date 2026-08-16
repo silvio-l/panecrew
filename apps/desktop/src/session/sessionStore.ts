@@ -20,18 +20,21 @@ export async function loadSession(): Promise<SessionState | null> {
 /** Ticket 27: pro Fenster statt als ganzes `windows`-Array — `session_
  * save_window` merged serverseitig anhand `window.label` in die bestehende
  * Datei, statt sie zu überschreiben (`session_store.rs`). `expandedFolders`/
- * `explorerWidth` bleiben window-agnostische Globals, `undefined` lässt sie
- * unangetastet (Rust-seitiges `Option`), ein Wert überschreibt sie. */
+ * `explorerWidth`/`recentProjects` bleiben window-agnostische Globals,
+ * `undefined` lässt sie unangetastet (Rust-seitiges `Option`), ein Wert
+ * überschreibt sie. */
 export async function saveSessionWindow(
   window: PersistedWindow,
   expandedFolders?: Record<string, string[]>,
   explorerWidth?: number,
+  recentProjects?: string[],
 ): Promise<void> {
   try {
     await invoke("session_save_window", {
       window,
       expandedFolders: expandedFolders ?? null,
       explorerWidth: explorerWidth ?? null,
+      recentProjects: recentProjects ?? null,
     });
   } catch (error) {
     console.error("PaneCrew: Sitzung konnte nicht gespeichert werden", error);

@@ -2,7 +2,15 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import "./jsdomStorageFix";
-import "../i18n";
+import { setLanguage } from "../i18n";
+
+// Die Test-Suite selbst ist auf deutsche UI-Strings geschrieben (jede
+// Assertion erwartet z. B. "Kopiert", nicht "Copied") — unabhängig davon,
+// welche Sprache die App für einen frisch installierten Nutzer als DEFAULT
+// wählt (`i18n/index.ts`s `initialLanguage()`, seit 2026-08-16 Englisch).
+// Diese Entkopplung fixiert die Testsprache explizit auf Deutsch, statt sich
+// auf den App-Default zu verlassen.
+setLanguage("de");
 
 // Testing Library hängt sein automatisches cleanup nur ein, wenn Vitest mit
 // `globals: true` läuft — tut es hier nicht. Ohne diesen Aufruf bliebe das DOM

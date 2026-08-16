@@ -5,10 +5,15 @@
 //! `about.rs`'s singleton, every call here creates a NEW, independently
 //! addressable window instead of refocusing an existing one.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, Runtime, State, WebviewUrl, WebviewWindowBuilder, Window,
+    WindowEvent,
+};
 
 use crate::pty_commands::{self, PtyState, WindowPtyRegistry};
 use crate::session_store;
@@ -138,9 +143,87 @@ impl QuittingFlag {
         self.0.store(true, Ordering::SeqCst);
     }
 
+    /// Called when a `CloseRequested` gets halted for confirmation (below): a
+    /// halted close means the quit did NOT go through, so the flag must not
+    /// keep reading "quitting" for the rest of the process's life — a later,
+    /// entirely unrelated single-window close would otherwise wrongly skip
+    /// dropping its own `session.json` entry forever, the exact bug this type
+    /// exists to prevent, just inverted.
+    fn clear(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+
     pub(crate) fn is_set(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
+}
+
+/// Event name `on_window_event` emits when it halts a `CloseRequested` for
+/// active-session confirmation — mirrored in `App.tsx` as a plain string
+/// literal (no shared constants module between Rust and TypeScript here).
+const CLOSE_CONFIRM_EVENT: &str = "pc://window-close-requested";
+
+/// Window labels that already answered "close anyway" to the active-session
+/// confirmation below. `Window::close()` re-fires the very `CloseRequested`
+/// this flag exists to gate — without consuming it here, a confirmed close
+/// would ask the same question a second time on its own follow-up event.
+#[derive(Default)]
+pub struct ConfirmedCloseWindows(Mutex<HashSet<String>>);
+
+impl ConfirmedCloseWindows {
+    fn mark(&self, window_label: &str) {
+        self.0.lock().unwrap().insert(window_label.to_string());
+    }
+
+    /// True (and consumed) if `window_label` was just confirmed; false, and
+    /// nothing consumed, otherwise.
+    fn take(&self, window_label: &str) -> bool {
+        self.0.lock().unwrap().remove(window_label)
+    }
+}
+
+/// Remembers, per window, whether `QuittingFlag` was set at the moment its
+/// `CloseRequested` got halted for confirmation — captured there because
+/// `QuittingFlag` itself is cleared at that same moment (see its doc comment)
+/// so an unrelated later close doesn't misread a cancelled quit as still in
+/// progress. Without this, a *confirmed* Cmd+Q would wrongly be treated as a
+/// plain single-window close by the time its retry lands (the global flag
+/// already reads `false` by then) and would drop that window's own
+/// `session.json` entry instead of preserving it for the next launch's
+/// restore, exactly the outcome quitting is supposed to avoid.
+#[derive(Default)]
+pub struct DeferredQuitState(Mutex<std::collections::HashMap<String, bool>>);
+
+impl DeferredQuitState {
+    fn remember(&self, window_label: &str, was_quitting: bool) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(window_label.to_string(), was_quitting);
+    }
+
+    /// Consumes and returns the remembered value if this window was deferred
+    /// earlier; `None` if it never was (nothing to lose, so it never went
+    /// through the confirmation gate at all).
+    fn recall(&self, window_label: &str) -> Option<bool> {
+        self.0.lock().unwrap().remove(window_label)
+    }
+}
+
+/// Frontend's answer to `CLOSE_CONFIRM_EVENT`: the user confirmed losing this
+/// window's running terminal sessions. Marks the window as confirmed, then
+/// re-issues the close so `on_window_event` below runs the real teardown
+/// (PTY kill, session-entry drop, possible `app.exit`) instead of asking a
+/// second time.
+#[tauri::command]
+pub fn window_close_confirmed<R: Runtime>(
+    window: Window<R>,
+    confirmed: State<ConfirmedCloseWindows>,
+) -> Result<(), String> {
+    confirmed.mark(window.label());
+    window
+        .close()
+        .map_err(|error| format!("Fenster konnte nicht geschlossen werden: {error}"))
 }
 
 /// Opens a new, independent PaneCrew window with its own up-to-four-pane
@@ -327,12 +410,17 @@ fn nanoid() -> String {
 /// Window-close cleanup (Ticket 27, landmines 3 + 5): kills every PTY this
 /// window owned and drops its `session.json` entry — unless the whole app is
 /// quitting, in which case every window's own `CloseRequested` fires too and
-/// must leave the session file alone for the next launch's restore. Chained
-/// with `about::on_window_event` in `lib.rs`, not a replacement for it —
-/// About and Settings are utility windows with their own lifecycle and are
-/// explicitly skipped here.
+/// must leave the session file alone for the next launch's restore. First
+/// gated behind the active-session confirmation above (2026-08-16): a
+/// misplaced Cmd+Q or a stray click on the traffic-light X must not silently
+/// discard running terminal sessions, so the actual teardown below only runs
+/// once `ConfirmedCloseWindows` says the frontend has agreed to it — or
+/// there was never anything running in this window to lose in the first
+/// place. Chained with `about::on_window_event` in `lib.rs`, not a
+/// replacement for it — About and Settings are utility windows with their
+/// own lifecycle and are explicitly skipped here.
 pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    let WindowEvent::CloseRequested { .. } = event else {
+    let WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
     if window.label() == "about" || window.label() == "settings" {
@@ -342,9 +430,37 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     let app = window.app_handle();
     let pty_state = app.state::<PtyState>();
     let registry = app.state::<WindowPtyRegistry>();
+    let quitting_flag = app.state::<QuittingFlag>();
+    let deferred_quit = app.state::<DeferredQuitState>();
+
+    // Halt the close — OS traffic-light X and Cmd+Q alike, both arrive here
+    // as a `CloseRequested` for this window — until the frontend confirms
+    // losing whatever's still running in it. Nothing to lose (no PTYs
+    // registered) skips straight through, same as an already-confirmed close.
+    let confirmed = app.state::<ConfirmedCloseWindows>();
+    let is_confirmed_retry = confirmed.take(window.label());
+    if !is_confirmed_retry && !registry.tab_ids_for_window(window.label()).is_empty() {
+        let was_quitting = quitting_flag.is_set();
+        deferred_quit.remember(window.label(), was_quitting);
+        // A halted close means the quit (if any) did not go through — see
+        // `QuittingFlag::clear`'s doc comment.
+        quitting_flag.clear();
+        api.prevent_close();
+        let _ = window.emit_to(window.label(), CLOSE_CONFIRM_EVENT, ());
+        return;
+    }
+
     pty_commands::kill_all_for_window(&pty_state, &registry, window.label());
 
-    if app.state::<QuittingFlag>().is_set() {
+    // For a window that was deferred above, use the quitting-state captured
+    // back then, not the global flag's current value — it may have just been
+    // cleared by a sibling window's own, unrelated deferral. Everything else
+    // (nothing was ever running, so it never went through the gate) still
+    // reads the flag live, exactly as before this confirmation step existed.
+    let is_quitting_close = deferred_quit
+        .recall(window.label())
+        .unwrap_or_else(|| quitting_flag.is_set());
+    if is_quitting_close {
         return;
     }
     let Ok(dir) = app.path().app_data_dir() else {
@@ -394,8 +510,66 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 /// cannot drift apart again unnoticed.
 #[cfg(test)]
 mod tests {
-    use super::{new_window_label, window_entries, MAIN};
+    use super::{new_window_label, window_entries, ConfirmedCloseWindows, DeferredQuitState, MAIN};
     use std::collections::BTreeSet;
+
+    /// `WindowEvent::CloseRequested`'s `api` can only be constructed by the
+    /// tauri runtime itself (`CloseRequestApi`'s inner `Sender` is crate-
+    /// private), so `on_window_event`'s branching can't be driven end-to-end
+    /// from this crate's own tests — this pins the state machine it leans on
+    /// instead: ask once, then let the confirmed retry straight through.
+    #[test]
+    fn confirmed_close_is_asked_once_then_consumed() {
+        let confirmed = ConfirmedCloseWindows::default();
+        assert!(!confirmed.take("main"), "nothing marked yet");
+
+        confirmed.mark("main");
+        assert!(confirmed.take("main"), "marked window must be consumed");
+        assert!(
+            !confirmed.take("main"),
+            "a second close of the same window must ask again"
+        );
+    }
+
+    /// Two windows track their confirmation independently — confirming one
+    /// must not silently wave the other through.
+    #[test]
+    fn confirmed_close_does_not_leak_across_windows() {
+        let confirmed = ConfirmedCloseWindows::default();
+        confirmed.mark("main");
+        assert!(!confirmed.take("main-other"));
+        assert!(confirmed.take("main"));
+    }
+
+    /// Pins the exact bug a cancelled Cmd+Q used to reintroduce: without
+    /// remembering the quitting-state at defer time, a window that answers
+    /// "close anyway" after the *global* flag was already cleared (by its own
+    /// earlier deferral, or a sibling's) would misread itself as a plain
+    /// standalone close and drop its `session.json` entry instead of
+    /// preserving it for the next launch's restore.
+    #[test]
+    fn deferred_quit_state_survives_the_global_flag_being_cleared_in_between() {
+        let deferred = DeferredQuitState::default();
+        assert_eq!(deferred.recall("main"), None, "nothing deferred yet");
+
+        // Simulates: CloseRequested arrives while QuittingFlag is set (a real
+        // Cmd+Q), gets halted for confirmation, and the global flag is
+        // cleared right after — exactly what `on_window_event` does.
+        deferred.remember("main", true);
+
+        // A wholly unrelated window's own close (or a second read before the
+        // retry) must not see this window's remembered state.
+        assert_eq!(deferred.recall("main-other"), None);
+
+        // The confirmed retry recalls the ORIGINAL quitting-state, not
+        // whatever the global flag reads by now.
+        assert_eq!(deferred.recall("main"), Some(true));
+        assert_eq!(
+            deferred.recall("main"),
+            None,
+            "a second recall must not still see the first deferral"
+        );
+    }
 
     /// `window_entries` on a freshly built mock app with no windows of its
     /// own: `mock_builder().build(...)` still creates zero windows, so this

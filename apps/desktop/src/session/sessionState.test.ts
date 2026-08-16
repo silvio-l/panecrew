@@ -3,11 +3,21 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   openTerminalTab,
+  setSplitRatios,
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
 } from "../grid/gridState";
-import { buildWindowState, restoredSlots, restoredTemplate, type SessionState } from "./sessionState";
+import {
+  RECENT_PROJECTS_MAX,
+  buildWindowState,
+  restoredSlots,
+  restoredSplitRatios,
+  restoredTemplate,
+  withRecentProject,
+  withoutRecentProject,
+  type SessionState,
+} from "./sessionState";
 
 const LABEL = "main";
 
@@ -124,6 +134,14 @@ describe("buildWindowState", () => {
 
     expect(buildWindowState(LABEL, grid, {}).maximized_pane_id).toBe("pane-1");
   });
+
+  it("trägt verschobene Schnittkanten-Verhältnisse ein (Ticket 21)", () => {
+    const grid = setSplitRatios(INITIAL_GRID_STATE, [0.3, 0.7, 0.5, 0.5]);
+
+    expect(buildWindowState(LABEL, grid, {}).split_ratios).toEqual([
+      0.3, 0.7, 0.5, 0.5,
+    ]);
+  });
 });
 
 describe("restoredTemplate", () => {
@@ -189,5 +207,81 @@ describe("restoredSlots", () => {
     };
 
     expect(restoredSlots(session, LABEL)).toEqual([]);
+  });
+});
+
+describe("restoredSplitRatios", () => {
+  it("liefert die Schnittkanten-Verhältnisse des eigenen Fensters", () => {
+    const session: SessionState = {
+      windows: [
+        { label: LABEL, template: "split", slots: [], split_ratios: [0.3, 0.7] },
+      ],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([0.3, 0.7]);
+  });
+
+  it("liefert eine leere Liste ohne gespeicherte Verhältnisse", () => {
+    const session: SessionState = {
+      windows: [{ label: LABEL, template: "split", slots: [] }],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([]);
+  });
+
+  it("liefert eine leere Liste ohne jedes Fenster", () => {
+    expect(restoredSplitRatios({ windows: [] }, LABEL)).toEqual([]);
+  });
+
+  it("liefert eine leere Liste, wenn kein Fenster mit diesem Label existiert", () => {
+    const session: SessionState = {
+      windows: [
+        { label: "main-2", template: "split", slots: [], split_ratios: [0.3, 0.7] },
+      ],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([]);
+  });
+});
+
+// Recent-Projects (Ticket 22): App-weite Liste, "zuletzt geöffnet zuerst",
+// max. 8 Einträge, kein Pinning. Reine Funktionen, damit App.tsx nur noch
+// verdrahtet, nicht selbst die Sortier-/Kappungslogik trägt.
+describe("withRecentProject", () => {
+  it("stellt einen neuen Pfad an den Anfang", () => {
+    expect(withRecentProject(["/repo/b"], "/repo/a")).toEqual([
+      "/repo/a",
+      "/repo/b",
+    ]);
+  });
+
+  it("verschiebt einen bereits vorhandenen Pfad an den Anfang, statt ihn zu duplizieren", () => {
+    expect(withRecentProject(["/repo/a", "/repo/b"], "/repo/b")).toEqual([
+      "/repo/b",
+      "/repo/a",
+    ]);
+  });
+
+  it(`kappt bei ${RECENT_PROJECTS_MAX} Einträgen`, () => {
+    const full = Array.from({ length: RECENT_PROJECTS_MAX }, (_, i) => `/repo/${i}`);
+    const next = withRecentProject(full, "/repo/new");
+
+    expect(next).toHaveLength(RECENT_PROJECTS_MAX);
+    expect(next[0]).toBe("/repo/new");
+    expect(next).not.toContain(`/repo/${RECENT_PROJECTS_MAX - 1}`);
+  });
+});
+
+describe("withoutRecentProject", () => {
+  it("entfernt genau den angegebenen Pfad", () => {
+    expect(
+      withoutRecentProject(["/repo/a", "/repo/b"], "/repo/a"),
+    ).toEqual(["/repo/b"]);
+  });
+
+  it("ist ein No-Op, wenn der Pfad nicht in der Liste steht", () => {
+    expect(withoutRecentProject(["/repo/a"], "/repo/z")).toEqual([
+      "/repo/a",
+    ]);
   });
 });

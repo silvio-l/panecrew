@@ -13,6 +13,7 @@ import {
   movePaneToEmptySlot as movePaneToEmptySlotInState,
   openTerminalTab as openTerminalTabInState,
   renameTerminalTab as renameTerminalTabInState,
+  setSplitRatios as setSplitRatiosInState,
   swapPanes as swapPanesInState,
   switchTemplate as switchTemplateInState,
   switchToFileTab as switchToFileTabInState,
@@ -97,6 +98,10 @@ export interface Grid {
   /** Wechselt im Fokus-Modus direkt zur Pane in `slotIndex` des aktuellen
    * Templates — der Zustandsübergang hinter den Zahlen-Hotkeys 1–4. */
   focusModeSelectSlot: (slotIndex: number) => void;
+  /** Schreibt die Schnittkanten-Verhältnisse des aktuellen Templates (Ticket
+   * 21) — Pointer-Drag/Pfeiltasten (`components/GridSplitters.tsx`) und der
+   * Sitzungs-Restore (`App.tsx`) rufen dieselbe Funktion. */
+  setSplitRatios: (ratios: readonly number[]) => void;
 }
 
 /**
@@ -225,6 +230,10 @@ export function useGrid(): Grid {
     setState((current) => focusModeSelectSlotInState(current, slotIndex));
   }, []);
 
+  const setSplitRatios = useCallback((ratios: readonly number[]) => {
+    setState((current) => setSplitRatiosInState(current, ratios));
+  }, []);
+
   return {
     state,
     assignProject,
@@ -243,5 +252,6 @@ export function useGrid(): Grid {
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,
+    setSplitRatios,
   };
 }

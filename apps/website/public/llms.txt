@@ -7,3 +7,6 @@
 
 - [Homepage](https://panecrew.dev/): product overview, feature grid, nightly builds
 - [How to Run Multiple CLI Coding Agent Sessions](https://panecrew.dev/guides/multiple-cli-agent-sessions/): guide + FAQ on running Claude Code/Codex/Gemini CLI in parallel <!-- brandlint-ok: functional list of supported CLI tools, matches the guide page's own copy -->
+- [How to Open Multiple Terminal Windows](https://panecrew.dev/guides/multiple-terminal-windows/): guide + FAQ on running independent PaneCrew windows side by side
+- [How Many Claude Code Sessions to Run at Once](https://panecrew.dev/guides/how-many-claude-code-sessions/): guide + FAQ on the practical ceiling for simultaneously visible Claude Code sessions <!-- brandlint-ok: functional guide title/summary, matches the guide page's own copy -->
+- [How to Prevent Multiple Coding Agents From Editing the Same Files](https://panecrew.dev/guides/prevent-agents-editing-same-files/): guide + FAQ on avoiding file conflicts between parallel agent sessions via separate directories, Git worktrees, and per-pane isolation

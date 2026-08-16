@@ -148,6 +148,23 @@ describe("attachInlineSuggestion", () => {
     expect(ghostText()).toBe("");
   });
 
+  it("übernimmt nichts mehr, wenn der Cursor seither wegbewegt wurde", async () => {
+    // Die Lücke, in der ein gemeldeter Fehler entstand: die Shell spiegelt
+    // eine Pfeiltaste nach links sofort zurück (der Bildschirmcursor bewegt
+    // sich wirklich), aber die Neuberechnung des Geistertexts läuft erst im
+    // nächsten Frame (`schedule()`/`requestAnimationFrame`). Kommt Pfeil
+    // rechts noch vor diesem Frame, darf der veraltete Geistertext nicht
+    // mehr an der jetzt falschen Stelle landen.
+    await type("pnpm ta");
+    expect(ghostText()).toBe("uri dev");
+
+    terminal.input("\x1b[D", true);
+    await write("\x1b[D"); // Shell-Echo bewegt den Cursor — bewusst ohne settle() danach.
+
+    expect(suggestion.accept()).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
   it("meldet nichts zu übernehmen, wenn keine Ergänzung sichtbar ist", async () => {
     await type("xyz");
 

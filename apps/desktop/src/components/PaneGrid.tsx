@@ -38,7 +38,13 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
-import type { GridState, Pane } from "../grid/gridState";
+import { trackShape, type GridState, type Pane } from "../grid/gridState";
+import {
+  columnRatios,
+  effectiveRatios,
+  gridTrackTemplate,
+  rowRatios,
+} from "../grid/splitRatios";
 import { useGridTransitions } from "../grid/useGridTransitions";
 import { usePaneDrag } from "../grid/usePaneDrag";
 import { useTerminalTabHosts, type TabOwnership } from "../grid/useTerminalTabHosts";
@@ -48,6 +54,7 @@ import { projectNameFromPath } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
+import { GridSplitters } from "./GridSplitters";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
 import { PaneDragGhost } from "./PaneDragGhost";
@@ -92,6 +99,9 @@ export function PaneGrid({
   dropTargets,
   dragTargetPaneId,
   onAssignProject,
+  recentProjects,
+  onOpenRecentProject,
+  onRemoveRecentProject,
   onClosePane,
   onRestartTerminatedTab,
   onSwapPanes,
@@ -108,6 +118,7 @@ export function PaneGrid({
   onSwitchToFileTab,
   onEnterFocusMode,
   onExitFocusMode,
+  onChangeSplitRatios,
   rotation,
 }: {
   state: GridState;
@@ -133,6 +144,14 @@ export function PaneGrid({
    * entstehen dagegen hier drin, s. u.) */
   dragTargetPaneId: string | null;
   onAssignProject: (slotIndex: number) => void;
+  /** App-weite Liste zuletzt geöffneter Projekte (Ticket 22), zuletzt zuerst
+   * — an jeden leeren Slot gereicht, unabhängig vom Fenster/Slot selbst. */
+  recentProjects: readonly string[];
+  /** Klick auf einen Recent-Projects-Eintrag: öffnet ihn direkt in
+   * `slotIndex`, ohne den Dateiauswahldialog. */
+  onOpenRecentProject: (path: string, slotIndex: number) => void;
+  /** Kontextmenü „Aus Liste entfernen" eines Recent-Projects-Eintrags. */
+  onRemoveRecentProject: (path: string) => void;
   onClosePane: (paneId: string) => void;
   /** Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu
    * starten" im Terminated-Banner — unverändert bis zu `TerminalPane.tsx`
@@ -189,6 +208,11 @@ export function PaneGrid({
    * Pane ruft je nach `maximized` diese oder `onEnterFocusMode` auf (s.
    * `onToggleFocusMode` unten). */
   onExitFocusMode: () => void;
+  /** Schreibt verschobene Schnittkanten-Verhältnisse zurück (Ticket 21,
+   * `useGrid.ts`s `setSplitRatios`) — die Splitter selbst entstehen hier drin
+   * (`GridSplitters.tsx`, Geschwister von `.pc-workspace`), aber der State
+   * lebt wie `state.template` in `App.tsx`. */
+  onChangeSplitRatios: (ratios: readonly number[]) => void;
   /** Rotationsmodus-Zustand + Bedienung (`grid/useFocusRotation.ts`),
    * gehalten in `App.tsx` — hier nur gereicht an die HUD-Leiste der
    * maximierten Zelle. */
@@ -213,6 +237,17 @@ export function PaneGrid({
     tabId: string;
     nonce: number;
   } | null>(null);
+  // Sichtbarer Zwischenstand eines laufenden Schnittkanten-Drags (Ticket 21)
+  // — lebt HIER statt in `GridSplitters.tsx` selbst, weil die ECHTEN
+  // Grid-Tracks von `.pc-workspace` (unten, `workspaceStyle`) live mit dem
+  // Zeiger mitwandern müssen, genau wie `App.tsx`s Explorer-Resize-Handle
+  // `explorerWidth` live setzt und nur die Persistenz
+  // (`persistedExplorerWidth`) bis `pointerup` aufschiebt. `null` außerhalb
+  // eines Drags, dann zählt allein `state.splitRatios` (der committete
+  // Stand, über `onChangeSplitRatios` erst bei `pointerup` geschrieben).
+  const [liveSplitRatios, setLiveSplitRatios] = useState<readonly number[] | null>(
+    null,
+  );
   // Im Fokus-Modus ist genau eine Pane sichtbar: es gibt kein Ziel, auf das
   // man zielen könnte, und die ausgeblendeten Nachbarn behalten ihre
   // Rechtecke (`visibility: hidden`, s. u.) — ohne diese Sperre träfe die
@@ -510,8 +545,40 @@ export function PaneGrid({
     state.template,
     state.maximizedPaneId,
   );
+  // Die tatsächliche Track-Größe (Ticket 21) — `.pc-layout--*` (App.css) legt
+  // nur die GLEICHVERTEILTE Ausgangsgröße fest, verschobene Schnittkanten
+  // überschreiben das hier per Inline-Style, exakt wie `GridSplitters.tsx`s
+  // Positionsmathematik dieselben Anteile liest (`effectiveRatios`, dieselbe
+  // Auflösung). Nur die Achse mit mehr als einer Spur bekommt einen Wert —
+  // eine Achse ohne verstellbare Kante behält die CSS-Klassenvorgabe.
+  const { columns: trackColumns, rows: trackRows } = trackShape(state.template);
+  const effectiveTrackRatios = effectiveRatios(
+    liveSplitRatios ?? state.splitRatios,
+    trackColumns,
+    trackRows,
+  );
+  const workspaceStyle: CSSProperties = {};
+  if (trackColumns > 1) {
+    workspaceStyle.gridTemplateColumns = gridTrackTemplate(
+      columnRatios(effectiveTrackRatios, trackColumns),
+    );
+  }
+  if (trackRows > 1) {
+    workspaceStyle.gridTemplateRows = gridTrackTemplate(
+      rowRatios(effectiveTrackRatios, trackColumns, trackRows),
+    );
+  }
   return (
     <>
+    {/* `relative`: Anker für `GridSplitters` (Ticket 21) — sein Overlay ist
+        GESCHWISTER von `.pc-workspace`, nicht sein Kind (dieselbe Begründung
+        wie bei den Zeiger-Plaketten unten: `.pc-workspace > *`-Regeln träfen
+        sonst auch die Splitter). Der Wrapper selbst trägt exakt die
+        Flex-Größe, die vorher `.pc-workspace` direkt in `<main>` (App.tsx)
+        hielt — `.pc-workspace` füllt ihn per eigenem `flex: 1 1 0%`
+        vollständig aus, kein zusätzlicher Rand/Padding verschiebt die
+        Deckungsgleichheit, auf der `GridSplitters`s Pixel-Mathematik beruht. */}
+    <div className="relative flex min-h-0 flex-1 flex-col">
     {/* Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
         — Spuren und Spannen aller sieben Geometrien stehen in App.css
         (`.pc-layout--*`), die Begründung dafür ebenfalls dort. Der Fokus-Modus
@@ -519,7 +586,11 @@ export function PaneGrid({
         `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
         Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
         (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig. */}
-    <div ref={workspaceRef} className={`pc-workspace pc-layout--${state.template}`}>
+    <div
+      ref={workspaceRef}
+      className={`pc-workspace pc-layout--${state.template}`}
+      style={workspaceStyle}
+    >
       {views.map((view, index) =>
         view ? (
           <PaneCell
@@ -537,6 +608,9 @@ export function PaneGrid({
             restoring={restoringSlots.has(index)}
             slotIndex={index}
             focusModeActive={state.maximizedPaneId !== null}
+            recentProjects={recentProjects}
+            onOpenRecent={(path) => onOpenRecentProject(path, index)}
+            onRemoveRecent={onRemoveRecentProject}
             // Dasselbe zweistufige Zielangebot wie `dropInvite` der belegten
             // Zellen (gedämpfte Ecken ab dem Scharfwerden, voll unterm
             // Zeiger), mit derselben Zwei-Züge-Verzweigung wie dort: der
@@ -576,6 +650,20 @@ export function PaneGrid({
           tabId,
         ),
       )}
+    </div>
+    {/* Fokus-Modus verdeckt das ganze Raster hinter einer Zelle (`grid-area`-
+        Spannung, s. o.) — eine Schnittkante wäre dort weder sichtbar noch
+        sinnvoll bedienbar, deshalb ganz weggelassen statt nur versteckt. */}
+    {state.maximizedPaneId === null && (
+      <GridSplitters
+        template={state.template}
+        splitRatios={state.splitRatios}
+        onChange={onChangeSplitRatios}
+        liveRatios={liveSplitRatios}
+        onLiveRatiosChange={setLiveSplitRatios}
+        workspaceRef={workspaceRef}
+      />
+    )}
     </div>
     {/* Die Zeiger-Plaketten BEIDER Züge — `fixed`, entkommen also der
         Grid-Geometrie; hier statt in App.tsx gerendert, weil die Züge

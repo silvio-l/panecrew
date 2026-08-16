@@ -40,7 +40,7 @@ use splash::RevealGate;
 use std::sync::Mutex;
 use tauri::{Manager, RunEvent};
 use tool_detect::ToolDetector;
-use windows::QuittingFlag;
+use windows::{ConfirmedCloseWindows, DeferredQuitState, QuittingFlag};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -72,6 +72,8 @@ pub fn run() {
         .manage(PendingUpdateCheck::default())
         .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .manage(QuittingFlag::default())
+        .manage(ConfirmedCloseWindows::default())
+        .manage(DeferredQuitState::default())
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
         .menu(menu::build)
@@ -195,6 +197,7 @@ pub fn run() {
             settings_commands::settings_open_window,
             settings_window::settings_visible,
             windows::window_open_new,
+            windows::window_close_confirmed,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

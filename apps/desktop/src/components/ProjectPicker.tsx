@@ -31,8 +31,21 @@
 // Zeichen ändert sich — es wechseln ausschließlich Farbe/Deckkraft
 // stehender Glyphen.
 import type { CSSProperties, ReactNode } from "react";
+import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
-import { CHROME_FOCUS_RING } from "./ChromeTooltip";
+import {
+  CHROME_FOCUS_RING,
+  CHROME_MENU_CONTENT_CLASS,
+  CHROME_MENU_ITEM_CLASS,
+} from "./ChromeTooltip";
+
+// Letztes Pfadsegment als Anzeigename — `\` UND `/`, weil ein `session.json`
+// von Windows auch hier ankommen könnte (die Liste ist app-weit und über
+// Neustarts persistiert, nicht bloß eine In-Memory-Sitzungsgröße).
+function projectDisplayName(path: string): string {
+  const segments = path.split(/[/\\]/).filter(Boolean);
+  return segments[segments.length - 1] ?? path;
+}
 
 export function ProjectPicker({
   onChoose,
@@ -40,6 +53,9 @@ export function ProjectPicker({
   restoring,
   slotIndex,
   focusModeActive,
+  recentProjects,
+  onOpenRecent,
+  onRemoveRecent,
   dropInvite = null,
 }: {
   onChoose: () => void;
@@ -68,6 +84,14 @@ export function ProjectPicker({
    * statt `display: none` — dieselbe Begründung wie bei `PaneCell`: der
    * Slot bleibt Teil der Grid-Spurberechnung, kollabiert also nicht. */
   focusModeActive: boolean;
+  /** App-weite Liste zuletzt geöffneter Projekte (Ticket 22), zuletzt zuerst
+   * — max. 8 Einträge, bereits von `App.tsx`/`sessionState.ts` gekappt. */
+  recentProjects: readonly string[];
+  /** Klick auf einen Eintrag: öffnet ihn direkt in DIESEM Slot, ohne den
+   * Dateiauswahldialog. */
+  onOpenRecent: (path: string) => void;
+  /** Kontextmenü „Aus Liste entfernen" — löscht nur den Listeneintrag. */
+  onRemoveRecent: (path: string) => void;
   /** Das "Tab hierher → neue Pane"-Instrument des Tab-Zugs (`PaneGrid.tsx`
    * reicht ein fertiges `PaneDropInvite` herein, sobald dieser Slot Ziel des
    * laufenden Zugs ist) — hier nur platziert, nicht hergeleitet: was ein Zug
@@ -107,7 +131,7 @@ export function ProjectPicker({
     // absolut über der ganzen Zelle) — als Geschwister NEBEN dem Knopf statt
     // in ihm, ein `<button>` soll keine Blockelemente enthalten.
     <div
-      className="@container relative flex min-h-0 min-w-0"
+      className="@container relative flex min-h-0 min-w-0 flex-col gap-2"
       style={cellStyle}
       data-empty-slot={slotIndex}
     >
@@ -136,8 +160,63 @@ export function ProjectPicker({
           {t("projectPicker.hint")}
         </span>
       </button>
+      {/* Erst ab derselben Breitenschwelle wie die Erklärzeile im Knopf
+          darüber (@2xs) — in der Viererreihen-Spalte bliebe für Knopf UND
+          Liste zusammen kein Platz, die Liste bleibt dort schlicht weg statt
+          den Slot zu sprengen. `flex-none`: die Liste wächst nicht in den
+          Knopf hinein, sie nimmt nur so viel Höhe wie ihr Inhalt braucht. */}
+      {!focusModeActive && recentProjects.length > 0 && (
+        <div className="hidden max-h-32 flex-none flex-col gap-0.5 overflow-y-auto @2xs:flex">
+          {recentProjects.map((path) => (
+            <RecentProjectRow
+              key={path}
+              path={path}
+              onOpen={() => onOpenRecent(path)}
+              onRemove={() => onRemoveRecent(path)}
+            />
+          ))}
+        </div>
+      )}
       {dropInvite}
     </div>
+  );
+}
+
+// Eine Zeile der App-weiten „Zuletzt geöffnet"-Liste (Ticket 22). Eigene
+// kleine Komponente statt Inline-JSX in der `map`, weil das Kontextmenü
+// (Radix `ContextMenu.Root`) einen eigenen Baum je Zeile braucht — ein
+// gemeinsamer Root für alle Zeilen könnte immer nur einen Eintrag zugleich
+// öffnen.
+function RecentProjectRow({
+  path,
+  onOpen,
+  onRemove,
+}: {
+  path: string;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <button
+          type="button"
+          onClick={onOpen}
+          title={path}
+          className={`flex min-w-0 shrink-0 items-center rounded px-2 py-1 text-left text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+        >
+          <span className="truncate">{projectDisplayName(path)}</span>
+        </button>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={CHROME_MENU_CONTENT_CLASS}>
+          <ContextMenu.Item className={CHROME_MENU_ITEM_CLASS} onSelect={onRemove}>
+            {t("projectPicker.removeRecent")}
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 

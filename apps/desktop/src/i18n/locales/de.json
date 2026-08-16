@@ -6,6 +6,8 @@
   "titleBar": {
     "searchPlaceholder": "Suchen oder Befehl ausführen",
     "newWindow": "Neues Fenster",
+    "previousPane": "Vorherige Pane",
+    "nextPane": "Nächste Pane",
     "settings": "Einstellungen",
     "explorerWidthAria": "Explorer-Breite anpassen",
     "windowTitleBarAria": "Fenster-Titelzeile",
@@ -89,6 +91,10 @@
     "terminals_one": "{{count}} laufende Terminal-Sitzung insgesamt",
     "terminals_other": "{{count}} laufende Terminal-Sitzungen insgesamt"
   },
+  "gridSplitters": {
+    "columnAria": "Spaltenbreite zwischen Spalte {{left}} und {{right}} anpassen",
+    "rowAria": "Zeilenhöhe zwischen Zeile {{top}} und {{bottom}} anpassen"
+  },
   "closeDialog": {
     "paneTitle": "Pane schließen?",
     "paneDescription": "Die Pane <bold>{{projectName}}</bold> wird geschlossen, ihre laufenden Terminal-Sitzungen werden beendet.",
@@ -102,6 +108,9 @@
     "terminalTabsBatchDescription_other": "<bold>{{count}} Terminal-Tabs</bold> werden geschlossen, die darin laufenden Sitzungen werden beendet.",
     "confirmTerminalTabsBatch_one": "1 Tab schließen",
     "confirmTerminalTabsBatch_other": "{{count}} Tabs schließen",
+    "windowTitle": "Fenster schließen?",
+    "windowDescription": "In diesem Fenster laufen noch Terminal-Sitzungen. Beim Schließen werden sie beendet.",
+    "confirmWindow": "Fenster schließen",
     "cancel": "Abbrechen"
   },
   "terminalPane": {
@@ -165,7 +174,8 @@
   },
   "projectPicker": {
     "choose": "Projekt wählen",
-    "hint": "PaneCrew startet darin eine echte Shell."
+    "hint": "PaneCrew startet darin eine echte Shell.",
+    "removeRecent": "Aus Liste entfernen"
   },
   "templateSwitcher": {
     "selectTemplate": "Template wählen",

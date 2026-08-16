@@ -21,7 +21,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+
+use crate::settings_commands::app_data_dir;
 
 const FILE_NAME: &str = "session.json";
 
@@ -116,6 +118,14 @@ pub struct SessionState {
     /// feature, `App.tsx`'s resize handle — this is only its persistence).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub explorer_width: Option<f64>,
+    /// Recently opened project paths, most-recent-first (Ticket 22) — an
+    /// app-wide global like `expanded_folders`/`explorer_width` above, not
+    /// scoped to a window or slot. The frontend owns the recency ordering
+    /// and the 8-entry cap (it already holds the live list to compute
+    /// "move to front, dedupe, truncate"); this module only round-trips
+    /// whatever it is given, then prunes on read below.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_projects: Vec<String>,
 }
 
 fn session_path(dir: &Path) -> PathBuf {
@@ -152,6 +162,13 @@ pub fn read_session(dir: &Path) -> Option<SessionState> {
     state
         .expanded_folders
         .retain(|project_path, _| live_paths.contains(project_path.as_str()));
+    // A recent-projects entry pointing at a folder that no longer exists
+    // (moved, deleted, unmounted volume) would just fail to open on click —
+    // same "survivable, not fatal" pruning as the slot validation above,
+    // just filtering a flat list instead of nulling a slot.
+    state
+        .recent_projects
+        .retain(|project_path| Path::new(project_path).is_dir());
     Some(state)
 }
 
@@ -186,16 +203,13 @@ pub fn write_session(dir: &Path, state: &SessionState) -> Result<(), String> {
 // hydrated — a hot path, not just a one-off startup read.
 #[tauri::command(async)]
 pub fn session_load(app: AppHandle) -> Option<SessionState> {
-    let dir = app.path().app_data_dir().ok()?;
+    let dir = app_data_dir(&app).ok()?;
     read_session(&dir)
 }
 
 #[tauri::command(async)]
 pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))?;
+    let dir = app_data_dir(&app)?;
     write_session(&dir, &state)
 }
 
@@ -208,14 +222,14 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
 /// read-modify-write-atomically pattern the rest of this module already
 /// uses, just scoped to one array entry instead of the whole document.
 ///
-/// `expanded_folders`/`explorer_width` are window-agnostic globals that
-/// predate multi-window (Ticket 17) and stay that way — but the frontend's
-/// autosave effect now saves per-window via this command instead of the
-/// whole-array `session_save`, so without a way to carry them here too, both
-/// fields would simply stop being persisted the moment a second window
-/// exists. `Some` overwrites the stored value, `None` leaves it exactly as
-/// read — callers that don't own explorer state (e.g. a save triggered
-/// purely by a grid change) pass `None` for both rather than resending a
+/// `expanded_folders`/`explorer_width`/`recent_projects` are window-agnostic
+/// globals that predate multi-window (Ticket 17) and stay that way — but the
+/// frontend's autosave effect now saves per-window via this command instead
+/// of the whole-array `session_save`, so without a way to carry them here
+/// too, all three fields would simply stop being persisted the moment a
+/// second window exists. `Some` overwrites the stored value, `None` leaves it
+/// exactly as read — callers that don't own that piece of state (e.g. a save
+/// triggered purely by a grid change) pass `None` rather than resending a
 /// value they don't have.
 #[tauri::command(async)]
 pub fn session_save_window(
@@ -223,11 +237,9 @@ pub fn session_save_window(
     window: PersistedWindow,
     expanded_folders: Option<HashMap<String, Vec<String>>>,
     explorer_width: Option<f64>,
+    recent_projects: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))?;
+    let dir = app_data_dir(&app)?;
     let mut state = read_session(&dir).unwrap_or_default();
     match state.windows.iter_mut().find(|w| w.label == window.label) {
         Some(existing) => *existing = window,
@@ -239,6 +251,9 @@ pub fn session_save_window(
     if let Some(explorer_width) = explorer_width {
         state.explorer_width = Some(explorer_width);
     }
+    if let Some(recent_projects) = recent_projects {
+        state.recent_projects = recent_projects;
+    }
     write_session(&dir, &state)
 }
 
@@ -249,10 +264,7 @@ pub fn session_save_window(
 /// have autosaved (e.g. closed within the same tick it was opened).
 #[tauri::command(async)]
 pub fn session_remove_window(app: AppHandle, label: String) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))?;
+    let dir = app_data_dir(&app)?;
     let Some(mut state) = read_session(&dir) else {
         return Ok(());
     };
@@ -382,12 +394,37 @@ mod tests {
                 vec!["src".to_string(), "src/core".to_string()],
             )]),
             explorer_width: Some(260.0),
+            recent_projects: vec![project_b.clone(), project_a.clone()],
         };
 
         write_session(&fixture.0, &state).expect("should write");
         let read_back = read_session(&fixture.0).expect("should read back");
 
         assert_eq!(read_back, state);
+    }
+
+    #[test]
+    fn prunes_recent_projects_entries_for_folders_that_no_longer_exist() {
+        let fixture = Fixture::new("prune-recent-projects");
+        let kept = fixture.0.join("kept-project");
+        std::fs::create_dir_all(&kept).expect("fixture dir");
+        let kept_path = kept.to_string_lossy().into_owned();
+        let gone_path = fixture
+            .0
+            .join("gone-project")
+            .to_string_lossy()
+            .into_owned();
+        let state = SessionState {
+            windows: Vec::new(),
+            expanded_folders: HashMap::new(),
+            explorer_width: None,
+            recent_projects: vec![gone_path, kept_path.clone()],
+        };
+        write_session(&fixture.0, &state).expect("should write");
+
+        let read_back = read_session(&fixture.0).expect("should read back");
+
+        assert_eq!(read_back.recent_projects, vec![kept_path]);
     }
 
     #[test]
@@ -411,6 +448,7 @@ mod tests {
                 ("/no/longer/open".to_string(), vec!["old".to_string()]),
             ]),
             explorer_width: None,
+            recent_projects: Vec::new(),
         };
         write_session(&fixture.0, &state).expect("should write");
 
@@ -442,6 +480,7 @@ mod tests {
             }],
             expanded_folders: HashMap::new(),
             explorer_width: None,
+            recent_projects: Vec::new(),
         };
         write_session(&fixture.0, &state).expect("should write");
 
@@ -470,6 +509,7 @@ mod tests {
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
+                recent_projects: Vec::new(),
             },
         )
         .expect("first write");
@@ -488,6 +528,7 @@ mod tests {
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
+                recent_projects: Vec::new(),
             },
         )
         .expect("second write");
@@ -515,6 +556,7 @@ mod tests {
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
+                recent_projects: Vec::new(),
             },
         )
         .expect("should write");
@@ -546,6 +588,7 @@ mod tests {
                 }],
                 expanded_folders: HashMap::new(),
                 explorer_width: None,
+                recent_projects: Vec::new(),
             },
         )
         .expect("should create the directory and write");
@@ -618,7 +661,9 @@ mod tests {
             windows: vec![window.clone()],
             ..SessionState::default()
         };
-        initial.expanded_folders.insert(kept_path.clone(), vec!["src".to_string()]);
+        initial
+            .expanded_folders
+            .insert(kept_path.clone(), vec!["src".to_string()]);
         initial.explorer_width = Some(240.0);
         write_session(&fixture.0, &initial).expect("seed initial state");
 
@@ -628,12 +673,59 @@ mod tests {
             window,
             Some(folders.clone()),
             Some(300.0),
+            None,
         )
         .expect("save with globals");
 
         let read_back = read_session(&fixture.0).expect("should read back");
         assert_eq!(read_back.expanded_folders, folders);
         assert_eq!(read_back.explorer_width, Some(300.0));
+    }
+
+    /// `recent_projects`' own analogue to the two tests above — same
+    /// merge-not-overwrite/leave-untouched contract, kept as a separate test
+    /// rather than folded into `..._expanded_folders_and_explorer_width_...`
+    /// because it needs its own (non-pruned) project paths rather than the
+    /// slot-referenced `kept_path` those tests are built around.
+    #[test]
+    fn session_save_window_overwrites_recent_projects_when_given_and_leaves_it_untouched_when_none() {
+        let fixture = Fixture::new("save-window-recent-projects");
+        let project_a = fixture.0.join("project-a");
+        let project_b = fixture.0.join("project-b");
+        std::fs::create_dir_all(&project_a).expect("fixture dir");
+        std::fs::create_dir_all(&project_b).expect("fixture dir");
+        let project_a = project_a.to_string_lossy().into_owned();
+        let project_b = project_b.to_string_lossy().into_owned();
+
+        let window = empty_quad_window("main");
+        session_save_window_with_globals_for_test(
+            &fixture.0,
+            window.clone(),
+            None,
+            None,
+            Some(vec![project_a.clone()]),
+        )
+        .expect("seed recent_projects");
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.recent_projects, vec![project_a.clone()]);
+
+        // `None` leaves the previously saved list untouched — a save
+        // triggered by a plain grid change, which doesn't own this state.
+        session_save_window_for_test(&fixture.0, window.clone()).expect("save without globals");
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.recent_projects, vec![project_a.clone()]);
+
+        // `Some` overwrites it wholesale, exactly like `expanded_folders`.
+        session_save_window_with_globals_for_test(
+            &fixture.0,
+            window,
+            None,
+            None,
+            Some(vec![project_b.clone(), project_a.clone()]),
+        )
+        .expect("overwrite recent_projects");
+        let read_back = read_session(&fixture.0).expect("should read back");
+        assert_eq!(read_back.recent_projects, vec![project_b, project_a]);
     }
 
     #[test]
@@ -649,7 +741,9 @@ mod tests {
             windows: vec![window.clone()],
             ..SessionState::default()
         };
-        initial.expanded_folders.insert(kept_path.clone(), vec!["src".to_string()]);
+        initial
+            .expanded_folders
+            .insert(kept_path.clone(), vec!["src".to_string()]);
         initial.explorer_width = Some(240.0);
         write_session(&fixture.0, &initial).expect("seed initial state");
 
@@ -693,7 +787,7 @@ mod tests {
     /// these test-only wrappers exercise the exact same merge logic against
     /// a fixture directory directly, without needing a live Tauri app.
     fn session_save_window_for_test(dir: &Path, window: PersistedWindow) -> Result<(), String> {
-        session_save_window_with_globals_for_test(dir, window, None, None)
+        session_save_window_with_globals_for_test(dir, window, None, None, None)
     }
 
     fn session_save_window_with_globals_for_test(
@@ -701,6 +795,7 @@ mod tests {
         window: PersistedWindow,
         expanded_folders: Option<HashMap<String, Vec<String>>>,
         explorer_width: Option<f64>,
+        recent_projects: Option<Vec<String>>,
     ) -> Result<(), String> {
         let mut state = read_session(dir).unwrap_or_default();
         match state.windows.iter_mut().find(|w| w.label == window.label) {
@@ -712,6 +807,9 @@ mod tests {
         }
         if let Some(explorer_width) = explorer_width {
             state.explorer_width = Some(explorer_width);
+        }
+        if let Some(recent_projects) = recent_projects {
+            state.recent_projects = recent_projects;
         }
         write_session(dir, &state)
     }
