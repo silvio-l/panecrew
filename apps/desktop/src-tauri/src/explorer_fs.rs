@@ -36,7 +36,13 @@ pub struct DirEntryNode {
 
 #[tauri::command(async)]
 pub fn explorer_read_dir(path: String) -> Result<Vec<DirEntryNode>, String> {
-    read_dir_entries(Path::new(&path))
+    // `include_git: true` — anders als beim rekursiven Name-/Inhaltssuchlauf
+    // (`search_walk`/`content_search_walk`, beide bewusst weiter ohne `.git`)
+    // ist das hier die direkte, nicht-rekursive Baum-Ansicht: der Nutzer
+    // klappt `.git` selbst auf, wenn er hineinschauen will, es kann hier also
+    // nicht wie bei einer Volltextsuche unbemerkt tausende Git-Objekte
+    // durchpflügen.
+    read_dir_entries(Path::new(&path), true)
         .map_err(|error| format!("Verzeichnis konnte nicht gelesen werden: {error}"))
 }
 
@@ -264,14 +270,26 @@ pub fn explorer_write_file(
 /// One directory level, denylist-filtered and sorted folders-before-files
 /// (both case-insensitive — same convention `path_probe.rs` uses for its own
 /// directory listing). No recursion, no budget: the shared primitive behind
-/// both `explorer_read_dir` (lazy expansion) and `search_walk` (full-tree
-/// name search).
-fn read_dir_entries(dir: &Path) -> io::Result<Vec<DirEntryNode>> {
+/// `explorer_read_dir` (lazy expansion), `search_walk` (full-tree name
+/// search) and `content_search_walk` (full-tree content search).
+///
+/// `include_git` lets `explorer_read_dir` show a `.git` entry instead of
+/// hiding it like the rest of the denylist — it's a real, browsable
+/// directory the user may deliberately want to look inside, unlike
+/// `node_modules`/`target`/etc., which are pure build/dependency noise. The
+/// two recursive search walks always pass `false`: unlike the flat tree
+/// view, a search silently descending into `.git`'s object store would
+/// walk thousands of opaque blobs for no benefit.
+fn read_dir_entries(dir: &Path, include_git: bool) -> io::Result<Vec<DirEntryNode>> {
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.flatten().collect();
 
     entries.retain(|entry| {
         let name = entry.file_name();
-        !is_ignored_entry(&name.to_string_lossy())
+        let name = name.to_string_lossy();
+        if include_git && name == ".git" {
+            return true;
+        }
+        !is_ignored_entry(&name)
     });
 
     // `is_dir()` on the resolved path, not `DirEntry::file_type()` — the
@@ -352,7 +370,7 @@ fn search_walk(
     matches: &mut usize,
     truncated: &mut bool,
 ) -> io::Result<Vec<SearchTreeNode>> {
-    let entries = read_dir_entries(dir)?;
+    let entries = read_dir_entries(dir, false)?;
     let mut result = Vec::new();
 
     for entry in entries {
@@ -475,7 +493,7 @@ fn content_search_walk(
     matches: &mut usize,
     truncated: &mut bool,
 ) -> io::Result<Vec<ContentSearchNode>> {
-    let entries = read_dir_entries(dir)?;
+    let entries = read_dir_entries(dir, false)?;
     let mut result = Vec::new();
 
     for entry in entries {
@@ -722,7 +740,14 @@ mod tests {
     }
 
     #[test]
-    fn read_dir_excludes_git_and_denylisted_directories() {
+    fn read_dir_shows_git_but_excludes_denylisted_directories() {
+        // `.git` used to be filtered identically to `node_modules` — the
+        // reported bug: the user could never browse their own repo's `.git`
+        // folder in the tree at all. It's a real, deliberately-openable
+        // directory (unlike the pure build/dependency noise in `DENYLIST`),
+        // so `explorer_read_dir` now lists it; only the two recursive search
+        // walks still skip it (see `search_names_excludes_git_directory`
+        // below).
         let fixture = Fixture::new(
             "read-dir-denylist",
             &[".git/HEAD", "node_modules/left-pad/index.js", "src/main.rs"],
@@ -732,7 +757,7 @@ mod tests {
             explorer_read_dir(fixture.0.to_string_lossy().into_owned()).expect("readable fixture");
 
         let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
-        assert_eq!(names, vec!["src"]);
+        assert_eq!(names, vec![".git", "src"]);
     }
 
     #[test]
@@ -768,6 +793,33 @@ mod tests {
         let fixture = Fixture::new(
             "search-denylist",
             &["node_modules/needle/index.js", "src/needle.rs"],
+        );
+
+        let result = explorer_search_names(
+            fixture.0.to_string_lossy().into_owned(),
+            "needle".to_string(),
+        )
+        .expect("search should succeed");
+
+        assert_eq!(
+            result.nodes,
+            vec![search_node(
+                "src",
+                true,
+                Some(vec![search_node("needle.rs", false, None)])
+            )]
+        );
+    }
+
+    #[test]
+    fn search_names_excludes_git_directory() {
+        // Unlike `explorer_read_dir` (now shows `.git`, see
+        // `read_dir_shows_git_but_excludes_denylisted_directories`), a
+        // recursive name search must not silently descend into `.git`'s
+        // object store — thousands of opaque, unhelpfully-named blobs.
+        let fixture = Fixture::new(
+            "search-git",
+            &[".git/refs/needle", "src/needle.rs"],
         );
 
         let result = explorer_search_names(
