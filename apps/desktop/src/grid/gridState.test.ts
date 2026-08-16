@@ -221,6 +221,18 @@ describe("gridState", () => {
       expect(nextGrowthTemplate("quad")).toBeNull();
       expect(nextGrowthTemplate("row-4")).toBeNull();
     });
+
+    it("der alte slots.length landet nach switchTemplate exakt im neuen Slot (App.tsx::splitFocusedPane's Annahme)", () => {
+      // single -> split: alter slots.length (1) muss der neue Index (1) sein.
+      const single = switchTemplate(INITIAL_GRID_STATE, "single");
+      const oldLength = single.slots.length;
+      const target = nextGrowthTemplate(single.template);
+      if (target === null) throw new Error("erwartetes Wachstum fehlt");
+      const grown = switchTemplate(single, target);
+      const withNewPane = assignProjectToSlot(grown, oldLength, "/repo/new", "pane-new", "tab-new");
+      expect(withNewPane.slots[oldLength]?.paneId).toBe("pane-new");
+      expect(withNewPane.slots.length).toBe(oldLength + 1);
+    });
   });
 
   it("closePane leert nur den einen Slot und lässt andere unangetastet", () => {
