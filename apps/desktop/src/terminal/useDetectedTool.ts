@@ -27,17 +27,30 @@ export function useDetectedToolId(tabId: string): string | null {
     // ist für React also ohnehin ein Neumount mit frischem `useState(null)`.
     let cancelled = false;
 
+    // Skips the IPC round-trip while this window is minimized/backgrounded
+    // (2026-08-16 perf audit: N open tabs × every open window each polling
+    // independently adds up to real, un-gated IPC traffic for icons nobody
+    // can see). Deliberately keyed on `document.visibilityState`, i.e. this
+    // WHOLE window's visibility, not this specific tab's — a background tab
+    // within a visible, focused window still needs live updates, that's the
+    // point of showing a tool icon on its chip without switching to it.
     const poll = () => {
+      if (document.visibilityState !== "visible") return;
       void ptyBackend.detectTool(tabId).then((detected) => {
         if (!cancelled) setToolId(detected);
       });
     };
     poll();
     const timer = window.setInterval(poll, POLL_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [ptyBackend, tabId]);
 
