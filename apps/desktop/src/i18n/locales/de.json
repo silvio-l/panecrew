@@ -182,9 +182,29 @@
   "projectPicker": {
     "choose": "Projekt wählen",
     "hint": "PaneCrew startet darin eine echte Shell.",
+    "recentHeading": "Zuletzt geöffnet",
+    "browseOther": "Anderes Projekt wählen …",
     "removeRecent": "Aus Liste entfernen"
   },
   "onboarding": {
+    "wizard": {
+      "welcome": {
+        "title": "Willkommen bei PaneCrew",
+        "body": "Mehrere echte Terminals gleichzeitig sichtbar, nebeneinander statt hintereinander — der Explorer folgt automatisch der Pane, an der du gerade arbeitest.",
+        "cta": "Los geht's"
+      },
+      "ready": {
+        "title": "Bereit zum Start",
+        "body": "Sobald zwei Projekte nebeneinander offen sind, siehst du das Raster in Aktion — öffne dazu dein erstes Projekt.",
+        "cta": "Erstes Projekt öffnen",
+        "skip": "Ohne Projekt fortfahren",
+        "bodyExisting": "Deine offenen Projekte bleiben unverändert — mach direkt weiter.",
+        "ctaContinue": "Weiter"
+      },
+      "back": "Zurück",
+      "close": "Einführung schließen",
+      "stepIndicator": "Schritt {{step}} von {{total}}"
+    },
     "hint": {
       "empty": {
         "title": "Mehrere Projekte, gleichzeitig sichtbar",
@@ -193,6 +213,10 @@
       "hasPanes": {
         "title": "Der Explorer folgt der aktiven Pane",
         "body": "Öffne ein zweites Projekt in einem freien Platz, um das Raster in Aktion zu sehen."
+      },
+      "ahaReached": {
+        "title": "Genau so funktioniert das Raster",
+        "body": "Du hast bereits mehrere Projekte gleichzeitig offen — der Explorer folgt dabei automatisch der fokussierten Pane."
       },
       "dismiss": "Hinweis schließen"
     }
@@ -255,9 +279,9 @@
     "help": {
       "onboarding": {
         "label": "Einführung erneut anzeigen",
-        "description": "Zeigt den Einführungshinweis am nächsten freien Platz im Raster erneut an.",
+        "description": "Zeigt die Einführung (Setup-Assistent und geführte Tour) erneut an, so als würdest du PaneCrew zum ersten Mal starten.",
         "button": "Einführung neu starten",
-        "confirmation": "Zurückgesetzt — der Hinweis erscheint wieder, sobald ein Platz im Raster frei ist."
+        "confirmation": "Zurückgesetzt — wechsle ins Hauptfenster, dort startet die Einführung erneut."
       },
       "permissions": {
         "title": "Berechtigungen (macOS)",

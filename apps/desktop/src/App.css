@@ -568,19 +568,32 @@ body {
  * der Idle-Sequenz ist strukturell ausgeschlossen: sie läuft nur
  * `:not(:hover):not(:focus-visible)`, der Boot-Lap nur `:hover`/`:focus-
  * visible` — dieselben Segmente, komplementäre Zustände.
+ *
+ * STATE ROOT `.pc-slotcard` (2026-08-17, third recent-shelf pass): every
+ * hover/focus selector in this choreography — and the color rules further
+ * down — roots at `.pc-slotcard`, the wrapper around button + recent-shelf
+ * drawer (ProjectPicker.tsx), no longer at `.pc-slotframe` (the button
+ * alone). Deliberate: the shelf drawer is part of the card, so pointing at
+ * a recent row keeps the whole card awake — corners amber, idle scan
+ * paused, hover fill on — instead of the button falling asleep under the
+ * open shelf. In the `restoring` branch card and frame are the same element
+ * (both classes), so nothing changes there. Since the wrapper itself is not
+ * focusable, the keyboard leg is `:has(:focus-visible)` (WKWebView-verified
+ * `:has`, see above) — it now also fires while a shelf row holds keyboard
+ * focus, the same "whole card wakes" call as for hover.
  */
 .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
   color: var(--pc-pane-activeBorder);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .pc-slotframe:hover .pc-hud-emblem__cursor,
-  .pc-slotframe:focus-visible .pc-hud-emblem__cursor,
+  .pc-slotcard:hover .pc-hud-emblem__cursor,
+  .pc-slotcard:has(:focus-visible) .pc-hud-emblem__cursor,
   .pc-hud-emblem--blinking .pc-hud-emblem__cursor {
     animation: pc-clock-blink 1.2s ease-in-out infinite;
   }
 
-  .pc-slotframe:not(:hover):not(:focus-visible)
+  .pc-slotcard:not(:hover):not(:has(:focus-visible))
     .pc-hud-emblem--blinking
     .pc-hud-emblem__seg {
     animation: pc-hud-scan 3.5s ease-in-out infinite;
@@ -591,7 +604,7 @@ body {
     animation-delay: calc(var(--pc-hud-seg) * 150ms);
   }
 
-  .pc-slotframe:not(:hover):not(:focus-visible)
+  .pc-slotcard:not(:hover):not(:has(:focus-visible))
     .pc-hud-emblem--blinking
     .pc-hud-emblem__prompt-glyph {
     animation: pc-hud-ack 3.5s ease-in-out infinite;
@@ -601,16 +614,16 @@ body {
      Die Einwärts-Startlage kommt je Ecke aus --pc-hud-lock-x/-y (bei den
      --tl/--tr/--bl/--br-Regeln oben gesetzt) — ein Keyframe-Satz für vier
      Richtungen. */
-  .pc-slotframe:hover:has(.pc-hud-emblem--blinking) .pc-hud-corner,
-  .pc-slotframe:focus-visible:has(.pc-hud-emblem--blinking) .pc-hud-corner {
+  .pc-slotcard:hover:has(.pc-hud-emblem--blinking) .pc-hud-corner,
+  .pc-slotcard:has(:focus-visible):has(.pc-hud-emblem--blinking) .pc-hud-corner {
     animation: pc-hud-lock 220ms cubic-bezier(0.2, 0, 0, 1);
   }
 
   /* Hover-Eintritt, Stimme B: Boot-Lap der Rahmensegmente (einmalig).
      backwards: bis zum eigenen Fenster hält das Segment den 0%-Dimmton,
      danach fällt es auf die geerbte Hover-Farbe zurück (= 100%-Frame). */
-  .pc-slotframe:hover .pc-hud-emblem--blinking .pc-hud-emblem__seg,
-  .pc-slotframe:focus-visible .pc-hud-emblem--blinking .pc-hud-emblem__seg {
+  .pc-slotcard:hover .pc-hud-emblem--blinking .pc-hud-emblem__seg,
+  .pc-slotcard:has(:focus-visible) .pc-hud-emblem--blinking .pc-hud-emblem__seg {
     animation: pc-hud-wake 320ms ease-out backwards;
     animation-delay: calc(var(--pc-hud-seg) * 40ms);
   }
@@ -678,23 +691,189 @@ body {
   }
 }
 
-.pc-slotframe:hover .pc-hud-corner,
-.pc-slotframe:focus-visible .pc-hud-corner {
+/* Card-wide wake states (see the "STATE ROOT .pc-slotcard" note above). The
+   third leg, `:has(.pc-recent-row[data-state="open"])`, keeps the card awake
+   while a shelf row's context menu is open — Radix portals the menu and moves
+   focus into it, so neither :hover nor :has(:focus-visible) holds during
+   that moment, and without it the frame would dim under its own open menu
+   (same reasoning as the drawer-reveal trigger below). */
+.pc-slotcard:hover .pc-hud-corner,
+.pc-slotcard:has(:focus-visible, .pc-recent-row[data-state="open"])
+  .pc-hud-corner {
   border-color: var(--pc-pane-activeBorder);
 }
 
-.pc-slotframe:hover .pc-hud-readout,
-.pc-slotframe:focus-visible .pc-hud-readout {
+.pc-slotcard:hover .pc-hud-readout,
+.pc-slotcard:has(:focus-visible, .pc-recent-row[data-state="open"])
+  .pc-hud-readout {
   color: var(--pc-descriptionForeground);
 }
 
-.pc-slotframe:hover .pc-hud-emblem {
+.pc-slotcard:hover .pc-hud-emblem {
   color: var(--pc-descriptionForeground);
 }
 
-.pc-slotframe:hover .pc-hud-emblem__prompt,
-.pc-slotframe:focus-visible .pc-hud-emblem__prompt {
+.pc-slotcard:hover .pc-hud-emblem__prompt,
+.pc-slotcard:has(:focus-visible, .pc-recent-row[data-state="open"])
+  .pc-hud-emblem__prompt {
   color: var(--pc-pane-activeBorder);
+}
+
+/* The card's hover fill — formerly Tailwind `hover:bg-…`/`hover:text-…` on
+   the button itself, moved here so the fill keys off the CARD: with the
+   drawer open the pointer sits over the shelf, not the button, and a
+   button-scoped :hover would drop the fill and split the card in two. Only
+   the empty branch matches (in `restoring` the card IS the frame, and a
+   descendant selector never matches the element itself) — exactly the old
+   behavior, the restoring slot never had a hover fill. */
+.pc-slotcard:hover .pc-slotframe:not(:disabled),
+.pc-slotcard:has(:focus-visible, .pc-recent-row[data-state="open"])
+  .pc-slotframe:not(:disabled) {
+  background-color: var(--pc-list-hoverBackground);
+  color: var(--pc-foreground);
+}
+
+/*
+ * "Recently opened" quick-access rows in the empty slot's shelf drawer
+ * (components/ProjectPicker.tsx, RecentProjectRow; the BrowseOtherRow entry
+ * speaks the same classes) — the slot's secondary shelf, in the same HUD
+ * register as the slot itself. Three voices per row:
+ *
+ *   - INDEX readout (two digits, mono): dimmed at rest, pulls up to the full
+ *     description tone on hover/focus — deliberately NOT amber, exactly like
+ *     .pc-hud-readout: a position label, not an invitation.
+ *   - PARENT PATH: statically dimmed qualifier behind the project name; it
+ *     never brightens — the name is the answer, the parent only context.
+ *   - "↵" REVEAL: the open affordance at the right edge, invisible at rest,
+ *     fading in on hover/keyboard focus (and while the row's context menu is
+ *     open, [data-state="open"] from Radix' ContextMenu.Trigger — the row
+ *     keeps signalling which entry the menu belongs to). Its color is capped
+ *     at the same dimmed 70% amber as .pc-hud-emblem__prompt: the slot
+ *     button above already owns the full-amber hover invitation of this
+ *     cell, the rows may echo it as a trace but never compete with it.
+ *
+ * All transitions run the app-wide 150ms hover timing. The 4px slide-in of
+ * the "↵" is real motion and therefore exists only under
+ * prefers-reduced-motion: no-preference — reduced-motion users get the pure
+ * opacity fade.
+ *
+ * DRAWER REVEAL (2026-08-17, third pass — user verdict on the second pass:
+ * "Die Recent-Files liegen immer noch außerhalb des Slots"): the shelf no
+ * longer sits in flow below the button. It is `.pc-recent-panel`, an
+ * absolutely positioned drawer INSIDE the slot frame, anchored to the card's
+ * bottom edge (ProjectPicker.tsx documents why inside rather than a
+ * `top-full` overlay: the quad start state has empty slots in the window's
+ * bottom row, where a below-the-cell panel would fall past the window edge
+ * and be clipped by body{overflow:hidden}). Out of flow means zero rest
+ * footprint — the button always fills the whole cell, no reserved dead band.
+ * Its ground is the app background with the card's own hover fill
+ * composited on top, so the drawer region renders the exact same tone as
+ * the hovered button around it: one card, one fill, no seam.
+ *
+ * `recentProjects` is one app-wide list, so a grid with four empty slots
+ * would render the same rows four times at once (second-pass screenshot
+ * review) — at rest only the caption line inside the button stays visible
+ * as the discoverability anchor; the drawer fades in when the slot as a
+ * whole wakes up. Three equivalent wake triggers on the `.pc-empty-slot`
+ * cell (ProjectPicker.tsx outer container):
+ *
+ *   - :hover anywhere in the cell — including the big "Choose project"
+ *     button, so hovering the primary target already reveals the shelf (one
+ *     interactive zone, not a list with its own private hover),
+ *   - :focus-within — Tab onto the button (or into a row from either
+ *     direction) reveals the rows in the same moment focus arrives, so a
+ *     row can never hold an invisible keyboard focus,
+ *   - :has() an open row context menu ([data-state="open"]) — Radix moves
+ *     focus into the portaled menu, which sits OUTSIDE the cell, so neither
+ *     :hover nor :focus-within holds while it is open; without this third
+ *     trigger the row the menu belongs to would fade away under it (:has is
+ *     WKWebView-verified, see the HudCorners boot-lap block above).
+ *
+ * opacity + pointer-events only, never display/height — the drawer is out
+ * of flow, so nothing above it can jump either way. pointer-events: none
+ * while hidden keeps invisible rows from being clickable (clicks fall
+ * through to the button below) and from popping their path tooltips during
+ * the fade-out. The 3px rise (the drawer unfolding upward from the bottom
+ * edge) is the motion component and therefore reduced-motion-gated like the
+ * "↵" slide; the opacity fade is not. The caption readouts brighten via the
+ * card-wide `.pc-slotcard … .pc-hud-readout` rule above — the same "the
+ * slot wakes as a whole" choreography the button's HUD details follow.
+ */
+.pc-recent-panel {
+  opacity: 0;
+  pointer-events: none;
+  /* Opaque app ground + the same hover fill the awake button carries — the
+     drawer must cover the button text underneath it, and it must match the
+     hovered card's rendered tone exactly (the fill token is translucent, so
+     it needs the same opaque base under it that the button has). */
+  background-color: var(--pc-app-background);
+  background-image: linear-gradient(
+    var(--pc-list-hoverBackground),
+    var(--pc-list-hoverBackground)
+  );
+  transition:
+    opacity 150ms,
+    translate 150ms;
+}
+
+.pc-empty-slot:hover .pc-recent-panel,
+.pc-empty-slot:focus-within .pc-recent-panel,
+.pc-empty-slot:has(.pc-recent-row[data-state="open"]) .pc-recent-panel {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pc-recent-panel {
+    translate: 0 3px;
+  }
+
+  .pc-empty-slot:hover .pc-recent-panel,
+  .pc-empty-slot:focus-within .pc-recent-panel,
+  .pc-empty-slot:has(.pc-recent-row[data-state="open"]) .pc-recent-panel {
+    translate: 0 0;
+  }
+}
+
+.pc-recent-row__index {
+  color: color-mix(in srgb, var(--pc-descriptionForeground) 55%, transparent);
+  transition: color 150ms;
+}
+
+.pc-recent-row:hover .pc-recent-row__index,
+.pc-recent-row:focus-visible .pc-recent-row__index,
+.pc-recent-row[data-state="open"] .pc-recent-row__index {
+  color: var(--pc-descriptionForeground);
+}
+
+.pc-recent-row__dir {
+  color: color-mix(in srgb, var(--pc-descriptionForeground) 60%, transparent);
+}
+
+.pc-recent-row__go {
+  opacity: 0;
+  color: color-mix(in srgb, var(--pc-pane-activeBorder) 70%, transparent);
+  transition:
+    opacity 150ms,
+    translate 150ms;
+}
+
+.pc-recent-row:hover .pc-recent-row__go,
+.pc-recent-row:focus-visible .pc-recent-row__go,
+.pc-recent-row[data-state="open"] .pc-recent-row__go {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pc-recent-row__go {
+    translate: -4px 0;
+  }
+
+  .pc-recent-row:hover .pc-recent-row__go,
+  .pc-recent-row:focus-visible .pc-recent-row__go,
+  .pc-recent-row[data-state="open"] .pc-recent-row__go {
+    translate: 0 0;
+  }
 }
 
 /*

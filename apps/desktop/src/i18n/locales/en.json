@@ -182,9 +182,29 @@
   "projectPicker": {
     "choose": "Choose project",
     "hint": "PaneCrew starts a real shell in it.",
+    "recentHeading": "Recently opened",
+    "browseOther": "Choose another project …",
     "removeRecent": "Remove from list"
   },
   "onboarding": {
+    "wizard": {
+      "welcome": {
+        "title": "Welcome to PaneCrew",
+        "body": "Multiple real terminals visible at once, side by side instead of one after another — the explorer automatically follows whichever pane you're working in.",
+        "cta": "Let's go"
+      },
+      "ready": {
+        "title": "Ready to start",
+        "body": "Once two projects are open side by side, you'll see the grid in action — start by opening your first one.",
+        "cta": "Open first project",
+        "skip": "Continue without a project",
+        "bodyExisting": "Your open projects stay exactly as they are — carry on.",
+        "ctaContinue": "Continue"
+      },
+      "back": "Back",
+      "close": "Close introduction",
+      "stepIndicator": "Step {{step}} of {{total}}"
+    },
     "hint": {
       "empty": {
         "title": "Multiple projects, side by side",
@@ -193,6 +213,10 @@
       "hasPanes": {
         "title": "The explorer follows the active pane",
         "body": "Open a second project in an empty slot to see the grid in action."
+      },
+      "ahaReached": {
+        "title": "This is the grid in action",
+        "body": "You already have multiple projects open at once — the explorer automatically follows whichever pane is focused."
       },
       "dismiss": "Dismiss hint"
     }
@@ -255,9 +279,9 @@
     "help": {
       "onboarding": {
         "label": "Show onboarding again",
-        "description": "Shows the onboarding hint again at the next empty slot in the grid.",
+        "description": "Shows the introduction (setup wizard and guided tour) again, as if you were starting PaneCrew for the first time.",
         "button": "Restart onboarding",
-        "confirmation": "Reset — the hint will show again as soon as a slot in the grid is free."
+        "confirmation": "Reset — switch to the main window, the introduction starts there."
       },
       "permissions": {
         "title": "Permissions (macOS)",

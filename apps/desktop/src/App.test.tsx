@@ -2787,6 +2787,61 @@ describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
       expect(last?.recentProjects).toEqual(["/Users/dev/projects/keep"]);
     });
   });
+
+  it("öffnet über den Shelf-Eintrag „Anderes Projekt wählen“ den Dateidialog statt eines Listeneintrags", async () => {
+    // The shelf's one non-recent entry (BrowseOtherRow, ProjectPicker.tsx)
+    // routes into the same dialog flow as the big slot button — its own
+    // accessible name (projectPicker.browseOther) must never collide with
+    // the main button's "Projekt wählen" (getAllByRole above relies on that
+    // name staying unambiguous).
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: ["/Users/dev/projects/listed"],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+    openMock.mockResolvedValue("/Users/dev/projects/fresh");
+
+    render(<App />);
+
+    // Both the main button and the browse row resolve unambiguously by name.
+    await screen.findByRole("button", { name: "listed" });
+    expect(
+      screen.getByRole("button", { name: "Projekt wählen" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Anderes Projekt wählen …" }),
+    );
+
+    // The dialog path was taken (not a direct recent-open), and the chosen
+    // project landed in this slot.
+    expect(await screen.findByLabelText("Terminal fresh")).toBeInTheDocument();
+    expect(openMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/fresh" }),
+      );
+    });
+  });
+
+  it("zeigt ohne Recent-Einträge keinen Shelf und keinen „Anderes Projekt“-Eintrag", () => {
+    // Without recents the only actionable shelf row would duplicate the big
+    // button's own action — the whole drawer stays unmounted
+    // (ProjectPicker.tsx, hasShelf).
+    render(<App />);
+
+    expect(
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
+    expect(
+      screen.queryByRole("button", { name: "Anderes Projekt wählen …" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("Onboarding", () => {
@@ -3028,6 +3083,9 @@ describe("Onboarding", () => {
       expect(
         screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
       ).not.toBeInTheDocument();
+      // Step position must be perceivable without relying on the (aria-hidden)
+      // dot indicator's color alone — onboarding-prompt.md §10/§235.
+      expect(screen.getByText("Schritt 1 von 2")).toBeInTheDocument();
     });
 
     it("führt über Weiter zum Ready-Screen, dessen CTA das erste Projekt öffnet und den Wizard schließt", async () => {
@@ -3038,6 +3096,7 @@ describe("Onboarding", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
       expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 2 von 2")).toBeInTheDocument();
 
       openMock.mockResolvedValueOnce("/Users/dev/projects/one");
       fireEvent.click(screen.getByRole("button", { name: "Erstes Projekt öffnen" }));
