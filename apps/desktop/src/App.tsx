@@ -93,13 +93,20 @@ import {
 } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
-import { getOnboardingState, setOnboardingCompleted, subscribeToOnboardingChanges } from "./onboarding/onboarding";
+import {
+  getOnboardingState,
+  setOnboardingCompleted,
+  setOnboardingWizardCompleted,
+  subscribeToOnboardingChanges,
+} from "./onboarding/onboarding";
 import {
   onboardingHintSlot as deriveOnboardingHintSlot,
   onboardingHintVariant,
   onboardingShouldComplete,
 } from "./onboarding/onboardingState";
 import { OnboardingHint } from "./onboarding/OnboardingHint";
+import { OnboardingFloatingHint } from "./onboarding/OnboardingFloatingHint";
+import { OnboardingWizard } from "./onboarding/OnboardingWizard";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
 import {
@@ -324,6 +331,9 @@ function App() {
   // `null` — sonst blitzte er bei jedem Start kurz auf, bevor der geladene
   // Stand ihn wieder wegnimmt.
   const [onboardingCompleted, setOnboardingCompletedState] = useState<boolean | null>(null);
+  // Phase 1 (Initial-Setup-Wizard) — same "`null` = not loaded yet, never
+  // show during `null`" convention as `onboardingCompleted` above.
+  const [wizardCompleted, setWizardCompletedState] = useState<boolean | null>(null);
   // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
@@ -515,16 +525,52 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void getOnboardingState().then((state) => {
-      if (!cancelled) setOnboardingCompletedState(state.completed);
+      if (!cancelled) {
+        setOnboardingCompletedState(state.completed);
+        setWizardCompletedState(state.wizardCompleted);
+      }
     });
     const unsubscribe = subscribeToOnboardingChanges((state) => {
       setOnboardingCompletedState(state.completed);
+      setWizardCompletedState(state.wizardCompleted);
     });
     return () => {
       cancelled = true;
       unsubscribe();
     };
   }, []);
+
+  // Existing-user migration for the wizard, same intent as the Aha-Moment
+  // migration below it: a window that hydrates with a real project already
+  // assigned (restored session, `panecrew <path>` CLI launch, or a pending
+  // window project) is a returning user, not a first run — showing Welcome
+  // to them would be exactly the "re-onboarded" regression the spec
+  // forbids. Persists through the same async command + broadcast round trip
+  // as every other onboarding-state change (`subscribeToOnboardingChanges`
+  // above updates `wizardCompleted` once the broadcast lands) rather than
+  // setting local state directly here — direct setState in an effect body
+  // is exactly what `react-hooks/set-state-in-effect` exists to catch.
+  //
+  // Fires exactly ONCE, the first render where BOTH the session-restore
+  // (`hydrated`) and the onboarding fetch (`wizardCompleted !== null`) have
+  // landed — not on the `hydrated` transition alone, since the two fetches
+  // are independent and race: gating on the transition would silently skip
+  // this check whenever the onboarding fetch happens to resolve after
+  // hydration completes. Never fires again after that first decision, so a
+  // later Settings restart (which flips `wizardCompleted` back to `false`
+  // on an already-long-hydrated window) always shows the wizard,
+  // unconditionally, per the user's explicit "restart = see the guided
+  // tour again."
+  const wizardStartupDecisionMadeRef = useRef(false);
+  useEffect(() => {
+    if (wizardStartupDecisionMadeRef.current) return;
+    if (!hydrated || wizardCompleted === null) return;
+    wizardStartupDecisionMadeRef.current = true;
+    if (!wizardCompleted && activePanes(gridState).length > 0) {
+      void setOnboardingWizardCompleted(true);
+      void info("onboarding: wizard skipped, existing session detected at startup");
+    }
+  }, [hydrated, gridState, wizardCompleted]);
 
   // Der Aha-Moment: PaneCrews Kern-Alleinstellungsmerkmal ist das Raster aus
   // gleichzeitig sichtbaren Panes, nicht schon die erste offene Pane (die
@@ -918,43 +964,90 @@ function App() {
   const removeRecentProject = (path: string) =>
     setRecentProjects((current) => withoutRecentProject(current, path));
 
-  // Der Onboarding-Hinweis: rein aus dem laufenden Grid abgeleitet, kein
-  // eigener "Phase"-Zustand (`onboarding/onboardingState.ts`s Kopfkommentar)
-  // — dieselbe Herleitung deckt den echten Erstlauf, einen über die Settings
-  // neu gestarteten Hinweis mit noch freiem Slot, und den stillen No-op bei
-  // komplett vollem Grid gleichermaßen ab. `null`-Fall (Stand noch nicht
-  // geladen) zeigt nie etwas.
-  const onboardingHintSlotIndex =
-    onboardingCompleted === false ? deriveOnboardingHintSlot(gridState) : null;
+  // Phase 2, der kontextuelle Hinweis: rein aus dem laufenden Grid
+  // abgeleitet, kein eigener "Phase"-Zustand
+  // (`onboarding/onboardingState.ts`s Kopfkommentar) — dieselbe Herleitung
+  // deckt den echten Erstlauf, einen über die Settings neu gestarteten
+  // Hinweis mit noch freiem Slot, und den stillen No-op bei komplett vollem
+  // Grid gleichermaßen ab. Zeigt sich erst NACH Phase 1 (`wizardCompleted
+  // === true`) — solange der Wizard offen ist, überdeckt er ohnehin alles,
+  // aber ohne dieses Gate würde `onboardingHintShownLoggedRef` unten schon
+  // "gezeigt" loggen, bevor der Nutzer den Wizard überhaupt verlassen hat.
+  const onboardingTourActive = onboardingCompleted === false && wizardCompleted === true;
+  const onboardingHintSlotIndex = onboardingTourActive
+    ? deriveOnboardingHintSlot(gridState)
+    : null;
+  // Kein freier Slot zum Verankern, aber die Tour ist aktiv UND der
+  // Aha-Moment liegt bereits vor (`ahaReached`) — genau der Fall, den ein
+  // Settings-Neustart auf einem bereits vollen Grid trifft (der ursprünglich
+  // gemeldete Bug: "Einführung neu starten" zeigte dort gar nichts). Dieser
+  // Fall bekommt die schwebende Variante statt des Slot-verankerten Hinweises.
+  const onboardingFloatingActive =
+    onboardingTourActive &&
+    onboardingHintSlotIndex === null &&
+    onboardingHintVariant(gridState) === "ahaReached";
   const dismissOnboardingHint = () => {
     void setOnboardingCompleted(true);
     void info("onboarding: hint dismissed");
   };
+  const onboardingHintCopyKey = {
+    empty: { title: "onboarding.hint.empty.title", body: "onboarding.hint.empty.body" },
+    hasPanes: {
+      title: "onboarding.hint.hasPanes.title",
+      body: "onboarding.hint.hasPanes.body",
+    },
+    ahaReached: {
+      title: "onboarding.hint.ahaReached.title",
+      body: "onboarding.hint.ahaReached.body",
+    },
+  }[onboardingHintVariant(gridState)];
   const onboardingHintNode =
     onboardingHintSlotIndex !== null ? (
       <OnboardingHint
-        title={t(
-          onboardingHintVariant(gridState) === "empty"
-            ? "onboarding.hint.empty.title"
-            : "onboarding.hint.hasPanes.title",
-        )}
-        body={t(
-          onboardingHintVariant(gridState) === "empty"
-            ? "onboarding.hint.empty.body"
-            : "onboarding.hint.hasPanes.body",
-        )}
+        title={t(onboardingHintCopyKey.title)}
+        body={t(onboardingHintCopyKey.body)}
         dismissLabel={t("onboarding.hint.dismiss")}
         onDismiss={dismissOnboardingHint}
       />
     ) : null;
+  const onboardingFloatingHintNode = onboardingFloatingActive ? (
+    <OnboardingFloatingHint
+      title={t(onboardingHintCopyKey.title)}
+      body={t(onboardingHintCopyKey.body)}
+      dismissLabel={t("onboarding.hint.dismiss")}
+      onDismiss={dismissOnboardingHint}
+    />
+  ) : null;
   const onboardingHintShownLoggedRef = useRef(false);
   useEffect(() => {
-    if (onboardingHintSlotIndex !== null && !onboardingHintShownLoggedRef.current) {
+    const shown = onboardingHintSlotIndex !== null || onboardingFloatingActive;
+    if (shown && !onboardingHintShownLoggedRef.current) {
       onboardingHintShownLoggedRef.current = true;
       void info("onboarding: hint shown");
     }
-    if (onboardingHintSlotIndex === null) onboardingHintShownLoggedRef.current = false;
-  }, [onboardingHintSlotIndex]);
+    if (!shown) onboardingHintShownLoggedRef.current = false;
+  }, [onboardingHintSlotIndex, onboardingFloatingActive]);
+
+  // Phase 1, der Wizard: grid-unabhängig sichtbar (App-Fenster-Overlay, kein
+  // Slot-Anker) — das macht "Einführung neu starten" zuverlässig, egal wie
+  // voll das Grid gerade ist (anders als der reine Phase-2-Hinweis oben, der
+  // ohne freien Slot nirgends verankern könnte). Zeigt sich erst nach
+  // `hydrated`, um den Bestandsnutzer-Check oben eine Chance zu geben, ihn
+  // lautlos zu unterdrücken, bevor er je sichtbar wird.
+  const showOnboardingWizard = hydrated && wizardCompleted === false;
+  const finishOnboardingWizard = () => {
+    setWizardCompletedState(true);
+    void setOnboardingWizardCompleted(true);
+  };
+  const onboardingWizardOpenFirstProject = () => {
+    finishOnboardingWizard();
+    void info("onboarding: wizard completed, opening first project");
+    assignProjectToSlot(0);
+  };
+  const onboardingWizardSkip = () => {
+    finishOnboardingWizard();
+    void info("onboarding: wizard skipped");
+  };
 
   // Zwei native Menüpunkte teilen sich dasselbe Ziel-Verhalten: "Ordner
   // öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) und ein Eintrag aus
@@ -1725,6 +1818,24 @@ function App() {
           onOpenChange={setCommandPaletteOpen}
           commands={commandPaletteCommands}
         />
+        {onboardingFloatingHintNode}
+        {showOnboardingWizard && (
+          <OnboardingWizard
+            copy={{
+              welcomeTitle: t("onboarding.wizard.welcome.title"),
+              welcomeBody: t("onboarding.wizard.welcome.body"),
+              welcomeCta: t("onboarding.wizard.welcome.cta"),
+              readyTitle: t("onboarding.wizard.ready.title"),
+              readyBody: t("onboarding.wizard.ready.body"),
+              readyCtaOpenProject: t("onboarding.wizard.ready.cta"),
+              readySkip: t("onboarding.wizard.ready.skip"),
+              back: t("onboarding.wizard.back"),
+              closeLabel: t("onboarding.wizard.close"),
+            }}
+            onOpenFirstProject={onboardingWizardOpenFirstProject}
+            onSkip={onboardingWizardSkip}
+          />
+        )}
       </div>
     </Tooltip.Provider>
   );

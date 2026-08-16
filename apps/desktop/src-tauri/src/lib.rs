@@ -262,6 +262,8 @@ pub fn run() {
             settings_window::settings_visible,
             onboarding_store::onboarding_get_state,
             onboarding_store::onboarding_set_completed,
+            onboarding_store::onboarding_set_wizard_completed,
+            onboarding_store::onboarding_restart,
             windows::window_open_new,
             windows::take_pending_window_project,
             windows::window_close_confirmed,

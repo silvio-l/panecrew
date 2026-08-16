@@ -147,12 +147,10 @@ describe("SettingsWindow — Hilfe-Kategorie (Onboarding-Neustart + macOS-Berech
 
     fireEvent.click(await screen.findByRole("button", { name: "Einführung neu starten" }));
 
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: false }),
-    );
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("onboarding_restart"));
     expect(
       await screen.findByText(
-        "Zurückgesetzt — der Hinweis erscheint wieder, sobald ein Platz im Raster frei ist.",
+        "Zurückgesetzt — wechsle ins Hauptfenster, dort startet die Einführung erneut.",
       ),
     ).toBeInTheDocument();
   });

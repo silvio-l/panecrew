@@ -261,10 +261,23 @@ const listenMock = vi.mocked(listen);
  * simuliert einen Broadcast aus einem anderen Fenster (z. B. dem
  * Settings-Neustart-Button), ohne den echten Tauri-Event-Bus. */
 function lastOnboardingChangedCallback():
-  | ((event: { payload: { completed: boolean } }) => void)
+  | ((event: { payload: { completed: boolean; wizardCompleted: boolean } }) => void)
   | undefined {
   const call = listenMock.mock.calls.find((candidate) => candidate[0] === "onboarding:changed");
-  return call?.[1] as ((event: { payload: { completed: boolean } }) => void) | undefined;
+  return call?.[1] as
+    | ((event: { payload: { completed: boolean; wizardCompleted: boolean } }) => void)
+    | undefined;
+}
+
+/** Mockt `onboarding_get_state` mit beiden Feldern — Kurzform für die
+ * Onboarding-Tests unten, die fast durchweg nur diesen einen Command
+ * gezielt beantworten müssen. */
+function mockOnboardingState(completed: boolean, wizardCompleted: boolean) {
+  invokeMock.mockImplementation((cmd) => {
+    if (cmd === "onboarding_get_state") return Promise.resolve({ completed, wizardCompleted });
+    if (cmd === "get_launch_project") return Promise.resolve(null);
+    return Promise.resolve();
+  });
 }
 
 // Quad zeigt seit Ticket 03 vier leere Slots statt der früheren einen
@@ -2776,7 +2789,7 @@ describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
   });
 });
 
-describe("Onboarding-Hinweis", () => {
+describe("Onboarding", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invokeMock.mockResolvedValue(undefined);
@@ -2790,171 +2803,344 @@ describe("Onboarding-Hinweis", () => {
     resetOnboardingStoreForTests();
   });
 
-  it("zeigt den Erstlauf-Hinweis am ersten leeren Slot, wenn Onboarding noch nicht abgeschlossen ist", async () => {
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+  // Phase 2, der kontextuelle Hinweis, mit `wizardCompleted: true` gemockt
+  // durchweg — diese Tests prüfen die Tour-Phase in Isolation, nicht das
+  // Zusammenspiel mit dem Wizard (der hat seinen eigenen Block unten).
+  describe("Phase 2: kontextueller Hinweis", () => {
+    it("zeigt den Erstlauf-Hinweis am ersten leeren Slot, wenn die Tour noch nicht abgeschlossen ist", async () => {
+      mockOnboardingState(false, true);
+
+      render(<App />);
+
+      expect(
+        await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).toBeInTheDocument();
     });
 
-    render(<App />);
+    it("zeigt keinen Hinweis, wenn Onboarding bereits abgeschlossen ist", async () => {
+      mockOnboardingState(true, true);
 
-    expect(
-      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
-    ).toBeInTheDocument();
-  });
+      render(<App />);
+      await screen.findAllByRole("button", { name: "Projekt wählen" });
 
-  it("zeigt keinen Hinweis, wenn Onboarding bereits abgeschlossen ist", async () => {
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: true });
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+      expect(
+        screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).not.toBeInTheDocument();
     });
 
-    render(<App />);
-    await screen.findAllByRole("button", { name: "Projekt wählen" });
+    it("schließt den Hinweis über das Dismiss-Kreuz und meldet die Vervollständigung ans Backend", async () => {
+      mockOnboardingState(false, true);
 
-    expect(
-      screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
-    ).not.toBeInTheDocument();
-  });
+      render(<App />);
+      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
 
-  it("schließt den Hinweis über das Dismiss-Kreuz und meldet die Vervollständigung ans Backend", async () => {
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+      fireEvent.click(screen.getByRole("button", { name: "Hinweis schließen" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
     });
 
-    render(<App />);
-    await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+    it("vervollständigt automatisch, sobald eine zweite Pane gleichzeitig offen ist (Aha-Moment)", async () => {
+      mockOnboardingState(false, true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hinweis schließen" }));
+      render(<App />);
+      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
 
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
-    );
-  });
+      openMock.mockResolvedValueOnce("/Users/dev/projects/one");
+      clickPicker();
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
 
-  it("vervollständigt automatisch, sobald eine zweite Pane gleichzeitig offen ist (Aha-Moment)", async () => {
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+      openMock.mockResolvedValueOnce("/Users/dev/projects/two");
+      fireEvent.click(pickerButton(1));
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
     });
 
-    render(<App />);
-    await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+    it("vervollständigt eine wiederhergestellte Sitzung mit bereits zwei Panes sofort beim Start (Bestandsnutzer-Migration)", async () => {
+      // Ein Nutzer, dessen `session.json` schon zwei offene Panes führt —
+      // die Vervollständigung passiert hier still beim ersten Start, ohne
+      // dass je ein Hinweis aufblitzt. Anderer Fall als der
+      // Live-Neustart-Test unten: dort ist die App schon am Laufen, wenn
+      // `completed` auf `false` kippt.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: false, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
 
-    openMock.mockResolvedValueOnce("/Users/dev/projects/one");
-    clickPicker();
-    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
-    expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
+      render(<App />);
 
-    openMock.mockResolvedValueOnce("/Users/dev/projects/two");
-    fireEvent.click(pickerButton(1));
-    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
+    });
 
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
-    );
-  });
+    it("vervollständigt NICHT sofort wieder, wenn ein Live-Neustart über die Settings eintrifft, während schon zwei Panes offen sind — und zeigt die ahaReached-Variante am freien Slot", async () => {
+      // Die eigentliche Regression, die ein reiner Pegelvergleich (>= 2
+      // aktive Panes, ohne Übergangs-Tracking) hätte: die App läuft bereits
+      // mit zwei offenen Panes und abgeschlossenem Onboarding; der
+      // Settings-Neustart-Button broadcastet `completed: false` in genau
+      // dieses laufende Fenster — der Hinweis muss stehen bleiben können,
+      // statt im selben Tick wieder als "abgeschlossen" zurückgemeldet zu
+      // werden. Die Textvariante ist hier bewusst "ahaReached" statt der
+      // alten "hasPanes"-Aufforderung ("öffne ein zweites Projekt") — die
+      // wäre für jemanden, der schon zwei offene Projekte hat, unsinnig.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
 
-  it("vervollständigt eine wiederhergestellte Sitzung mit bereits zwei Panes sofort beim Start (Bestandsnutzer-Migration)", async () => {
-    // Ein Nutzer, dessen `onboarding.json` noch nicht existiert (Upgrade von
-    // einer Version ohne Onboarding-Tracking), aber dessen `session.json`
-    // schon zwei offene Panes führt — die Vervollständigung passiert hier
-    // still beim ersten Start, ohne dass je ein Hinweis aufblitzt. Anderer
-    // Fall als der Live-Neustart-Test unten: dort ist die App schon am
-    // Laufen, wenn `completed` auf `false` kippt.
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
-      if (cmd === "session_load") {
-        return Promise.resolve({
-          windows: [
-            {
-              label: "main",
-              template: "quad",
-              slots: [
-                {
-                  project_path: "/Users/dev/projects/one",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
-                },
-                {
-                  project_path: "/Users/dev/projects/two",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
-                },
-                null,
-                null,
-              ],
-            },
-          ],
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+      invokeMock.mockClear();
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
         });
-      }
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+      });
+
+      expect(await screen.findByText("Genau so funktioniert das Raster")).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
     });
 
-    render(<App />);
+    it("zeigt die schwebende ahaReached-Variante, wenn ein Live-Neustart auf ein komplett volles Grid trifft (der ursprünglich gemeldete Bug)", async () => {
+      // Zwei-Slot-Template, BEIDE Slots belegt — kein freier Slot zum
+      // Verankern. Vor dem Wizard-Umbau zeigte "Einführung neu starten" in
+      // genau diesem Fall gar nichts (der User-Report, der diesen ganzen
+      // Umbau ausgelöst hat). Die schwebende Variante ist der Fix dafür.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "split",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
 
-    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
-    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
-    );
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
+        });
+      });
+
+      expect(await screen.findByText("Genau so funktioniert das Raster")).toBeInTheDocument();
+    });
   });
 
-  it("vervollständigt NICHT sofort wieder, wenn ein Live-Neustart über die Settings eintrifft, während schon zwei Panes offen sind", async () => {
-    // Die eigentliche Regression, die ein reiner Pegelvergleich (>= 2 aktive
-    // Panes, ohne Übergangs-Tracking) hätte: die App läuft bereits mit zwei
-    // offenen Panes und abgeschlossenem Onboarding; der Settings-Neustart-
-    // Button broadcastet `completed: false` in genau dieses laufende
-    // Fenster — der Hinweis muss stehen bleiben können, statt im selben
-    // Tick wieder als "abgeschlossen" zurückgemeldet zu werden.
-    invokeMock.mockImplementation((cmd) => {
-      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: true });
-      if (cmd === "session_load") {
-        return Promise.resolve({
-          windows: [
-            {
-              label: "main",
-              template: "quad",
-              slots: [
-                {
-                  project_path: "/Users/dev/projects/one",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
-                },
-                {
-                  project_path: "/Users/dev/projects/two",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
-                },
-                null,
-                null,
-              ],
-            },
-          ],
+  // Phase 1, der Wizard — mit `wizardCompleted: false` gemockt, sonst
+  // rendert er per Konstruktion nie.
+  describe("Phase 1: Setup-Wizard", () => {
+    it("zeigt den Wizard bei echtem Erstlauf, nicht den Phase-2-Hinweis", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+
+      expect(await screen.findByText("Willkommen bei PaneCrew")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("führt über Weiter zum Ready-Screen, dessen CTA das erste Projekt öffnet und den Wizard schließt", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Willkommen bei PaneCrew");
+
+      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+
+      openMock.mockResolvedValueOnce("/Users/dev/projects/one");
+      fireEvent.click(screen.getByRole("button", { name: "Erstes Projekt öffnen" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+    });
+
+    it("überspringt über 'Ohne Projekt fortfahren', ohne ein Projekt zu öffnen, und zeigt danach den leeren Phase-2-Hinweis", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Willkommen bei PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Bereit zum Start");
+
+      fireEvent.click(screen.getByRole("button", { name: "Ohne Projekt fortfahren" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(openMock).not.toHaveBeenCalled();
+      expect(
+        await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).toBeInTheDocument();
+    });
+
+    it("schließt über Escape, gleichbedeutend mit Überspringen", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Willkommen bei PaneCrew");
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Willkommen bei PaneCrew")).not.toBeInTheDocument();
+    });
+
+    it("unterdrückt den Wizard lautlos, wenn eine wiederhergestellte Sitzung bereits ein Projekt führt (Bestandsnutzer-Migration)", async () => {
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: false, wizardCompleted: false });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  null,
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      // Der Persist-Aufruf selbst ist fire-and-forget — sichtbar unterdrückt
+      // wird der Wizard erst, sobald der Broadcast (in Produktion: Rusts
+      // eigener `emit_changed`, das jedes Fenster inkl. Absender erreicht)
+      // den lokalen Zustand aktualisiert. Kein synchrones lokales `setState`
+      // im Effekt selbst (`react-hooks/set-state-in-effect` verbietet das) —
+      // ein kurzes Aufflackern des Wizards ist für diesen seltenen
+      // Migrationsfall (Vor-Wizard-Installation, echter Sitzungsinhalt, nie
+      // dismisster alter Hinweis) ein akzeptierter Kompromiss.
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
         });
-      }
-      if (cmd === "get_launch_project") return Promise.resolve(null);
-      return Promise.resolve();
+      });
+      expect(screen.queryByText("Willkommen bei PaneCrew")).not.toBeInTheDocument();
     });
-
-    render(<App />);
-    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
-    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
-    await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
-    invokeMock.mockClear();
-
-    act(() => {
-      lastOnboardingChangedCallback()?.({ payload: { completed: false } });
-    });
-
-    expect(await screen.findByText("Der Explorer folgt der aktiven Pane")).toBeInTheDocument();
-    expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
   });
 });
 

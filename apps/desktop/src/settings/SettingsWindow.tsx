@@ -22,7 +22,7 @@ import { TemplateGlyph } from "../components/TemplateSwitcher";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
 import { info } from "../logging/log";
-import { setOnboardingCompleted } from "../onboarding/onboarding";
+import { restartOnboarding } from "../onboarding/onboarding";
 import { isMacPlatform } from "../shortcuts/platform";
 import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
@@ -645,12 +645,10 @@ function OnboardingRestartRow({
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
-  // Local-only "restarted" confirmation, deliberately not tied to whether
-  // the hint can actually render anywhere right now (it can't if every grid
-  // slot is already occupied) — without this, a click with a full grid
-  // looked exactly like a dead button. The state change itself (onboarding
-  // marked incomplete again) is real either way; this just makes it
-  // observable.
+  // Local-only "restarted" confirmation. `restartOnboarding()` resets BOTH
+  // onboarding phases and shows the wizard as an app-window overlay in the
+  // MAIN window, not this one — this confirmation is what tells the user
+  // to go look there, since the settings window itself shows nothing.
   const [restarted, setRestarted] = useState(false);
 
   return (
@@ -671,8 +669,8 @@ function OnboardingRestartRow({
       <button
         type="button"
         onClick={() => {
-          void setOnboardingCompleted(false);
-          void info("onboarding: reset from settings");
+          void restartOnboarding();
+          void info("onboarding: restarted from settings");
           setRestarted(true);
         }}
         className={`shrink-0 rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}

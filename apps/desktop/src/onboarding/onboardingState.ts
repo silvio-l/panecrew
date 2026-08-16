@@ -20,11 +20,22 @@ export function onboardingHintSlot(state: GridState): number | null {
   return index === -1 ? null : index;
 }
 
+export type OnboardingHintVariant = "empty" | "hasPanes" | "ahaReached";
+
 /** `"empty"` for a true first run (nothing open yet — lead with what
- * PaneCrew is), `"hasPanes"` once at least one project is already open
- * (lead with the next action: open a second one). */
-export function onboardingHintVariant(state: GridState): "empty" | "hasPanes" {
-  return activePanes(state).length === 0 ? "empty" : "hasPanes";
+ * PaneCrew is), `"hasPanes"` once at least one project is already open but
+ * the Aha-Moment isn't reached yet (lead with the next action: open a
+ * second one), `"ahaReached"` when the grid already satisfies the
+ * Aha-Moment — reachable only via a Settings restart on a session that
+ * already has 2+ panes open (a fresh session at that state auto-completes
+ * silently, see the Aha-Moment edge/transition tracking in App.tsx), where
+ * "open a second project" would be stale advice for a project that's
+ * already open. */
+export function onboardingHintVariant(state: GridState): OnboardingHintVariant {
+  const paneCount = activePanes(state).length;
+  if (paneCount === 0) return "empty";
+  if (paneCount >= AHA_MOMENT_PANE_COUNT) return "ahaReached";
+  return "hasPanes";
 }
 
 /** Whether the Aha-Moment has been reached and onboarding should be marked
