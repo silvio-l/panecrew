@@ -44,6 +44,13 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.8] - 2026-08-16
+### Behoben
+- Absturz beim Start behoben, der mit nightly.7 eingeführt wurde: die App
+  konnte komplett nicht mehr starten (Absturz noch vor dem ersten Fenster),
+  weil das Anwendungsmenü zu früh in Tauris eigener Startsequenz gebaut
+  wurde.
+
 ## [0.1.0-nightly.7] - 2026-08-16
 ### Hinzugefügt
 - Split-Pane-Tastenkürzel (Strg/Cmd+Umschalt+5): teilt die aktuell fokussierte

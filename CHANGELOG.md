@@ -42,6 +42,13 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.8] - 2026-08-16
+### Fixed
+- Fixed a startup crash introduced in nightly.7: the app could fail to
+  launch at all (crashing before its first window appeared) because the
+  application menu was being built too early in Tauri's own startup
+  sequence.
+
 ## [0.1.0-nightly.7] - 2026-08-16
 ### Added
 - Split Pane shortcut (Ctrl/Cmd+Shift+5): splits the currently focused pane
