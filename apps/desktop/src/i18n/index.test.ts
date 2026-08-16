@@ -7,15 +7,21 @@ import i18next, { setLanguage } from "./index";
 // letztlich beobachtet.
 describe("Laufzeit-Sprachumschaltung", () => {
   afterEach(() => {
+    // `test/setup.ts` fixiert die Testsprache global auf Deutsch, unabhängig
+    // vom App-Default (dessen eigener Kommentar dort) — jeder Test hier
+    // stellt das selbst wieder her, statt sich auf einen ambienten
+    // Ausgangszustand zu verlassen.
     setLanguage("de");
   });
 
   it("wechselt übersetzte Strings ohne Neuinitialisierung", () => {
-    expect(i18next.t("titleBar.settings")).toBe("Einstellungen");
-
     setLanguage("en");
-
     expect(i18next.language).toBe("en");
     expect(i18next.t("titleBar.settings")).toBe("Settings");
+
+    setLanguage("de");
+
+    expect(i18next.language).toBe("de");
+    expect(i18next.t("titleBar.settings")).toBe("Einstellungen");
   });
 });

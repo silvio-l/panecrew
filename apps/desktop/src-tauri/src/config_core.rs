@@ -77,7 +77,7 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     registry.register(entry(
         "appearance.language",
         SettingType::Enum(vec!["de".into(), "en".into()]),
-        serde_json::json!("de"),
+        serde_json::json!("en"),
     ))?;
     // UI-Zoom (Shift+Cmd/Strg +/-/0, `useAppZoom.ts`) — bislang reiner
     // Laufzeit-State ohne jede Persistenz, jeder Neustart fiel auf 1 zurück.
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn appearance_language_defaults_to_de_with_the_two_supported_options() {
+    fn appearance_language_defaults_to_en_with_the_two_supported_options() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
 
@@ -144,7 +144,7 @@ mod tests {
             .find("appearance.language")
             .expect("should be registered");
 
-        assert_eq!(entry.default, serde_json::json!("de"));
+        assert_eq!(entry.default, serde_json::json!("en"));
         assert_eq!(
             entry.setting_type,
             SettingType::Enum(vec!["de".into(), "en".into()])

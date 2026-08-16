@@ -19,7 +19,7 @@ export function isSupportedLanguage(value: string | null): value is SupportedLan
 // Deutsch, selbst wenn Englisch eingestellt ist.
 function initialLanguage(): SupportedLanguage {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return isSupportedLanguage(stored) ? stored : "de";
+  return isSupportedLanguage(stored) ? stored : "en";
 }
 
 export function setLanguage(language: SupportedLanguage): void {
@@ -38,7 +38,7 @@ void i18next.use(initReactI18next).init({
     en: { translation: en },
   },
   lng: initialLanguage(),
-  fallbackLng: "de",
+  fallbackLng: "en",
   interpolation: { escapeValue: false },
   initAsync: false,
 });
