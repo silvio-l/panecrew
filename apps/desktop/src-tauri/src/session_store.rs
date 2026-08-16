@@ -20,13 +20,32 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 use crate::menu;
 use crate::settings_commands::app_data_dir;
 
 const FILE_NAME: &str = "session.json";
+
+/// Serializes every read-modify-write against `session.json` across
+/// concurrently open windows. Tauri multi-window (Ticket 27) runs all
+/// windows in one OS process, each with its own autosave effect firing
+/// independently — without this, two windows' autosaves landing close in
+/// time could interleave their read-modify-write cycles (a lost-update
+/// race: both read the same on-disk state, both write back from that stale
+/// snapshot, whichever renames last silently drops the other's change) and
+/// could even collide on the shared per-process temp file path below.
+#[derive(Default)]
+pub struct SessionWriteLock(pub Mutex<()>);
+
+/// Per-call nonce for the temp file name, on top of the existing per-process
+/// one — belt-and-suspenders alongside `SessionWriteLock` above so two
+/// concurrent writers can never share a temp path even if a future call site
+/// ever wrote without holding the lock.
+static TEMP_FILE_NONCE: AtomicU64 = AtomicU64::new(0);
 
 /// One PTY-backed terminal tab within a pane. `title` is a user-set rename;
 /// number and colour are index-derived UI state (Spec 2026-08-12: "konkretes
@@ -184,7 +203,12 @@ pub fn write_session(dir: &Path, state: &SessionState) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(state)
         .map_err(|error| format!("Sitzung konnte nicht serialisiert werden: {error}"))?;
 
-    let temp_path = dir.join(format!(".{FILE_NAME}.panecrew-tmp-{}", std::process::id()));
+    let nonce = TEMP_FILE_NONCE.fetch_add(1, Ordering::Relaxed);
+    let temp_path = dir.join(format!(
+        ".{FILE_NAME}.panecrew-tmp-{}-{}",
+        std::process::id(),
+        nonce
+    ));
     let write_result = (|| -> std::io::Result<()> {
         let mut file = std::fs::File::create(&temp_path)?;
         file.write_all(&json)?;
@@ -209,8 +233,13 @@ pub fn session_load(app: AppHandle) -> Option<SessionState> {
 }
 
 #[tauri::command(async)]
-pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
+pub fn session_save(
+    app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
+    state: SessionState,
+) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
+    let _guard = lock.0.lock().unwrap();
     write_session(&dir, &state)
 }
 
@@ -244,16 +273,61 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
 /// `run_on_main_thread`) fired on every single pane click, a plausible
 /// contributor to the reported lag. `recent_projects_actually_changed` below
 /// restores the intended "only on a real change" gate.
+///
+/// Bug (found 2026-08-16, perf audit): this used to write unconditionally on
+/// every call, including the no-op case above where `window` is byte-identical
+/// to what's already stored (a pure focus switch never touches any persisted
+/// field of `PersistedWindow` — `focusedPaneId` isn't part of the schema) —
+/// a full read + `serde_json` re-encode + `fsync` + `rename` for content that
+/// hadn't actually changed, on every single pane click. Now skipped whenever
+/// the merged state doesn't actually differ from what was just read.
 #[tauri::command(async)]
 pub fn session_save_window(
     app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
     window: PersistedWindow,
     expanded_folders: Option<HashMap<String, Vec<String>>>,
     explorer_width: Option<f64>,
     recent_projects: Option<Vec<String>>,
 ) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
-    let mut state = read_session(&dir).unwrap_or_default();
+    let _guard = lock.0.lock().unwrap();
+    let previous = read_session(&dir).unwrap_or_default();
+    let (state, recent_projects_changed) = merge_window_state(
+        previous.clone(),
+        window,
+        expanded_folders,
+        explorer_width,
+        recent_projects,
+    );
+    if state != previous {
+        write_session(&dir, &state)?;
+    }
+    // Hält `menu.rs`s dynamisches "Zuletzt geöffnete Projekte"-Untermenü
+    // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
+    // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
+    // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
+    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save.
+    if recent_projects_changed {
+        menu::refresh(&app);
+    }
+    Ok(())
+}
+
+/// Pure merge step behind `session_save_window` — shared with the test
+/// helpers below so both the real command and the tests exercise the exact
+/// same logic, no independent reimplementation to drift out of sync.
+/// Returns the merged state plus whether `recent_projects` specifically
+/// changed (the menu-refresh gate needs that distinction; the write-skip
+/// gate above just compares the whole returned state against `previous`).
+fn merge_window_state(
+    previous: SessionState,
+    window: PersistedWindow,
+    expanded_folders: Option<HashMap<String, Vec<String>>>,
+    explorer_width: Option<f64>,
+    recent_projects: Option<Vec<String>>,
+) -> (SessionState, bool) {
+    let mut state = previous;
     match state.windows.iter_mut().find(|w| w.label == window.label) {
         Some(existing) => *existing = window,
         None => state.windows.push(window),
@@ -269,16 +343,7 @@ pub fn session_save_window(
     if let Some(recent_projects) = recent_projects {
         state.recent_projects = recent_projects;
     }
-    write_session(&dir, &state)?;
-    // Hält `menu.rs`s dynamisches "Zuletzt geöffnete Projekte"-Untermenü
-    // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
-    // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
-    // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
-    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save.
-    if recent_projects_changed {
-        menu::refresh(&app);
-    }
-    Ok(())
+    (state, recent_projects_changed)
 }
 
 /// Pure comparison behind `session_save_window`'s menu-refresh gate — split
@@ -312,8 +377,13 @@ pub fn recent_projects<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
 /// A label not present in the file is not an error — the window may never
 /// have autosaved (e.g. closed within the same tick it was opened).
 #[tauri::command(async)]
-pub fn session_remove_window(app: AppHandle, label: String) -> Result<(), String> {
+pub fn session_remove_window(
+    app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
+    label: String,
+) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
+    let _guard = lock.0.lock().unwrap();
     let Some(mut state) = read_session(&dir) else {
         return Ok(());
     };
@@ -692,6 +762,51 @@ mod tests {
         assert_eq!(read_back.windows[0].template, "split");
     }
 
+    /// Perf-audit regression test (2026-08-16): re-saving the exact same
+    /// window — the shape of a pure pane-focus switch, since `focusedPaneId`
+    /// isn't part of the persisted schema — must not touch the file at all.
+    #[test]
+    fn session_save_window_skips_the_write_entirely_when_nothing_actually_changed() {
+        let fixture = Fixture::new("save-window-noop-skip");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("seed");
+        let mtime_before = std::fs::metadata(session_path(&fixture.0))
+            .expect("file exists")
+            .modified()
+            .expect("mtime supported");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("no-op save");
+
+        let mtime_after = std::fs::metadata(session_path(&fixture.0))
+            .expect("file still exists")
+            .modified()
+            .expect("mtime supported");
+        assert_eq!(mtime_before, mtime_after);
+    }
+
+    /// Counterpart to the no-op-skip test above: an actual change must still
+    /// reach disk, not get swallowed by the same gate.
+    #[test]
+    fn session_save_window_still_writes_when_the_window_actually_changed() {
+        let fixture = Fixture::new("save-window-real-change-writes");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("seed");
+        let mtime_before = std::fs::metadata(session_path(&fixture.0))
+            .expect("file exists")
+            .modified()
+            .expect("mtime supported");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut changed = empty_quad_window("main");
+        changed.template = "split".to_string();
+        session_save_window_for_test(&fixture.0, changed).expect("real change save");
+
+        let mtime_after = std::fs::metadata(session_path(&fixture.0))
+            .expect("file still exists")
+            .modified()
+            .expect("mtime supported");
+        assert!(mtime_after > mtime_before);
+    }
+
     /// `expanded_folders` entries are pruned on read for any project no
     /// window currently references (see `prunes_expanded_folder_entries_…`
     /// above) — the seeded window and every save below must keep carrying a
@@ -876,21 +991,18 @@ mod tests {
         explorer_width: Option<f64>,
         recent_projects: Option<Vec<String>>,
     ) -> Result<(), String> {
-        let mut state = read_session(dir).unwrap_or_default();
-        match state.windows.iter_mut().find(|w| w.label == window.label) {
-            Some(existing) => *existing = window,
-            None => state.windows.push(window),
+        let previous = read_session(dir).unwrap_or_default();
+        let (state, _) = merge_window_state(
+            previous.clone(),
+            window,
+            expanded_folders,
+            explorer_width,
+            recent_projects,
+        );
+        if state != previous {
+            write_session(dir, &state)?;
         }
-        if let Some(expanded_folders) = expanded_folders {
-            state.expanded_folders = expanded_folders;
-        }
-        if let Some(explorer_width) = explorer_width {
-            state.explorer_width = Some(explorer_width);
-        }
-        if let Some(recent_projects) = recent_projects {
-            state.recent_projects = recent_projects;
-        }
-        write_session(dir, &state)
+        Ok(())
     }
 
     fn session_remove_window_for_test(dir: &Path, label: &str) -> Result<(), String> {

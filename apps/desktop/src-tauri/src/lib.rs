@@ -37,6 +37,7 @@ use explorer_watch::ExplorerWatchState;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
 use resource_guard::ResourceGuardState;
+use session_store::SessionWriteLock;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
@@ -82,6 +83,7 @@ pub fn run() {
         .manage(DeferredQuitState::default())
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
+        .manage(SessionWriteLock::default())
         // Not `.menu(menu::build)`: Tauri evaluates that closure while
         // building the `App` itself, before `register_core_plugins()` has
         // managed the internal `PathResolver` state -- and `menu::build`
