@@ -33,6 +33,17 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+**Nur App-Inhalte (2026-08-16)**: Dieses Changelog wird mit der Desktop-App
+ausgeliefert (der Updater verlinkt auf den GitHub-Release, der wiederum
+hierher zeigt) und wird gelesen als "was hat sich in der App geändert, die
+ich gerade installiere" — kein projektweites Changelog. Commits unter
+`apps/website` (Marketing-Website-Texte, SEO, Guides, Layout) bekommen hier
+nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
+`coverage`-Liste des Releases verlangt, sobald der Diff diesen Pfad berührt
+(das Gate prüft Modul-Abdeckung rein mechanisch, nicht den Freitext — das
+Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
+nie auf).
+
 ## [0.1.0-nightly.7] - 2026-08-16
 ### Hinzugefügt
 - Split-Pane-Tastenkürzel (Strg/Cmd+Umschalt+5): teilt die aktuell fokussierte

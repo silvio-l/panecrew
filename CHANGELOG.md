@@ -33,6 +33,15 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+**App-only prose (2026-08-16)**: this changelog ships inside the desktop app
+(the updater points users at the GitHub release, which links here) and is
+read as "what changed in the app I'm about to install" — it is not a
+project-wide changelog. `apps/website` commits (marketing site copy, SEO,
+guides, layout) never get a bullet here, even though the gate still requires
+`website` in the release's `coverage` list whenever the diff touches it (the
+gate checks module coverage mechanically, not prose — the module still has
+to be accounted for, it's just never described in the human-facing text).
+
 ## [0.1.0-nightly.7] - 2026-08-16
 ### Added
 - Split Pane shortcut (Ctrl/Cmd+Shift+5): splits the currently focused pane
