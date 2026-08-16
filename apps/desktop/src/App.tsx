@@ -44,7 +44,7 @@
  * (Geometrie in App.css, Slot-Zahl in grid/gridState.ts). Der Akzent trägt
  * jetzt tatsächlich nur EINE Pane: den Rahmen der fokussierten.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -785,6 +785,33 @@ function App() {
   // Listeneintrag, nie das Projekt selbst.
   const removeRecentProject = (path: string) =>
     setRecentProjects((current) => withoutRecentProject(current, path));
+
+  // Nativer Menüpunkt "Ordner öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) —
+  // dasselbe Ziel-Slot-Muster wie beim Ablegen einer gezogenen Explorer-Zeile:
+  // die fokussierte Pane, wenn eine existiert (ersetzt deren Projekt, genauso
+  // geguardet wie ein Klick auf ihren eigenen Ordner-Wechsel), sonst der erste
+  // leere Slot. Kein Ziel-Slot bedeutet: Grid voll UND nichts fokussiert —
+  // kann praktisch nicht vorkommen (ein volles Grid hat immer eine
+  // fokussierte Pane), aber dann bewusst wirkungslos statt zu raten.
+  const openFolderMenuHandlerRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    openFolderMenuHandlerRef.current = () => {
+      const focusedIndex = gridState.slots.findIndex(
+        (slot) => slot?.paneId === focusedPaneId,
+      );
+      const emptyIndex = gridState.slots.findIndex((slot) => slot === null);
+      const slotIndex = focusedIndex !== -1 ? focusedIndex : emptyIndex;
+      if (slotIndex !== -1) assignProjectToSlot(slotIndex);
+    };
+  });
+  useEffect(() => {
+    const unlistenPromise = listen("menu:open-folder", () =>
+      openFolderMenuHandlerRef.current?.(),
+    );
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.

@@ -11,6 +11,16 @@ pub const CHECK_UPDATES: &str = "check-updates";
 /// zentriert sich über dem AUFRUFENDEN Fenster, nicht über einem festen
 /// Default-Monitor).
 pub const OPEN_SETTINGS: &str = "open-settings";
+/// "Ordner öffnen …" (Referenz-Editor-Menüaudit) — anders als `OPEN_SETTINGS`
+/// braucht dieser Punkt kein zweites natives Fenster, sondern denselben
+/// Ordner-Dialog, den `App.tsx`s `assignProjectToSlot` schon über einen
+/// Toolbar-Klick auslöst. `on_menu_event` (lib.rs) emittiert dafür
+/// `EVENT_OPEN_FOLDER` auf das fokussierte Inhalts-Fenster, statt selbst ein
+/// Rust-seitiges Dialog-Plugin aufzurufen — dieselbe Emit-plus-`listen`-Brücke
+/// wie `about.rs`s `"about:check-updates"`.
+pub const OPEN_FOLDER: &str = "open-folder";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_OPEN_FOLDER, …)`.
+pub const EVENT_OPEN_FOLDER: &str = "menu:open-folder";
 /// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
 /// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
 /// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
@@ -181,6 +191,13 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                             true,
                             Some("Cmd+N"),
                         )?,
+                        &MenuItem::with_id(
+                            app,
+                            OPEN_FOLDER,
+                            "Ordner öffnen …",
+                            true,
+                            Some("Cmd+O"),
+                        )?,
                         &PredefinedMenuItem::separator(app)?,
                         &MenuItem::with_id(
                             app,
@@ -227,6 +244,13 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                             "Einstellungen …",
                             true,
                             Some("Ctrl+,"),
+                        )?,
+                        &MenuItem::with_id(
+                            app,
+                            OPEN_FOLDER,
+                            "Ordner öffnen …",
+                            true,
+                            Some("Ctrl+O"),
                         )?,
                         &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::close_window(app, Some("Schließen"))?,

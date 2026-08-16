@@ -40,7 +40,7 @@ use resource_guard::ResourceGuardState;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tool_detect::ToolDetector;
 use windows::{ConfirmedCloseWindows, DeferredQuitState, QuittingFlag};
 
@@ -93,6 +93,11 @@ pub fn run() {
                         // nimmt.
                         let webview: &tauri::Webview<_> = window.as_ref();
                         settings_window::show(app, &webview.window());
+                    }
+                }
+                menu::OPEN_FOLDER => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_OPEN_FOLDER, ());
                     }
                 }
                 menu::CLOSE_WINDOW => {

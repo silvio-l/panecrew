@@ -30,7 +30,7 @@ Whichever surface currently has keyboard focus applies.
 | Toggle focus mode (maximize/leave pane) | ⌘↵ | Ctrl+↵ |
 | Close the active terminal tab | ⌘W | Ctrl+W |
 | Open a new terminal tab in the active pane | ⇧⌘T | Ctrl+Shift+T |
-| Clear the active terminal's scrollback | ⌘K | Ctrl+K |
+| Clear the active terminal's scrollback | ⌘K | — |
 | Show terminal tab 1 of the active pane | ⌘1 | Ctrl+1 |
 | Show terminal tab 2 of the active pane | ⌘2 | Ctrl+2 |
 | Show terminal tab 3 of the active pane | ⌘3 | Ctrl+3 |
