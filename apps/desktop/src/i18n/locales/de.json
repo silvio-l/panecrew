@@ -324,5 +324,11 @@
     "retry": "Erneut versuchen",
     "dismiss": "Ausblenden",
     "homebrewHint": "Über Homebrew installiert — aktualisiere mit „brew upgrade --cask panecrew“."
+  },
+  "shortcutsReference": {
+    "title": "Tastaturkürzel",
+    "close": "Schließen",
+    "wholeInterface": "Gesamte Oberfläche",
+    "activePane": "Aktive Pane"
   }
 }

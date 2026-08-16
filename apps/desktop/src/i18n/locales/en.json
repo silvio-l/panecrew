@@ -324,5 +324,11 @@
     "retry": "Retry",
     "dismiss": "Dismiss",
     "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
+  },
+  "shortcutsReference": {
+    "title": "Keyboard Shortcuts",
+    "close": "Close",
+    "wholeInterface": "Whole Interface",
+    "activePane": "Active Pane"
   }
 }

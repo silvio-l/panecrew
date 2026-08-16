@@ -63,6 +63,7 @@ import { FocusTrace } from "./components/FocusTrace";
 import { GridStatusRail } from "./components/GridStatusRail";
 import { PaneGrid } from "./components/PaneGrid";
 import { PathDragGhost } from "./components/PathDragGhost";
+import { ShortcutsReferenceDialog } from "./components/ShortcutsReferenceDialog";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { UpdateBanner } from "./updater/UpdateBanner";
@@ -814,12 +815,18 @@ function App() {
       if (slotIndex !== -1) openRecentProject(path, slotIndex);
     };
   });
+  // Letzter der zehn Referenz-Editor-Menüaudit-Punkte: die native
+  // "Tastaturkürzel …" (`menu.rs`s SHOW_SHORTCUTS) öffnet den Dialog, der
+  // Dialog selbst kennt seinen Öffner nicht — reiner boolescher Zustand wie
+  // die übrigen modalen Flächen dieser Datei.
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
   useEffect(() => {
     const unlistenPromises = [
       listen("menu:open-folder", () => openFolderMenuHandlerRef.current?.()),
       listen<string>("menu:open-recent-project", (event) =>
         openRecentProjectMenuHandlerRef.current?.(event.payload),
       ),
+      listen("menu:show-shortcuts", () => setShortcutsDialogOpen(true)),
     ];
     return () => {
       for (const unlistenPromise of unlistenPromises) {
@@ -1423,6 +1430,10 @@ function App() {
             />
           )}
         <UpdateBanner />
+        <ShortcutsReferenceDialog
+          open={shortcutsDialogOpen}
+          onOpenChange={setShortcutsDialogOpen}
+        />
       </div>
     </Tooltip.Provider>
   );

@@ -100,6 +100,11 @@ pub fn run() {
                         let _ = window.emit(menu::EVENT_OPEN_FOLDER, ());
                     }
                 }
+                menu::SHOW_SHORTCUTS => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_SHOW_SHORTCUTS, ());
+                    }
+                }
                 menu::CLOSE_WINDOW => {
                     if let Some(window) = windows::focused_content_window(app) {
                         let _ = window.close();

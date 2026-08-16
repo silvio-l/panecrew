@@ -28,6 +28,13 @@ pub const EVENT_OPEN_FOLDER: &str = "menu:open-folder";
 pub const RECENT_PROJECT_ITEM_PREFIX: &str = "recent-project:";
 /// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_OPEN_RECENT_PROJECT, …)`.
 pub const EVENT_OPEN_RECENT_PROJECT: &str = "menu:open-recent-project";
+/// Letzter der zehn Referenz-Editor-Menüaudit-Punkte: die in-App-
+/// Kürzelreferenz (`ShortcutsReferenceDialog.tsx`) — dieselbe Emit-plus-
+/// listen-Brücke wie `OPEN_FOLDER`, kein eigenes natives Fenster wie
+/// `OPEN_SETTINGS`, weil der Dialog Teil des normalen React-Baums ist.
+pub const SHOW_SHORTCUTS: &str = "show-shortcuts";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_SHOW_SHORTCUTS, …)`.
+pub const EVENT_SHOW_SHORTCUTS: &str = "menu:show-shortcuts";
 /// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
 /// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
 /// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
@@ -140,6 +147,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         None::<&str>,
     )?;
+    let show_shortcuts =
+        MenuItem::with_id(app, SHOW_SHORTCUTS, "Tastaturkürzel …", true, None::<&str>)?;
 
     let edit = Submenu::with_items(
         app,
@@ -243,6 +252,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     &[
                         &about,
                         &check_updates,
+                        &show_shortcuts,
                         &PredefinedMenuItem::separator(app)?,
                         &MenuItem::with_id(
                             app,
@@ -329,7 +339,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &[
                 &Submenu::with_items(app, "Datei", true, &datei_items)?,
                 &edit,
-                &Submenu::with_items(app, "Hilfe", true, &[&about, &check_updates])?,
+                &Submenu::with_items(
+                    app,
+                    "Hilfe",
+                    true,
+                    &[&about, &check_updates, &show_shortcuts],
+                )?,
             ],
         )
     }
