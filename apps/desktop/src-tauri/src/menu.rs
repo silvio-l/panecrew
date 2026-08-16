@@ -3,6 +3,23 @@ use tauri::{AppHandle, Runtime};
 
 pub const ABOUT: &str = "about";
 pub const CHECK_UPDATES: &str = "check-updates";
+/// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
+/// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
+/// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
+/// `pane.closeTerminalTab` (registry.ts) abgegriffen — derselbe Konflikt, den
+/// der Kommentar zur Zoom-Trias unten für +/-/0 bereits vermeidet. Eigenes
+/// Item mit Cmd+Shift+W (verbreitete Konvention bei Browsern und beim
+/// Referenz-Editor: W = Tab, Shift+W = Fenster) statt PredefinedMenuItem,
+/// `on_menu_event` in `lib.rs` löst das fokussierte Fenster selbst auf und
+/// ruft `close()` — das läuft weiter über `windows::on_window_event`s
+/// `CloseRequested`-Rückfrage-Gate.
+pub const CLOSE_WINDOW: &str = "close-window";
+/// Konvention verbreiteter macOS-Browser: "Alle Fenster schließen" (⌥⇧⌘W,
+/// Nutzer-Vorlage 2026-08-16), macOS-only wie `CLOSE_WINDOW`. Iteriert einfach über jedes
+/// Inhalts-Fenster und ruft je `close()` — jedes davon durchläuft dabei
+/// individuell dasselbe `CloseRequested`-Rückfrage-Gate wie ein einzelnes
+/// Schließen, keine eigene "alle auf einmal wegwerfen"-Sonderlogik nötig.
+pub const CLOSE_ALL_WINDOWS: &str = "close-all-windows";
 /// Gefolgt vom Fenster-Label (`window_open_new`s zurückgegebenem Wert) —
 /// `on_menu_event` in `lib.rs` schneidet das wieder ab, um das Ziel-Fenster
 /// zu adressieren.
@@ -128,7 +145,42 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     app,
                     "Ablage",
                     true,
-                    &[&PredefinedMenuItem::close_window(app, Some("Schließen"))?],
+                    &[
+                        // Nutzer-Vorlage 2026-08-16 (Ablage-Menü eines
+                        // verbreiteten macOS-Browsers als Referenz): ⌘N
+                        // wirkt schon länger als App-Kürzel
+                        // (`NEW_WINDOW_SHORTCUT_ID`, registry.ts) — dasselbe
+                        // Item hier bringt es zusätzlich menübar-diskutierbar
+                        // und macOS-konventionell ins Menü, OHNE Konflikt wie
+                        // beim Schließen-Fund oben: beide Wege lösen dieselbe
+                        // Handlung aus (`window_open_new`), keine zwei
+                        // widersprüchlichen Bedeutungen für denselben Chord.
+                        // Dieselbe ID wie das Dock-Kontextmenü (`dock.rs`) —
+                        // `on_menu_event` (lib.rs) behandelt beide Quellen
+                        // schon im selben Match-Arm.
+                        &MenuItem::with_id(
+                            app,
+                            crate::dock::NEW_WINDOW_ITEM_ID,
+                            "Neues Fenster",
+                            true,
+                            Some("Cmd+N"),
+                        )?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &MenuItem::with_id(
+                            app,
+                            CLOSE_WINDOW,
+                            "Schließen",
+                            true,
+                            Some("Cmd+Shift+W"),
+                        )?,
+                        &MenuItem::with_id(
+                            app,
+                            CLOSE_ALL_WINDOWS,
+                            "Alle Fenster schließen",
+                            true,
+                            Some("Alt+Shift+Cmd+W"),
+                        )?,
+                    ],
                 )?,
                 &edit,
                 &Submenu::with_items(

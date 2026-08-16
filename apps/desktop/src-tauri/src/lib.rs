@@ -82,6 +82,16 @@ pub fn run() {
             match id {
                 menu::ABOUT => about::show(app, false),
                 menu::CHECK_UPDATES => about::show(app, true),
+                menu::CLOSE_WINDOW => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.close();
+                    }
+                }
+                menu::CLOSE_ALL_WINDOWS => {
+                    for window in windows::content_windows(app) {
+                        let _ = window.close();
+                    }
+                }
                 _ if id.starts_with(menu::WINDOW_ITEM_PREFIX) => {
                     let label = &id[menu::WINDOW_ITEM_PREFIX.len()..];
                     if let Some(window) = app.get_webview_window(label) {

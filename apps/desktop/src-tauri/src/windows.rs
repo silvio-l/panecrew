@@ -89,6 +89,30 @@ pub(crate) fn is_content_window(label: &str) -> bool {
 /// exposes a bridge between the two), but the ENUMERATION itself (which
 /// windows, in what order, which one checked) has exactly one correct
 /// answer and must not drift between the two menus that show it.
+/// The focused content window (excludes "about"/"settings", same as
+/// `is_content_window` above) — resolves the target for `menu.rs`'s custom
+/// "Schließen" item, which (unlike `PredefinedMenuItem::close_window`) has no
+/// window bound to it by the OS and must find one itself.
+pub(crate) fn focused_content_window<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Option<tauri::WebviewWindow<R>> {
+    app.webview_windows()
+        .into_values()
+        .find(|w| is_content_window(w.label()) && w.is_focused().unwrap_or(false))
+}
+
+/// Every open content window (excludes "about"/"settings") — backs
+/// `menu.rs`'s "Alle Fenster schließen". Each returned window still goes
+/// through `close()`'s own `CloseRequested` round-trip individually, so the
+/// per-window confirm-dialog gate in `on_window_event` above applies exactly
+/// as if each had been closed one at a time.
+pub(crate) fn content_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<tauri::WebviewWindow<R>> {
+    app.webview_windows()
+        .into_values()
+        .filter(|w| is_content_window(w.label()))
+        .collect()
+}
+
 pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String, bool)> {
     let windows = app.webview_windows();
     let focused_label = windows
