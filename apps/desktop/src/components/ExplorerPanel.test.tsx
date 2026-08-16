@@ -325,6 +325,33 @@ describe("ExplorerPanel", () => {
     });
   });
 
+  it("kopiert den Pfad über den synchronen execCommand-Weg, nicht über die unzuverlässige Async Clipboard API", () => {
+    // Derselbe WKWebView-Befund wie `terminal/clipboard.ts`s Kopfkommentar zu
+    // `copyTextToClipboard`: ein Callback, der erst nach der Schließ-
+    // Animation eines Radix-Kontextmenüs feuert, verliert dort die
+    // "transient activation" — `navigator.clipboard.writeText()` schlägt
+    // dann lautlos fehl, während die Kopiert-Quittung trotzdem erscheint
+    // (das gemeldete Symptom: Toast da, Zwischenablage leer). Dieser Test
+    // beweist den zuverlässigen Weg, indem er `execCommand("copy")` spioniert
+    // — genau das Muster, das `clipboard.test.ts` für den Terminal-Copy
+    // bereits etabliert hat.
+    const execCommand = vi.fn().mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- nur der Typ wird referenziert, siehe clipboard.ts für die Begründung
+    document.execCommand = execCommand;
+    onTestFinished(() => {
+      Reflect.deleteProperty(document, "execCommand");
+    });
+
+    renderPanel([{ name: "readme.md", isDirectory: false }]);
+
+    const row = mountedRows()[0];
+    if (!row) throw new Error("Baumzeile nicht gefunden");
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pfad kopieren" }));
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+  });
+
   it("löscht ohne Rückfrage, wenn explorer.confirmBeforeDelete auf false steht (Ticket 05)", async () => {
     vi.mocked(invoke).mockImplementation((cmd) => {
       if (cmd === "settings_get_schema") return Promise.resolve([]);
