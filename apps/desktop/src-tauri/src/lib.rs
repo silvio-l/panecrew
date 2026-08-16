@@ -80,7 +80,16 @@ pub fn run() {
         .manage(DeferredQuitState::default())
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
-        .menu(menu::build)
+        // Not `.menu(menu::build)`: Tauri evaluates that closure while
+        // building the `App` itself, before `register_core_plugins()` has
+        // managed the internal `PathResolver` state -- and `menu::build`
+        // reaches `session_store::recent_projects` -> `app.path()` to list
+        // recent projects, which panics ("state() called before manage()")
+        // at that point. `menu::refresh()` below runs from `.setup()`,
+        // after core plugins are ready, and is the same build-then-set_menu
+        // path already used for every later menu rebuild (window
+        // focus/close, see `.on_window_event` below).
+        .enable_macos_default_menu(false)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             log::debug!("menu event: {id}");
@@ -172,6 +181,11 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Core plugins (incl. the `PathResolver` state `app.path()`
+            // needs) are managed by now, unlike during `.menu(menu::build)`
+            // above -- see the comment there.
+            menu::refresh(app.handle());
+
             // Written once here rather than per spawn, so concurrently opening
             // panes can't race on the same three files. A failure is
             // survivable: panes then run the user's shell exactly as before,
