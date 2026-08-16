@@ -91,6 +91,10 @@
     "terminals_one": "{{count}} running terminal session in total",
     "terminals_other": "{{count}} running terminal sessions in total"
   },
+  "gridSplitters": {
+    "columnAria": "Adjust column width between column {{left}} and {{right}}",
+    "rowAria": "Adjust row height between row {{top}} and {{bottom}}"
+  },
   "closeDialog": {
     "paneTitle": "Close pane?",
     "paneDescription": "The pane <bold>{{projectName}}</bold> will be closed and its running terminal sessions ended.",

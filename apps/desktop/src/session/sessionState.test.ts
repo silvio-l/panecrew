@@ -3,6 +3,7 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   openTerminalTab,
+  setSplitRatios,
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
@@ -11,6 +12,7 @@ import {
   RECENT_PROJECTS_MAX,
   buildWindowState,
   restoredSlots,
+  restoredSplitRatios,
   restoredTemplate,
   withRecentProject,
   withoutRecentProject,
@@ -132,6 +134,14 @@ describe("buildWindowState", () => {
 
     expect(buildWindowState(LABEL, grid, {}).maximized_pane_id).toBe("pane-1");
   });
+
+  it("trägt verschobene Schnittkanten-Verhältnisse ein (Ticket 21)", () => {
+    const grid = setSplitRatios(INITIAL_GRID_STATE, [0.3, 0.7, 0.5, 0.5]);
+
+    expect(buildWindowState(LABEL, grid, {}).split_ratios).toEqual([
+      0.3, 0.7, 0.5, 0.5,
+    ]);
+  });
 });
 
 describe("restoredTemplate", () => {
@@ -197,6 +207,40 @@ describe("restoredSlots", () => {
     };
 
     expect(restoredSlots(session, LABEL)).toEqual([]);
+  });
+});
+
+describe("restoredSplitRatios", () => {
+  it("liefert die Schnittkanten-Verhältnisse des eigenen Fensters", () => {
+    const session: SessionState = {
+      windows: [
+        { label: LABEL, template: "split", slots: [], split_ratios: [0.3, 0.7] },
+      ],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([0.3, 0.7]);
+  });
+
+  it("liefert eine leere Liste ohne gespeicherte Verhältnisse", () => {
+    const session: SessionState = {
+      windows: [{ label: LABEL, template: "split", slots: [] }],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([]);
+  });
+
+  it("liefert eine leere Liste ohne jedes Fenster", () => {
+    expect(restoredSplitRatios({ windows: [] }, LABEL)).toEqual([]);
+  });
+
+  it("liefert eine leere Liste, wenn kein Fenster mit diesem Label existiert", () => {
+    const session: SessionState = {
+      windows: [
+        { label: "main-2", template: "split", slots: [], split_ratios: [0.3, 0.7] },
+      ],
+    };
+
+    expect(restoredSplitRatios(session, LABEL)).toEqual([]);
   });
 });
 

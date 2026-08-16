@@ -91,6 +91,10 @@
     "terminals_one": "{{count}} laufende Terminal-Sitzung insgesamt",
     "terminals_other": "{{count}} laufende Terminal-Sitzungen insgesamt"
   },
+  "gridSplitters": {
+    "columnAria": "Spaltenbreite zwischen Spalte {{left}} und {{right}} anpassen",
+    "rowAria": "Zeilenhöhe zwischen Zeile {{top}} und {{bottom}} anpassen"
+  },
   "closeDialog": {
     "paneTitle": "Pane schließen?",
     "paneDescription": "Die Pane <bold>{{projectName}}</bold> wird geschlossen, ihre laufenden Terminal-Sitzungen werden beendet.",

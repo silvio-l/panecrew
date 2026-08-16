@@ -48,6 +48,7 @@ import { projectNameFromPath } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
+import { GridSplitters } from "./GridSplitters";
 import { PaneDropInvite } from "./PaneDropInvite";
 import { ProjectPicker } from "./ProjectPicker";
 import { PaneDragGhost } from "./PaneDragGhost";
@@ -111,6 +112,7 @@ export function PaneGrid({
   onSwitchToFileTab,
   onEnterFocusMode,
   onExitFocusMode,
+  onChangeSplitRatios,
   rotation,
 }: {
   state: GridState;
@@ -200,6 +202,11 @@ export function PaneGrid({
    * Pane ruft je nach `maximized` diese oder `onEnterFocusMode` auf (s.
    * `onToggleFocusMode` unten). */
   onExitFocusMode: () => void;
+  /** Schreibt verschobene Schnittkanten-Verhältnisse zurück (Ticket 21,
+   * `useGrid.ts`s `setSplitRatios`) — die Splitter selbst entstehen hier drin
+   * (`GridSplitters.tsx`, Geschwister von `.pc-workspace`), aber der State
+   * lebt wie `state.template` in `App.tsx`. */
+  onChangeSplitRatios: (ratios: readonly number[]) => void;
   /** Rotationsmodus-Zustand + Bedienung (`grid/useFocusRotation.ts`),
    * gehalten in `App.tsx` — hier nur gereicht an die HUD-Leiste der
    * maximierten Zelle. */
@@ -523,6 +530,15 @@ export function PaneGrid({
   );
   return (
     <>
+    {/* `relative`: Anker für `GridSplitters` (Ticket 21) — sein Overlay ist
+        GESCHWISTER von `.pc-workspace`, nicht sein Kind (dieselbe Begründung
+        wie bei den Zeiger-Plaketten unten: `.pc-workspace > *`-Regeln träfen
+        sonst auch die Splitter). Der Wrapper selbst trägt exakt die
+        Flex-Größe, die vorher `.pc-workspace` direkt in `<main>` (App.tsx)
+        hielt — `.pc-workspace` füllt ihn per eigenem `flex: 1 1 0%`
+        vollständig aus, kein zusätzlicher Rand/Padding verschiebt die
+        Deckungsgleichheit, auf der `GridSplitters`s Pixel-Mathematik beruht. */}
+    <div className="relative flex min-h-0 flex-1 flex-col">
     {/* Der Template-Wechsel ändert GENAU DIESE Klasse und sonst nichts am Baum
         — Spuren und Spannen aller sieben Geometrien stehen in App.css
         (`.pc-layout--*`), die Begründung dafür ebenfalls dort. Der Fokus-Modus
@@ -590,6 +606,18 @@ export function PaneGrid({
           tabId,
         ),
       )}
+    </div>
+    {/* Fokus-Modus verdeckt das ganze Raster hinter einer Zelle (`grid-area`-
+        Spannung, s. o.) — eine Schnittkante wäre dort weder sichtbar noch
+        sinnvoll bedienbar, deshalb ganz weggelassen statt nur versteckt. */}
+    {state.maximizedPaneId === null && (
+      <GridSplitters
+        template={state.template}
+        splitRatios={state.splitRatios}
+        onChange={onChangeSplitRatios}
+        workspaceRef={workspaceRef}
+      />
+    )}
     </div>
     {/* Die Zeiger-Plaketten BEIDER Züge — `fixed`, entkommen also der
         Grid-Geometrie; hier statt in App.tsx gerendert, weil die Züge

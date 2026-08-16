@@ -155,7 +155,7 @@ export function buildWindowState(
         adapter_id: null,
       };
     }),
-    split_ratios: [],
+    split_ratios: [...grid.splitRatios],
     maximized_pane_id: grid.maximizedPaneId,
   };
 }
@@ -188,4 +188,14 @@ export function restoredTemplate(session: SessionState, label: string): Template
  * unverdrahteten Feldern (Terminal-Tab-Array, `adapter_id`, …). */
 export function restoredSlots(session: SessionState, label: string): (PersistedPane | null)[] {
   return restoredWindow(session, label)?.slots ?? [];
+}
+
+/** Die gespeicherten Schnittkanten-Verhältnisse dieses Fensters (Ticket 21) —
+ * roh, noch NICHT gegen die Track-Form des (ggf. inzwischen anderen)
+ * restaurierten Templates validiert. Das übernimmt der Aufrufer
+ * (`App.tsx`) über `grid/splitRatios.ts`s `normalizeRatios`, dieselbe
+ * Arbeitsteilung wie bei `restoredTemplate`s Validierung gegen
+ * `GRID_TEMPLATES`. */
+export function restoredSplitRatios(session: SessionState, label: string): number[] {
+  return restoredWindow(session, label)?.split_ratios ?? [];
 }

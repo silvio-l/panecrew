@@ -18,11 +18,13 @@ import {
   nextPaneId,
   openTerminalTab,
   renameTerminalTab,
+  setSplitRatios,
   swapPanes,
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
   templateSwitchBlockReason,
+  trackShape,
   type GridState,
   type Pane,
 } from "./gridState";
@@ -972,6 +974,58 @@ describe("gridState", () => {
       expect(nextPaneId(panes, "does-not-exist", "next")).toBe("pane-0");
       expect(nextPaneId(panes, null, "previous")).toBe("pane-2");
       expect(nextPaneId(panes, "does-not-exist", "previous")).toBe("pane-2");
+    });
+  });
+
+  describe("Schnittkanten-Splitter (Ticket 21)", () => {
+    it("trackShape kennt Spalten/Zeilen jedes der 7 Templates", () => {
+      expect(trackShape("single")).toEqual({ columns: 1, rows: 1 });
+      expect(trackShape("split")).toEqual({ columns: 2, rows: 1 });
+      expect(trackShape("row-3")).toEqual({ columns: 3, rows: 1 });
+      expect(trackShape("row-4")).toEqual({ columns: 4, rows: 1 });
+      expect(trackShape("quad")).toEqual({ columns: 2, rows: 2 });
+      expect(trackShape("two-over-one")).toEqual({ columns: 2, rows: 2 });
+      expect(trackShape("one-over-two")).toEqual({ columns: 2, rows: 2 });
+    });
+
+    it("startet mit leeren splitRatios (Template-Default)", () => {
+      expect(INITIAL_GRID_STATE.splitRatios).toEqual([]);
+    });
+
+    it("setSplitRatios schreibt die Anteile, sonst unverändert", () => {
+      const next = setSplitRatios(INITIAL_GRID_STATE, [0.3, 0.7]);
+      expect(next.splitRatios).toEqual([0.3, 0.7]);
+      expect(next.template).toBe(INITIAL_GRID_STATE.template);
+      expect(next.slots).toBe(INITIAL_GRID_STATE.slots);
+    });
+
+    it("switchTemplate setzt splitRatios auf leer zurück (neue Track-Form)", () => {
+      const withRatios = setSplitRatios(INITIAL_GRID_STATE, [0.4, 0.6, 0.5, 0.5]);
+      const next = switchTemplate(withRatios, "split");
+      expect(next.splitRatios).toEqual([]);
+    });
+
+    it("ein No-Op-Template-Wechsel lässt splitRatios unangetastet", () => {
+      const withRatios = setSplitRatios(INITIAL_GRID_STATE, [0.4, 0.6, 0.5, 0.5]);
+      expect(switchTemplate(withRatios, "quad")).toBe(withRatios);
+    });
+
+    it("ein geblockter Template-Wechsel lässt splitRatios unangetastet", () => {
+      const threeActive = assignProjectToSlot(
+        assignProjectToSlot(
+          assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+          1,
+          "/repo/b",
+          "pane-1",
+          "tab-1",
+        ),
+        2,
+        "/repo/c",
+        "pane-2",
+        "tab-2",
+      );
+      const withRatios = setSplitRatios(threeActive, [0.4, 0.6, 0.5, 0.5]);
+      expect(switchTemplate(withRatios, "split")).toBe(withRatios);
     });
   });
 });

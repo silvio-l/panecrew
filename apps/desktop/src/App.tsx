@@ -79,7 +79,7 @@ import {
   applyTerminatedEvent,
   disposeResourceGuardEntry,
 } from "./terminal/resourceGuard";
-import { activePanes, focusedProjectPath, nextPaneId } from "./grid/gridState";
+import { activePanes, focusedProjectPath, nextPaneId, trackShape } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
@@ -87,10 +87,12 @@ import { projectNameFromPath } from "./types/project";
 import {
   buildWindowState,
   restoredSlots,
+  restoredSplitRatios,
   restoredTemplate,
   withRecentProject,
   withoutRecentProject,
 } from "./session/sessionState";
+import { normalizeRatios } from "./grid/splitRatios";
 import { loadSession, saveSessionWindow } from "./session/sessionStore";
 import { windowIdentity } from "./window/useWindowIdentity";
 import { isMacPlatform } from "./shortcuts/platform";
@@ -134,6 +136,7 @@ function App() {
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,
+    setSplitRatios,
   } = useGrid();
   // Ticket 27: natives Tauri-Fensterlabel + ob dies "main" ist — ändert sich
   // nie über die Lebenszeit des Fensters (`useWindowIdentity.ts`), deshalb
@@ -487,7 +490,19 @@ function App() {
     const run = async () => {
       const session = await loadSession();
       if (!isCancelled() && session) {
-        switchTemplate(restoredTemplate(session, windowId.label));
+        const restoredTemplateId = restoredTemplate(session, windowId.label);
+        switchTemplate(restoredTemplateId);
+        // `switchTemplate` setzt `splitRatios` selbst immer auf leer zurück
+        // (`gridState.ts`s Kommentar dort) — die gespeicherten Verhältnisse
+        // kommen deshalb als EIGENER, nachgelagerter Schritt, gegen die
+        // Track-Form GENAU dieses (frisch gewechselten) Templates validiert.
+        setSplitRatios(
+          normalizeRatios(
+            restoredSplitRatios(session, windowId.label),
+            trackShape(restoredTemplateId).columns,
+            trackShape(restoredTemplateId).rows,
+          ),
+        );
         // Projektpfad-geschlüsselt wie im Live-Zustand — anders als
         // `restoreSlot` unten braucht das keine `paneId`-Zuordnung, der
         // gespeicherte Zustand passt unverändert auf `expandedFolders`. Beide
@@ -1194,6 +1209,7 @@ function App() {
               onSwitchToFileTab={switchToFileTab}
               onEnterFocusMode={enterFocusMode}
               onExitFocusMode={exitFocusMode}
+              onChangeSplitRatios={setSplitRatios}
               rotation={focusRotation}
             />
           </main>

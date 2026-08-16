@@ -224,6 +224,7 @@ export function HarnessApp({
                 onSwitchToFileTab={grid.switchToFileTab}
                 onEnterFocusMode={grid.enterFocusMode}
                 onExitFocusMode={grid.exitFocusMode}
+                onChangeSplitRatios={grid.setSplitRatios}
                 rotation={focusRotation}
               />
             </main>
