@@ -233,6 +233,17 @@ const description =
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 500px);
     gap: clamp(54px, 5vw, 100px); align-items: center;
     padding-top: 44px;
+    /* corrected 2026-08-16: capping #heroApp's own width (below) without
+       also capping this grid still left column 1 at its full elastic
+       width, so the capped mockup sat flush left while the leftover
+       column space piled up as a bare gap right next to the copy — 149px
+       of dead space measured at 2560px, on top of the intended ~100px
+       column gap, reading as a broken layout rather than a narrower
+       mockup. Capping the grid itself to exactly mockup+gap+copy leaves
+       no slack for a column to strand; .wrap's existing margin: 0 auto
+       centers the whole block instead, which is what "extra room on a
+       wide screen" should look like here. */
+    max-width: 1440px;
   }
   .hero-copy .pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .tag {
@@ -851,14 +862,14 @@ const description =
   /* the hero mockup (#heroApp, in .hero-grid's growing 1fr column) had no
      width cap at all and was never touched by the 2026-08-15 pass above —
      measured 1.95:1 at 1920px widening to 2.63:1 at 3440px, the same
-     letterbox drift the closer-row fix above already solved once. Capped
-     at 1080px (the same ~2.13:1 ratio .closer-vis > .app:not(.demo) uses,
-     back-solved from the mockup's own capped height). Left uncentered —
-     unlike the closer-row visuals, this is the hero's primary "money
-     shot", anchored to the left edge under the logo/nav, not a secondary
-     alternating-row illustration; centering it would float it away from
-     that edge as the column keeps growing past the cap. */
-  .hero-grid .app.assemble { max-width: 1080px; }
+     letterbox drift the closer-row fix above already solved once.
+     Corrected 2026-08-16 (user: still reads too wide/dominant at their
+     real 2560x1440 monitor even after the first 1080px/2.13:1 cap): 840px
+     targets a tighter ~1.66:1, closer to how an actual desktop app window
+     reads than a wide banner. .hero-grid above now caps to exactly
+     mockup + gap + copy, so this box fills its column with no leftover
+     slack — no separate centering needed here. */
+  .hero-grid .app.assemble { max-width: 840px; }
   .closer-copy h3 {
     font-family: var(--display); font-weight: 700;
     font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -0.015em; line-height: 1.08;
@@ -883,9 +894,13 @@ const description =
        2.09:1 at 1920px widening to 2.82:1 at 3440px, same drift as the
        plain closer-row mock it was excluded from. It sits in the same
        .closer-vis growing column as that mock (not the hero), so it gets
-       the same treatment: capped + centered at the same ~2.13:1 ratio,
-       back-solved from its own capped height (476 * 2.13). */
-    max-width: 1020px; margin: 0 auto;
+       the same treatment: capped + centered. Corrected 2026-08-16 (user:
+       still too wide/dominant even capped, same finding as #heroApp) —
+       tightened from 1020px/2.13:1 to 790px/~1.66:1, matching the hero's
+       revised ratio; unlike .hero-grid this sits centered via margin:0
+       auto already, so any leftover column slack splits evenly on both
+       sides instead of piling up as a single dead gap. */
+    max-width: 790px; margin: 0 auto;
   }
   .demo .app-body { height: clamp(330px, 24vw, 440px); }
   .dpane {
