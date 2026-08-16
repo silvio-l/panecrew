@@ -63,6 +63,7 @@ import { FocusTrace } from "./components/FocusTrace";
 import { GridStatusRail } from "./components/GridStatusRail";
 import { PaneGrid } from "./components/PaneGrid";
 import { PathDragGhost } from "./components/PathDragGhost";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
 import { ShortcutsReferenceDialog } from "./components/ShortcutsReferenceDialog";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
@@ -80,7 +81,14 @@ import {
   applyTerminatedEvent,
   disposeResourceGuardEntry,
 } from "./terminal/resourceGuard";
-import { activePanes, focusedProjectPath, nextPaneId, trackShape } from "./grid/gridState";
+import {
+  activePanes,
+  focusedProjectPath,
+  GRID_TEMPLATES,
+  nextPaneId,
+  templateSwitchBlockReason,
+  trackShape,
+} from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
@@ -820,6 +828,11 @@ function App() {
   // Dialog selbst kennt seinen Öffner nicht — reiner boolescher Zustand wie
   // die übrigen modalen Flächen dieser Datei.
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  // Erster der zehn Referenz-Editor-Menüaudit-Punkte: sowohl das native Menü
+  // (⌘⇧P, `menu.rs`s SHOW_COMMAND_PALETTE) als auch der bisher rein visuelle
+  // Sucher-Platzhalter in der Titelzeile (`TitleBar.tsx`) öffnen denselben
+  // Zustand.
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   useEffect(() => {
     const unlistenPromises = [
       listen("menu:open-folder", () => openFolderMenuHandlerRef.current?.()),
@@ -827,6 +840,7 @@ function App() {
         openRecentProjectMenuHandlerRef.current?.(event.payload),
       ),
       listen("menu:show-shortcuts", () => setShortcutsDialogOpen(true)),
+      listen("menu:show-command-palette", () => setCommandPaletteOpen(true)),
     ];
     return () => {
       for (const unlistenPromise of unlistenPromises) {
@@ -834,6 +848,38 @@ function App() {
       }
     };
   }, []);
+
+  // Befehlsliste: bewusst kein eigenes Registry-Modul — die Handlungen selbst
+  // sind App.tsx-Closures (dieselben, die Menü/Knöpfe schon aufrufen), ein
+  // Registry hätte hier keinen zweiten Konsumenten außer der Palette selbst.
+  // Template-Wechsel nur, wenn gerade tatsächlich ausführbar
+  // (`templateSwitchBlockReason`) — dieselbe Prüfung wie `TemplateSwitcher.tsx`,
+  // ein gesperrter Eintrag in der Palette hätte ohne eigenes „warum" (die
+  // Palette kennt kein deaktiviertes Zeilenbild) nur verwirrt.
+  const commandPaletteCommands: PaletteCommand[] = [
+    ...GRID_TEMPLATES.filter(
+      (template) => templateSwitchBlockReason(gridState, template.id) === null,
+    ).map((template) => ({
+      id: `template.${template.id}`,
+      label: t("commandPalette.switchTemplate", { template: t(template.labelKey) }),
+      run: () => switchTemplate(template.id),
+    })),
+    {
+      id: "app.openFolder",
+      label: t("commandPalette.openFolder"),
+      run: () => openFolderMenuHandlerRef.current?.(),
+    },
+    {
+      id: "app.openSettings",
+      label: t("titleBar.settings"),
+      run: () => void invoke("settings_open_window"),
+    },
+    {
+      id: "app.showShortcuts",
+      label: t("shortcutsReference.title"),
+      run: () => setShortcutsDialogOpen(true),
+    },
+  ];
 
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.
@@ -1150,7 +1196,12 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="relative flex h-full flex-col">
-        <TitleBar zoom={zoom} panes={activePanes(gridState)} onNavigatePane={navigatePane} />
+        <TitleBar
+          zoom={zoom}
+          panes={activePanes(gridState)}
+          onNavigatePane={navigatePane}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        />
         {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch
@@ -1433,6 +1484,11 @@ function App() {
         <ShortcutsReferenceDialog
           open={shortcutsDialogOpen}
           onOpenChange={setShortcutsDialogOpen}
+        />
+        <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          commands={commandPaletteCommands}
         />
       </div>
     </Tooltip.Provider>

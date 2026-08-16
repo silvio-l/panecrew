@@ -35,6 +35,18 @@ pub const EVENT_OPEN_RECENT_PROJECT: &str = "menu:open-recent-project";
 pub const SHOW_SHORTCUTS: &str = "show-shortcuts";
 /// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_SHOW_SHORTCUTS, …)`.
 pub const EVENT_SHOW_SHORTCUTS: &str = "menu:show-shortcuts";
+/// Erster der zehn Referenz-Editor-Menüaudit-Punkte: die Befehlspalette
+/// (`CommandPalette.tsx`). Bewusst NICHT wie das Projektsuche-Kürzel als
+/// window-`keydown`-Listener im Webview umgesetzt (s. dessen Capture-plus-
+/// stopPropagation-Begründung in `useSearchInFilesShortcut.ts`), sondern als
+/// echter nativer Menü-Akzelerator: Cmd/Ctrl+Umschalt+P fängt AppKit/das
+/// native Menüsystem VOR jedem Webview-Keydown ab, die Frage, ob xterms
+/// eigener Tastatur-Handler dieselbe Kombination zusätzlich als PTY-Eingabe
+/// verarbeitet, entfällt damit strukturell statt nur behelfsweise
+/// (`stopPropagation`) entschärft zu werden.
+pub const SHOW_COMMAND_PALETTE: &str = "show-command-palette";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_SHOW_COMMAND_PALETTE, …)`.
+pub const EVENT_SHOW_COMMAND_PALETTE: &str = "menu:show-command-palette";
 /// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
 /// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
 /// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
@@ -288,7 +300,17 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     app,
                     "Darstellung",
                     true,
-                    &[&PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?],
+                    &[
+                        &MenuItem::with_id(
+                            app,
+                            SHOW_COMMAND_PALETTE,
+                            "Befehlspalette …",
+                            true,
+                            Some("Cmd+Shift+P"),
+                        )?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?,
+                    ],
                 )?,
                 &fenster,
             ],
@@ -333,12 +355,26 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         datei_items.push(&close_window_item);
         datei_items.push(&quit_item);
 
+        let show_command_palette_item = MenuItem::with_id(
+            app,
+            SHOW_COMMAND_PALETTE,
+            "Befehlspalette …",
+            true,
+            Some("Ctrl+Shift+P"),
+        )?;
+
         // Ohne App-Menü gehört „Über" nach Windows-Konvention ins Hilfe-Menü.
         Menu::with_items(
             app,
             &[
                 &Submenu::with_items(app, "Datei", true, &datei_items)?,
                 &edit,
+                &Submenu::with_items(
+                    app,
+                    "Ansicht",
+                    true,
+                    &[&show_command_palette_item],
+                )?,
                 &Submenu::with_items(
                     app,
                     "Hilfe",

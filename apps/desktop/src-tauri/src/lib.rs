@@ -105,6 +105,11 @@ pub fn run() {
                         let _ = window.emit(menu::EVENT_SHOW_SHORTCUTS, ());
                     }
                 }
+                menu::SHOW_COMMAND_PALETTE => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_SHOW_COMMAND_PALETTE, ());
+                    }
+                }
                 menu::CLOSE_WINDOW => {
                     if let Some(window) = windows::focused_content_window(app) {
                         let _ = window.close();

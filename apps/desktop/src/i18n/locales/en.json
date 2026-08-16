@@ -330,5 +330,12 @@
     "close": "Close",
     "wholeInterface": "Whole Interface",
     "activePane": "Active Pane"
+  },
+  "commandPalette": {
+    "title": "Command Palette",
+    "placeholder": "Run a command …",
+    "empty": "No matches.",
+    "switchTemplate": "Layout: {{template}}",
+    "openFolder": "Open Folder …"
   }
 }

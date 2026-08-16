@@ -330,5 +330,12 @@
     "close": "Schließen",
     "wholeInterface": "Gesamte Oberfläche",
     "activePane": "Aktive Pane"
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "placeholder": "Befehl ausführen …",
+    "empty": "Keine Treffer.",
+    "switchTemplate": "Layout: {{template}}",
+    "openFolder": "Ordner öffnen …"
   }
 }
