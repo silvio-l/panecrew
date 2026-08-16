@@ -686,3 +686,31 @@ export function focusModeSelectSlot(
   if (!target) return state;
   return enterFocusMode(state, target.paneId);
 }
+
+/** Die nächste (oder vorherige) Pane in Slot-Reihenfolge, umlaufend — die
+ * Ordnung hinter den Titelleisten-Pfeilen (`pane-navigation-titlebar/01+02`).
+ * Arbeitet auf der bereits belegten, kompaktierten Liste (`activePanes`),
+ * anders als `focusModeSelectSlot`, das auf dem rohen `slots`-Array
+ * indiziert und bei einem leeren Ziel-Slot no-opt statt zu überspringen — die
+ * Pfeile sollen immer auf einer echten Pane landen. `null`, wenn keine Pane
+ * belegt ist; bei genau einer Pane liefert beide Richtungen dieselbe (einzige)
+ * Pane zurück, die Titelleiste deaktiviert die Pfeile für diesen Fall ohnehin.
+ * Eine unbekannte oder fehlende `currentId` (z. B. noch keine Pane fokussiert)
+ * startet am Anfang der Liste (next) bzw. am Ende (previous). */
+export function nextPaneId(
+  panes: readonly Pane[],
+  currentId: string | null,
+  direction: "next" | "previous",
+): string | null {
+  if (panes.length === 0) return null;
+  const currentIndex = panes.findIndex((pane) => pane.paneId === currentId);
+  if (direction === "next") {
+    const index = currentIndex === -1 ? 0 : (currentIndex + 1) % panes.length;
+    return panes[index]?.paneId ?? null;
+  }
+  const index =
+    currentIndex === -1
+      ? panes.length - 1
+      : (currentIndex - 1 + panes.length) % panes.length;
+  return panes[index]?.paneId ?? null;
+}

@@ -6,7 +6,7 @@ import { FocusPinHeader } from "../components/FocusPinHeader";
 import { FocusTrace } from "../components/FocusTrace";
 import { PaneGrid } from "../components/PaneGrid";
 import { usePaneFileEditors } from "../explorer/usePaneFileEditors";
-import { activePanes, focusedProjectPath } from "../grid/gridState";
+import { activePanes, focusedProjectPath, nextPaneId } from "../grid/gridState";
 import { useFocusRotation } from "../grid/useFocusRotation";
 import { useGrid } from "../grid/useGrid";
 import { PtyBackendContext } from "../terminal/ptyBackend";
@@ -97,11 +97,22 @@ export function HarnessApp({
     },
   });
 
+  const navigatePane = (direction: "next" | "previous") => {
+    const panes = activePanes(grid.state);
+    if (grid.state.maximizedPaneId !== null) {
+      const target = nextPaneId(panes, grid.state.maximizedPaneId, direction);
+      if (target !== null) grid.enterFocusMode(target);
+      return;
+    }
+    const target = nextPaneId(panes, grid.state.focusedPaneId, direction);
+    if (target !== null) grid.focusPane(target);
+  };
+
   return (
     <PtyBackendContext.Provider value={demoBackend}>
       <Tooltip.Provider delayDuration={300}>
         <div className="relative flex h-full flex-col">
-          <TitleBar zoom={1} panes={activePanes(grid.state)} />
+          <TitleBar zoom={1} panes={activePanes(grid.state)} onNavigatePane={navigatePane} />
           {/* `relative`: Anker fürs FocusTrace-Overlay, s. App.tsx. Der
               Harness hat keinen Resize-Separator (keine echte Explorer-
               Breitenbedienung), der Pin-Header dockt hier direkt hinter dem

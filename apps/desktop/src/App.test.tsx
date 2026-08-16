@@ -2526,6 +2526,125 @@ describe("Grid / Mehrfach-Pane", () => {
   });
 });
 
+// Titelleisten-Pfeile (Ticket pane-navigation-titlebar/01+02): dieselben zwei
+// Knöpfe wechseln je nach Modus entweder den Grid-Fokus (und mit ihm den
+// Explorer-Follow, sichtbar am `explorer_watch_start`-Aufruf für den neuen
+// fokussierten Pfad) oder, im Fokus-Modus, `maximizedPaneId` — und stoppen
+// dabei jeweils eine laufende Rotation vollständig.
+describe("Titelleisten-Pfeile (Pane-Navigation)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  const explorerWatchPaths = () =>
+    invokeMock.mock.calls
+      .filter(([cmd]) => cmd === "explorer_watch_start")
+      .map(([, args]) => (args as { path: string }).path);
+
+  it("sind bei nur einer belegten Pane deaktiviert", async () => {
+    openMock.mockResolvedValueOnce("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    expect(screen.getByRole("button", { name: "Vorherige Pane" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nächste Pane" })).toBeDisabled();
+  });
+
+  it("wechselt in der Grid-Ansicht Fokus und Explorer-Follow zur nächsten/vorherigen Pane, umlaufend", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const nextButton = screen.getByRole("button", { name: "Nächste Pane" });
+    const previousButton = screen.getByRole("button", {
+      name: "Vorherige Pane",
+    });
+    expect(nextButton).not.toBeDisabled();
+    invokeMock.mockClear();
+
+    // Zuletzt zugewiesen (admin) ist bereits fokussiert (`assignProjectToSlot`)
+    // — "nächste" wrapt also zur ersten Pane zurück.
+    fireEvent.click(nextButton);
+    await waitFor(() => {
+      expect(explorerWatchPaths()).toContain("/Users/dev/projects/storefront");
+    });
+
+    invokeMock.mockClear();
+    fireEvent.click(previousButton);
+    await waitFor(() => {
+      expect(explorerWatchPaths()).toContain("/Users/dev/projects/admin");
+    });
+  });
+
+  it("wechselt im Fokus-Modus stattdessen maximizedPaneId zur nächsten Pane und stoppt eine laufende Rotation vollständig", async () => {
+    openMock
+      .mockResolvedValueOnce("/Users/dev/projects/storefront")
+      .mockResolvedValueOnce("/Users/dev/projects/admin");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    const { container } = render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    clickPicker();
+    await screen.findByLabelText("Terminal admin");
+
+    const workspace = container.querySelector(".pc-workspace");
+    if (!workspace) throw new Error("Workspace nicht gefunden");
+    const firstCell = workspace.children[0];
+    if (!(firstCell instanceof HTMLElement)) {
+      throw new Error("Erste Zelle nicht gefunden");
+    }
+    fireEvent.click(
+      within(firstCell).getAllByRole("button", { name: "Fokus-Modus" })[0] as HTMLElement,
+    );
+    await screen.findByRole("button", { name: "Fokus-Modus verlassen" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rotation starten" }));
+    await screen.findByRole("button", { name: "Rotation stoppen" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Nächste Pane" }));
+
+    // Fokus-Modus wechselt weiter (admin ist jetzt maximiert, "Fokus-Modus
+    // verlassen" erscheint jetzt nur noch in DEREN Zelle, nicht mehr in
+    // storefronts) — und die Rotation ist vollständig gestoppt, nicht nur
+    // pausiert (sonst stünde weiterhin "Rotation stoppen" da).
+    await waitFor(() => {
+      const secondCell = workspace.children[1];
+      if (!(secondCell instanceof HTMLElement)) {
+        throw new Error("Zweite Zelle nicht gefunden");
+      }
+      expect(
+        within(secondCell).getAllByRole("button", {
+          name: "Fokus-Modus verlassen",
+        }),
+      ).toHaveLength(1);
+    });
+    expect(
+      screen.getAllByRole("button", { name: "Fokus-Modus verlassen" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: "Rotation starten" }),
+    ).toBeInTheDocument();
+  });
+});
+
 // Render-Isolation im File-Editor (Ticket 05, Performance-Audit). Weder
 // PaneGrid.tsx noch seine Zellen sind memoisiert — jeder App-weite
 // State-Update rendert deshalb faktisch den GANZEN Baum (jede Pane, jeden

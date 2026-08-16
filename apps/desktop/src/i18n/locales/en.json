@@ -6,6 +6,8 @@
   "titleBar": {
     "searchPlaceholder": "Search or run a command",
     "newWindow": "New Window",
+    "previousPane": "Previous Pane",
+    "nextPane": "Next Pane",
     "settings": "Settings",
     "explorerWidthAria": "Adjust explorer width",
     "windowTitleBarAria": "Window title bar",

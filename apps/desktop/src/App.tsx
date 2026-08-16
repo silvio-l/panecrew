@@ -79,7 +79,7 @@ import {
   applyTerminatedEvent,
   disposeResourceGuardEntry,
 } from "./terminal/resourceGuard";
-import { activePanes, focusedProjectPath } from "./grid/gridState";
+import { activePanes, focusedProjectPath, nextPaneId } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
@@ -163,6 +163,29 @@ function App() {
     },
   });
   const notifyRotationInput = focusRotation.notifyInput;
+
+  // Titelleisten-Pfeile (Ticket pane-navigation-titlebar/01+02): dieselbe
+  // Reihenfolge wie die Zahlen-Hotkeys 1–4 (`nextPaneId` traversiert
+  // `activePanes`, die kompaktierte, belegte Teilmenge des rohen
+  // `slots`-Arrays, das auch die Hotkeys indizieren — für belegte Slots
+  // dieselbe Reihenfolge). Im Fokus-Modus wechselt der Klick
+  // `maximizedPaneId` weiter (wie ein Zahlen-Hotkey), sonst nur den
+  // Grid-Fokus. `notifyRotationInput()` explizit statt sich auf den
+  // Capture-Phase-`pointerdown`-Listener unten zu verlassen: der feuert bei
+  // einem echten Klick zwar mit, in Tests (`fireEvent.click`) aber nicht von
+  // selbst — Ticket 02 verlangt den vollständigen Rotationsstopp bei jedem
+  // Klick auf einen der Pfeile, nicht nur "meistens".
+  const navigatePane = (direction: "next" | "previous") => {
+    notifyRotationInput();
+    const panes = activePanes(gridState);
+    if (gridState.maximizedPaneId !== null) {
+      const target = nextPaneId(panes, gridState.maximizedPaneId, direction);
+      if (target !== null) enterFocusMode(target);
+      return;
+    }
+    const target = nextPaneId(panes, focusedPaneId, direction);
+    if (target !== null) focusPane(target);
+  };
 
   // Fokus-Modus-Kürzel (Ticket 19) — EIN Fenster-Listener statt drei
   // verstreuten, weil alle drei dieselbe Reihenfolgefrage gegen
@@ -968,7 +991,7 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="relative flex h-full flex-col">
-        <TitleBar zoom={zoom} panes={activePanes(gridState)} />
+        <TitleBar zoom={zoom} panes={activePanes(gridState)} onNavigatePane={navigatePane} />
         {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch

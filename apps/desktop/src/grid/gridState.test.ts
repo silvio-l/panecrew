@@ -15,6 +15,7 @@ import {
   moveTerminalTab,
   moveTerminalTabToEmptySlot,
   movePaneToEmptySlot,
+  nextPaneId,
   openTerminalTab,
   renameTerminalTab,
   swapPanes,
@@ -911,6 +912,66 @@ describe("gridState", () => {
       const next = switchTemplate(maximized, "split");
       expect(next.template).toBe("split");
       expect(next.maximizedPaneId).toBe("pane-1");
+    });
+  });
+
+  describe("nextPaneId (Titelleisten-Pfeile, pane-navigation-titlebar/01+02)", () => {
+    function quadWithThreePanes(): GridState {
+      return assignProjectToSlot(
+        assignProjectToSlot(
+          assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+          1,
+          "/repo/b",
+          "pane-1",
+          "tab-1",
+        ),
+        2,
+        "/repo/c",
+        "pane-2",
+        "tab-2",
+      );
+    }
+
+    it("liefert die nächste Pane in Slot-Reihenfolge", () => {
+      const panes = activePanes(quadWithThreePanes());
+      expect(nextPaneId(panes, "pane-0", "next")).toBe("pane-1");
+      expect(nextPaneId(panes, "pane-1", "next")).toBe("pane-2");
+    });
+
+    it("wrapt von der letzten zur ersten Pane", () => {
+      const panes = activePanes(quadWithThreePanes());
+      expect(nextPaneId(panes, "pane-2", "next")).toBe("pane-0");
+    });
+
+    it("liefert die vorherige Pane in Slot-Reihenfolge", () => {
+      const panes = activePanes(quadWithThreePanes());
+      expect(nextPaneId(panes, "pane-2", "previous")).toBe("pane-1");
+      expect(nextPaneId(panes, "pane-1", "previous")).toBe("pane-0");
+    });
+
+    it("wrapt von der ersten zur letzten Pane", () => {
+      const panes = activePanes(quadWithThreePanes());
+      expect(nextPaneId(panes, "pane-0", "previous")).toBe("pane-2");
+    });
+
+    it("liefert bei genau einer Pane immer dieselbe Pane zurück", () => {
+      const single = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0");
+      const panes = activePanes(single);
+      expect(nextPaneId(panes, "pane-0", "next")).toBe("pane-0");
+      expect(nextPaneId(panes, "pane-0", "previous")).toBe("pane-0");
+    });
+
+    it("liefert null, wenn keine Pane belegt ist", () => {
+      expect(nextPaneId(activePanes(INITIAL_GRID_STATE), null, "next")).toBeNull();
+      expect(nextPaneId(activePanes(INITIAL_GRID_STATE), null, "previous")).toBeNull();
+    });
+
+    it("startet bei unbekannter/fehlender currentId am Anfang (next) bzw. Ende (previous) der Liste", () => {
+      const panes = activePanes(quadWithThreePanes());
+      expect(nextPaneId(panes, null, "next")).toBe("pane-0");
+      expect(nextPaneId(panes, "does-not-exist", "next")).toBe("pane-0");
+      expect(nextPaneId(panes, null, "previous")).toBe("pane-2");
+      expect(nextPaneId(panes, "does-not-exist", "previous")).toBe("pane-2");
     });
   });
 });

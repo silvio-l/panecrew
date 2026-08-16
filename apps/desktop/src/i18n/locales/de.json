@@ -6,6 +6,8 @@
   "titleBar": {
     "searchPlaceholder": "Suchen oder Befehl ausführen",
     "newWindow": "Neues Fenster",
+    "previousPane": "Vorherige Pane",
+    "nextPane": "Nächste Pane",
     "settings": "Einstellungen",
     "explorerWidthAria": "Explorer-Breite anpassen",
     "windowTitleBarAria": "Fenster-Titelzeile",
