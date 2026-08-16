@@ -76,7 +76,7 @@ static APP_HANDLE: OnceLock<AppHandle<Wry>> = OnceLock::new();
 /// Ausblenden/Beenden), nie einen Absturz.
 pub fn install(app: &AppHandle<Wry>) {
     let Some(class) = AnyClass::get(TAO_DELEGATE_CLASS) else {
-        eprintln!("PaneCrew: Dock-Menü übersprungen — Delegate-Klasse nicht gefunden");
+        log::warn!("dock menu skipped: delegate class not found");
         return;
     };
     let _ = APP_HANDLE.set(app.clone());

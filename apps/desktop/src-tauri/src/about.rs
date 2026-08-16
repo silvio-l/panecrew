@@ -119,7 +119,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, check_updates: bool) {
     // wie oben beschrieben, nur schon beim Öffnen statt erst nach einem
     // App-Wechsel (an zwei Screenshots gegeneinander nachgewiesen).
     if let Err(error) = builder.build() {
-        eprintln!("PaneCrew: Über-Fenster konnte nicht geöffnet werden: {error}");
+        log::warn!("about window could not be opened: {error}");
         return;
     }
 
@@ -135,7 +135,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, check_updates: bool) {
 fn block_main<R: Runtime>(app: &AppHandle<R>, blocked: bool) {
     if let Some(main) = app.get_webview_window(MAIN) {
         if let Err(error) = main.set_enabled(!blocked) {
-            eprintln!("PaneCrew: Hauptfenster nicht umschaltbar: {error}");
+            log::warn!("main window could not be toggled enabled/disabled: {error}");
         }
     }
 }

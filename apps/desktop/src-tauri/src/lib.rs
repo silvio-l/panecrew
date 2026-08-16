@@ -3,8 +3,6 @@ pub mod cli;
 pub mod config_core;
 pub mod config_manifest;
 pub mod config_registry;
-// [DEBUG-a4f2] siehe debug_capture.rs' Kopfkommentar — nach Bugfix entfernen.
-pub mod debug_capture;
 #[cfg(target_os = "macos")]
 pub mod dock;
 pub mod explorer_fs;
@@ -13,6 +11,7 @@ pub mod external_editor;
 pub mod git_status;
 pub mod json_store;
 pub mod launch;
+pub mod logging;
 pub mod menu;
 pub mod path_probe;
 pub mod pty_commands;
@@ -61,7 +60,10 @@ pub fn run() {
     config_core::register_core_settings(&mut config_registry)
         .expect("core settings must register without namespace/duplicate conflicts");
 
+    log::info!("PaneCrew {} starting", env!("CARGO_PKG_VERSION"));
+
     tauri::Builder::default()
+        .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -81,6 +83,7 @@ pub fn run() {
         .menu(menu::build)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
+            log::debug!("menu event: {id}");
             match id {
                 menu::ABOUT => about::show(app, false),
                 menu::CHECK_UPDATES => about::show(app, true),
@@ -136,9 +139,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 _ if id == dock::NEW_WINDOW_ITEM_ID => {
                     if let Err(error) = windows::window_open_new(app.clone()) {
-                        eprintln!(
-                            "PaneCrew: Neues Fenster aus dem Dock-Menü fehlgeschlagen: {error}"
-                        );
+                        log::warn!("new window from dock menu failed: {error}");
                     }
                 }
                 _ => {}
@@ -183,7 +184,7 @@ pub fn run() {
                 .filter(|root| match shell_integration::materialize(root) {
                     Ok(()) => true,
                     Err(error) => {
-                        eprintln!("PaneCrew: shell integration unavailable: {error}");
+                        log::warn!("shell integration unavailable: {error}");
                         false
                     }
                 });
@@ -243,7 +244,6 @@ pub fn run() {
             settings_window::settings_visible,
             windows::window_open_new,
             windows::window_close_confirmed,
-            debug_capture::debug_a4f2_log,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

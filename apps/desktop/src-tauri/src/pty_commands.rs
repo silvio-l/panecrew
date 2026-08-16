@@ -150,7 +150,7 @@ pub async fn pty_spawn<R: Runtime>(
         pty_manager::SpawnOptions {
             cmd: shell,
             args: integration.args,
-            cwd: cwd.into(),
+            cwd: cwd.clone().into(),
             env: integration.env,
             cols,
             rows,
@@ -161,6 +161,7 @@ pub async fn pty_spawn<R: Runtime>(
     )
     .map_err(|e| e.to_string())?;
     registry.register(window.label(), &tab_id);
+    log::info!("pty spawned: tab {tab_id} cwd {cwd}");
     Ok(())
 }
 
@@ -226,6 +227,7 @@ pub(crate) fn kill(state: &PtyState, tab_id: &str) -> Result<(), String> {
         .unwrap()
         .remove(tab_id)
         .ok_or_else(|| format!("unknown tab_id: {tab_id}"))?;
+    log::info!("pty killed: tab {tab_id}");
     handle.kill().map_err(|e| e.to_string())
 }
 

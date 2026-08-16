@@ -17,6 +17,7 @@ use tauri::{
 
 use crate::pty_commands::{self, PtyState, WindowPtyRegistry};
 use crate::session_store;
+use crate::settings_commands::app_data_dir;
 
 pub(crate) const MAIN: &str = "main";
 
@@ -321,6 +322,10 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
         .build()
         .map(|_| label)
         .map_err(|error| format!("Neues Fenster konnte nicht geöffnet werden: {error}"));
+    match &result {
+        Ok(label) => log::info!("window opened: {label}"),
+        Err(error) => log::warn!("window open failed: {error}"),
+    }
     if result.is_ok() {
         crate::menu::refresh(&app);
     }
@@ -390,7 +395,7 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
 /// "worst case: the picker" stance as a missing/corrupt session file
 /// elsewhere) and never aborts startup.
 pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
-    let Ok(dir) = app.path().app_data_dir() else {
+    let Ok(dir) = app_data_dir(app) else {
         return;
     };
     let Some(state) = session_store::read_session(&dir) else {
@@ -401,7 +406,7 @@ pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
             continue;
         }
         if let Err(error) = open_restored(app, &window.label) {
-            eprintln!("PaneCrew: {error}");
+            log::warn!("restoring window failed: {error}");
         }
     }
 }
@@ -474,6 +479,7 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         return;
     }
 
+    log::info!("window closing: {}", window.label());
     pty_commands::kill_all_for_window(&pty_state, &registry, window.label());
 
     // For a window that was deferred above, use the quitting-state captured
@@ -487,7 +493,7 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     if is_quitting_close {
         return;
     }
-    let Ok(dir) = app.path().app_data_dir() else {
+    let Ok(dir) = app_data_dir(app) else {
         return;
     };
     if let Some(mut state) = session_store::read_session(&dir) {
