@@ -22,15 +22,17 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 // über Zeit auf statt kurz zu zappeln.
 const CPU_SMOOTHING_WINDOW: usize = 3;
 
-// RAM = (eigene RSS + Summe aller PTY-Prozessbaum-RSS) / Gesamt-RAM. Ein einzelner
-// Prozess mit wenigen Panes bleibt üblicherweise deutlich unter 5 %; auch
-// mehrere schwere Dev-Tools parallel in den Panes (Cargo, rust-analyzer,
-// weitere Agents) treiben das transient auf 10-15 %, ohne dass etwas kaputt
-// ist — das ist informativ (warn), nicht alarmierend. Erst deutlich darüber
-// ist es ein Signal für ein echtes Leck oder eine ungewöhnlich exzessive
-// Situation.
-const MEM_WARN_PERCENT: f32 = 8.0;
-const MEM_CRITICAL_PERCENT: f32 = 20.0;
+// RAM = eigene RSS + Summe aller PTY-Prozessbaum-RSS, absolut in Bytes
+// bewertet statt als Anteil am Gesamt-RAM der Maschine: ein Prozentsatz vom
+// System-Gesamt-RAM wäre auf einer 8-GB-Maschine viel zu empfindlich und auf
+// einer 64-GB-Maschine viel zu träge, obwohl PaneCrews eigener Verbrauch
+// (Terminals + darin laufende Agent-CLIs) auf beiden identisch aussieht.
+// Baseline: ein einzelnes Terminal mit einer laufenden Agent-CLI zieht grob
+// 1 GB — mehrere solcher Panes parallel sind normaler Betrieb, kein
+// Warnsignal. Erst deutlich darüber ist es ein Signal für ein echtes Leck
+// oder eine ungewöhnlich exzessive Situation.
+const MEM_WARN_BYTES: u64 = 6 * 1024 * 1024 * 1024;
+const MEM_CRITICAL_BYTES: u64 = 12 * 1024 * 1024 * 1024;
 
 // CPU = Summe der Prozess-CPU-Auslastung (sysinfo-Konvention: 0-100 pro
 // Kern), normalisiert auf die Gesamtkapazität der Maschine, über das
@@ -79,10 +81,10 @@ struct ResourceUsage {
     tabs: Vec<TabUsage>,
 }
 
-fn classify(percent: f32, warn: f32, critical: f32) -> Status {
-    if percent > critical {
+fn classify<T: PartialOrd>(value: T, warn: T, critical: T) -> Status {
+    if value > critical {
         Status::Critical
-    } else if percent > warn {
+    } else if value > warn {
         Status::Warn
     } else {
         Status::Normal
@@ -166,7 +168,7 @@ pub fn start(app: AppHandle) {
             let usage = ResourceUsage {
                 mem_percent,
                 cpu_percent,
-                mem_status: classify(mem_percent, MEM_WARN_PERCENT, MEM_CRITICAL_PERCENT),
+                mem_status: classify(mem_bytes, MEM_WARN_BYTES, MEM_CRITICAL_BYTES),
                 cpu_status: classify(cpu_percent, CPU_WARN_PERCENT, CPU_CRITICAL_PERCENT),
                 mem_bytes_total: mem_bytes,
                 tabs: tab_samples
@@ -197,6 +199,13 @@ mod tests {
         assert!(matches!(classify(8.1, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.0, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.1, 8.0, 20.0), Status::Critical));
+    }
+
+    #[test]
+    fn classify_works_over_byte_thresholds_too() {
+        assert!(matches!(classify(MEM_WARN_BYTES, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Normal));
+        assert!(matches!(classify(MEM_WARN_BYTES + 1, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Warn));
+        assert!(matches!(classify(MEM_CRITICAL_BYTES + 1, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Critical));
     }
 
     #[test]
