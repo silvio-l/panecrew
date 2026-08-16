@@ -85,6 +85,7 @@ import {
   activePanes,
   focusedProjectPath,
   GRID_TEMPLATES,
+  nextGrowthTemplate,
   nextPaneId,
   templateSwitchBlockReason,
   trackShape,
@@ -114,6 +115,7 @@ import {
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { useNewWindowShortcut } from "./shortcuts/useNewWindowShortcut";
 import { useSearchInFilesShortcut } from "./shortcuts/useSearchInFilesShortcut";
+import { useSplitPaneShortcut } from "./shortcuts/useSplitPaneShortcut";
 import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
 import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
 import "./App.css";
@@ -426,6 +428,30 @@ function App() {
       setOpenSearchSignal((current) => current + 1);
     }, []),
   );
+  // Dritter der zehn Referenz-Editor-Menüaudit-Punkte: "Pane teilen"
+  // (Ctrl/Cmd+Shift+5). PaneCrews Raster kennt kein "diese eine Pane
+  // aufteilen" — nur Layout-Vorlagen mit fester Slot-Zahl (`gridState.ts`).
+  // Interpretiert als: zur nächstgrößeren Vorlage wachsen
+  // (`nextGrowthTemplate`, wächst dabei immer um genau einen Slot, s. dessen
+  // Doku) und den neu entstandenen leeren Slot sofort mit dem Projekt der
+  // gerade fokussierten Pane belegen — fühlt sich dadurch wie ein echtes
+  // Teilen dieser einen Pane an, nicht wie ein bloßes Aufdecken eines freien
+  // Feldes irgendwo im Raster. `assignProject` setzt `focusedPaneId` selbst
+  // auf die neue Pane (s. dessen Doku in useGrid.ts) — dieselbe
+  // Fokus-folgt-der-neuen-Pane-Erwartung wie beim Referenz-Editor. Kein
+  // Kandidat mehr (bereits an der Obergrenze, oder keine Pane fokussiert):
+  // stilles No-Op, dieselbe Haltung wie `resolveMenuTargetSlot` oben.
+  const splitFocusedPane = useCallback(() => {
+    if (focusedPaneId === null) return;
+    const projectPath = focusedProjectPath(gridState);
+    if (projectPath === null) return;
+    const target = nextGrowthTemplate(gridState.template);
+    if (target === null) return;
+    const newSlotIndex = gridState.slots.length;
+    switchTemplate(target);
+    assignProject(newSlotIndex, projectPath);
+  }, [focusedPaneId, gridState, switchTemplate, assignProject]);
+  useSplitPaneShortcut(splitFocusedPane);
   // Die EINE Drop-Registrierung des Grids. Sie stand bis zum Explorer-Ziehen
   // in `PaneGrid.tsx` — mit einer zweiten Drop-QUELLE, die im Explorer
   // beginnt (einem Geschwister von `PaneGrid`, nicht einem Kind), muss sie
@@ -864,6 +890,15 @@ function App() {
       label: t("commandPalette.switchTemplate", { template: t(template.labelKey) }),
       run: () => switchTemplate(template.id),
     })),
+    ...(focusedPaneId !== null && nextGrowthTemplate(gridState.template) !== null
+      ? [
+          {
+            id: "app.splitPane",
+            label: t("commandPalette.splitPane"),
+            run: splitFocusedPane,
+          },
+        ]
+      : []),
     {
       id: "app.openFolder",
       label: t("commandPalette.openFolder"),

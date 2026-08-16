@@ -15,6 +15,7 @@ import {
   moveTerminalTab,
   moveTerminalTabToEmptySlot,
   movePaneToEmptySlot,
+  nextGrowthTemplate,
   nextPaneId,
   openTerminalTab,
   renameTerminalTab,
@@ -202,6 +203,24 @@ describe("gridState", () => {
     const shrunk = switchTemplate(empty, "single");
     expect(shrunk.template).toBe("single");
     expect(shrunk.slots).toEqual([null]);
+  });
+
+  describe("nextGrowthTemplate ('Pane teilen')", () => {
+    it("wächst immer um genau einen Slot", () => {
+      expect(nextGrowthTemplate("single")).toBe("split");
+      expect(nextGrowthTemplate("split")).toBe("two-over-one");
+    });
+
+    it("nimmt bei mehreren Templates mit derselben Ziel-Slot-Zahl das erste in Tabellenreihenfolge", () => {
+      expect(nextGrowthTemplate("two-over-one")).toBe("quad");
+      expect(nextGrowthTemplate("one-over-two")).toBe("quad");
+      expect(nextGrowthTemplate("row-3")).toBe("quad");
+    });
+
+    it("liefert null an der Obergrenze", () => {
+      expect(nextGrowthTemplate("quad")).toBeNull();
+      expect(nextGrowthTemplate("row-4")).toBeNull();
+    });
   });
 
   it("closePane leert nur den einen Slot und lässt andere unangetastet", () => {

@@ -14,6 +14,7 @@ from `apps/desktop`, redirect the output to `docs/shortcuts.md`, and commit it.
 | Reset interface zoom | ⇧⌘0 | Ctrl+Shift+0 |
 | Open a new PaneCrew window | ⌘N | Ctrl+N |
 | Search file contents in the focused pane's project | ⇧⌘F | Ctrl+Shift+F |
+| Split the focused pane into a new empty pane | ⇧⌘5 | Ctrl+Shift+5 |
 
 ## Active Pane
 

@@ -40,7 +40,8 @@ type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | "T" | "K" | "F" | DigitGlyph 
 
 export interface ShortcutDefinition {
   readonly id: string;
-  /** Deutschsprachige Beschreibung — dieselbe Sprache wie der Rest der UI. */
+  /** English — feeds the public `docs/shortcuts.md` reference, not the
+   * (German-first) in-app UI. */
   readonly description: string;
   readonly scope: ShortcutScope;
   readonly glyph: ShortcutGlyph;
@@ -100,6 +101,16 @@ export const CLEAR_TERMINAL_SHORTCUT_ID = "pane.clearTerminal";
  * als die drei Ids oben): es muss auch wirken, während der Explorer oder die
  * Datei-Editorfläche fokussiert ist, nicht nur ein Terminal. */
 export const SEARCH_IN_FILES_SHORTCUT_ID = "app.searchInFiles";
+
+/** Id des "Pane teilen"-Kürzels — App-weit wie das Suche-Kürzel oben: welche
+ * Pane die neue leere annimmt, hängt nicht davon ab, was gerade den DOM-Fokus
+ * trägt, sondern von `gridState.ts`s `focusedPaneId`. Ctrl/Cmd+Shift+5 statt
+ * des Referenz-Editors mac-Standards Cmd+\ — letzterer war schon fest als
+ * Zielkombination vorgegeben (VS Codes eigenes SEKUNDÄRES Kürzel dort ist
+ * ohnehin Ctrl+Shift+5, s. terminalActions.ts im Referenz-Klon), und das
+ * bestehende `matchesShortcut`-Modell kennt ohnehin keine zwei verschiedenen
+ * Primär-Akkorde je Plattform. */
+export const SPLIT_PANE_SHORTCUT_ID = "app.splitPane";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -230,6 +241,14 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     scope: "app",
     glyph: "F",
     codes: ["KeyF"],
+    shift: true,
+  },
+  {
+    id: SPLIT_PANE_SHORTCUT_ID,
+    description: "Split the focused pane into a new empty pane",
+    scope: "app",
+    glyph: "5",
+    codes: ["Digit5", "Numpad5"],
     shift: true,
   },
   // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-

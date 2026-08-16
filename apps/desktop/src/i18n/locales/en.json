@@ -336,6 +336,7 @@
     "placeholder": "Run a command …",
     "empty": "No matches.",
     "switchTemplate": "Layout: {{template}}",
-    "openFolder": "Open Folder …"
+    "openFolder": "Open Folder …",
+    "splitPane": "Split Pane"
   }
 }
