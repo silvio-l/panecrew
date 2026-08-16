@@ -793,6 +793,7 @@ function TerminalTabChip({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const action = pendingActionRef.current;
+            console.log(`[DEBUG-a4f2] onCloseAutoFocus tabId=${tabId} pending=${String(action)}`);
             pendingActionRef.current = null;
             if (action === "rename") {
               onStartRename();
@@ -808,6 +809,7 @@ function TerminalTabChip({
           <ContextMenu.Item
             onSelect={() => {
               pendingActionRef.current = "rename";
+              console.log(`[DEBUG-a4f2] onSelect tabId=${tabId} action=rename`);
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
@@ -823,6 +825,7 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "close";
+                console.log(`[DEBUG-a4f2] onSelect tabId=${tabId} action=close`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -833,6 +836,7 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeOthers";
+                console.log(`[DEBUG-a4f2] onSelect tabId=${tabId} action=closeOthers`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -843,6 +847,7 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeToRight";
+                console.log(`[DEBUG-a4f2] onSelect tabId=${tabId} action=closeToRight`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
