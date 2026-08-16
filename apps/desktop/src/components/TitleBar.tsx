@@ -77,6 +77,7 @@ export function TitleBar({
   zoom,
   panes,
   onNavigatePane,
+  onOpenCommandPalette,
 }: {
   zoom: number;
   panes: readonly Pane[];
@@ -85,6 +86,10 @@ export function TitleBar({
    * — `App.tsx` entscheidet, welcher der beiden Fälle gerade gilt, diese
    * Komponente kennt nur die Richtung. */
   onNavigatePane: (direction: "next" | "previous") => void;
+  /** Öffnet dieselbe Befehlspalette, die auch das native Menü (⌘⇧P) auslöst
+   * — das Feld in der Mitte war bislang rein visueller Platzhalter, ist ab
+   * jetzt dessen zweiter, gleichwertiger Auslöser. */
+  onOpenCommandPalette: () => void;
 }) {
   const { t } = useTranslation();
   // Bei nur einer (oder keiner) Pane gibt es kein "woandershin" — die Pfeile
@@ -169,13 +174,18 @@ export function TitleBar({
             rounded-full-Rand ist vier feinen Eckwinkeln gewichen — dieselbe
             HUD-Grammatik wie an den leeren Grid-Slots, und semantisch exakt
             derselbe Fall: ein Ort, an dem noch nichts ist, aber etwas
-            hinkommt (das Feld ist rein visueller Platzhalter für die künftige
-            Befehlszeile). Der Platzhaltertext läuft im Terminal-Register —
-            was hier eines Tages getippt wird, ist ein Befehl, keine Prosa. */}
-        <div
-          data-tauri-drag-region
-          aria-hidden="true"
-          className="absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-(--pc-titleBar-searchBackground) px-2 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground)"
+            hinkommt. War rein visueller Platzhalter, ist seit der
+            Befehlspalette (Referenz-Editor-Menüaudit Punkt 1) ihr zweiter
+            Auslöser neben ⌘⇧P — deshalb echtes `<button>` statt `<div
+            aria-hidden>`, KEIN `data-tauri-drag-region` mehr (kollidiert mit
+            Klicks, dasselbe Muster wie die Icon-Knöpfe rechts daneben). Der
+            Platzhaltertext läuft im Terminal-Register — was hier getippt
+            wird, ist ein Befehl, keine Prosa. */}
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          aria-label={t("titleBar.searchPlaceholder")}
+          className={`absolute left-1/2 top-1/2 flex h-[28px] w-90 -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-(--pc-titleBar-searchBackground) px-2 font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSize) text-(--pc-titleBar-searchForeground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
         >
           <span className="pointer-events-none absolute inset-0">
             <span className="pc-hud-corner pc-hud-corner--fine pc-hud-corner--tl" />
@@ -192,7 +202,7 @@ export function TitleBar({
           <span className="pointer-events-none truncate">
             {t("titleBar.searchPlaceholder")}
           </span>
-        </div>
+        </button>
 
         {/* Instrumenten-Cluster (Zoom, Datum, Uhrzeit): eine geschlossene
             HUD-Gruppe statt dreier lose benachbarter Werte, vertikal genauso

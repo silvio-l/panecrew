@@ -132,6 +132,7 @@
     "terminateTab": "Terminate",
     "singleKillNotice": "A process was terminated for using too much memory ({{percent}}%)",
     "terminatedMessage": "Session terminated: memory usage repeatedly exceeded {{percent}}% of system RAM",
+    "manualKillMessage": "Terminal killed manually",
     "restart": "Restart"
   },
   "focusMode": {
@@ -155,6 +156,7 @@
     "closeOtherTerminalTabs_other": "Close {{count}} other tabs",
     "closeTerminalTabsToRight_one": "Close 1 tab to the right",
     "closeTerminalTabsToRight_other": "Close {{count}} tabs to the right",
+    "killTerminalTab": "Force-quit terminal {{number}}",
     "renameTerminalTab": "Rename terminal {{number}}",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
     "middleClickCloseHint": "Middle-click to close",
@@ -322,5 +324,19 @@
     "retry": "Retry",
     "dismiss": "Dismiss",
     "homebrewHint": "Installed via Homebrew — update with “brew upgrade --cask panecrew”."
+  },
+  "shortcutsReference": {
+    "title": "Keyboard Shortcuts",
+    "close": "Close",
+    "wholeInterface": "Whole Interface",
+    "activePane": "Active Pane"
+  },
+  "commandPalette": {
+    "title": "Command Palette",
+    "placeholder": "Run a command …",
+    "empty": "No matches.",
+    "switchTemplate": "Layout: {{template}}",
+    "openFolder": "Open Folder …",
+    "splitPane": "Split Pane"
   }
 }

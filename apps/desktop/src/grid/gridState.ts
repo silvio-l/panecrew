@@ -216,6 +216,23 @@ export function switchTemplate(state: GridState, target: TemplateId): GridState 
   };
 }
 
+/**
+ * Das nächstkleinere Wachstum ab dem aktuellen Template — erste
+ * `GRID_TEMPLATES`-Zeile mit mehr Slots als jetzt, oder `null` an der
+ * Obergrenze (`quad`/`row-4`, beide vier). Genau ein Slot mehr: die Tabelle
+ * hat keine Lücke zwischen benachbarten Slot-Zahlen (1, 2, 3, 3, 3, 4, 4).
+ * Bei mehreren Templates mit derselben Ziel-Slot-Zahl (die drei Dreier)
+ * entscheidet die Tabellenreihenfolge — ein "Pane teilen"-Kürzel kann nicht
+ * fragen, welches gemeint ist, es braucht ein einziges, vorhersagbares Ziel.
+ */
+export function nextGrowthTemplate(current: TemplateId): TemplateId | null {
+  const currentSlots = slotCount(current);
+  return (
+    GRID_TEMPLATES.find((template) => template.slotCount > currentSlots)?.id ??
+    null
+  );
+}
+
 /** Schreibt die Schnittkanten-Verhältnisse des aktuellen Templates (Ticket
  * 21) — reiner Setter, die Anteile selbst berechnet der Aufrufer
  * (`grid/splitRatios.ts`s `resizeAxisRatios`/`normalizeRatios`, dieses Modul

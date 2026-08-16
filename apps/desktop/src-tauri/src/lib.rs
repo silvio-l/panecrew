@@ -3,6 +3,8 @@ pub mod cli;
 pub mod config_core;
 pub mod config_manifest;
 pub mod config_registry;
+// [DEBUG-a4f2] siehe debug_capture.rs' Kopfkommentar — nach Bugfix entfernen.
+pub mod debug_capture;
 #[cfg(target_os = "macos")]
 pub mod dock;
 pub mod explorer_fs;
@@ -38,7 +40,7 @@ use resource_guard::ResourceGuardState;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tool_detect::ToolDetector;
 use windows::{ConfirmedCloseWindows, DeferredQuitState, QuittingFlag};
 
@@ -82,6 +84,48 @@ pub fn run() {
             match id {
                 menu::ABOUT => about::show(app, false),
                 menu::CHECK_UPDATES => about::show(app, true),
+                menu::OPEN_SETTINGS => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        // `WebviewWindow`'s eigenes `window`-Feld ist crate-privat (Tauri-
+                        // intern) — der öffentliche Weg zum `Window` geht über
+                        // `AsRef<Webview<R>>` + `Webview::window()`, demselben Pfad, den
+                        // Tauris eigener `CommandArg`-Extractor für `WebviewWindow` intern
+                        // nimmt.
+                        let webview: &tauri::Webview<_> = window.as_ref();
+                        settings_window::show(app, &webview.window());
+                    }
+                }
+                menu::OPEN_FOLDER => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_OPEN_FOLDER, ());
+                    }
+                }
+                menu::SHOW_SHORTCUTS => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_SHOW_SHORTCUTS, ());
+                    }
+                }
+                menu::SHOW_COMMAND_PALETTE => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_SHOW_COMMAND_PALETTE, ());
+                    }
+                }
+                menu::CLOSE_WINDOW => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.close();
+                    }
+                }
+                _ if id.starts_with(menu::RECENT_PROJECT_ITEM_PREFIX) => {
+                    let path = &id[menu::RECENT_PROJECT_ITEM_PREFIX.len()..];
+                    if let Some(window) = windows::focused_content_window(app) {
+                        let _ = window.emit(menu::EVENT_OPEN_RECENT_PROJECT, path);
+                    }
+                }
+                menu::CLOSE_ALL_WINDOWS => {
+                    for window in windows::content_windows(app) {
+                        let _ = window.close();
+                    }
+                }
                 _ if id.starts_with(menu::WINDOW_ITEM_PREFIX) => {
                     let label = &id[menu::WINDOW_ITEM_PREFIX.len()..];
                     if let Some(window) = app.get_webview_window(label) {
@@ -160,6 +204,7 @@ pub fn run() {
             pty_commands::pty_kill,
             pty_commands::pty_detect_tool,
             resource_guard::resource_guard_resume,
+            resource_guard::resource_guard_kill_manual,
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,
@@ -198,6 +243,7 @@ pub fn run() {
             settings_window::settings_visible,
             windows::window_open_new,
             windows::window_close_confirmed,
+            debug_capture::debug_a4f2_log,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

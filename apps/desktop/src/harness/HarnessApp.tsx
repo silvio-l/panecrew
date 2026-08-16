@@ -112,7 +112,16 @@ export function HarnessApp({
     <PtyBackendContext.Provider value={demoBackend}>
       <Tooltip.Provider delayDuration={300}>
         <div className="relative flex h-full flex-col">
-          <TitleBar zoom={1} panes={activePanes(grid.state)} onNavigatePane={navigatePane} />
+          <TitleBar
+            zoom={1}
+            panes={activePanes(grid.state)}
+            onNavigatePane={navigatePane}
+            // Der Harness hat keine echte Befehlspalette (kein Menü, keine
+            // native App-Instanz dahinter) — der Sucher-Platzhalter bleibt
+            // hier bewusst wirkungslos statt eine zweite, unechte Palette zu
+            // simulieren.
+            onOpenCommandPalette={() => undefined}
+          />
           {/* `relative`: Anker fürs FocusTrace-Overlay, s. App.tsx. Der
               Harness hat keinen Resize-Separator (keine echte Explorer-
               Breitenbedienung), der Pin-Header dockt hier direkt hinter dem

@@ -36,11 +36,12 @@ type ZoomGlyph = "+" | "-" | "0";
 type DigitGlyph = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | DigitGlyph | "↵";
+type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | "T" | "K" | "F" | DigitGlyph | "↵";
 
 export interface ShortcutDefinition {
   readonly id: string;
-  /** Deutschsprachige Beschreibung — dieselbe Sprache wie der Rest der UI. */
+  /** English — feeds the public `docs/shortcuts.md` reference, not the
+   * (German-first) in-app UI. */
   readonly description: string;
   readonly scope: ShortcutScope;
   readonly glyph: ShortcutGlyph;
@@ -48,6 +49,13 @@ export interface ShortcutDefinition {
   readonly codes: readonly string[];
   /** true = mit Shift (App-weiter Zoom), false = ohne (nur aktive Pane). */
   readonly shift: boolean;
+  /** true = existiert nur auf macOS, kein Ctrl-Gegenstück auf Windows/Linux.
+   * Für Kombinationen, die dort mit einer Shell-eigenen Bedeutung kollidieren
+   * würden — Cmd+K fürs Terminal-Leeren ist genau deshalb im Referenz-Editor
+   * `mac`-exklusiv (`primary: 0` für alle anderen Plattformen dort): Strg+K
+   * ist Readlines `kill-line` und würde sonst nie bei der Shell ankommen,
+   * dieselbe Landmine, die `zoomAction`s Dokumentation für Cmd+S beschreibt. */
+  readonly macOnly?: boolean;
 }
 
 const PLUS_CODES = ["Equal", "BracketRight", "NumpadAdd"] as const;
@@ -75,6 +83,34 @@ export const NEW_WINDOW_SHORTCUT_ID = "app.newWindow";
  * Kollisionsrisiko: PaneCrew ist ein natives Tauri-Fenster, kein Browser-Tab,
  * den dieselbe Kombination sonst schlösse. */
 export const CLOSE_TERMINAL_TAB_SHORTCUT_ID = "pane.closeTerminalTab";
+
+/** Id des Neuer-Terminal-Tab-Kürzels — `usePtyTerminal.ts`s Pane-Kürzel-Zweig
+ * schlägt seine Definition damit nach, aus demselben Grund wie
+ * `SAVE_FILE_SHORTCUT_ID` oben. `KeyT` statt eines Symbols (Referenz-Editors
+ * Standard wäre das Backtick-Zeichen): dieselbe Landmine wie Plus/Minus oben
+ * — Backtick sitzt auf US- und deutscher ISO-Tastatur an unterschiedlichen
+ * physischen Positionen, ein Buchstabe umgeht das ohne Mehrfach-Codes. */
+export const NEW_TERMINAL_TAB_SHORTCUT_ID = "pane.newTerminalTab";
+
+/** Id des Terminal-leeren-Kürzels — derselbe Nachschlage-Grund wie oben.
+ * `KeyK` matcht den Referenz-Editor 1:1 (dort ebenfalls Cmd/Ctrl+K ohne
+ * Shift). */
+export const CLEAR_TERMINAL_SHORTCUT_ID = "pane.clearTerminal";
+
+/** Id des Projektweite-Suche-Kürzels — App-weit statt pane-gebunden (anders
+ * als die drei Ids oben): es muss auch wirken, während der Explorer oder die
+ * Datei-Editorfläche fokussiert ist, nicht nur ein Terminal. */
+export const SEARCH_IN_FILES_SHORTCUT_ID = "app.searchInFiles";
+
+/** Id des "Pane teilen"-Kürzels — App-weit wie das Suche-Kürzel oben: welche
+ * Pane die neue leere annimmt, hängt nicht davon ab, was gerade den DOM-Fokus
+ * trägt, sondern von `gridState.ts`s `focusedPaneId`. Ctrl/Cmd+Shift+5 statt
+ * des Referenz-Editors mac-Standards Cmd+\ — letzterer war schon fest als
+ * Zielkombination vorgegeben (VS Codes eigenes SEKUNDÄRES Kürzel dort ist
+ * ohnehin Ctrl+Shift+5, s. terminalActions.ts im Referenz-Klon), und das
+ * bestehende `matchesShortcut`-Modell kennt ohnehin keine zwei verschiedenen
+ * Primär-Akkorde je Plattform. */
+export const SPLIT_PANE_SHORTCUT_ID = "app.splitPane";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -178,6 +214,43 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     codes: ["KeyW"],
     shift: false,
   },
+  {
+    id: NEW_TERMINAL_TAB_SHORTCUT_ID,
+    description: "Open a new terminal tab in the active pane",
+    scope: "pane",
+    glyph: "T",
+    codes: ["KeyT"],
+    shift: true,
+  },
+  {
+    // `macOnly`: Strg+K ist auf Windows/Linux Readlines `kill-line` — s.
+    // dessen Feld-Dokumentation oben. Ohne diese Sperre hätte
+    // `attachCustomKeyEventHandler`s `return false` das Zeichen dort NIE bei
+    // der Shell ankommen lassen.
+    id: CLEAR_TERMINAL_SHORTCUT_ID,
+    description: "Clear the active terminal's scrollback",
+    scope: "pane",
+    glyph: "K",
+    codes: ["KeyK"],
+    shift: false,
+    macOnly: true,
+  },
+  {
+    id: SEARCH_IN_FILES_SHORTCUT_ID,
+    description: "Search file contents in the focused pane's project",
+    scope: "app",
+    glyph: "F",
+    codes: ["KeyF"],
+    shift: true,
+  },
+  {
+    id: SPLIT_PANE_SHORTCUT_ID,
+    description: "Split the focused pane into a new empty pane",
+    scope: "app",
+    glyph: "5",
+    codes: ["Digit5", "Numpad5"],
+    shift: true,
+  },
   // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-
   // Beschwerde): neun Definitionen statt einer parametrisierten, weil
   // ShortcutDefinition keine Nummer trägt, nur `codes` — dieselbe Bauart wie
@@ -264,6 +337,7 @@ export function matchesShortcut(
   def: ShortcutDefinition,
   isMac: boolean,
 ): boolean {
+  if (def.macOnly && !isMac) return false;
   const primaryPressed = isMac ? event.metaKey : event.ctrlKey;
   const otherModifierPressed = isMac ? event.ctrlKey : event.metaKey;
   return (
@@ -283,5 +357,6 @@ export function formatChord(
   if (platform === "mac") {
     return `${def.shift ? "⇧" : ""}⌘${def.glyph}`;
   }
+  if (def.macOnly) return "—";
   return `Ctrl+${def.shift ? "Shift+" : ""}${def.glyph}`;
 }

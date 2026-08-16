@@ -3,6 +3,67 @@ use tauri::{AppHandle, Runtime};
 
 pub const ABOUT: &str = "about";
 pub const CHECK_UPDATES: &str = "check-updates";
+/// macOS-Konvention: Cmd+, öffnet die Einstellungen, unabhängig vom Fenster,
+/// das gerade fokussiert ist — dasselbe Muster wie `CLOSE_WINDOW`:
+/// `on_menu_event` (lib.rs) ermittelt sich das Zielfenster über
+/// `windows::focused_content_window` selbst, weil `settings_window::show`
+/// einen "opener" zum Positionieren braucht (dessen Kopfkommentar: Settings
+/// zentriert sich über dem AUFRUFENDEN Fenster, nicht über einem festen
+/// Default-Monitor).
+pub const OPEN_SETTINGS: &str = "open-settings";
+/// "Ordner öffnen …" (Referenz-Editor-Menüaudit) — anders als `OPEN_SETTINGS`
+/// braucht dieser Punkt kein zweites natives Fenster, sondern denselben
+/// Ordner-Dialog, den `App.tsx`s `assignProjectToSlot` schon über einen
+/// Toolbar-Klick auslöst. `on_menu_event` (lib.rs) emittiert dafür
+/// `EVENT_OPEN_FOLDER` auf das fokussierte Inhalts-Fenster, statt selbst ein
+/// Rust-seitiges Dialog-Plugin aufzurufen — dieselbe Emit-plus-`listen`-Brücke
+/// wie `about.rs`s `"about:check-updates"`.
+pub const OPEN_FOLDER: &str = "open-folder";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_OPEN_FOLDER, …)`.
+pub const EVENT_OPEN_FOLDER: &str = "menu:open-folder";
+/// Gefolgt vom Projektpfad selbst (der ist schon eindeutig, anders als
+/// `WINDOW_ITEM_PREFIX`s Fenster-Label braucht es keine separate Lookup-
+/// Tabelle) — `on_menu_event` (lib.rs) schneidet das wieder ab und emittiert
+/// `EVENT_OPEN_RECENT_PROJECT` mit dem Pfad als Payload.
+pub const RECENT_PROJECT_ITEM_PREFIX: &str = "recent-project:";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_OPEN_RECENT_PROJECT, …)`.
+pub const EVENT_OPEN_RECENT_PROJECT: &str = "menu:open-recent-project";
+/// Letzter der zehn Referenz-Editor-Menüaudit-Punkte: die in-App-
+/// Kürzelreferenz (`ShortcutsReferenceDialog.tsx`) — dieselbe Emit-plus-
+/// listen-Brücke wie `OPEN_FOLDER`, kein eigenes natives Fenster wie
+/// `OPEN_SETTINGS`, weil der Dialog Teil des normalen React-Baums ist.
+pub const SHOW_SHORTCUTS: &str = "show-shortcuts";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_SHOW_SHORTCUTS, …)`.
+pub const EVENT_SHOW_SHORTCUTS: &str = "menu:show-shortcuts";
+/// Erster der zehn Referenz-Editor-Menüaudit-Punkte: die Befehlspalette
+/// (`CommandPalette.tsx`). Bewusst NICHT wie das Projektsuche-Kürzel als
+/// window-`keydown`-Listener im Webview umgesetzt (s. dessen Capture-plus-
+/// stopPropagation-Begründung in `useSearchInFilesShortcut.ts`), sondern als
+/// echter nativer Menü-Akzelerator: Cmd/Ctrl+Umschalt+P fängt AppKit/das
+/// native Menüsystem VOR jedem Webview-Keydown ab, die Frage, ob xterms
+/// eigener Tastatur-Handler dieselbe Kombination zusätzlich als PTY-Eingabe
+/// verarbeitet, entfällt damit strukturell statt nur behelfsweise
+/// (`stopPropagation`) entschärft zu werden.
+pub const SHOW_COMMAND_PALETTE: &str = "show-command-palette";
+/// Frontend-Gegenstück: `App.tsx` hört per `listen(EVENT_SHOW_COMMAND_PALETTE, …)`.
+pub const EVENT_SHOW_COMMAND_PALETTE: &str = "menu:show-command-palette";
+/// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
+/// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
+/// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
+/// `pane.closeTerminalTab` (registry.ts) abgegriffen — derselbe Konflikt, den
+/// der Kommentar zur Zoom-Trias unten für +/-/0 bereits vermeidet. Eigenes
+/// Item mit Cmd+Shift+W (verbreitete Konvention bei Browsern und beim
+/// Referenz-Editor: W = Tab, Shift+W = Fenster) statt PredefinedMenuItem,
+/// `on_menu_event` in `lib.rs` löst das fokussierte Fenster selbst auf und
+/// ruft `close()` — das läuft weiter über `windows::on_window_event`s
+/// `CloseRequested`-Rückfrage-Gate.
+pub const CLOSE_WINDOW: &str = "close-window";
+/// Konvention verbreiteter macOS-Browser: "Alle Fenster schließen" (⌥⇧⌘W,
+/// Nutzer-Vorlage 2026-08-16), macOS-only wie `CLOSE_WINDOW`. Iteriert einfach über jedes
+/// Inhalts-Fenster und ruft je `close()` — jedes davon durchläuft dabei
+/// individuell dasselbe `CloseRequested`-Rückfrage-Gate wie ein einzelnes
+/// Schließen, keine eigene "alle auf einmal wegwerfen"-Sonderlogik nötig.
+pub const CLOSE_ALL_WINDOWS: &str = "close-all-windows";
 /// Gefolgt vom Fenster-Label (`window_open_new`s zurückgegebenem Wert) —
 /// `on_menu_event` in `lib.rs` schneidet das wieder ab, um das Ziel-Fenster
 /// zu adressieren.
@@ -32,6 +93,34 @@ fn window_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuIt
                 title,
                 true,
                 checked,
+                None::<&str>,
+            )
+        })
+        .collect()
+}
+
+/// Ein Menüpunkt je zuletzt geöffnetem Projekt (`session_store::recent_
+/// projects`, absteigend nach Aktualität) — nach demselben Live-statt-
+/// gecachtem-Zustand-Muster wie `window_items` oben, nur ohne dessen Haken-
+/// Zustand: ein Projekt ist nie "das gerade fokussierte" in demselben Sinn
+/// wie ein Fenster. Beschriftet mit dem letzten Pfadsegment statt dem vollen
+/// Pfad — der volle Pfad ginge bei einer Tiefenverschachtelung schnell über
+/// die Menübreite hinaus, und die Liste ist ohnehin nach Aktualität sortiert,
+/// nicht alphabetisch, ein doppelter Ordnername ist also kein Verwechslungs-
+/// risiko, das eine BWK-Angabe auflösen müsste.
+fn recent_project_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<MenuItem<R>>> {
+    crate::session_store::recent_projects(app)
+        .into_iter()
+        .map(|path| {
+            let label = std::path::Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            MenuItem::with_id(
+                app,
+                format!("{RECENT_PROJECT_ITEM_PREFIX}{path}"),
+                label,
+                true,
                 None::<&str>,
             )
         })
@@ -70,6 +159,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         None::<&str>,
     )?;
+    let show_shortcuts =
+        MenuItem::with_id(app, SHOW_SHORTCUTS, "Tastaturkürzel …", true, None::<&str>)?;
 
     let edit = Submenu::with_items(
         app,
@@ -101,6 +192,65 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         }
         let fenster = Submenu::with_items(app, "Fenster", true, &fenster_items)?;
 
+        // "Ablage"-Einträge, die die dynamische "Zuletzt geöffnete Projekte"-
+        // Einfügung unten braucht (s. `ablage_items` weiter unten) — als
+        // eigene Bindungen statt Inline-Referenzen im Literal wie bei den
+        // übrigen Submenüs dieser Datei, weil `ablage_items` sie per `&`
+        // referenzieren muss, bevor der `Menu::with_items`-Aufruf sie
+        // konsumiert.
+        let new_window_item = MenuItem::with_id(
+            app,
+            crate::dock::NEW_WINDOW_ITEM_ID,
+            "Neues Fenster",
+            true,
+            Some("Cmd+N"),
+        )?;
+        let open_folder_item =
+            MenuItem::with_id(app, OPEN_FOLDER, "Ordner öffnen …", true, Some("Cmd+O"))?;
+        let ablage_separator = PredefinedMenuItem::separator(app)?;
+        let close_window_item = MenuItem::with_id(
+            app,
+            CLOSE_WINDOW,
+            "Schließen",
+            true,
+            Some("Cmd+Shift+W"),
+        )?;
+        let close_all_windows_item = MenuItem::with_id(
+            app,
+            CLOSE_ALL_WINDOWS,
+            "Alle Fenster schließen",
+            true,
+            Some("Alt+Shift+Cmd+W"),
+        )?;
+
+        // Nur eingehängt, wenn tatsächlich etwas drin ist — ein leeres,
+        // deaktiviertes "Zuletzt geöffnete Projekte" wäre reines Rauschen bei
+        // jedem allerersten Start, bevor überhaupt ein Projekt geöffnet
+        // wurde. `Option` statt eines leeren `Submenu`, weil ein per
+        // `IsMenuItem` referenziertes leeres Untermenü unnötige Kantenfälle
+        // in Tauris eigener Muda-Bindung riskiert, die window_items oben
+        // (Fenster hat ja immer mindestens Minimieren/Zoomen) nie prüft.
+        let recent_list = recent_project_items(app)?;
+        let recent_submenu = if recent_list.is_empty() {
+            None
+        } else {
+            let refs: Vec<&dyn IsMenuItem<R>> =
+                recent_list.iter().map(|item| item as &dyn IsMenuItem<R>).collect();
+            Some(Submenu::with_items(
+                app,
+                "Zuletzt geöffnete Projekte",
+                true,
+                &refs,
+            )?)
+        };
+        let mut ablage_items: Vec<&dyn IsMenuItem<R>> = vec![&new_window_item, &open_folder_item];
+        if let Some(recent_submenu) = &recent_submenu {
+            ablage_items.push(recent_submenu);
+        }
+        ablage_items.push(&ablage_separator);
+        ablage_items.push(&close_window_item);
+        ablage_items.push(&close_all_windows_item);
+
         // Kein Eintrag für den Zoom der App (Cmd +/-/0): den fängt die
         // Shortcut-Registry im Webview ab, ein Menükürzel würde ihn abfangen,
         // bevor er dort ankommt.
@@ -114,6 +264,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     &[
                         &about,
                         &check_updates,
+                        &show_shortcuts,
+                        &PredefinedMenuItem::separator(app)?,
+                        &MenuItem::with_id(
+                            app,
+                            OPEN_SETTINGS,
+                            "Einstellungen …",
+                            true,
+                            Some("Cmd+,"),
+                        )?,
                         &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::services(app, Some("Dienste"))?,
                         &PredefinedMenuItem::separator(app)?,
@@ -124,18 +283,34 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                         &PredefinedMenuItem::quit(app, Some("PaneCrew beenden"))?,
                     ],
                 )?,
-                &Submenu::with_items(
-                    app,
-                    "Ablage",
-                    true,
-                    &[&PredefinedMenuItem::close_window(app, Some("Schließen"))?],
-                )?,
+                // Nutzer-Vorlage 2026-08-16 (Ablage-Menü eines verbreiteten
+                // macOS-Browsers als Referenz): ⌘N wirkt schon länger als
+                // App-Kürzel (`NEW_WINDOW_SHORTCUT_ID`, registry.ts) —
+                // dasselbe Item hier bringt es zusätzlich menübar-
+                // diskutierbar und macOS-konventionell ins Menü, OHNE
+                // Konflikt wie beim Schließen-Fund oben: beide Wege lösen
+                // dieselbe Handlung aus (`window_open_new`), keine zwei
+                // widersprüchlichen Bedeutungen für denselben Chord.
+                // Dieselbe ID wie das Dock-Kontextmenü (`dock.rs`) —
+                // `on_menu_event` (lib.rs) behandelt beide Quellen schon im
+                // selben Match-Arm.
+                &Submenu::with_items(app, "Ablage", true, &ablage_items)?,
                 &edit,
                 &Submenu::with_items(
                     app,
                     "Darstellung",
                     true,
-                    &[&PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?],
+                    &[
+                        &MenuItem::with_id(
+                            app,
+                            SHOW_COMMAND_PALETTE,
+                            "Befehlspalette …",
+                            true,
+                            Some("Cmd+Shift+P"),
+                        )?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?,
+                    ],
                 )?,
                 &fenster,
             ],
@@ -144,21 +319,68 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     #[cfg(not(target_os = "macos"))]
     {
+        // Dieselbe Nur-wenn-nicht-leer-Bedingung wie im macOS-Zweig oben, s.
+        // dessen Kommentar an `recent_list`/`recent_submenu`.
+        let recent_list = recent_project_items(app)?;
+        let recent_submenu = if recent_list.is_empty() {
+            None
+        } else {
+            let refs: Vec<&dyn IsMenuItem<R>> =
+                recent_list.iter().map(|item| item as &dyn IsMenuItem<R>).collect();
+            Some(Submenu::with_items(
+                app,
+                "Zuletzt geöffnete Projekte",
+                true,
+                &refs,
+            )?)
+        };
+        let open_settings_item = MenuItem::with_id(
+            app,
+            OPEN_SETTINGS,
+            "Einstellungen …",
+            true,
+            Some("Ctrl+,"),
+        )?;
+        let open_folder_item =
+            MenuItem::with_id(app, OPEN_FOLDER, "Ordner öffnen …", true, Some("Ctrl+O"))?;
+        let datei_separator = PredefinedMenuItem::separator(app)?;
+        let close_window_item = PredefinedMenuItem::close_window(app, Some("Schließen"))?;
+        let quit_item = PredefinedMenuItem::quit(app, Some("Beenden"))?;
+        let mut datei_items: Vec<&dyn IsMenuItem<R>> =
+            vec![&open_settings_item, &open_folder_item];
+        if let Some(recent_submenu) = &recent_submenu {
+            datei_items.push(recent_submenu);
+        }
+        datei_items.push(&datei_separator);
+        datei_items.push(&close_window_item);
+        datei_items.push(&quit_item);
+
+        let show_command_palette_item = MenuItem::with_id(
+            app,
+            SHOW_COMMAND_PALETTE,
+            "Befehlspalette …",
+            true,
+            Some("Ctrl+Shift+P"),
+        )?;
+
         // Ohne App-Menü gehört „Über" nach Windows-Konvention ins Hilfe-Menü.
         Menu::with_items(
             app,
             &[
+                &Submenu::with_items(app, "Datei", true, &datei_items)?,
+                &edit,
                 &Submenu::with_items(
                     app,
-                    "Datei",
+                    "Ansicht",
                     true,
-                    &[
-                        &PredefinedMenuItem::close_window(app, Some("Schließen"))?,
-                        &PredefinedMenuItem::quit(app, Some("Beenden"))?,
-                    ],
+                    &[&show_command_palette_item],
                 )?,
-                &edit,
-                &Submenu::with_items(app, "Hilfe", true, &[&about, &check_updates])?,
+                &Submenu::with_items(
+                    app,
+                    "Hilfe",
+                    true,
+                    &[&about, &check_updates, &show_shortcuts],
+                )?,
             ],
         )
     }

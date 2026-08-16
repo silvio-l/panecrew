@@ -297,6 +297,17 @@ mod tests {
         );
     }
 
+    // Windows-only: Git for Windows' MSYS layer spawns an external command
+    // through a short-lived intermediary process, gone from the process
+    // table again within milliseconds — so `sleep.exe`'s OS-reported parent
+    // pid points at an entry `sysinfo` can no longer find, severing the
+    // link back to the `sh`/`bash` root this fixture relies on. That's an
+    // external MSYS/Windows process-ancestry limitation, not a bug in
+    // `detect()`'s own tree walk — there's no OS-level parent-child chain
+    // left to walk by the time any observer (sysinfo, tasklist, Process
+    // Explorer) looks. Unix `sh` keeps the real, live parent-child link the
+    // whole time, so these tests stay meaningful there.
+    #[cfg(unix)]
     #[test]
     fn returns_no_icon_for_an_active_but_unrecognized_descendant() {
         let mut shell = spawn_shell_with_child();
@@ -394,6 +405,11 @@ mod tests {
     /// refreshes; by the time any other thread gets the lock afterward,
     /// `REFRESH_TTL` (500ms) has not remotely elapsed, so it reuses the
     /// cache. No thread can observe a state in between.
+    // Windows-only: relies on `Fixture`'s "unmatched sleep child" tree
+    // shape, which the severed MSYS parent-child link (see the comment on
+    // `returns_no_icon_for_an_active_but_unrecognized_descendant`) makes
+    // unobservable on Windows.
+    #[cfg(unix)]
     #[test]
     fn concurrent_detect_calls_within_the_ttl_window_share_one_underlying_refresh() {
         const CONCURRENT_CALLS: usize = 8;
@@ -448,6 +464,10 @@ mod tests {
     /// expected outcomes, detected back-to-back through the same detector
     /// (so both land inside one TTL window and share its one refresh),
     /// each still has to come back with its own correct result.
+    // Windows-only: same severed MSYS parent-child link as the other two
+    // tests above — the "unmatched sleep child" fixture shape it also
+    // relies on is unobservable there.
+    #[cfg(unix)]
     #[test]
     fn a_shared_refresh_still_returns_each_root_pids_own_correct_result() {
         let unmatched_fixture = Fixture::new(); // sh + unmatched "sleep" child -> None

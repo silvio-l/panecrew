@@ -44,7 +44,7 @@
  * (Geometrie in App.css, Slot-Zahl in grid/gridState.ts). Der Akzent trägt
  * jetzt tatsächlich nur EINE Pane: den Rahmen der fokussierten.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -63,6 +63,8 @@ import { FocusTrace } from "./components/FocusTrace";
 import { GridStatusRail } from "./components/GridStatusRail";
 import { PaneGrid } from "./components/PaneGrid";
 import { PathDragGhost } from "./components/PathDragGhost";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { ShortcutsReferenceDialog } from "./components/ShortcutsReferenceDialog";
 import { TemplateSwitcher } from "./components/TemplateSwitcher";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { UpdateBanner } from "./updater/UpdateBanner";
@@ -79,7 +81,15 @@ import {
   applyTerminatedEvent,
   disposeResourceGuardEntry,
 } from "./terminal/resourceGuard";
-import { activePanes, focusedProjectPath, nextPaneId, trackShape } from "./grid/gridState";
+import {
+  activePanes,
+  focusedProjectPath,
+  GRID_TEMPLATES,
+  nextGrowthTemplate,
+  nextPaneId,
+  templateSwitchBlockReason,
+  trackShape,
+} from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
 import { useProjects } from "./projects/useProjects";
@@ -104,6 +114,8 @@ import {
 } from "./shortcuts/registry";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { useNewWindowShortcut } from "./shortcuts/useNewWindowShortcut";
+import { useSearchInFilesShortcut } from "./shortcuts/useSearchInFilesShortcut";
+import { useSplitPaneShortcut } from "./shortcuts/useSplitPaneShortcut";
 import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
 import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
 import "./App.css";
@@ -404,6 +416,42 @@ function App() {
   const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
   const zoom = useAppZoom();
   useNewWindowShortcut();
+  // Cmd/Ctrl+Shift+F: klappt einen eingeklappten Explorer wieder auf und
+  // stößt sein Öffnen-plus-Fokussieren über einen reinen Nonce an (s.
+  // `openSearchSignal`-Prop-Doku in ExplorerPanel.tsx) — nichts davon
+  // überlebt einen Projektwechsel absichtlich, `ExplorerPanel` bekommt bei
+  // jedem ohnehin einen frischen `key`.
+  const [openSearchSignal, setOpenSearchSignal] = useState(0);
+  useSearchInFilesShortcut(
+    useCallback(() => {
+      setExplorerCollapsed(false);
+      setOpenSearchSignal((current) => current + 1);
+    }, []),
+  );
+  // Dritter der zehn Referenz-Editor-Menüaudit-Punkte: "Pane teilen"
+  // (Ctrl/Cmd+Shift+5). PaneCrews Raster kennt kein "diese eine Pane
+  // aufteilen" — nur Layout-Vorlagen mit fester Slot-Zahl (`gridState.ts`).
+  // Interpretiert als: zur nächstgrößeren Vorlage wachsen
+  // (`nextGrowthTemplate`, wächst dabei immer um genau einen Slot, s. dessen
+  // Doku) und den neu entstandenen leeren Slot sofort mit dem Projekt der
+  // gerade fokussierten Pane belegen — fühlt sich dadurch wie ein echtes
+  // Teilen dieser einen Pane an, nicht wie ein bloßes Aufdecken eines freien
+  // Feldes irgendwo im Raster. `assignProject` setzt `focusedPaneId` selbst
+  // auf die neue Pane (s. dessen Doku in useGrid.ts) — dieselbe
+  // Fokus-folgt-der-neuen-Pane-Erwartung wie beim Referenz-Editor. Kein
+  // Kandidat mehr (bereits an der Obergrenze, oder keine Pane fokussiert):
+  // stilles No-Op, dieselbe Haltung wie `resolveMenuTargetSlot` oben.
+  const splitFocusedPane = useCallback(() => {
+    if (focusedPaneId === null) return;
+    const projectPath = focusedProjectPath(gridState);
+    if (projectPath === null) return;
+    const target = nextGrowthTemplate(gridState.template);
+    if (target === null) return;
+    const newSlotIndex = gridState.slots.length;
+    switchTemplate(target);
+    assignProject(newSlotIndex, projectPath);
+  }, [focusedPaneId, gridState, switchTemplate, assignProject]);
+  useSplitPaneShortcut(splitFocusedPane);
   // Die EINE Drop-Registrierung des Grids. Sie stand bis zum Explorer-Ziehen
   // in `PaneGrid.tsx` — mit einer zweiten Drop-QUELLE, die im Explorer
   // beginnt (einem Geschwister von `PaneGrid`, nicht einem Kind), muss sie
@@ -773,6 +821,101 @@ function App() {
   const removeRecentProject = (path: string) =>
     setRecentProjects((current) => withoutRecentProject(current, path));
 
+  // Zwei native Menüpunkte teilen sich dasselbe Ziel-Slot-Muster: "Ordner
+  // öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) und ein Eintrag aus
+  // "Zuletzt geöffnete Projekte" (RECENT_PROJECT_ITEM_PREFIX) landen beide in
+  // der fokussierten Pane, wenn eine existiert (ersetzt deren Projekt, genauso
+  // geguardet wie ein Klick auf ihren eigenen Ordner-Wechsel), sonst im ersten
+  // leeren Slot — dasselbe Muster wie beim Ablegen einer gezogenen Explorer-
+  // Zeile. Kein Ziel-Slot bedeutet: Grid voll UND nichts fokussiert — kann
+  // praktisch nicht vorkommen (ein volles Grid hat immer eine fokussierte
+  // Pane), aber dann bewusst wirkungslos statt zu raten.
+  const resolveMenuTargetSlot = () => {
+    const focusedIndex = gridState.slots.findIndex(
+      (slot) => slot?.paneId === focusedPaneId,
+    );
+    if (focusedIndex !== -1) return focusedIndex;
+    return gridState.slots.findIndex((slot) => slot === null);
+  };
+  const openFolderMenuHandlerRef = useRef<(() => void) | null>(null);
+  const openRecentProjectMenuHandlerRef = useRef<((path: string) => void) | null>(null);
+  useEffect(() => {
+    openFolderMenuHandlerRef.current = () => {
+      const slotIndex = resolveMenuTargetSlot();
+      if (slotIndex !== -1) assignProjectToSlot(slotIndex);
+    };
+    openRecentProjectMenuHandlerRef.current = (path) => {
+      const slotIndex = resolveMenuTargetSlot();
+      if (slotIndex !== -1) openRecentProject(path, slotIndex);
+    };
+  });
+  // Letzter der zehn Referenz-Editor-Menüaudit-Punkte: die native
+  // "Tastaturkürzel …" (`menu.rs`s SHOW_SHORTCUTS) öffnet den Dialog, der
+  // Dialog selbst kennt seinen Öffner nicht — reiner boolescher Zustand wie
+  // die übrigen modalen Flächen dieser Datei.
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  // Erster der zehn Referenz-Editor-Menüaudit-Punkte: sowohl das native Menü
+  // (⌘⇧P, `menu.rs`s SHOW_COMMAND_PALETTE) als auch der bisher rein visuelle
+  // Sucher-Platzhalter in der Titelzeile (`TitleBar.tsx`) öffnen denselben
+  // Zustand.
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  useEffect(() => {
+    const unlistenPromises = [
+      listen("menu:open-folder", () => openFolderMenuHandlerRef.current?.()),
+      listen<string>("menu:open-recent-project", (event) =>
+        openRecentProjectMenuHandlerRef.current?.(event.payload),
+      ),
+      listen("menu:show-shortcuts", () => setShortcutsDialogOpen(true)),
+      listen("menu:show-command-palette", () => setCommandPaletteOpen(true)),
+    ];
+    return () => {
+      for (const unlistenPromise of unlistenPromises) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, []);
+
+  // Befehlsliste: bewusst kein eigenes Registry-Modul — die Handlungen selbst
+  // sind App.tsx-Closures (dieselben, die Menü/Knöpfe schon aufrufen), ein
+  // Registry hätte hier keinen zweiten Konsumenten außer der Palette selbst.
+  // Template-Wechsel nur, wenn gerade tatsächlich ausführbar
+  // (`templateSwitchBlockReason`) — dieselbe Prüfung wie `TemplateSwitcher.tsx`,
+  // ein gesperrter Eintrag in der Palette hätte ohne eigenes „warum" (die
+  // Palette kennt kein deaktiviertes Zeilenbild) nur verwirrt.
+  const commandPaletteCommands: PaletteCommand[] = [
+    ...GRID_TEMPLATES.filter(
+      (template) => templateSwitchBlockReason(gridState, template.id) === null,
+    ).map((template) => ({
+      id: `template.${template.id}`,
+      label: t("commandPalette.switchTemplate", { template: t(template.labelKey) }),
+      run: () => switchTemplate(template.id),
+    })),
+    ...(focusedPaneId !== null && nextGrowthTemplate(gridState.template) !== null
+      ? [
+          {
+            id: "app.splitPane",
+            label: t("commandPalette.splitPane"),
+            run: splitFocusedPane,
+          },
+        ]
+      : []),
+    {
+      id: "app.openFolder",
+      label: t("commandPalette.openFolder"),
+      run: () => openFolderMenuHandlerRef.current?.(),
+    },
+    {
+      id: "app.openSettings",
+      label: t("titleBar.settings"),
+      run: () => void invoke("settings_open_window"),
+    },
+    {
+      id: "app.showShortcuts",
+      label: t("shortcutsReference.title"),
+      run: () => setShortcutsDialogOpen(true),
+    },
+  ];
+
   // Schließt eine einzelne Pane — geguardet auf ihren eigenen ungespeicherten
   // Stand, unabhängig davon, was in den anderen Panes liegt.
   //
@@ -1088,7 +1231,12 @@ function App() {
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="relative flex h-full flex-col">
-        <TitleBar zoom={zoom} panes={activePanes(gridState)} onNavigatePane={navigatePane} />
+        <TitleBar
+          zoom={zoom}
+          panes={activePanes(gridState)}
+          onNavigatePane={navigatePane}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        />
         {/* Die Titelzeile schwebt (absolut positioniert) über dieser Fläche,
             statt sie als Flow-Element nach unten zu drücken. Der Freiraum wird
             hier reserviert, damit nichts dauerhaft verdeckt ist — geteilt durch
@@ -1134,6 +1282,7 @@ function App() {
                 onConsumeDragClick={explorerDrag.consumeDragClick}
                 onEntryRenamed={onEntryRenamed}
                 onEntryDeleted={onEntryDeleted}
+                openSearchSignal={openSearchSignal}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
                   Explorer-Breite für Tastaturnutzer unerreichbar macht — das
@@ -1367,6 +1516,15 @@ function App() {
             />
           )}
         <UpdateBanner />
+        <ShortcutsReferenceDialog
+          open={shortcutsDialogOpen}
+          onOpenChange={setShortcutsDialogOpen}
+        />
+        <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          commands={commandPaletteCommands}
+        />
       </div>
     </Tooltip.Provider>
   );

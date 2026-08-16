@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { ContextMenu } from "radix-ui";
 import {
   CHROME_FOCUS_RING,
@@ -15,6 +16,7 @@ import { useDetectedToolId } from "../terminal/useDetectedTool";
 import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
+import { logBug2 } from "../terminal/debugBug2";
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert) plus höchstens ein File-Tab, immer hinter allen
@@ -782,7 +784,11 @@ function TerminalTabChip({
   );
 
   return (
-    <ContextMenu.Root>
+    <ContextMenu.Root
+      onOpenChange={(open) => {
+        logBug2(`onOpenChange tabId=${tabId} open=${String(open)}`);
+      }}
+    >
       {renaming ? trigger : <ChromeTooltip label={tooltipLabel}>{trigger}</ChromeTooltip>}
       <ContextMenu.Portal>
         <ContextMenu.Content
@@ -793,6 +799,7 @@ function TerminalTabChip({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const action = pendingActionRef.current;
+            logBug2(`onCloseAutoFocus tabId=${tabId} pending=${String(action)}`);
             pendingActionRef.current = null;
             if (action === "rename") {
               onStartRename();
@@ -808,6 +815,7 @@ function TerminalTabChip({
           <ContextMenu.Item
             onSelect={() => {
               pendingActionRef.current = "rename";
+              logBug2(`onSelect tabId=${tabId} action=rename`);
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
@@ -823,6 +831,7 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "close";
+                logBug2(`onSelect tabId=${tabId} action=close`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -833,6 +842,7 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeOthers";
+                logBug2(`onSelect tabId=${tabId} action=closeOthers`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -843,12 +853,36 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeToRight";
+                logBug2(`onSelect tabId=${tabId} action=closeToRight`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
               {t("paneTabs.closeTerminalTabsToRight", { count: tabsToRightCount })}
             </ContextMenu.Item>
           )}
+          {/* Eigene Trenngruppe: anders als "Schließen" oben bleibt der Tab
+              nach diesem Punkt BESTEHEN (nur der Prozess stirbt, dieselbe
+              Terminated-Anzeige wie Tier 4 der Ressourcen-Eskalationskette,
+              s. `resource_guard.rs`s `resource_guard_kill_manual`) — eine
+              andere Handlungsklasse als alles darüber, deshalb sichtbar
+              abgesetzt statt in dieselbe Gruppe gemischt. Kein
+              pendingActionRef-Umweg nötig: `invoke` öffnet keine zweite
+              Fokus-Trap-Fläche wie `onClose`/`onStartRename`, kollidiert also
+              nicht mit dem noch aktiven ContextMenu-Trap. */}
+          <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
+          <ContextMenu.Item
+            onSelect={() => {
+              logBug2(`onSelect tabId=${tabId} action=killTerminal`);
+              void invoke("resource_guard_kill_manual", { tabId }).catch(() => {
+                // Best-effort wie jeder andere PTY-Kill-Aufruf im Frontend
+                // (s. `ptyBackend.ts`s `reportIpcFailure`) — ein bereits
+                // toter/unbekannter Tab ist kein Nutzerfehler.
+              });
+            }}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("paneTabs.killTerminalTab", { number })}
+          </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

@@ -829,6 +829,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-markdown",
+ "embed-resource",
  "flate2",
  "glob",
  "libc",

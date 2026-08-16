@@ -16,6 +16,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Windows only (see build.rs): tauri-build's own resource embedding links the
+# app manifest only into `[[bin]]` targets (embed-resource's `compile()` emits
+# `cargo:rustc-link-arg-bins=`), never into the synthetic binary `cargo test`
+# builds for `--lib`. Without the manifest's Common Controls v6 dependency,
+# that test binary resolves comctl32.dll to the old System32 copy and crashes
+# at startup with STATUS_ENTRYPOINT_NOT_FOUND. Same crate/version tauri-build
+# already pulls in transitively, so this adds no second copy to compile.
+embed-resource = "3"
 
 [dependencies]
 # macos-private-api: das Splash-Fenster braucht ein transparentes NSWindow, damit

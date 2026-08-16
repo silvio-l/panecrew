@@ -7,13 +7,23 @@
    Only the rules/properties that were byte-identical in both places live
    here. A handful of selectors (.nav, .foot, .foot-gh, .glyph-tile) are
    split property-by-property: the properties both pages agreed on move
-   here, the ones that intentionally differ per page (page width, footer
-   glyph-tile ground color, footer icon border alpha, ...) stay declared
-   locally in each page's own <style is:global> block. No selector here
-   sets a property that a page's local rule also sets for the same
-   selector, so there is no load-order dependency between this file and
-   either page's local overrides — safe regardless of where Astro's build
-   places the generated <link> relative to each page's own <style> output. */
+   here, the ones that intentionally differ per page (footer glyph-tile
+   ground color, footer icon border alpha, ...) stay declared locally in
+   each page's own <style is:global> block. No selector here sets a
+   property that a page's local rule also sets for the same selector, so
+   there is no load-order dependency between this file and either page's
+   local overrides — safe regardless of where Astro's build places the
+   generated <link> relative to each page's own <style> output.
+
+   --page-gut/--span-wide and the .wrap/.nav/.foot width+margin+padding
+   moved here 2026-08-16: GuideLayout.astro used to redeclare its own fixed
+   max-width: 1120px instead of the fluid span index.astro uses, so the nav
+   and footer visibly resized/jumped the instant you navigated between the
+   homepage and a guide page. There was no design rationale for a
+   per-page-different chrome width, so this was a leftover gap from ticket
+   11's extraction rather than an intentional split — promoting it here is
+   the fix, not a new "intentional shared" rule being invented after the
+   fact. */
 
 :root {
   --indigo-hi: #333c72;
@@ -40,6 +50,11 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
   --lift: 0.15s ease;
+  /* shared page-width scale — see the header comment above for why this
+     moved here from index.astro's local :root. --span-mid stays local to
+     index.astro, the only page that uses it. */
+  --page-gut: clamp(22px, 3.2vw, 64px);
+  --span-wide: min(calc(1140px + 23vw), calc(100% - 2 * var(--page-gut)));
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 /* base font-size stays 100% (respects the browser's own font-size
@@ -62,10 +77,13 @@ a { color: inherit; }
 :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
 img, svg { max-width: 100%; }
 
+/* every .wrap is a page-width content band (showcase sections on the
+   homepage, the guide-prose section on guide pages) — the gutters live
+   inside the span math, so no extra padding here. */
+.wrap { width: var(--span-wide); margin: 0 auto; }
+
 /* ---------- nav ---------- */
-/* width/margin/padding differ per page (fluid vs fixed page width) and
-   stay in each page's own local .nav rule. */
-.nav { position: relative; z-index: 20; display: flex; align-items: center; gap: 26px; }
+.nav { position: relative; z-index: 20; display: flex; align-items: center; gap: 26px; width: var(--span-wide); margin: 0 auto; padding: 20px 0; }
 .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .logo svg { width: 26px; height: 26px; }
 .logo b { font-family: var(--display); font-weight: 700; font-size: 1.3125rem; letter-spacing: -0.01em; }
@@ -99,12 +117,19 @@ img, svg { max-width: 100%; }
 }
 .nav-gh svg { width: 17px; height: 17px; }
 .nav-gh:hover { transform: translateY(-2px); background: rgba(255, 253, 245, 0.16); border-color: rgba(255, 253, 245, 0.3); }
+/* was homepage-only (index.astro's own @media block) until 2026-08-16 —
+   guide pages had no responsive nav behavior at all, so .nav-links stayed
+   on-screen (wrapping into a second row) past where the homepage collapses
+   it. Shared here so every page collapses at the same breakpoint. */
+@media (max-width: 560px) {
+  .nav-links { display: none; }
+}
 
 /* ---------- footer ---------- */
 .wave { display: block; width: 100%; height: 80px; margin-bottom: -1px; }
 footer { background: var(--cream); color: var(--ink); padding: 40px 0 54px; }
-/* width/max-width/padding/gap/flex-wrap differ per page and stay local. */
-.foot { display: flex; align-items: center; }
+/* gap/flex-wrap differ per page (item count/order differs) and stay local. */
+.foot { display: flex; align-items: center; width: var(--span-wide); margin: 0 auto; }
 /* display (flex vs inline-flex), background and flex differ per page and
    stay local — only pure sizing/alignment is shared. */
 .glyph-tile { width: 34px; height: 34px; border-radius: 9px; align-items: center; justify-content: center; }

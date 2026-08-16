@@ -13,6 +13,8 @@ from `apps/desktop`, redirect the output to `docs/shortcuts.md`, and commit it.
 | Zoom out on the whole interface | ⇧⌘- | Ctrl+Shift+- |
 | Reset interface zoom | ⇧⌘0 | Ctrl+Shift+0 |
 | Open a new PaneCrew window | ⌘N | Ctrl+N |
+| Search file contents in the focused pane's project | ⇧⌘F | Ctrl+Shift+F |
+| Split the focused pane into a new empty pane | ⇧⌘5 | Ctrl+Shift+5 |
 
 ## Active Pane
 
@@ -28,6 +30,8 @@ Whichever surface currently has keyboard focus applies.
 | Save the open file | ⌘S | Ctrl+S |
 | Toggle focus mode (maximize/leave pane) | ⌘↵ | Ctrl+↵ |
 | Close the active terminal tab | ⌘W | Ctrl+W |
+| Open a new terminal tab in the active pane | ⇧⌘T | Ctrl+Shift+T |
+| Clear the active terminal's scrollback | ⌘K | — |
 | Show terminal tab 1 of the active pane | ⌘1 | Ctrl+1 |
 | Show terminal tab 2 of the active pane | ⌘2 | Ctrl+2 |
 | Show terminal tab 3 of the active pane | ⌘3 | Ctrl+3 |

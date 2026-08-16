@@ -15,6 +15,7 @@ import {
   moveTerminalTab,
   moveTerminalTabToEmptySlot,
   movePaneToEmptySlot,
+  nextGrowthTemplate,
   nextPaneId,
   openTerminalTab,
   renameTerminalTab,
@@ -202,6 +203,36 @@ describe("gridState", () => {
     const shrunk = switchTemplate(empty, "single");
     expect(shrunk.template).toBe("single");
     expect(shrunk.slots).toEqual([null]);
+  });
+
+  describe("nextGrowthTemplate ('Pane teilen')", () => {
+    it("wächst immer um genau einen Slot", () => {
+      expect(nextGrowthTemplate("single")).toBe("split");
+      expect(nextGrowthTemplate("split")).toBe("two-over-one");
+    });
+
+    it("nimmt bei mehreren Templates mit derselben Ziel-Slot-Zahl das erste in Tabellenreihenfolge", () => {
+      expect(nextGrowthTemplate("two-over-one")).toBe("quad");
+      expect(nextGrowthTemplate("one-over-two")).toBe("quad");
+      expect(nextGrowthTemplate("row-3")).toBe("quad");
+    });
+
+    it("liefert null an der Obergrenze", () => {
+      expect(nextGrowthTemplate("quad")).toBeNull();
+      expect(nextGrowthTemplate("row-4")).toBeNull();
+    });
+
+    it("der alte slots.length landet nach switchTemplate exakt im neuen Slot (App.tsx::splitFocusedPane's Annahme)", () => {
+      // single -> split: alter slots.length (1) muss der neue Index (1) sein.
+      const single = switchTemplate(INITIAL_GRID_STATE, "single");
+      const oldLength = single.slots.length;
+      const target = nextGrowthTemplate(single.template);
+      if (target === null) throw new Error("erwartetes Wachstum fehlt");
+      const grown = switchTemplate(single, target);
+      const withNewPane = assignProjectToSlot(grown, oldLength, "/repo/new", "pane-new", "tab-new");
+      expect(withNewPane.slots[oldLength]?.paneId).toBe("pane-new");
+      expect(withNewPane.slots.length).toBe(oldLength + 1);
+    });
   });
 
   it("closePane leert nur den einen Slot und lässt andere unangetastet", () => {

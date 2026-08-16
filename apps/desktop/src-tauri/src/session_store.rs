@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::AppHandle;
 
+use crate::menu;
 use crate::settings_commands::app_data_dir;
 
 const FILE_NAME: &str = "session.json";
@@ -251,10 +252,36 @@ pub fn session_save_window(
     if let Some(explorer_width) = explorer_width {
         state.explorer_width = Some(explorer_width);
     }
+    let recent_projects_changed = recent_projects.is_some();
     if let Some(recent_projects) = recent_projects {
         state.recent_projects = recent_projects;
     }
-    write_session(&dir, &state)
+    write_session(&dir, &state)?;
+    // Hält `menu.rs`s dynamisches "Zuletzt geöffnete Projekte"-Untermenü
+    // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
+    // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
+    // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
+    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save (die
+    // meisten Aufrufe reichen `recent_projects: None` durch).
+    if recent_projects_changed {
+        menu::refresh(&app);
+    }
+    Ok(())
+}
+
+/// Reads just the recent-projects list, for `menu.rs`'s dynamic "Zuletzt
+/// geöffnete Projekte" submenu — same "always live, rebuild the whole bar"
+/// philosophy as the "Fenster" window list (`windows::window_entries`), just
+/// backed by the persisted session file instead of live window objects
+/// (recent projects has no live in-process equivalent to introspect). A
+/// missing/corrupt session file means "no recent projects yet", same as
+/// every other `read_session` call site.
+pub fn recent_projects<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
+    app_data_dir(app)
+        .ok()
+        .and_then(|dir| read_session(&dir))
+        .map(|state| state.recent_projects)
+        .unwrap_or_default()
 }
 
 /// Counterpart to `session_save_window`, for the window-close path (Ticket
