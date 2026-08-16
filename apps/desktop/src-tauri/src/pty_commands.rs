@@ -175,6 +175,28 @@ pub async fn pty_spawn<R: Runtime>(
         },
     )
     .map_err(|e| e.to_string())?;
+
+    // The window can be destroyed while the disk read above (`app_data_dir`
+    // + `load_overrides`) was in flight — this command is `async`, so a
+    // `CloseRequested` racing that read sees an empty `WindowPtyRegistry`
+    // (this spawn hasn't registered yet), skips the active-session
+    // confirmation gate, and tears the window down with nothing to kill.
+    // Registering into that already-dead window's slot below would leave the
+    // handle above permanently unreachable (`kill_all_for_window` only ever
+    // runs once per window, already ran) — a real orphaned process, not just
+    // a UI freeze (2026-08-16 perf/leak audit finding). Narrows the race
+    // rather than closing it outright (a check-then-register gap remains,
+    // same best-effort posture as `kill_all_for_window`'s own "already-dead
+    // tab_id is a no-op" handling), which is proportionate to how small that
+    // remaining window is.
+    if window.app_handle().get_webview_window(window.label()).is_none() {
+        if let Err(error) = kill(&state, &tab_id) {
+            log::warn!("failed to kill pty {tab_id} spawned for an already-closed window: {error}");
+        }
+        log::info!("pty spawn for tab {tab_id} discarded: window {} closed during spawn", window.label());
+        return Ok(());
+    }
+
     registry.register(window.label(), &tab_id);
     log::info!("pty spawned: tab {tab_id} cwd {cwd}");
     Ok(())
@@ -189,6 +211,14 @@ pub async fn pty_spawn<R: Runtime>(
 /// child (mirrors `std::process::Child`'s own drop behavior). Since Ticket 18
 /// this key is a tab, not a pane — several `tab_id`s belonging to the same
 /// pane are independent entries and never displace each other.
+///
+/// Killing the displaced handle is best-effort (logged, not propagated): the
+/// NEW handle is already inserted into `state` by the time that kill runs, so
+/// a failure there used to `?`-propagate out of this function and skip
+/// `pty_spawn`'s subsequent `registry.register` call — leaving the new PTY
+/// live in `PtyState` but absent from `WindowPtyRegistry`, permanently
+/// unreachable by `kill_all_for_window` on window close (2026-08-16 perf/leak
+/// audit finding).
 fn spawn_and_register<F>(
     state: &PtyState,
     tab_id: String,
@@ -199,12 +229,29 @@ where
     F: Fn(&[u8]) + Send + 'static,
 {
     let handle = pty_manager::spawn(opts, on_output)?;
-    if let Some(previous) = state.0.lock().unwrap().insert(tab_id, handle) {
-        previous.kill()?;
+    let previous = {
+        let tab_id_for_log = tab_id.clone();
+        let previous = state.0.lock().unwrap().insert(tab_id, handle);
+        previous.map(|handle| (tab_id_for_log, handle))
+    };
+    if let Some((tab_id, previous)) = previous {
+        if let Err(error) = previous.kill() {
+            log::warn!("failed to kill pty displaced by a reused tab_id {tab_id}: {error}");
+        }
     }
     Ok(())
 }
 
+// Deliberately NOT `(async)` (2026-08-16 perf/leak audit): `pty_write` fires
+// once per keystroke (`usePtyTerminal.ts`'s `terminal.onData`) and those
+// calls are a byte stream, not idempotent/order-independent — marking this
+// `(async)` would let Tauri dispatch concurrent invocations onto different
+// threads with no ordering guarantee, corrupting typed input order. Staying
+// synchronous keeps every call's enqueue into `PtyHandle`'s writer channel in
+// exact IPC-arrival order; `PtyHandle::write` itself is what got fixed
+// instead (see its own comment in `pty_manager.rs`) — the actual OS write
+// that could previously block this thread indefinitely now happens on a
+// dedicated per-pty thread, off this one.
 #[tauri::command]
 pub fn pty_write(state: State<PtyState>, tab_id: String, data: Vec<u8>) -> Result<(), String> {
     with_handle(&state, &tab_id, |handle| handle.write(&data))

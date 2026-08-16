@@ -507,6 +507,36 @@ fn nanoid() -> String {
     format!("{nanos:x}")
 }
 
+/// Whether this close should preserve the window's `session.json` entry for
+/// the next launch's restore (a real app-wide quit) rather than drop it (a
+/// deliberate single-window close). Only trusts `DeferredQuitState`'s
+/// remembered value on an actually-confirmed retry — the one flow that state
+/// exists for. Any OTHER arrival here (`is_confirmed_retry == false`, i.e. the
+/// "nothing to lose, skip the gate" fast path) still clears whatever might be
+/// sitting in `deferred_quit` for this label, but does not trust it: a stale
+/// entry can only be left behind by an EARLIER close that was halted for
+/// confirmation and then never confirmed (dialog cancelled, or the running
+/// sessions were closed out individually instead) — reaching the fast path
+/// now means this is an unrelated, fresh close, and honoring that leftover
+/// value used to wrongly mark it "quitting" and skip dropping the session
+/// entry, leaving a ghost window that reappeared on next launch (2026-08-16
+/// perf/leak audit finding).
+fn resolve_quitting_close(
+    deferred_quit: &DeferredQuitState,
+    quitting_flag: &QuittingFlag,
+    window_label: &str,
+    is_confirmed_retry: bool,
+) -> bool {
+    if is_confirmed_retry {
+        deferred_quit
+            .recall(window_label)
+            .unwrap_or_else(|| quitting_flag.is_set())
+    } else {
+        deferred_quit.recall(window_label);
+        quitting_flag.is_set()
+    }
+}
+
 /// Window-close cleanup (Ticket 27, landmines 3 + 5): kills every PTY this
 /// window owned and drops its `session.json` entry — unless the whole app is
 /// quitting, in which case every window's own `CloseRequested` fires too and
@@ -553,14 +583,8 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     log::info!("window closing: {}", window.label());
     pty_commands::kill_all_for_window(&pty_state, &registry, window.label());
 
-    // For a window that was deferred above, use the quitting-state captured
-    // back then, not the global flag's current value — it may have just been
-    // cleared by a sibling window's own, unrelated deferral. Everything else
-    // (nothing was ever running, so it never went through the gate) still
-    // reads the flag live, exactly as before this confirmation step existed.
-    let is_quitting_close = deferred_quit
-        .recall(window.label())
-        .unwrap_or_else(|| quitting_flag.is_set());
+    let is_quitting_close =
+        resolve_quitting_close(&deferred_quit, &quitting_flag, window.label(), is_confirmed_retry);
     if is_quitting_close {
         return;
     }
@@ -612,8 +636,8 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 #[cfg(test)]
 mod tests {
     use super::{
-        new_window_label, window_entries, ConfirmedCloseWindows, DeferredQuitState,
-        PendingWindowProjects, MAIN,
+        new_window_label, resolve_quitting_close, window_entries, ConfirmedCloseWindows,
+        DeferredQuitState, PendingWindowProjects, QuittingFlag, MAIN,
     };
     use std::collections::BTreeSet;
 
@@ -702,6 +726,61 @@ mod tests {
             None,
             "a second recall must not still see the first deferral"
         );
+    }
+
+    /// Pins the 2026-08-16 ghost-window bug: a deferral left behind by an
+    /// earlier close that was halted for confirmation and then never
+    /// confirmed (the frontend dialog was cancelled, or the user closed all
+    /// running sessions individually instead) must not answer for a later,
+    /// unrelated, non-retry close of the same window — that close's own
+    /// live `QuittingFlag` state is authoritative, not the stale memory.
+    #[test]
+    fn a_stale_deferral_does_not_leak_into_an_unrelated_later_close() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+
+        // An earlier close was halted mid-quit and remembered "was quitting",
+        // then never confirmed (dialog cancelled).
+        deferred.remember("main", true);
+
+        // A fresh close arrives later, not as a confirmed retry, with no quit
+        // in progress this time.
+        assert!(
+            !resolve_quitting_close(&deferred, &quitting, "main", false),
+            "a non-retry close must read the LIVE quitting flag, not the stale deferral"
+        );
+        assert_eq!(
+            deferred.recall("main"),
+            None,
+            "the stale entry must be cleared, not left to leak into a later close too"
+        );
+    }
+
+    /// The legitimate path this state exists for: a confirmed retry recalls
+    /// exactly what was remembered when its own close was first halted.
+    #[test]
+    fn a_confirmed_retry_uses_its_own_remembered_quitting_state() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+        deferred.remember("main", true);
+
+        // The global flag having since been cleared (as `on_window_event`
+        // itself does right after remembering) must not matter here — only
+        // the remembered value does.
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", true));
+    }
+
+    /// The common case, unaffected by the fix above: nothing was ever
+    /// deferred for this window, so a close (retry or not) simply reads the
+    /// live flag.
+    #[test]
+    fn with_no_deferral_either_path_reads_the_live_flag() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+        quitting.set();
+
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", false));
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", true));
     }
 
     /// `window_entries` on a freshly built mock app with no windows of its

@@ -43,7 +43,7 @@ pub fn default_shell() -> String {
 /// since `try_clone_reader` gives an owned reader that can block on `read`
 /// independently of anything callers do with the handle.
 pub struct PtyHandle {
-    writer: Mutex<Box<dyn Write + Send>>,
+    writer_tx: mpsc::Sender<Vec<u8>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     /// Windows-only job object the spawned process was assigned to at spawn
@@ -238,6 +238,37 @@ where
     let mut reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
 
+    // A dedicated writer thread: `write_all` into the pty has no timeout and
+    // blocks for as long as the foreground process in this pane doesn't read
+    // stdin (e.g. mid-build, or genuinely stuck) — moved off `PtyHandle::
+    // write`'s caller (the IPC dispatch thread, for the non-`(async)`
+    // `pty_write` command) onto its own thread so a slow/stuck consumer can
+    // never freeze the whole window (2026-08-16 perf/leak audit finding).
+    //
+    // `pty_write` deliberately stays non-`(async)`: marking it `(async)`
+    // would let Tauri's async runtime dispatch concurrent invocations onto
+    // different threads with no ordering guarantee between them, corrupting
+    // keystroke order — `usePtyTerminal.ts` sends one `pty_write` per
+    // keystroke via `terminal.onData`, and those are a byte stream, not
+    // independent/idempotent calls. Keeping the command synchronous means
+    // every `pty_write` still enqueues into the channel below in the exact
+    // order IPC delivered it; only the actual (potentially slow) OS write
+    // moves off-thread, not the ordering decision.
+    //
+    // Unbounded, unlike the reader's channel below: write volume is driven by
+    // human typing / one-shot paste size, not an unbounded producer like a
+    // build log's output, so there's no equivalent backpressure need to
+    // bound it here.
+    let (writer_tx, writer_rx) = mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        let mut writer = writer;
+        for data in writer_rx {
+            if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
+                break;
+            }
+        }
+    });
+
     // Two threads, not one: `reader.read` is a blocking OS call with no
     // timeout, so a single thread can't also watch a clock to enforce the
     // time half of the batch bound. The reader thread stays a tight
@@ -307,7 +338,7 @@ where
     });
 
     Ok(PtyHandle {
-        writer: Mutex::new(writer),
+        writer_tx,
         master: Mutex::new(pair.master),
         child: Mutex::new(child),
         #[cfg(windows)]
@@ -316,11 +347,15 @@ where
 }
 
 impl PtyHandle {
+    /// Enqueues onto the dedicated writer thread (see `spawn`'s comment) and
+    /// returns immediately — the actual OS write happens asynchronously, off
+    /// whatever thread called this (the IPC dispatch thread for a live
+    /// `pty_write`). Only fails if that thread has already exited (a prior
+    /// write errored, e.g. broken pipe after the child exited).
     pub fn write(&self, data: &[u8]) -> anyhow::Result<()> {
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(data)?;
-        writer.flush()?;
-        Ok(())
+        self.writer_tx
+            .send(data.to_vec())
+            .map_err(|_| anyhow::anyhow!("pty writer thread has stopped"))
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> anyhow::Result<()> {
