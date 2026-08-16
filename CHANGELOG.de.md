@@ -44,6 +44,14 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.9] - 2026-08-16
+### Behoben
+- Die Speicherwarnung in der Titelleiste konnte auf Rechnern mit weniger
+  Gesamt-RAM viel zu leicht auslösen (und auf solchen mit mehr zu spät): die
+  Schwelle war ein Prozentsatz des System-Gesamt-RAMs statt eines absoluten
+  Werts. Jetzt fest 6GB (Warnung) / 12GB (kritisch), unabhängig vom
+  Gesamt-RAM der Maschine.
+
 ## [0.1.0-nightly.8] - 2026-08-16
 ### Behoben
 - Absturz beim Start behoben, der mit nightly.7 eingeführt wurde: die App

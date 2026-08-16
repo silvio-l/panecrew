@@ -42,6 +42,14 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.9] - 2026-08-16
+### Fixed
+- The title bar's memory warning could trigger far too easily on machines
+  with less total RAM (and too late on machines with more): the threshold
+  was a percentage of total system RAM instead of an absolute amount. Now a
+  fixed 6GB (warning) / 12GB (critical), independent of the machine's total
+  RAM.
+
 ## [0.1.0-nightly.8] - 2026-08-16
 ### Fixed
 - Fixed a startup crash introduced in nightly.7: the app could fail to
