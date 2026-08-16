@@ -78,6 +78,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 export function ExplorerPanel({
   project,
   width,
+  resizing = false,
   selectedFile,
   dirtyFile,
   initialExpanded,
@@ -95,6 +96,14 @@ export function ExplorerPanel({
 }: {
   project: Project;
   width: number;
+  /** True nur während eines laufenden Drags am Resize-Handle
+   * (`App.tsx`s `resizingExplorer`) — schaltet die Breite unten auf die
+   * `--pc-explorer-live-width`-Override um, s. dortiger Kommentar an
+   * `explorerContainerRef`. `false`/weggelassen (Normalfall, auch der
+   * Default hier) rendert `width`px direkt, unverändert gegenüber vor
+   * dieser Umstellung — bestehende Aufrufer (Tests, `HarnessApp.tsx`), die
+   * das Prop nicht kennen, bleiben dadurch unverändert lauffähig. */
+  resizing?: boolean;
   selectedFile: string;
   /** Die im Editor geöffnete Datei, solange sie ungespeicherte Änderungen
    * trägt — projekt-relativ, also in derselben Pfad-Konvention wie
@@ -578,7 +587,20 @@ export function ExplorerPanel({
 
   return (
     <aside
-      style={{ width }}
+      // Nur WÄHREND eines Drags (`resizing`) auf die CSS-Custom-Property
+      // ausweichen: `App.tsx`s Resize-Handle (`startExplorerResize`) trägt
+      // die Breite dann pro `pointermove` direkt als
+      // `--pc-explorer-live-width` auf einen gemeinsamen Vorfahren auf, statt
+      // React State zu committen (kein Re-Render pro Zeigerbewegung, s.
+      // dortiger Kommentar an `explorerContainerRef`) — `var()` löst sie hier
+      // trotzdem jeden Frame live auf. Außerhalb eines Drags bleibt es beim
+      // reinen `width`px wie zuvor, unter anderem damit das Inline-Style
+      // exakt `${width}px` bleibt (Bestandsverhalten/-tests).
+      style={
+        resizing
+          ? { width: `var(--pc-explorer-live-width, ${width}px)` }
+          : { width }
+      }
       className="group/explorer flex shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)"
     >
       {/* Werkzeugleiste ÜBER dem Projektnamen statt daneben (Ticket 26,

@@ -44,7 +44,7 @@
  * (Geometrie in App.css, Slot-Zahl in grid/gridState.ts). Der Akzent trägt
  * jetzt tatsächlich nur EINE Pane: den Rahmen der fokussierten.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -329,18 +329,39 @@ function App() {
     () => new Set(),
   );
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT_WIDTH);
-  // Persistierter Nachfolger von `explorerWidth`: Drag-Resize ruft
-  // `setExplorerWidth` pro `pointermove` auf (bis zu Hunderte Male pro
-  // Ziehvorgang), aber `session_save` schreibt über einen einzigen
-  // Prozess-Temp-Pfad + atomarem Rename — überlappende Aufrufe würden sich
-  // gegenseitig die Datei zerschießen. Dieser State wird deshalb nur am Ende
-  // eines Drags (pointerup) bzw. je Tastendruck aktualisiert, nie während des
-  // Ziehens selbst, und ist die einzige Breite, die `buildSessionState` sieht.
+  // Persistierter Nachfolger von `explorerWidth`: wie `explorerWidth` selbst
+  // (s. `explorerContainerRef` unten) nur am Ende eines Drags (pointerup)
+  // bzw. je Tastendruck aktualisiert, nie während des Ziehens selbst —
+  // `session_save` schreibt über einen einzigen Prozess-Temp-Pfad + atomarem
+  // Rename, überlappende Aufrufe würden sich gegenseitig die Datei
+  // zerschießen. Die einzige Breite, die `buildSessionState` sieht.
   const [persistedExplorerWidth, setPersistedExplorerWidth] = useState(
     EXPLORER_DEFAULT_WIDTH,
   );
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [resizingExplorer, setResizingExplorer] = useState(false);
+  // Gemessen (Render-Kosten-Audit, `.scratch/`-Session 2026-08-16): ein
+  // 30-Schritt-Pointermove-Drag über `setExplorerWidth` löste 31 volle
+  // `PaneGrid`-Commits und 155 `TerminalPane`-Commits aus — der gesamte
+  // Pane-Baum reconciled bei jedem Pixel, obwohl `explorerWidth` dort gar
+  // nicht ankommt (nur `ExplorerPanel` liest die Prop). Dieser Ref trägt die
+  // Breite deshalb WÄHREND des Ziehens direkt als CSS-Custom-Property auf
+  // einen gemeinsamen Vorfahren von Separator und `<aside>` auf (kein
+  // React-Re-Render pro `pointermove`) — `ExplorerPanel.tsx`s `style={{width}}`
+  // löst sie per `var(--pc-explorer-live-width, ${width}px)` auf, der
+  // Explorer folgt dem Zeiger also weiterhin jeden Frame, nur ohne dafür
+  // `PaneGrid` mitzureißen. `explorerWidth` selbst committet erst bei
+  // `pointerup` (Tastatur-Nudge bleibt unverändert synchron).
+  const explorerContainerRef = useRef<HTMLDivElement>(null);
+  // Räumt die Live-Override auf, sobald der committete Wert sie eingeholt
+  // hat — `useLayoutEffect` statt `useEffect`, damit das VOR dem nächsten
+  // Paint passiert (kein sichtbares Zurückspringen auf den alten `width`-
+  // Fallback für einen Frame, bevor der neue Commit sichtbar wird).
+  useLayoutEffect(() => {
+    explorerContainerRef.current?.style.removeProperty(
+      "--pc-explorer-live-width",
+    );
+  }, [explorerWidth]);
   // Liest Baum + Git-Status des von der fokussierten Pane gezeigten Projekts
   // neu, ohne die offene Dateiauswahl anzutasten (anders als ein
   // Projektwechsel).
@@ -1260,10 +1281,19 @@ function App() {
         EXPLORER_MAX_WIDTH,
         Math.max(EXPLORER_MIN_WIDTH, startWidth + ev.clientX - startX),
       );
-      setExplorerWidth(latestWidth);
+      // Direkte DOM-Mutation statt `setExplorerWidth` — s. Kommentar an
+      // `explorerContainerRef` oben. Kein React-Commit pro Zeigerbewegung.
+      explorerContainerRef.current?.style.setProperty(
+        "--pc-explorer-live-width",
+        `${latestWidth}px`,
+      );
     };
     const onUp = () => {
       setResizingExplorer(false);
+      // Einziger Commit des ganzen Drags: `explorerWidth` holt die
+      // Live-Override erst hier ein, der `useLayoutEffect` oben räumt sie
+      // danach ohne sichtbaren Sprung wieder ab.
+      setExplorerWidth(latestWidth);
       setPersistedExplorerWidth(latestWidth);
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
@@ -1292,6 +1322,7 @@ function App() {
             gerendert würde die Leiterbahn an deren Kante beschnitten (dasselbe
             Argument wie beim PathDragGhost ganz außen). */}
         <div
+          ref={explorerContainerRef}
           style={{ paddingTop: `${TITLE_BAR_ZONE_HEIGHT / zoom}px` }}
           className="relative flex min-h-0 flex-1"
         >
@@ -1310,6 +1341,7 @@ function App() {
                 key={project.path}
                 project={project}
                 width={explorerWidth}
+                resizing={resizingExplorer}
                 selectedFile={selectedFile[focusedPaneId ?? ""] ?? ""}
                 dirtyFile={dirtyFile}
                 initialExpanded={expandedFolders[project.path]}
