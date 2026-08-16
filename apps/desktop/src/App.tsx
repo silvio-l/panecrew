@@ -823,19 +823,22 @@ function App() {
 
   // Zwei native Menüpunkte teilen sich dasselbe Ziel-Slot-Muster: "Ordner
   // öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) und ein Eintrag aus
-  // "Zuletzt geöffnete Projekte" (RECENT_PROJECT_ITEM_PREFIX) landen beide in
-  // der fokussierten Pane, wenn eine existiert (ersetzt deren Projekt, genauso
-  // geguardet wie ein Klick auf ihren eigenen Ordner-Wechsel), sonst im ersten
-  // leeren Slot — dasselbe Muster wie beim Ablegen einer gezogenen Explorer-
-  // Zeile. Kein Ziel-Slot bedeutet: Grid voll UND nichts fokussiert — kann
-  // praktisch nicht vorkommen (ein volles Grid hat immer eine fokussierte
-  // Pane), aber dann bewusst wirkungslos statt zu raten.
+  // "Zuletzt geöffnete Projekte" (RECENT_PROJECT_ITEM_PREFIX) landen beide im
+  // ersten LEEREN Slot, wenn einer existiert — ein explizites "Öffnen" soll
+  // kein bestehendes, unbeteiligtes Pane verdrängen, solange noch Platz im
+  // Grid ist. Erst wenn das Grid komplett voll ist, fällt es auf die
+  // fokussierte Pane zurück (ersetzt deren Projekt, genauso geguardet wie ein
+  // Klick auf ihren eigenen Ordner-Wechsel) — bis 2026-08-16 war das die
+  // EINZIGE Regel (fokussierte Pane immer zuerst), was ein Öffnen aus der
+  // "Zuletzt geöffnet"-Liste auch bei freiem Platz im Grid die fokussierte
+  // Pane überschreiben ließ (User-Bugreport). Kein Ziel-Slot bedeutet: Grid
+  // voll UND nichts fokussiert — kann praktisch nicht vorkommen (ein volles
+  // Grid hat immer eine fokussierte Pane), aber dann bewusst wirkungslos
+  // statt zu raten.
   const resolveMenuTargetSlot = () => {
-    const focusedIndex = gridState.slots.findIndex(
-      (slot) => slot?.paneId === focusedPaneId,
-    );
-    if (focusedIndex !== -1) return focusedIndex;
-    return gridState.slots.findIndex((slot) => slot === null);
+    const emptyIndex = gridState.slots.findIndex((slot) => slot === null);
+    if (emptyIndex !== -1) return emptyIndex;
+    return gridState.slots.findIndex((slot) => slot?.paneId === focusedPaneId);
   };
   const openFolderMenuHandlerRef = useRef<(() => void) | null>(null);
   const openRecentProjectMenuHandlerRef = useRef<((path: string) => void) | null>(null);
