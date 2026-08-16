@@ -88,6 +88,21 @@ impl WindowPtyRegistry {
     pub fn forget_window(&self, window_label: &str) {
         self.0.lock().unwrap().remove(window_label);
     }
+
+    /// Reverse of the map this struct otherwise keeps (window -> tabs):
+    /// `tab_id` -> owning window's label, for `resource_monitor`'s per-tick
+    /// samples, which start from a flat tab list and need to attach each
+    /// one back to its window.
+    pub(crate) fn window_for_tab_snapshot(&self) -> HashMap<String, String> {
+        let map = self.0.lock().unwrap();
+        let mut reverse = HashMap::new();
+        for (window_label, tab_ids) in map.iter() {
+            for tab_id in tab_ids {
+                reverse.insert(tab_id.clone(), window_label.clone());
+            }
+        }
+        reverse
+    }
 }
 
 /// The shell a NEW `pty_spawn` call should use: the current `terminal.shell`

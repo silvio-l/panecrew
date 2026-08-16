@@ -5,14 +5,15 @@
 //! günstig genug, um über die gesamte Prozesslaufzeit mitzulaufen.
 
 use std::collections::VecDeque;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::pty_commands::PtyState;
+use crate::pty_commands::{PtyState, WindowPtyRegistry};
 use crate::resource_guard::{self, ResourceGuardState};
+use crate::windows;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -63,6 +64,22 @@ struct TabUsage {
     mem_percent: f32,
     cpu_percent: f32,
     mem_bytes: u64,
+    /// `None` only in the brief race between a tab spawning and
+    /// `WindowPtyRegistry::register` running for it (see `pty_spawn`) — the
+    /// frontend drops such a tab from window grouping the same way it
+    /// already drops a tab with no sample yet.
+    window_label: Option<String>,
+}
+
+/// One entry per open content window (excludes "about"/"settings"/splash,
+/// same filter as the native "Window" menu it's built from) — lets the
+/// frontend label each window's tab group with something a user recognizes
+/// instead of the bare Tauri window label.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowInfo {
+    label: String,
+    title: String,
 }
 
 #[derive(Serialize)]
@@ -79,6 +96,7 @@ struct ResourceUsage {
     /// System-Gesamt-RAM und würde Rundungsdrift einführen).
     mem_bytes_total: u64,
     tabs: Vec<TabUsage>,
+    windows: Vec<WindowInfo>,
 }
 
 fn classify<T: PartialOrd>(value: T, warn: T, critical: T) -> Status {
@@ -120,6 +138,7 @@ pub fn start(app: AppHandle) {
         let mut cpu_history: VecDeque<f32> = VecDeque::with_capacity(CPU_SMOOTHING_WINDOW);
 
         loop {
+            let tick_start = Instant::now();
             // `All` instead of only PaneCrew's own pid and its PTY shells:
             // `resource_guard`'s per-tab tree walk needs every process'
             // parent pointer to find descendants it doesn't already know the
@@ -165,6 +184,12 @@ pub fn start(app: AppHandle) {
             cpu_history.push_back(cpu_percent_raw);
             let cpu_percent = cpu_history.iter().sum::<f32>() / cpu_history.len() as f32;
 
+            let window_for_tab = app.state::<WindowPtyRegistry>().window_for_tab_snapshot();
+            let window_infos: Vec<WindowInfo> = windows::window_labels_and_titles(&app)
+                .into_iter()
+                .map(|(label, title)| WindowInfo { label, title })
+                .collect();
+
             let usage = ResourceUsage {
                 mem_percent,
                 cpu_percent,
@@ -174,14 +199,34 @@ pub fn start(app: AppHandle) {
                 tabs: tab_samples
                     .into_iter()
                     .map(|sample| TabUsage {
+                        window_label: window_for_tab.get(&sample.tab_id).cloned(),
                         tab_id: sample.tab_id,
                         mem_percent: sample.mem_percent,
                         cpu_percent: sample.cpu_percent,
                         mem_bytes: sample.mem_bytes,
                     })
                     .collect(),
+                windows: window_infos,
             };
             let _ = app.emit(EVENT_NAME, &usage);
+
+            // User-reported beachball-on-pane-switch (2026-08-16): no
+            // reproduction was pinned down yet (this thread's own
+            // `ProcessesToUpdate::All` scan measured ~3ms on a 440-process
+            // dev machine, not a plausible cause on its own), but this tick
+            // does touch several shared locks (`PtyState`, `WindowPtyRegistry`,
+            // `ResourceGuardState`) that PTY commands also take — an
+            // occasional slow tick, if one ever occurs, is a real suspect.
+            // Threshold-gated so a normal ~3-10ms tick never spams the log,
+            // which the user can already inspect without a live console
+            // handoff (`PANECREW_LOG=debug`, see logging.rs docstring).
+            let tick_elapsed = tick_start.elapsed();
+            if tick_elapsed > Duration::from_millis(100) {
+                log::warn!(
+                    "resource_monitor: tick took {:?} (budget: 100ms)",
+                    tick_elapsed
+                );
+            }
 
             std::thread::sleep(SAMPLE_INTERVAL);
         }

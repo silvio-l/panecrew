@@ -120,7 +120,29 @@ pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Str
         .values()
         .find(|w| w.is_focused().unwrap_or(false))
         .map(|w| w.label().to_string());
-    let mut labels: Vec<String> = windows
+
+    window_labels_and_titles(app)
+        .into_iter()
+        .map(|(label, title)| {
+            let checked = focused_label.as_deref() == Some(label.as_str());
+            (label, title, checked)
+        })
+        .collect()
+}
+
+/// Same label/title list as `window_entries`, but without its `is_focused()`
+/// call per window — that dispatches to the platform window handle and, on
+/// macOS, blocks waiting for the main thread's event loop. `window_entries`
+/// itself already only runs from menu-rebuild call sites, all on the main
+/// thread already, so the cost is fine there; `resource_monitor`'s 5-second
+/// background-thread sampler tick doesn't need "is this window focused" at
+/// all (only `label`/`title`, for the resource popover's window grouping)
+/// and calling the focus-checking variant from that thread risked adding
+/// main-thread contention on every tick — a plausible contributor to the
+/// beachball-on-pane-switch report.
+pub(crate) fn window_labels_and_titles<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String)> {
+    let mut labels: Vec<String> = app
+        .webview_windows()
         .keys()
         .filter(|label| is_content_window(label))
         .cloned()
@@ -136,8 +158,7 @@ pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Str
             } else {
                 format!("PaneCrew — Fenster {}", index + 1)
             };
-            let checked = focused_label.as_deref() == Some(label.as_str());
-            (label, title, checked)
+            (label, title)
         })
         .collect()
 }

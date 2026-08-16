@@ -24,6 +24,11 @@ export interface TabUsageSample {
   memPercent: number;
   cpuPercent: number;
   memBytes: number;
+  /** Owning native window's label, or `null` in the brief race between a tab
+   * spawning and the backend's `WindowPtyRegistry` registering it — such a
+   * tab is dropped from window grouping the same way a tab with no sample
+   * yet is already dropped from pane grouping below. */
+  windowLabel: string | null;
 }
 
 export interface TabUsageRow extends TabUsageSample {
@@ -84,6 +89,78 @@ export function groupTabUsageByPane(
   }
   groups.sort((a, b) => b.topPercent - a.topPercent);
   return groups.map(({ group }) => group);
+}
+
+export interface WindowInfo {
+  label: string;
+  title: string;
+}
+
+export interface WindowUsageGroup {
+  windowLabel: string;
+  windowTitle: string;
+  /** Only populated for the current window — its Pane structure is the only
+   * one this frontend instance has live access to. */
+  panes: PaneUsageGroup[];
+  /** Other windows' tabs: a flat list, no pane grouping (that window's own
+   * Pane layout, and any custom tab rename, is only known to ITS OWN React
+   * state — never sent over `resource-usage`). */
+  tabs: TabUsageRow[];
+}
+
+/**
+ * Top-level window grouping over the flat, app-wide sample list the backend
+ * emits every tick (`resource_monitor.rs`'s `windowLabel` per tab). The
+ * CURRENT window gets full pane grouping via `groupTabUsageByPane`, reusing
+ * this window's own live grid state; every OTHER window is grouped by its
+ * `windowLabel` alone into a flat, dominant-consumer-first tab list. Always
+ * returns the current window first (even with zero panes: the tree the user
+ * is looking at stays anchored), the rest ordered by their heaviest tab.
+ * With only one window open, the result is a single-element array — callers
+ * collapse that case to the pre-existing flat (no window heading) view.
+ */
+export function groupTabUsageByWindow(
+  ownWindowLabel: string,
+  windowInfos: readonly WindowInfo[],
+  panes: readonly Pane[],
+  samples: readonly TabUsageSample[],
+): WindowUsageGroup[] {
+  const ownSamples = samples.filter((sample) => sample.windowLabel === ownWindowLabel);
+  const otherByWindow = new Map<string, TabUsageSample[]>();
+  for (const sample of samples) {
+    if (sample.windowLabel === null || sample.windowLabel === ownWindowLabel) continue;
+    const list = otherByWindow.get(sample.windowLabel);
+    if (list) {
+      list.push(sample);
+    } else {
+      otherByWindow.set(sample.windowLabel, [sample]);
+    }
+  }
+
+  const titleFor = (label: string) => windowInfos.find((w) => w.label === label)?.title ?? label;
+
+  const ownGroup: WindowUsageGroup = {
+    windowLabel: ownWindowLabel,
+    windowTitle: titleFor(ownWindowLabel),
+    panes: groupTabUsageByPane(panes, ownSamples),
+    tabs: [],
+  };
+
+  const otherGroups: { group: WindowUsageGroup; topPercent: number }[] = [];
+  for (const [windowLabel, windowSamples] of otherByWindow) {
+    // Kein `label` bekannt (s. Interface-Kommentar oben) -> immer `null`,
+    // dieselbe Positionsnummerierung wie sonst als einziger Anker.
+    const rows: TabUsageRow[] = windowSamples
+      .map((sample, index) => ({ ...sample, number: index + 1, label: null }))
+      .sort((a, b) => dominantPercent(b) - dominantPercent(a));
+    otherGroups.push({
+      group: { windowLabel, windowTitle: titleFor(windowLabel), panes: [], tabs: rows },
+      topPercent: dominantPercent(rows[0] as TabUsageRow),
+    });
+  }
+  otherGroups.sort((a, b) => b.topPercent - a.topPercent);
+
+  return [ownGroup, ...otherGroups.map(({ group }) => group)];
 }
 
 const BYTES_PER_MB = 1024 * 1024;

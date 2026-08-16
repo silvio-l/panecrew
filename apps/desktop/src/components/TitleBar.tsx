@@ -7,7 +7,8 @@ import type { Pane } from "../grid/gridState";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
 import { DEFAULT_APP_ZOOM } from "../shortcuts/zoom";
-import { formatMemoryBytes, groupTabUsageByPane } from "../terminal/resourceUsageTree";
+import { formatMemoryBytes, groupTabUsageByWindow } from "../terminal/resourceUsageTree";
+import { windowIdentity } from "../window/useWindowIdentity";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { ResourceUsageTreeTooltip } from "./ResourceUsageTree";
 
@@ -454,6 +455,9 @@ interface TabUsagePayload {
   /** Rohe RSS-Summe des Tab-Prozessbaums in Bytes, s. `resource_guard.rs`s
    * `TabResourceSample`-Kommentar (nicht aus `memPercent` zurückgerechnet). */
   memBytes: number;
+  /** Besitzendes natives Fenster, `null` nur in der kurzen Race zwischen
+   * Tab-Spawn und `WindowPtyRegistry`-Registrierung. */
+  windowLabel: string | null;
 }
 
 interface ResourceUsagePayload {
@@ -464,11 +468,16 @@ interface ResourceUsagePayload {
   /** Rohe App-weite RSS-Summe in Bytes, s. `resource_monitor.rs`s
    * `ResourceUsage`-Kommentar (nicht aus `memPercent` zurückgerechnet). */
   memBytesTotal: number;
-  /** Flache Liste (kein Pane-Bezug — der lebt nur im Grid-Store), eine
-   * Stichprobe pro noch lebendem Tab (`resource_monitor.rs`, aus
-   * `resource_guard::tick_all` durchgereicht). Das Popover unten gruppiert
-   * sie selbst per `groupTabUsageByPane` anhand des aktuellen Grid-Zustands. */
+  /** Flache Liste über ALLE offenen Fenster hinweg (kein Pane-Bezug — der
+   * lebt nur im jeweiligen Fenster-Grid-Store), eine Stichprobe pro noch
+   * lebendem Tab (`resource_monitor.rs`, aus `resource_guard::tick_all`
+   * durchgereicht). Das Popover unten gruppiert sie selbst per
+   * `groupTabUsageByWindow` nach Fenster, dann (nur fürs eigene Fenster)
+   * nach Pane. */
   tabs: TabUsagePayload[];
+  /** Jedes offene Content-Fenster mit einem menschenlesbaren Titel —
+   * dieselbe Quelle wie das native "Fenster"-Menü. */
+  windows: { label: string; title: string }[];
 }
 
 const RESOURCE_STATUS_COLOR: Record<ResourceStatus, string> = {
@@ -541,10 +550,10 @@ function ResourceUsageReadout({
     memStatus: memStatusLabel,
     cpuStatus: cpuStatusLabel,
   });
-  const groups = groupTabUsageByPane(panes, usage.tabs);
+  const windowGroups = groupTabUsageByWindow(windowIdentity().label, usage.windows, panes, usage.tabs);
 
   return (
-    <ResourceUsageTreeTooltip summary={tooltip} groups={groups}>
+    <ResourceUsageTreeTooltip summary={tooltip} windowGroups={windowGroups}>
       <div
         data-tauri-drag-region="deep"
         className="pointer-events-auto -mx-1.5 -my-0.5 flex shrink-0 items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--pc-list-hoverBackground)"
