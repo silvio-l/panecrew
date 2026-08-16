@@ -81,26 +81,23 @@ const description =
   /* Nav/footer/token CSS shared with the guide-page layout lives in
      ../styles/site-chrome.css (imported above) — this block now only
      holds the tokens/rules unique to this page, plus the small per-page
-     local halves of the selectors site-chrome.css splits (.nav, .foot,
-     .foot-gh, .glyph-tile — see that file's header comment). */
+     local halves of the selectors site-chrome.css splits (.foot, .foot-gh,
+     .glyph-tile — see that file's header comment). --page-gut/--span-wide
+     and .wrap/.nav/.foot's width+margin+padding also moved to
+     site-chrome.css (2026-08-16) since guide pages need the identical
+     values, not page-local ones. */
   :root {
     /* cinematic refinement (2026-08-14): shared reveal easing + a single
        tracking token for the small mono labels that were previously four
        uncoordinated one-offs (.kicker, .hint, .xpl .hd). */
     --reveal-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
     --label-track: 0.09em;
-    /* page-width scale (2026-08-14, reference-site-derived): no single fixed
-       content box anymore. The reference direction lays the whole page on a
-       12-column body grid and lets each section pick its own span (2/-2 for
-       showcases, 3/-3 for reading-width blocks) — translated here into
-       two proportional spans that keep growing with the viewport instead
-       of stopping at the old uniform 1120px cap. "wide" ≈ that reference's
-       2/-2 showcase span (~82% of a 1920px viewport), "mid" ≈ 3/-3. Genuinely
-       narrow content (section intros, the install copy) keeps its own
-       small max-width — that's the same reference's own exception pattern,
-       not a third span. */
-    --page-gut: clamp(22px, 3.2vw, 64px);
-    --span-wide: min(calc(1140px + 23vw), calc(100% - 2 * var(--page-gut)));
+    /* --span-mid (2026-08-14, reference-site-derived): the reference
+       direction lays the whole page on a 12-column body grid and lets each
+       section pick its own span (2/-2 for showcases → shared --span-wide,
+       3/-3 for reading-width blocks → this). Only used on this page (the
+       oss-grid section), so it stays local; --span-wide lives in
+       site-chrome.css now since guide pages need it too. */
     --span-mid: min(calc(880px + 16vw), calc(100% - 2 * var(--page-gut)));
   }
   body {
@@ -126,11 +123,6 @@ const description =
     opacity: 0.16; mix-blend-mode: overlay;
   }
 
-  /* every .wrap is a showcase section (hero, crew cards, closer rows,
-     oss grid) — they all ride the wide span; the gutters live inside the
-     span math, so no extra padding here. */
-  .wrap { width: var(--span-wide); margin: 0 auto; }
-
   /* ---------- eyebrow ornament (terminal-true ASCII corners) ---------- */
   .eyebrow {
     font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em;
@@ -142,9 +134,6 @@ const description =
   .eyebrow::after { content: "──╮"; letter-spacing: 0; color: rgba(229, 150, 86, 0.55); }
   .eyebrow.left { justify-content: flex-start; }
 
-  /* ---------- nav (position/display/gap etc. shared, width/margin/padding
-     local — see site-chrome.css) ---------- */
-  .nav { width: var(--span-wide); margin: 0 auto; padding: 20px 0; }
   /* HUD readout — one small reusable instrument-strip component, seeded
      from the footer's pre-existing "panes: 4 · explorers: 1" idiom. Bare
      .hud-readout is inline text (app-bar strips, footer); the --badge
@@ -927,10 +916,10 @@ const description =
   }
   .install-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
-  /* ---------- wave + cream footer (nav/footer base rules shared, see
-     site-chrome.css — width/gap/background/border below are this page's
+  /* ---------- wave + cream footer (nav/footer base rules + width shared,
+     see site-chrome.css — gap/background/border below are this page's
      own values) ---------- */
-  .foot { width: var(--span-wide); margin: 0 auto; gap: 14px; flex-wrap: wrap; }
+  .foot { gap: 14px; flex-wrap: wrap; }
   .glyph-tile { display: flex; background: #1f243c; flex: none; }
   .foot-gh { flex: none; border: 1px solid rgba(35, 40, 63, 0.14); }
   /* footer pad cluster: the readout's own illustration — four powered pane
@@ -970,7 +959,8 @@ const description =
     .closer-row.rev .closer-vis { order: 0; }
   }
   @media (max-width: 560px) {
-    .nav-links { display: none; }
+    /* .nav-links now collapses via site-chrome.css's own @media block,
+       shared with guide pages. */
     .scrollcue { display: none; }
     .app-bar .hud-readout { display: none; }
     .app-body { grid-template-columns: 1fr; height: auto; }
