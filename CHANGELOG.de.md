@@ -33,6 +33,56 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+## [0.1.0-nightly.7] - 2026-08-16
+### Hinzugefügt
+- Split-Pane-Tastenkürzel (Strg/Cmd+Umschalt+5): teilt die aktuell fokussierte
+  Kachel, indem das Grid auf das nächstgrößere Layout wächst und das Projekt
+  dieser Kachel in den neu entstandenen Slot wandert.
+- Trennlinien zwischen benachbarten Slots lassen sich jetzt per Drag oder
+  Pfeiltasten verschieben, um das Größenverhältnis zwischen ihnen anzupassen,
+  ohne das Grid-Layout selbst zu ändern; ein Doppelklick setzt eine Trennlinie
+  auf ihren Standardwert zurück.
+- Command Palette (⌘⇧P), auch über das Suchfeld in der Titelleiste erreichbar,
+  für schnellen Layout-Wechsel oder Sprung zu Ordner öffnen, Einstellungen
+  oder der Tastenkürzel-Referenz.
+- Ablage-Menü: "Ordner öffnen" (⌘O), ein Untermenü "Zuletzt geöffnete
+  Projekte", "Neues Fenster" und "Alle Fenster schließen".
+- Eine In-App-Referenz aller Tastenkürzel, erreichbar über das Menü.
+- Leere Grid-Slots zeigen jetzt app-weit eine Liste zuletzt geöffneter
+  Projekte statt nur eines leeren Pickers.
+- Die Vor/Zurück-Pfeile in der Titelleiste navigieren jetzt den Kachel-Fokus
+  sowohl im Grid- als auch im Fokus-Modus.
+
+### Geändert
+- Neuinstallationen starten jetzt standardmäßig auf Englisch, statt
+  automatisch der Systemsprache zu folgen.
+- Intern: eine für einen einzelnen Bug gebaute Wegwerf-Debug-Erfassung wurde
+  durch dauerhaftes Produktions-Logging (Backend + Frontend) in eine
+  rotierende Log-Datei ersetzt — erleichtert die Diagnose künftiger
+  Bug-Reports ohne Live-Konsolen-Übergabe.
+
+### Behoben
+- Speicheranzeige in der Titelleiste: der Gesamt-RAM-Wert zählt jetzt auch
+  Kindprozesse der Terminals mit, nicht mehr nur die Shells selbst.
+- Strg+K zum Leeren des Terminals kollidiert unter Windows/Linux nicht mehr
+  mit dem Readline-Kürzel kill-line.
+- Cmd+W schließt jetzt nur noch den aktuellen Terminal-Tab statt des ganzen
+  Fensters.
+- Ein Fenster schließen (über den Schließen-Button oder Cmd+Q) fragt jetzt
+  nach, wenn noch Terminal-Sitzungen laufen.
+- Datei-Explorer: der `.git`-Ordner ist nicht mehr unsichtbar — er wurde
+  bisher identisch zu `node_modules` gefiltert.
+- Der Explorer-Baum zeigt jetzt wirklich alles, inklusive `.git` und
+  `node_modules`/`target` gemeinsam.
+- Datei-Explorer: "Pfad kopieren" im Kontextmenü landet jetzt tatsächlich in
+  der Zwischenablage.
+- Datei-Explorer: ein Refresh lässt bereits aufgeklappte Unterordner nicht
+  mehr sichtbar kurz zu- und wieder aufklappen.
+- Geistertext der Inline-Autovervollständigung fügt sich nicht mehr an der
+  falschen Cursorposition ein.
+- Windows: zwei reale Compile-Bugs behoben, aufgedeckt durch einen neuen
+  Windows-CI-Matrix-Job für die Rust-Testsuite.
+
 ## [0.1.0-nightly.6] - 2026-08-15
 ### Hinzugefügt
 - Ein Rechtsklick auf das Dock-Icon zeigt unter macOS jetzt ein natives Menü

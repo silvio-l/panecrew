@@ -33,6 +33,54 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+## [0.1.0-nightly.7] - 2026-08-16
+### Added
+- Split Pane shortcut (Ctrl/Cmd+Shift+5): splits the currently focused pane
+  by growing the grid to the next-larger layout and moving that pane's
+  project into the newly revealed slot.
+- Pane borders between adjacent slots can now be dragged (or resized with
+  arrow keys) to adjust the size ratio between them, without changing the
+  overall grid layout; double-click resets a border to its default.
+- Command Palette (⌘⇧P), also reachable via the title bar's search field,
+  for quickly switching layouts or jumping to Open Folder, Settings, or the
+  shortcuts reference.
+- File menu: "Open Folder" (⌘O), a "Recently Opened Projects" submenu, "New
+  Window", and "Close All Windows".
+- An in-app keyboard shortcuts reference, reachable from the menu.
+- Empty grid slots now show a "recently opened projects" list app-wide
+  instead of just an empty picker.
+- Title bar back/forward arrows now navigate pane focus in both grid and
+  focus mode.
+
+### Changed
+- New installs now default to English instead of following the system
+  language automatically.
+- Internal: replaced a throwaway single-bug debug capture with durable
+  production logging (backend + frontend) to a rotating log file, making
+  future bug reports easier to diagnose without a live console handoff.
+
+### Fixed
+- Title bar memory indicator: total RAM usage now also counts terminal
+  child processes, not just the shells themselves.
+- Ctrl+K for clearing the terminal no longer collides with the readline
+  kill-line shortcut on Windows/Linux.
+- Cmd+W now closes only the current terminal tab instead of the whole
+  window.
+- Closing a window (via the close button or Cmd+Q) now asks for
+  confirmation if terminal sessions are still running.
+- File explorer: the `.git` folder is no longer hidden — it was being
+  filtered the same way as `node_modules`.
+- File explorer tree now genuinely shows everything, including `.git` and
+  `node_modules`/`target` directories together.
+- File explorer: "Copy Path" in the context menu now actually copies to the
+  clipboard.
+- File explorer: refreshing no longer visibly collapses and re-expands
+  already-open subfolders.
+- Inline autocomplete ghost text no longer inserts at the wrong cursor
+  position.
+- Windows: fixed two real compile bugs surfaced by adding a Windows CI
+  matrix job for the Rust test suite.
+
 ## [0.1.0-nightly.6] - 2026-08-15
 ### Added
 - Right-clicking the Dock icon on macOS now shows a native menu with "New
