@@ -114,7 +114,18 @@ pub struct ExplorerWatchState(Mutex<HashMap<String, ProjectWatcher>>);
 /// project trading focus (allowed per ticket 04) — both land here with an
 /// unchanged root, so that case is a no-op rather than tearing the watcher
 /// down and rebuilding it.
-#[tauri::command]
+///
+/// `async`: same bug class as `git_status.rs::explorer_git_status` (its
+/// comment has the verified-against-tauri-2.11.5 threading claim this relies
+/// on). `ProjectWatcher::start` reseeds `notify-debouncer-full`'s file-id
+/// cache via an unbounded, symlink-following `WalkDir` over the whole
+/// project root (`file_id_map.rs::FileIdMap::add_path`) — measured 6.75s in
+/// a release build against this repo's own 218k-file tree (2026-08-16,
+/// user-reported beachball on pane switching). App.tsx's focused-path effect
+/// tears the watch down and rebuilds it on every pane focus switch between
+/// two different projects, so a non-async command here froze the whole
+/// window for the full walk on every such switch.
+#[tauri::command(async)]
 pub fn explorer_watch_start(
     window: Window,
     state: tauri::State<ExplorerWatchState>,
@@ -126,8 +137,16 @@ pub fn explorer_watch_start(
     let root = std::fs::canonicalize(&requested).unwrap_or(requested);
     let label = window.label().to_string();
 
-    let mut guard = state.0.lock().unwrap();
-    if guard.get(&label).is_some_and(|watcher| watcher.root() == root) {
+    // Lock released before the (multi-second) walk below, not held across
+    // it: `explorer_watch_stop`/`stop_for_window` still take this same lock
+    // inline on the IPC dispatch thread/main thread respectively, and would
+    // otherwise queue behind the walk for its full duration — trading the
+    // original freeze for an equally long one on the very next invoke.
+    let already_watching = {
+        let guard = state.0.lock().unwrap();
+        guard.get(&label).is_some_and(|watcher| watcher.root() == root)
+    };
+    if already_watching {
         return Ok(());
     }
 
@@ -135,7 +154,12 @@ pub fn explorer_watch_start(
     let watcher = ProjectWatcher::start(root, move || {
         let _ = emit_window.emit(CHANGED_EVENT, ());
     })?;
-    guard.insert(label, watcher);
+    // Benign check-then-act race with a concurrent start for the same
+    // window (e.g. two rapid focus switches): both walk, both finish, last
+    // `insert` here wins and the loser's `ProjectWatcher` is simply dropped
+    // (stops its debouncer thread) — cheaper than serializing switches
+    // behind the lock again.
+    state.0.lock().unwrap().insert(label, watcher);
     Ok(())
 }
 
