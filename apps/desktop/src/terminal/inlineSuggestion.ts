@@ -56,6 +56,14 @@ export function attachInlineSuggestion(
   let anchor: BufferPosition | null = null;
   let sessionHistory: string[] = [];
   let ghost = "";
+  // Die Cursorposition, für die `ghost` berechnet wurde — Pflichtangabe für
+  // `accept()`, weil die Neuberechnung erst per `requestAnimationFrame`
+  // läuft (s. u.): eine Pfeiltaste nach links bewegt den Bildschirmcursor
+  // schon per Shell-Echo, bevor der nächste Frame den Geistertext dafür
+  // gelöscht hat. Ohne diesen Abgleich würde ein direkt danach gedrücktes
+  // Pfeil-rechts den veralteten Text noch mitten in die Zeile schreiben statt
+  // nur den Cursor zu bewegen.
+  let ghostCursor: BufferPosition | null = null;
   let marker: IMarker | null = null;
   let decoration: IDecoration | null = null;
   let frame = 0;
@@ -75,6 +83,7 @@ export function attachInlineSuggestion(
 
   const clearGhost = () => {
     ghost = "";
+    ghostCursor = null;
     decoration?.dispose();
     marker?.dispose();
     decoration = null;
@@ -140,6 +149,7 @@ export function attachInlineSuggestion(
       history: [...sessionHistory, ...baseHistory()],
       isDirectory,
     });
+    ghostCursor = ghost ? cursor : null;
     if (ghost) drawGhost(ghost, cursor.x);
 
     // Beides zugleich ist Absicht: die Ergänzung im Text ist der eine wahr-
@@ -189,6 +199,15 @@ export function attachInlineSuggestion(
   return {
     accept: () => {
       if (!ghost) return false;
+      // Der Cursor kann sich seit der letzten Berechnung schon bewegt haben,
+      // ohne dass der nächste Frame das schon nachgezogen hat — dann gehört
+      // der Geistertext nicht mehr zur aktuellen Position und wird verworfen
+      // statt an der falschen Stelle eingefügt.
+      const cursor = cursorPosition();
+      if (ghostCursor?.x !== cursor.x || ghostCursor.y !== cursor.y) {
+        clearGhost();
+        return false;
+      }
       // Über denselben Schreibpfad wie eine echte Eingabe: die Shell
       // spiegelt den Text zurück, der Geistertext wird dadurch zu Inhalt.
       write(ghost);
