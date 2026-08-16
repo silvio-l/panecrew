@@ -88,7 +88,22 @@ fn to_dto(entry: &crate::config_registry::SchemaEntry) -> SchemaEntryDto {
     }
 }
 
+/// `PANECREW_DATA_DIR_OVERRIDE`, when set, replaces Tauri's own resolved
+/// app-data dir outright — the one seam that lets a second, automation-driven
+/// instance run against an isolated session/settings store while still
+/// inheriting the real `$HOME` (and therefore real shell/tool auth) for
+/// everything else. Settings I/O, PTY session persistence, and the settings
+/// registry all route through this function rather than
+/// `app.path().app_data_dir()` directly, so the override is honored there.
+/// Known gap: `windows.rs`'s persisted-window restore/save paths still call
+/// `app.path().app_data_dir()` directly and are not yet covered — an
+/// override-isolated instance's window layout still reads/writes the real
+/// session file. Fold in before relying on this for anything beyond
+/// settings/PTY-session isolation.
 pub(crate) fn app_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, String> {
+    if let Ok(override_dir) = std::env::var("PANECREW_DATA_DIR_OVERRIDE") {
+        return Ok(std::path::PathBuf::from(override_dir));
+    }
     app.path()
         .app_data_dir()
         .map_err(|error| format!("Anwendungsverzeichnis nicht verfügbar: {error}"))
@@ -191,7 +206,10 @@ pub fn settings_read_raw(app: AppHandle) -> Result<String, String> {
 /// guarantee falls directly out of the calling order in
 /// `settings_write_raw`: nothing reaches `settings_store::write_overrides`
 /// unless this returns `Ok`.
-fn parse_and_validate_raw(registry: &ConfigRegistry, raw: &str) -> Result<settings_store::Overrides, String> {
+fn parse_and_validate_raw(
+    registry: &ConfigRegistry,
+    raw: &str,
+) -> Result<settings_store::Overrides, String> {
     let parsed: serde_json::Value =
         serde_json::from_str(raw).map_err(|error| format!("Ungültiges JSON: {error}"))?;
     let overrides = parsed

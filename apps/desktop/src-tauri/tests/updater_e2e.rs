@@ -116,7 +116,8 @@ async fn download_verifies_real_signature_and_rejects_tampering() {
     let tmp_dir = std::env::temp_dir().join(format!("panecrew-updater-e2e-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir).unwrap();
     let artifact_path = tmp_dir.join("artifact.tar.gz");
-    let artifact_bytes = b"panecrew e2e test artifact - inhalt ist fuer die signaturpruefung irrelevant".to_vec();
+    let artifact_bytes =
+        b"panecrew e2e test artifact - inhalt ist fuer die signaturpruefung irrelevant".to_vec();
     std::fs::write(&artifact_path, &artifact_bytes).unwrap();
 
     let valid_signature = sign_with_real_cli(&artifact_path, &key_path);
@@ -226,7 +227,9 @@ fn build_fake_app_tarball(marker_content: &str) -> Vec<u8> {
         let mut builder = tar::Builder::new(&mut tar_bytes);
         let exe_content = b"#!/bin/sh\necho fake\n";
         let mut exe_header = tar::Header::new_gnu();
-        exe_header.set_path("FakeApp.app/Contents/MacOS/faketool").unwrap();
+        exe_header
+            .set_path("FakeApp.app/Contents/MacOS/faketool")
+            .unwrap();
         exe_header.set_size(exe_content.len() as u64);
         exe_header.set_mode(0o755);
         exe_header.set_cksum();
@@ -246,7 +249,8 @@ fn build_fake_app_tarball(marker_content: &str) -> Vec<u8> {
 
     let mut gz_bytes = Vec::new();
     {
-        let mut encoder = flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
+        let mut encoder =
+            flate2::write::GzEncoder::new(&mut gz_bytes, flate2::Compression::default());
         encoder.write_all(&tar_bytes).unwrap();
         encoder.finish().unwrap();
     }
