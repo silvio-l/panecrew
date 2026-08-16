@@ -54,7 +54,7 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
     let name = name.to_string_lossy();
 
     if name.contains("zsh") {
-        let dir = root.join("zsh").to_string_lossy().into_owned();
+        let dir = to_posix_path(&root.join("zsh"));
         return ShellIntegration {
             // `-l`: a Finder-launched app's PTY isn't a login shell by
             // default, unlike the defaults of interactive terminal apps — so
@@ -84,7 +84,7 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
         return ShellIntegration {
             args: vec![
                 "--rcfile".into(),
-                root.join("bash").join("rc").to_string_lossy().into_owned(),
+                to_posix_path(&root.join("bash").join("rc")),
             ],
             env: vec![],
         };
@@ -93,11 +93,64 @@ pub fn for_shell(shell: &str, root: &Path) -> ShellIntegration {
     ShellIntegration::default()
 }
 
+/// `--rcfile` and `ZDOTDIR` are consumed by a POSIX shell (bash/zsh, whether
+/// native or, on Windows, Git Bash/MSYS), which needs forward slashes — but
+/// `Path::join` always uses the host's native separator, backslash on
+/// Windows. Without this, bash sees `--rcfile` paths like `C:\pc\bash\rc`,
+/// where backslash is bash's escape character, and silently mis-parses them.
+fn to_posix_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
+
+    /// zsh ships on macOS by default but isn't guaranteed on Linux CI runners
+    /// or on Windows (no native build; Git for Windows doesn't bundle one
+    /// either). Tests that need a real zsh binary skip themselves here rather
+    /// than failing on a platform that never had zsh to begin with.
+    fn zsh_available() -> bool {
+        std::process::Command::new("zsh")
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+    }
+
+    /// The executable to spawn for a real bash, or `None` if this test
+    /// should skip itself.
+    ///
+    /// On Unix, the bare name `"bash"` is fine — normal `PATH` search finds
+    /// it. On Windows it isn't: `CreateProcess`'s search order checks the
+    /// Windows system directory *before it ever consults `PATH`*, and
+    /// `C:\WINDOWS\system32\bash.exe` is an OS-shipped WSL launcher
+    /// stub, not a real bash — no reordering of `PATH` can outrank a step
+    /// that happens before `PATH` is read at all. Real production shell
+    /// selection never hits this: it always resolves to `%COMSPEC%` (already
+    /// absolute) or a user-picked absolute path, never a bare name. These
+    /// tests hardcode a bare name for brevity, so on Windows they resolve
+    /// Git for Windows' real `bash.exe` by absolute path instead, and skip
+    /// if it isn't installed at a known location.
+    fn bash_binary() -> Option<String> {
+        #[cfg(not(windows))]
+        {
+            Some("bash".into())
+        }
+        #[cfg(windows)]
+        {
+            for program_files_var in ["ProgramFiles", "ProgramFiles(x86)"] {
+                if let Ok(program_files) = std::env::var(program_files_var) {
+                    let candidate = Path::new(&program_files).join("Git/bin/bash.exe");
+                    if candidate.is_file() {
+                        return Some(candidate.to_string_lossy().into_owned());
+                    }
+                }
+            }
+            None
+        }
+    }
 
     #[test]
     fn materialize_writes_both_shells_wrappers() {
@@ -157,6 +210,10 @@ mod tests {
     /// drops the user's hook) only shows up once bash has actually parsed it.
     #[test]
     fn the_bash_wrapper_keeps_the_users_own_prompt_command() {
+        let Some(bash) = bash_binary() else {
+            eprintln!("skipping: no bash binary found");
+            return;
+        };
         // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-bash-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
@@ -177,9 +234,9 @@ mod tests {
 
         let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let collected = output.clone();
-        let handle = crate::pty_manager::spawn(
+        let handle = crate::pty_manager::spawn_answering_dsr(
             crate::pty_manager::SpawnOptions {
-                cmd: "bash".into(),
+                cmd: bash,
                 args,
                 // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
@@ -188,8 +245,7 @@ mod tests {
                 rows: 24,
             },
             move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
-        )
-        .expect("spawn should succeed");
+        );
 
         let saw = |needle: &str| {
             let start = Instant::now();
@@ -228,6 +284,10 @@ mod tests {
     /// itself once zsh has actually walked its own startup-file chain.
     #[test]
     fn the_login_flag_makes_zsh_source_the_users_own_zprofile() {
+        if !zsh_available() {
+            eprintln!("skipping: no zsh binary on PATH");
+            return;
+        }
         // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let root = std::env::temp_dir().join(format!("panecrew-zsh-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
@@ -256,7 +316,7 @@ mod tests {
 
         let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let collected = output.clone();
-        let handle = crate::pty_manager::spawn(
+        let handle = crate::pty_manager::spawn_answering_dsr(
             crate::pty_manager::SpawnOptions {
                 cmd: "zsh".into(),
                 args,
@@ -267,8 +327,7 @@ mod tests {
                 rows: 24,
             },
             move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
-        )
-        .expect("spawn should succeed");
+        );
 
         let saw = |needle: &str| {
             let start = Instant::now();
@@ -293,8 +352,13 @@ mod tests {
     /// tests above.
     #[test]
     fn the_bash_wrapper_sources_the_users_own_login_profile() {
+        let Some(bash) = bash_binary() else {
+            eprintln!("skipping: no bash binary found");
+            return;
+        };
         // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
-        let root = std::env::temp_dir().join(format!("panecrew-bash-profile-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("panecrew-bash-profile-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
         let home = root.join("home");
         std::fs::create_dir_all(&home).expect("home should be creatable");
@@ -315,9 +379,9 @@ mod tests {
 
         let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let collected = output.clone();
-        let handle = crate::pty_manager::spawn(
+        let handle = crate::pty_manager::spawn_answering_dsr(
             crate::pty_manager::SpawnOptions {
-                cmd: "bash".into(),
+                cmd: bash,
                 args,
                 // nosemgrep: rust.lang.security.temp-dir.temp-dir -- arbitrary real cwd for a test-only PTY spawn, not a security operation.
                 cwd: std::env::temp_dir(),
@@ -326,8 +390,7 @@ mod tests {
                 rows: 24,
             },
             move |bytes| collected.lock().unwrap().extend_from_slice(bytes),
-        )
-        .expect("spawn should succeed");
+        );
 
         let saw = |needle: &str| {
             let start = Instant::now();

@@ -312,15 +312,20 @@ mod tests {
     }
 
     fn is_process_alive(pid: u32) -> bool {
-        // `kill -0` sends no signal, only checks whether the pid could be
-        // signaled — the same existence probe a process manager would use.
-        // Its own "No such process" message goes to stderr once the child
-        // has died, which is expected during polling, not a real failure.
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        // `kill -0` (the previous approach here) sends no signal, only
+        // checks whether the pid could be signaled — but it's a Unix-only
+        // binary, absent on Windows, where the shell-out itself fails
+        // (never mind what it reports), so every check here came back
+        // false regardless of whether the child was actually running.
+        // `sysinfo` (already a dependency, same crate `tool_detect` uses)
+        // gives the same existence check on every platform this app ships.
+        let mut system = sysinfo::System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+            true,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+        system.process(sysinfo::Pid::from_u32(pid)).is_some()
     }
 
     #[test]

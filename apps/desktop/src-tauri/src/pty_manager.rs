@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -389,10 +390,51 @@ impl PtyHandle {
     }
 }
 
+/// Windows' ConPTY, unlike a Unix pty, queries the cursor position via a
+/// `ESC[6n` Device Status Report as soon as the pseudoconsole session
+/// starts, and holds back all output — including the child's own — until
+/// something writes the reply back. A real terminal frontend answers this
+/// itself: xterm.js parses `ESC[6n` and fires the reply straight back out
+/// through `onData`, which `usePtyTerminal.ts` wires to `pty_write`, so
+/// production already handles this. Tests that call `spawn()` directly have
+/// no terminal attached, so this answers on their behalf instead —
+/// reproducing what xterm.js does, not working around a gap in the app.
+/// `pub(crate)` so `shell_integration`'s own real-PTY tests can use it too,
+/// not just this module's.
+///
+/// The handle has to reach the `on_output` closure to write the reply, but
+/// `spawn()` only returns it after the closure is already moved in — so this
+/// stashes it into a shared slot right after `spawn()` returns. The reader
+/// thread's own batching delay (`OUTPUT_BATCH_MAX_DELAY`, 8ms) means the
+/// first `on_output` call can't fire before that slot is filled, which
+/// happens within microseconds of `spawn()` returning.
+#[cfg(test)]
+pub(crate) fn spawn_answering_dsr(
+    opts: SpawnOptions,
+    on_output: impl Fn(&[u8]) + Send + 'static,
+) -> Arc<PtyHandle> {
+    let handle_slot: Arc<Mutex<Option<Arc<PtyHandle>>>> = Arc::new(Mutex::new(None));
+    let handle_slot_clone = handle_slot.clone();
+
+    let handle = spawn(opts, move |bytes| {
+        if bytes.windows(4).any(|w| w == b"\x1b[6n") {
+            if let Some(handle) = handle_slot_clone.lock().unwrap().as_ref() {
+                let _ = handle.write(b"\x1b[1;1R");
+            }
+        }
+        on_output(bytes);
+    })
+    .expect("spawn should succeed");
+
+    let handle = Arc::new(handle);
+    *handle_slot.lock().unwrap() = Some(handle.clone());
+    handle
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     fn wait_for<F: Fn() -> bool>(predicate: F, timeout: Duration) -> bool {
@@ -409,12 +451,12 @@ mod tests {
     /// Spawns `sh` (bare, or `-c <script>`) with a shared output collector —
     /// every test below needs exactly this pair and differed only in
     /// boilerplate, not intent.
-    fn spawn_sh(script: Option<&str>) -> (PtyHandle, Arc<Mutex<Vec<u8>>>) {
+    fn spawn_sh(script: Option<&str>) -> (Arc<PtyHandle>, Arc<Mutex<Vec<u8>>>) {
         let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let output_clone = output.clone();
         let args = script.map_or_else(Vec::new, |s| vec!["-c".to_string(), s.to_string()]);
 
-        let handle = spawn(
+        let handle = spawn_answering_dsr(
             SpawnOptions {
                 cmd: "sh".into(),
                 args,
@@ -427,8 +469,7 @@ mod tests {
             move |bytes| {
                 output_clone.lock().unwrap().extend_from_slice(bytes);
             },
-        )
-        .expect("spawn should succeed");
+        );
 
         (handle, output)
     }
@@ -541,7 +582,7 @@ mod tests {
         let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let output_clone = output.clone();
 
-        let handle = spawn(
+        let handle = spawn_answering_dsr(
             SpawnOptions {
                 cmd: "cat".into(),
                 args: vec![],
@@ -555,8 +596,7 @@ mod tests {
                 call_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 output_clone.lock().unwrap().extend_from_slice(bytes);
             },
-        )
-        .expect("spawn should succeed");
+        );
 
         const WRITE_COUNT: usize = 30;
         for i in 0..WRITE_COUNT {
@@ -608,7 +648,7 @@ mod tests {
         /// child (this `sh`) itself alive until killed, matching a real
         /// pane with a running foreground job.
         struct Fixture {
-            handle: PtyHandle,
+            handle: Arc<PtyHandle>,
             output: Arc<Mutex<Vec<u8>>>,
         }
 
