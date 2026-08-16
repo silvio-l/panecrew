@@ -3,6 +3,8 @@ pub mod cli;
 pub mod config_core;
 pub mod config_manifest;
 pub mod config_registry;
+// [DEBUG-a4f2] siehe debug_capture.rs' Kopfkommentar — nach Bugfix entfernen.
+pub mod debug_capture;
 #[cfg(target_os = "macos")]
 pub mod dock;
 pub mod explorer_fs;
@@ -208,6 +210,7 @@ pub fn run() {
             settings_window::settings_visible,
             windows::window_open_new,
             windows::window_close_confirmed,
+            debug_capture::debug_a4f2_log,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
