@@ -356,9 +356,8 @@ mod tests {
             eprintln!("skipping: no bash binary found");
             return;
         };
-        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
-        let root =
-            std::env::temp_dir().join(format!("panecrew-bash-profile-{}", std::process::id()));
+        let scratch_dir = std::env::temp_dir(); // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
+        let root = scratch_dir.join(format!("panecrew-bash-profile-{}", std::process::id()));
         materialize(&root).expect("materialize should succeed");
         let home = root.join("home");
         std::fs::create_dir_all(&home).expect("home should be creatable");
