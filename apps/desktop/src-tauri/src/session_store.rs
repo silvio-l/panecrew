@@ -232,6 +232,18 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
 /// exactly as read — callers that don't own that piece of state (e.g. a save
 /// triggered purely by a grid change) pass `None` rather than resending a
 /// value they don't have.
+///
+/// Bug (found 2026-08-16, user-reported beachball on pane switching): the
+/// frontend's autosave effect (`App.tsx`) actually passes the CURRENT
+/// `recentProjects` array on every single fire, never `None` — including one
+/// triggered by a pure pane-focus switch, since that touches `gridState`,
+/// which is in the effect's dependency array. A prior `recent_projects.
+/// is_some()` check here was therefore true on nearly every autosave, not
+/// just an actual list change as this docstring already claimed — so a full
+/// native macOS menu-bar rebuild (`menu::refresh` -> `set_menu` ->
+/// `run_on_main_thread`) fired on every single pane click, a plausible
+/// contributor to the reported lag. `recent_projects_actually_changed` below
+/// restores the intended "only on a real change" gate.
 #[tauri::command(async)]
 pub fn session_save_window(
     app: AppHandle,
@@ -252,7 +264,8 @@ pub fn session_save_window(
     if let Some(explorer_width) = explorer_width {
         state.explorer_width = Some(explorer_width);
     }
-    let recent_projects_changed = recent_projects.is_some();
+    let recent_projects_changed =
+        recent_projects_actually_changed(&recent_projects, &state.recent_projects);
     if let Some(recent_projects) = recent_projects {
         state.recent_projects = recent_projects;
     }
@@ -261,12 +274,21 @@ pub fn session_save_window(
     // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
     // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
     // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
-    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save (die
-    // meisten Aufrufe reichen `recent_projects: None` durch).
+    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save.
     if recent_projects_changed {
         menu::refresh(&app);
     }
     Ok(())
+}
+
+/// Pure comparison behind `session_save_window`'s menu-refresh gate — split
+/// out so the "only on a real change" contract has its own test, independent
+/// of a live `AppHandle`. `None` (caller doesn't own this field) is never a
+/// change; `Some` is a change only if it actually differs from what's
+/// currently stored.
+fn recent_projects_actually_changed(new: &Option<Vec<String>>, previous: &[String]) -> bool {
+    new.as_ref()
+        .is_some_and(|new_list| new_list.as_slice() != previous)
 }
 
 /// Reads just the recent-projects list, for `menu.rs`'s dynamic "Zuletzt
@@ -753,6 +775,36 @@ mod tests {
         .expect("overwrite recent_projects");
         let read_back = read_session(&fixture.0).expect("should read back");
         assert_eq!(read_back.recent_projects, vec![project_b, project_a]);
+    }
+
+    /// Regression test for the beachball-on-pane-switch investigation
+    /// (2026-08-16): the frontend always passes `Some(recentProjects)` here,
+    /// including on saves that a pure focus switch triggers, so this gate is
+    /// the only thing standing between that and a native menu-bar rebuild on
+    /// every single pane click.
+    #[test]
+    fn recent_projects_actually_changed_ignores_none_and_a_resent_identical_list() {
+        let previous = vec!["/a".to_string(), "/b".to_string()];
+        assert!(!recent_projects_actually_changed(&None, &previous));
+        assert!(!recent_projects_actually_changed(
+            &Some(previous.clone()),
+            &previous
+        ));
+    }
+
+    #[test]
+    fn recent_projects_actually_changed_detects_a_real_difference() {
+        let previous = vec!["/a".to_string()];
+        assert!(recent_projects_actually_changed(
+            &Some(vec!["/b".to_string(), "/a".to_string()]),
+            &previous
+        ));
+        // Empty previous state (fresh install/session) is also a real change
+        // once the frontend has anything to report.
+        assert!(recent_projects_actually_changed(
+            &Some(vec!["/a".to_string()]),
+            &[]
+        ));
     }
 
     #[test]
