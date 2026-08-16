@@ -15,10 +15,20 @@ interface Props {
   title: string;
   description: string;
   path: string; // e.g. "/guides/multiple-cli-agent-sessions/"
+  datePublished: string; // ISO date, e.g. "2026-08-13" — per-page, not hardcoded here
 }
-const { title, description, path } = Astro.props;
+const { title, description, path, datePublished } = Astro.props;
 const siteUrl = "https://panecrew.dev";
 const canonical = `${siteUrl}${path}`;
+
+const techArticleJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: title,
+  datePublished,
+  author: { "@type": "Organization", name: "PaneCrew" },
+  publisher: { "@id": "https://panecrew.dev/#organization" },
+};
 ---
 
 <!doctype html>
@@ -42,6 +52,7 @@ const canonical = `${siteUrl}${path}`;
 <meta name="twitter:image" content={`${siteUrl}/og-image.png`}>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" href="/favicon.png">
+<script type="application/ld+json" set:html={JSON.stringify(techArticleJsonLd)} />
 <slot name="head" />
 <style is:global>
   /* nav/footer/token CSS lives in ../styles/site-chrome.css (imported

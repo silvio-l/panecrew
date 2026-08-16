@@ -10,7 +10,7 @@
 import "../styles/site-chrome.css";
 
 const siteUrl = "https://panecrew.dev";
-const title = "PaneCrew — A pane for every agent";
+const title = "PaneCrew — Run Multiple AI Coding Agents at Once";
 const description =
   "Run multiple CLI agent sessions, projects, and windows in one app — Claude Code, Codex, Gemini CLI — with a focus-following file explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support, multi-project/multi-window), shown verbatim in <meta description>
 ---
@@ -42,6 +42,7 @@ const description =
   "@graph": [
     {
       "@type": "Organization",
+      "@id": "https://panecrew.dev/#organization",
       "name": "PaneCrew",
       "url": "https://panecrew.dev",
       "logo": "https://panecrew.dev/favicon.png"
@@ -1217,6 +1218,7 @@ const description =
             </div>
             <p>Up to four real, PTY-backed terminals side by side across different projects — all visible at once. A grid, not a tab switcher.</p>
             <a class="more" href="/guides/multiple-cli-agent-sessions/">Running multiple agent sessions at once →</a>
+            <a class="more" href="/guides/how-many-claude-code-sessions/" style="display:block; margin-top:4px;">How many sessions should you run? →</a><!-- brandlint-ok: functional cross-link, target guide's own title -->
           </div>
         </article>
 
@@ -1235,6 +1237,7 @@ const description =
               <span class="badge cy"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>follows focus</span>
             </div>
             <p>One file explorer for the whole grid. Click a pane — the tree is already showing that project. View, edit, move on.</p>
+            <a class="more" href="/guides/prevent-agents-editing-same-files/">Running several agents on one repo? →</a>
           </div>
         </article>
       </div>

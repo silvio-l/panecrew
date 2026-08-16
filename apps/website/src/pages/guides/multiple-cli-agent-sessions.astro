@@ -1,7 +1,7 @@
 ---
 import GuideLayout from "../../layouts/GuideLayout.astro";
 
-const title = "How to Run Multiple CLI Coding Agent Sessions at Once — PaneCrew";
+const title = "Run Multiple Claude Code Sessions at Once | PaneCrew"; // brandlint-ok: literal confirmed search phrase, this ticket's retarget
 const description =
   "Run several CLI coding agents — Claude Code, Codex, Gemini CLI — side by side in one terminal grid, each with its own pane and explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
 
@@ -18,6 +18,14 @@ const faq = [
     q: "Do I need a terminal multiplexer like tmux for this?",
     a: "No — a multiplexer splits one terminal into panes you still navigate with keyboard shortcuts. PaneCrew keeps every pane simultaneously visible in a real window grid, so nothing is ever hidden behind a tab.",
   },
+  {
+    q: "How do I manage multiple Claude Code sessions without losing track?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
+    a: "Keep every session visible instead of switching tabs — PaneCrew's grid shows all active Claude Code sessions at once, with a file explorer that follows whichever pane has focus.", // brandlint-ok: functional FAQ answer, real supported tool
+  },
+  {
+    q: "Can I run multiple Claude Code sessions in VS Code?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
+    a: "VS Code's integrated terminal supports multiple tabs, but only one is visible at a time. PaneCrew keeps up to four Claude Code sessions simultaneously visible in a real grid instead.", // brandlint-ok: functional FAQ answer, real comparison to a named competing feature
+  },
 ];
 
 const faqJsonLd = {
@@ -30,7 +38,7 @@ const faqJsonLd = {
   })),
 };
 ---
-<GuideLayout title={title} description={description} path="/guides/multiple-cli-agent-sessions/">
+<GuideLayout title={title} description={description} path="/guides/multiple-cli-agent-sessions/" datePublished="2026-08-13">
   <Fragment slot="head">
     <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
   </Fragment>
@@ -59,7 +67,7 @@ const faqJsonLd = {
       </div>
     ))}
 
-    <p>Running one agent session per project? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows instead of one grid.</p>
+    <p>Running one agent session per project? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows instead of one grid. Not sure how many sessions is actually worth running at once? See <a href="/guides/how-many-claude-code-sessions/">how many Claude Code sessions to run at once</a>. Running several agents against the same repo? See <a href="/guides/prevent-agents-editing-same-files/">how to prevent multiple coding agents from editing the same files</a>.</p><!-- brandlint-ok: functional cross-links, target guides' own titles -->
 
     <div class="cta">
       <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS today, with a
