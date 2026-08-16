@@ -120,6 +120,8 @@ export function PaneGrid({
   onExitFocusMode,
   onChangeSplitRatios,
   rotation,
+  onboardingHintSlot,
+  onboardingHint,
 }: {
   state: GridState;
   paneFileEditors: PaneFileEditors;
@@ -217,6 +219,16 @@ export function PaneGrid({
    * gehalten in `App.tsx` — hier nur gereicht an die HUD-Leiste der
    * maximierten Zelle. */
   rotation: FocusRotation;
+  /** The empty slot `onboarding/onboardingState.ts::onboardingHintSlot`
+   * currently points at, or `null` — App.tsx derives this from live grid
+   * state, this component only places the already-built hint at the right
+   * slot. */
+  onboardingHintSlot: number | null;
+  /** The already-built hint node (`onboarding/OnboardingHint.tsx`), or
+   * `null` when onboarding is complete/dismissed. Rendered only at
+   * `onboardingHintSlot` — a drag's own `dropInvite` there takes priority
+   * (`ProjectPicker.tsx`'s `dropInvite`/`onboardingHint` mutual exclusion). */
+  onboardingHint: ReactNode | null;
 }) {
   const { t } = useTranslation();
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -631,6 +643,7 @@ export function PaneGrid({
                 />
               ) : null
             }
+            onboardingHint={onboardingHintSlot === index ? onboardingHint : null}
           />
         ),
       )}

@@ -57,6 +57,7 @@ export function ProjectPicker({
   onOpenRecent,
   onRemoveRecent,
   dropInvite = null,
+  onboardingHint = null,
 }: {
   onChoose: () => void;
   busy: boolean;
@@ -97,6 +98,11 @@ export function ProjectPicker({
    * laufenden Zugs ist) — hier nur platziert, nicht hergeleitet: was ein Zug
    * ist und wann er läuft, weiß allein das Grid. */
   dropInvite?: ReactNode;
+  /** The first-run/restart callout (`onboarding/OnboardingHint.tsx`) for
+   * whichever slot `onboarding/onboardingState.ts::onboardingHintSlot`
+   * currently points at — same sibling-to-the-button placement as
+   * `dropInvite`, App.tsx decides which slot (if any) gets one. */
+  onboardingHint?: ReactNode;
 }) {
   const { t } = useTranslation();
   const slotNumber = slotIndex + 1;
@@ -178,6 +184,7 @@ export function ProjectPicker({
         </div>
       )}
       {dropInvite}
+      {!dropInvite && onboardingHint}
     </div>
   );
 }

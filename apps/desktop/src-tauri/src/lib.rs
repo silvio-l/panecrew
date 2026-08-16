@@ -13,6 +13,7 @@ pub mod json_store;
 pub mod launch;
 pub mod logging;
 pub mod menu;
+pub mod onboarding_store;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
@@ -257,6 +258,8 @@ pub fn run() {
             settings_commands::settings_write_raw,
             settings_commands::settings_open_window,
             settings_window::settings_visible,
+            onboarding_store::onboarding_get_state,
+            onboarding_store::onboarding_set_completed,
             windows::window_open_new,
             windows::take_pending_window_project,
             windows::window_close_confirmed,

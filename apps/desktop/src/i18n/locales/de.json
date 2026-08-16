@@ -184,6 +184,19 @@
     "hint": "PaneCrew startet darin eine echte Shell.",
     "removeRecent": "Aus Liste entfernen"
   },
+  "onboarding": {
+    "hint": {
+      "empty": {
+        "title": "Mehrere Projekte, gleichzeitig sichtbar",
+        "body": "Öffne hier dein erstes Projekt — der Explorer links folgt automatisch der aktiven Pane."
+      },
+      "hasPanes": {
+        "title": "Der Explorer folgt der aktiven Pane",
+        "body": "Öffne ein zweites Projekt in einem freien Platz, um das Raster in Aktion zu sehen."
+      },
+      "dismiss": "Hinweis schließen"
+    }
+  },
   "templateSwitcher": {
     "selectTemplate": "Template wählen",
     "blockedAriaLabel": "{{label}} — {{reason}}",
@@ -236,7 +249,23 @@
       "terminal": "Terminal",
       "explorer": "Explorer",
       "appearance": "Erscheinungsbild",
-      "grid": "Raster"
+      "grid": "Raster",
+      "help": "Hilfe"
+    },
+    "help": {
+      "onboarding": {
+        "label": "Einführung erneut anzeigen",
+        "description": "Zeigt den Einführungshinweis am nächsten freien Platz im Raster erneut an.",
+        "button": "Einführung neu starten",
+        "confirmation": "Zurückgesetzt — der Hinweis erscheint wieder, sobald ein Platz im Raster frei ist."
+      },
+      "permissions": {
+        "title": "Berechtigungen (macOS)",
+        "explainer": "macOS fragt bei bestimmten Zugriffen (z. B. auf Ordner außerhalb des Nutzerverzeichnisses) einzeln nach. Diese Zugriffe lassen sich hier zentral verwalten:",
+        "fullDiskAccess": "Vollständiger Festplattenzugriff",
+        "filesAndFolders": "Dateien und Ordner",
+        "privacySecurityOverview": "Datenschutz & Sicherheit (Übersicht)"
+      }
     },
     "terminalRestartHint": "Gilt ab der nächsten neuen Terminal-Sitzung — die laufende Sitzung bleibt unverändert.",
     "rawJson": {

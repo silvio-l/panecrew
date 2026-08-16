@@ -3,5 +3,12 @@
   "identifier": "settings",
   "description": "Capability for the settings window",
   "windows": ["settings"],
-  "permissions": ["core:default", "log:default"]
+  "permissions": [
+    "core:default",
+    "log:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "x-apple.systempreferences:*" }]
+    }
+  ]
 }

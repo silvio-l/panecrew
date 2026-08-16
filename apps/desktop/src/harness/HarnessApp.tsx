@@ -235,6 +235,8 @@ export function HarnessApp({
                 onExitFocusMode={grid.exitFocusMode}
                 onChangeSplitRatios={grid.setSplitRatios}
                 rotation={focusRotation}
+                onboardingHintSlot={null}
+                onboardingHint={null}
               />
             </main>
             {project !== null && (

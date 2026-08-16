@@ -16,14 +16,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
+import { info } from "../logging/log";
+import { setOnboardingCompleted } from "../onboarding/onboarding";
+import { isMacPlatform } from "../shortcuts/platform";
 import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
 
 const CORE_CATEGORY_ORDER = ["terminal", "explorer", "appearance", "grid"];
+// "help" is not schema-driven (no settings registry entries) — added
+// unconditionally rather than gated on `schema` presence like the core/
+// extension categories above, and rendered via its own `HelpCategoryPanel`
+// branch instead of the generic `SettingRow` list (see `selectedCategory ===
+// "help"` below).
+const STATIC_CATEGORIES = ["help"];
 
 function i18nBase(entry: SettingSchemaEntry): string | null {
   return entry.description.kind === "i18nKey"
@@ -174,10 +184,25 @@ export function SettingsWindow() {
                 }}
               />
             ))}
+            <div role="separator" className="my-1.5 border-t border-(--pc-widget-border)" />
+            {STATIC_CATEGORIES.map((id) => (
+              <CategoryButton
+                key={id}
+                id={id}
+                label={t(`settings.categories.${id}`)}
+                active={!trimmedQuery && id === selectedCategory}
+                onSelect={() => {
+                  setQuery("");
+                  setSelectedCategory(id);
+                }}
+              />
+            ))}
           </nav>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {loading ? (
+            {!trimmedQuery && selectedCategory === "help" ? (
+              <HelpCategoryPanel t={t} />
+            ) : loading ? (
               <p className="text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
                 {t("common.loading")}
               </p>
@@ -590,5 +615,138 @@ function RawJsonView({
         </button>
       </div>
     </div>
+  );
+}
+
+// The one non-schema-driven category (`STATIC_CATEGORIES` above): the
+// onboarding restart button (works on every platform) plus the macOS
+// permissions dashboard folded in from the earlier permissions research —
+// a single place to re-grant OS access instead of waiting for a fresh TCC
+// prompt per-folder.
+function HelpCategoryPanel({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="flex flex-col divide-y divide-(--pc-widget-border)">
+      <OnboardingRestartRow t={t} />
+      {isMacPlatform() && <PermissionsSection t={t} />}
+    </div>
+  );
+}
+
+// Same row shape as `SettingRow` (label + description on the left, control
+// on the right) even though this isn't a schema entry — a button instead of
+// a toggle/enum control, restarting the first-run hint from `App.tsx`
+// instead of writing a config value.
+function OnboardingRestartRow({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  // Local-only "restarted" confirmation, deliberately not tied to whether
+  // the hint can actually render anywhere right now (it can't if every grid
+  // slot is already occupied) — without this, a click with a full grid
+  // looked exactly like a dead button. The state change itself (onboarding
+  // marked incomplete again) is real either way; this just makes it
+  // observable.
+  const [restarted, setRestarted] = useState(false);
+
+  return (
+    <div className="flex items-start justify-between gap-4 py-3">
+      <div className="min-w-0">
+        <span className="text-(length:--pc-chrome-fontSize) text-(--pc-foreground)">
+          {t("settings.help.onboarding.label")}
+        </span>
+        <p className="mt-0.5 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
+          {t("settings.help.onboarding.description")}
+        </p>
+        {restarted && (
+          <p className="mt-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground)">
+            {t("settings.help.onboarding.confirmation")}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          void setOnboardingCompleted(false);
+          void info("onboarding: reset from settings");
+          setRestarted(true);
+        }}
+        className={`shrink-0 rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+      >
+        {t("settings.help.onboarding.button")}
+      </button>
+    </div>
+  );
+}
+
+// One deep link per row: `url` is a `x-apple.systempreferences:` scheme,
+// scoped in `capabilities/settings.json` (the plugin-opener default scope
+// only covers mailto/tel/http/https — this settings window needed its own
+// explicit scope entry for the systempreferences scheme). Only the two
+// long-stable anchors (Full Disk Access, Files and Folders) plus the bare
+// Privacy & Security pane are used — no Sequoia-specific "App Data" anchor,
+// since no stable one could be confirmed.
+function PermissionsSection({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const [openError, setOpenError] = useState(false);
+  const open = (url: string) => {
+    setOpenError(false);
+    void openUrl(url).catch((error: unknown) => {
+      console.error("PaneCrew: Systemeinstellungen konnten nicht geöffnet werden", error);
+      setOpenError(true);
+    });
+  };
+
+  return (
+    <div className="py-3">
+      <p className="text-(length:--pc-chrome-fontSize) text-(--pc-foreground)">
+        {t("settings.help.permissions.title")}
+      </p>
+      <p className="mt-0.5 max-w-md text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
+        {t("settings.help.permissions.explainer")}
+      </p>
+      {openError && (
+        <p className="mt-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
+          {t("settings.loadError")}
+        </p>
+      )}
+      <div className="mt-2 flex flex-col items-start gap-1.5">
+        <PermissionsLinkButton
+          label={t("settings.help.permissions.fullDiskAccess")}
+          onClick={() =>
+            open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+          }
+        />
+        <PermissionsLinkButton
+          label={t("settings.help.permissions.filesAndFolders")}
+          onClick={() =>
+            open("x-apple.systempreferences:com.apple.preference.security?Privacy_Files")
+          }
+        />
+        <PermissionsLinkButton
+          label={t("settings.help.permissions.privacySecurityOverview")}
+          onClick={() => open("x-apple.systempreferences:com.apple.preference.security")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PermissionsLinkButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+    >
+      {label} →
+    </button>
   );
 }

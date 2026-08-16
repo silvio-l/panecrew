@@ -1,10 +1,12 @@
 import { Profiler, StrictMode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import App from "./App";
+import { resetOnboardingStoreForTests } from "./onboarding/onboarding";
 
 // Unter jsdom läuft weder eine Tauri-Runtime noch ein echtes xterm.js (das
 // misst Zellgrößen am realen Renderer). Gemockt wird deshalb genau die
@@ -253,6 +255,17 @@ vi.mock("@xterm/xterm", () => ({
 const openMock = vi.mocked(open);
 const openPathMock = vi.mocked(openPath);
 const invokeMock = vi.mocked(invoke);
+const listenMock = vi.mocked(listen);
+
+/** Der zuletzt via `listen("onboarding:changed", …)` registrierte Callback —
+ * simuliert einen Broadcast aus einem anderen Fenster (z. B. dem
+ * Settings-Neustart-Button), ohne den echten Tauri-Event-Bus. */
+function lastOnboardingChangedCallback():
+  | ((event: { payload: { completed: boolean } }) => void)
+  | undefined {
+  const call = listenMock.mock.calls.find((candidate) => candidate[0] === "onboarding:changed");
+  return call?.[1] as ((event: { payload: { completed: boolean } }) => void) | undefined;
+}
 
 // Quad zeigt seit Ticket 03 vier leere Slots statt der früheren einen
 // vollflächigen Picker — die allermeisten Bestandstests wollen weiterhin
@@ -2760,6 +2773,188 @@ describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
         | undefined;
       expect(last?.recentProjects).toEqual(["/Users/dev/projects/keep"]);
     });
+  });
+});
+
+describe("Onboarding-Hinweis", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+    // `onboarding.ts`s Zwischenstand ist modulweit (wie `settingsStore.ts`s
+    // eigener) — ohne Reset würde er zwischen den Tests DIESES Blocks
+    // durchsickern, und mit ihm auch in die Blöcke davor/danach.
+    resetOnboardingStoreForTests();
+  });
+
+  afterEach(() => {
+    resetOnboardingStoreForTests();
+  });
+
+  it("zeigt den Erstlauf-Hinweis am ersten leeren Slot, wenn Onboarding noch nicht abgeschlossen ist", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
+    ).toBeInTheDocument();
+  });
+
+  it("zeigt keinen Hinweis, wenn Onboarding bereits abgeschlossen ist", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: true });
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+    await screen.findAllByRole("button", { name: "Projekt wählen" });
+
+    expect(
+      screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("schließt den Hinweis über das Dismiss-Kreuz und meldet die Vervollständigung ans Backend", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+    await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hinweis schließen" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+    );
+  });
+
+  it("vervollständigt automatisch, sobald eine zweite Pane gleichzeitig offen ist (Aha-Moment)", async () => {
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+    await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+
+    openMock.mockResolvedValueOnce("/Users/dev/projects/one");
+    clickPicker();
+    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
+
+    openMock.mockResolvedValueOnce("/Users/dev/projects/two");
+    fireEvent.click(pickerButton(1));
+    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+    );
+  });
+
+  it("vervollständigt eine wiederhergestellte Sitzung mit bereits zwei Panes sofort beim Start (Bestandsnutzer-Migration)", async () => {
+    // Ein Nutzer, dessen `onboarding.json` noch nicht existiert (Upgrade von
+    // einer Version ohne Onboarding-Tracking), aber dessen `session.json`
+    // schon zwei offene Panes führt — die Vervollständigung passiert hier
+    // still beim ersten Start, ohne dass je ein Hinweis aufblitzt. Anderer
+    // Fall als der Live-Neustart-Test unten: dort ist die App schon am
+    // Laufen, wenn `completed` auf `false` kippt.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: false });
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "quad",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/one",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                {
+                  project_path: "/Users/dev/projects/two",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+    );
+  });
+
+  it("vervollständigt NICHT sofort wieder, wenn ein Live-Neustart über die Settings eintrifft, während schon zwei Panes offen sind", async () => {
+    // Die eigentliche Regression, die ein reiner Pegelvergleich (>= 2 aktive
+    // Panes, ohne Übergangs-Tracking) hätte: die App läuft bereits mit zwei
+    // offenen Panes und abgeschlossenem Onboarding; der Settings-Neustart-
+    // Button broadcastet `completed: false` in genau dieses laufende
+    // Fenster — der Hinweis muss stehen bleiben können, statt im selben
+    // Tick wieder als "abgeschlossen" zurückgemeldet zu werden.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "onboarding_get_state") return Promise.resolve({ completed: true });
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "quad",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/one",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                {
+                  project_path: "/Users/dev/projects/two",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+    expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+    await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+    invokeMock.mockClear();
+
+    act(() => {
+      lastOnboardingChangedCallback()?.({ payload: { completed: false } });
+    });
+
+    expect(await screen.findByText("Der Explorer folgt der aktiven Pane")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
   });
 });
 

@@ -184,6 +184,19 @@
     "hint": "PaneCrew starts a real shell in it.",
     "removeRecent": "Remove from list"
   },
+  "onboarding": {
+    "hint": {
+      "empty": {
+        "title": "Multiple projects, side by side",
+        "body": "Open your first project here — the explorer on the left always follows the active pane."
+      },
+      "hasPanes": {
+        "title": "The explorer follows the active pane",
+        "body": "Open a second project in an empty slot to see the grid in action."
+      },
+      "dismiss": "Dismiss hint"
+    }
+  },
   "templateSwitcher": {
     "selectTemplate": "Choose template",
     "blockedAriaLabel": "{{label}} — {{reason}}",
@@ -236,7 +249,23 @@
       "terminal": "Terminal",
       "explorer": "Explorer",
       "appearance": "Appearance",
-      "grid": "Grid"
+      "grid": "Grid",
+      "help": "Help"
+    },
+    "help": {
+      "onboarding": {
+        "label": "Show onboarding again",
+        "description": "Shows the onboarding hint again at the next empty slot in the grid.",
+        "button": "Restart onboarding",
+        "confirmation": "Reset — the hint will show again as soon as a slot in the grid is free."
+      },
+      "permissions": {
+        "title": "Permissions (macOS)",
+        "explainer": "macOS asks individually for certain kinds of access (e.g. folders outside your user directory). These can be managed centrally here:",
+        "fullDiskAccess": "Full Disk Access",
+        "filesAndFolders": "Files and Folders",
+        "privacySecurityOverview": "Privacy & Security (overview)"
+      }
     },
     "terminalRestartHint": "Applies starting with the next new terminal session — the running session is unaffected.",
     "rawJson": {

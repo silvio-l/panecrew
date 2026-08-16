@@ -93,6 +93,13 @@ import {
 } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
+import { getOnboardingState, setOnboardingCompleted, subscribeToOnboardingChanges } from "./onboarding/onboarding";
+import {
+  onboardingHintSlot as deriveOnboardingHintSlot,
+  onboardingHintVariant,
+  onboardingShouldComplete,
+} from "./onboarding/onboardingState";
+import { OnboardingHint } from "./onboarding/OnboardingHint";
 import { useProjects } from "./projects/useProjects";
 import { projectNameFromPath } from "./types/project";
 import {
@@ -106,6 +113,7 @@ import {
 import { normalizeRatios } from "./grid/splitRatios";
 import { loadSession, saveSessionWindow } from "./session/sessionStore";
 import { windowIdentity } from "./window/useWindowIdentity";
+import { info } from "./logging/log";
 import { isMacPlatform } from "./shortcuts/platform";
 import {
   matchesShortcut,
@@ -311,6 +319,11 @@ function App() {
   const [recentProjects, setRecentProjects] = useState<string[]>([]);
   const recordRecentProject = (path: string) =>
     setRecentProjects((current) => withRecentProject(current, path));
+  // `null` = noch nicht geladen (Backend-Roundtrip läuft), `true`/`false` der
+  // reale Stand aus `onboarding.json`. Der Hinweis zeigt sich NIE während
+  // `null` — sonst blitzte er bei jedem Start kurz auf, bevor der geladene
+  // Stand ihn wieder wegnimmt.
+  const [onboardingCompleted, setOnboardingCompletedState] = useState<boolean | null>(null);
   // Welcher leere Slot gerade auf den (modalen) Ordner-Dialog wartet —
   // `null`, wenn keiner. Ersetzt das frühere App-weite `picking`: mit
   // mehreren leeren Slots braucht der Busy-Zustand ein Ziel.
@@ -495,6 +508,43 @@ function App() {
     // erspart einem Sekundärfenster nur den nutzlosen IPC-Roundtrip.
     if (windowId.isMain) void invoke("main_ready");
   }, [windowId.isMain]);
+
+  // Lädt den Onboarding-Stand einmal und hält ihn danach live — ein Reset
+  // über den Settings-Button (anderes Fenster) sendet `onboarding:changed`,
+  // das jedes Fenster hier ohne Poll mitbekommt (`onboarding/onboarding.ts`).
+  useEffect(() => {
+    let cancelled = false;
+    void getOnboardingState().then((state) => {
+      if (!cancelled) setOnboardingCompletedState(state.completed);
+    });
+    const unsubscribe = subscribeToOnboardingChanges((state) => {
+      setOnboardingCompletedState(state.completed);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  // Der Aha-Moment: PaneCrews Kern-Alleinstellungsmerkmal ist das Raster aus
+  // gleichzeitig sichtbaren Panes, nicht schon die erste offene Pane (die
+  // sieht wie jedes andere Terminal aus). Vervollständigt genau bei diesem
+  // ÜBERGANG (0/1 → ≥2 aktive Panes), nicht bei jedem Render, in dem bereits
+  // ≥2 Panes offen sind — sonst würde ein Reset über die Settings bei einem
+  // Nutzer, der schon zwei Panes offen hat, den Hinweis instantan wieder
+  // abschließen, bevor er ihn überhaupt sieht (derselbe Zustand, den ein
+  // Session-Restore mit bereits ≥2 Panes für einen Bestandsnutzer beim
+  // allerersten Start korrekt sofort abschließt — nur beim ÜBERGANG selbst,
+  // nicht als Dauerzustand).
+  const previousAhaMomentReachedRef = useRef(false);
+  useEffect(() => {
+    const nowReached = onboardingShouldComplete(gridState);
+    if (onboardingCompleted === false && !previousAhaMomentReachedRef.current && nowReached) {
+      void setOnboardingCompleted(true);
+      void info("onboarding: aha moment reached, marking completed");
+    }
+    previousAhaMomentReachedRef.current = nowReached;
+  }, [gridState, onboardingCompleted]);
 
   // Einmaliger Start-Ablauf (Ticket 06): erst die persistierte Sitzung
   // wiederherstellen (Template, Pane-Zuordnungen, letzte Dateiauswahl je
@@ -867,6 +917,44 @@ function App() {
   // Listeneintrag, nie das Projekt selbst.
   const removeRecentProject = (path: string) =>
     setRecentProjects((current) => withoutRecentProject(current, path));
+
+  // Der Onboarding-Hinweis: rein aus dem laufenden Grid abgeleitet, kein
+  // eigener "Phase"-Zustand (`onboarding/onboardingState.ts`s Kopfkommentar)
+  // — dieselbe Herleitung deckt den echten Erstlauf, einen über die Settings
+  // neu gestarteten Hinweis mit noch freiem Slot, und den stillen No-op bei
+  // komplett vollem Grid gleichermaßen ab. `null`-Fall (Stand noch nicht
+  // geladen) zeigt nie etwas.
+  const onboardingHintSlotIndex =
+    onboardingCompleted === false ? deriveOnboardingHintSlot(gridState) : null;
+  const dismissOnboardingHint = () => {
+    void setOnboardingCompleted(true);
+    void info("onboarding: hint dismissed");
+  };
+  const onboardingHintNode =
+    onboardingHintSlotIndex !== null ? (
+      <OnboardingHint
+        title={t(
+          onboardingHintVariant(gridState) === "empty"
+            ? "onboarding.hint.empty.title"
+            : "onboarding.hint.hasPanes.title",
+        )}
+        body={t(
+          onboardingHintVariant(gridState) === "empty"
+            ? "onboarding.hint.empty.body"
+            : "onboarding.hint.hasPanes.body",
+        )}
+        dismissLabel={t("onboarding.hint.dismiss")}
+        onDismiss={dismissOnboardingHint}
+      />
+    ) : null;
+  const onboardingHintShownLoggedRef = useRef(false);
+  useEffect(() => {
+    if (onboardingHintSlotIndex !== null && !onboardingHintShownLoggedRef.current) {
+      onboardingHintShownLoggedRef.current = true;
+      void info("onboarding: hint shown");
+    }
+    if (onboardingHintSlotIndex === null) onboardingHintShownLoggedRef.current = false;
+  }, [onboardingHintSlotIndex]);
 
   // Zwei native Menüpunkte teilen sich dasselbe Ziel-Verhalten: "Ordner
   // öffnen …" (menu.rs' OPEN_FOLDER, Cmd/Ctrl+O) und ein Eintrag aus
@@ -1464,6 +1552,8 @@ function App() {
               onExitFocusMode={exitFocusMode}
               onChangeSplitRatios={setSplitRatios}
               rotation={focusRotation}
+              onboardingHintSlot={onboardingHintSlotIndex}
+              onboardingHint={onboardingHintNode}
             />
           </main>
           {/* Die bestromte Leiterbahn vom aktiven Pin zur fokussierten Pane —
