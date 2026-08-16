@@ -3051,6 +3051,71 @@ describe("Onboarding", () => {
       expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
     });
 
+    it("zeigt am Ready-Screen 'Weiter' statt 'Erstes Projekt öffnen', wenn ein Neustart auf ein Grid mit bereits offenem Projekt trifft — und öffnet dabei keinen Ordner-Dialog", async () => {
+      // Reachable nur über den Live-Neustart, nicht über den Session-Restore
+      // (der wird von der Bestandsnutzer-Migration oben lautlos
+      // unterdrückt): die App läuft schon mit einem offenen Projekt in Slot
+      // 0, der Settings-Neustart broadcastet dann `wizardCompleted: false`
+      // in dieses laufende Fenster. `assignProjectToSlot(0)` würde diese
+      // Pane sonst kommentarlos ersetzen — der Ready-Screen muss das
+      // erkennen und einen nicht-destruktiven Ausstieg anbieten.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{}],
+                    active_tab: { kind: "terminal", index: 0 },
+                  },
+                  null,
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: false },
+        });
+      });
+
+      await screen.findByText("Willkommen bei PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Erstes Projekt öffnen" }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(openMock).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Terminal one")).toBeInTheDocument();
+    });
+
     it("überspringt über 'Ohne Projekt fortfahren', ohne ein Projekt zu öffnen, und zeigt danach den leeren Phase-2-Hinweis", async () => {
       mockOnboardingState(false, false);
 

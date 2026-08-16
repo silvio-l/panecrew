@@ -38,25 +38,42 @@ export interface OnboardingWizardCopy {
   readyBody: string;
   readyCtaOpenProject: string;
   readySkip: string;
+  /** Ready screen body when `hasExistingProject` is true — see that prop. */
+  readyBodyExisting: string;
+  /** Ready screen primary CTA when `hasExistingProject` is true. */
+  readyCtaContinue: string;
   back: string;
   closeLabel: string;
 }
 
 export function OnboardingWizard({
   copy,
+  hasExistingProject,
   onOpenFirstProject,
   onSkip,
 }: {
   copy: OnboardingWizardCopy;
+  /** True when the grid already has at least one project open — reachable
+   * only via a Settings restart (a genuine first run always starts on an
+   * empty grid). The Ready screen adapts for this: its primary CTA can't
+   * unconditionally be "open the first project" here, because slot 0 might
+   * already hold a real, unrelated pane — `assignProjectToSlot(0)` would
+   * REPLACE it (with its own leave-guard, but still a destructive surprise
+   * for someone who only wanted to see the intro again). So this case gets
+   * a non-destructive "Continue" that behaves exactly like skip, just
+   * phrased for someone who doesn't need the CTA's original promise. */
+  hasExistingProject: boolean;
   /** Closes the wizard AND triggers the real "open a project" action
    * (the same one the empty grid slot itself uses) — not a preview of it.
    * Callers must mark the wizard completed synchronously before the native
    * folder dialog actually opens, so the overlay is gone (and focus
-   * restored) by the time that dialog appears. */
+   * restored) by the time that dialog appears. Only ever wired to the
+   * primary CTA when `hasExistingProject` is false. */
   onOpenFirstProject: () => void;
   /** Closes the wizard without opening a project — Escape, the overlay,
-   * the close button, and the explicit skip link all resolve here alike,
-   * landing on the normal empty `ProjectPicker`. */
+   * the close button, the explicit skip link, AND (when
+   * `hasExistingProject`) the primary CTA all resolve here alike, landing
+   * back on the grid exactly as it already was. */
   onSkip: () => void;
 }) {
   const [step, setStep] = useState<0 | 1>(0);
@@ -116,16 +133,16 @@ export function OnboardingWizard({
                 {copy.readyTitle}
               </Dialog.Title>
               <Dialog.Description className="mt-2 text-center text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-descriptionForeground)">
-                {copy.readyBody}
+                {hasExistingProject ? copy.readyBodyExisting : copy.readyBody}
               </Dialog.Description>
               <div className="mt-6 flex justify-center">
                 <button
                   ref={primaryCtaRef}
                   type="button"
-                  onClick={onOpenFirstProject}
+                  onClick={hasExistingProject ? onSkip : onOpenFirstProject}
                   className={`flex h-8 shrink-0 items-center rounded-md border border-(--pc-widget-border) bg-(--pc-list-activeSelectionBackground) px-4 text-(length:--pc-chrome-fontSize) font-medium text-(--pc-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) ${CHROME_FOCUS_RING}`}
                 >
-                  {copy.readyCtaOpenProject}
+                  {hasExistingProject ? copy.readyCtaContinue : copy.readyCtaOpenProject}
                 </button>
               </div>
               <div className="mt-4 flex items-center justify-between">
@@ -136,13 +153,19 @@ export function OnboardingWizard({
                 >
                   {copy.back}
                 </button>
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className={`rounded px-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-                >
-                  {copy.readySkip}
-                </button>
+                {/* Bei bereits vorhandenem Projekt ist die primäre CTA
+                    selbst schon der non-destruktive Ausstieg — ein
+                    zusätzlicher Skip-Link daneben wäre eine zweite
+                    Beschriftung für dieselbe Handlung. */}
+                {!hasExistingProject && (
+                  <button
+                    type="button"
+                    onClick={onSkip}
+                    className={`rounded px-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+                  >
+                    {copy.readySkip}
+                  </button>
+                )}
               </div>
             </>
           )}

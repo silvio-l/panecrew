@@ -1829,9 +1829,12 @@ function App() {
               readyBody: t("onboarding.wizard.ready.body"),
               readyCtaOpenProject: t("onboarding.wizard.ready.cta"),
               readySkip: t("onboarding.wizard.ready.skip"),
+              readyBodyExisting: t("onboarding.wizard.ready.bodyExisting"),
+              readyCtaContinue: t("onboarding.wizard.ready.ctaContinue"),
               back: t("onboarding.wizard.back"),
               closeLabel: t("onboarding.wizard.close"),
             }}
+            hasExistingProject={activePanes(gridState).length > 0}
             onOpenFirstProject={onboardingWizardOpenFirstProject}
             onSkip={onboardingWizardSkip}
           />
