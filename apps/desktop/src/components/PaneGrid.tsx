@@ -38,7 +38,13 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { fileNameFromPath } from "../explorer/filePath";
 import type { PaneFileEditors } from "../explorer/usePaneFileEditors";
-import type { GridState, Pane } from "../grid/gridState";
+import { trackShape, type GridState, type Pane } from "../grid/gridState";
+import {
+  columnRatios,
+  effectiveRatios,
+  gridTrackTemplate,
+  rowRatios,
+} from "../grid/splitRatios";
 import { useGridTransitions } from "../grid/useGridTransitions";
 import { usePaneDrag } from "../grid/usePaneDrag";
 import { useTerminalTabHosts, type TabOwnership } from "../grid/useTerminalTabHosts";
@@ -528,6 +534,25 @@ export function PaneGrid({
     state.template,
     state.maximizedPaneId,
   );
+  // Die tatsächliche Track-Größe (Ticket 21) — `.pc-layout--*` (App.css) legt
+  // nur die GLEICHVERTEILTE Ausgangsgröße fest, verschobene Schnittkanten
+  // überschreiben das hier per Inline-Style, exakt wie `GridSplitters.tsx`s
+  // Positionsmathematik dieselben Anteile liest (`effectiveRatios`, dieselbe
+  // Auflösung). Nur die Achse mit mehr als einer Spur bekommt einen Wert —
+  // eine Achse ohne verstellbare Kante behält die CSS-Klassenvorgabe.
+  const { columns: trackColumns, rows: trackRows } = trackShape(state.template);
+  const effectiveTrackRatios = effectiveRatios(state.splitRatios, trackColumns, trackRows);
+  const workspaceStyle: CSSProperties = {};
+  if (trackColumns > 1) {
+    workspaceStyle.gridTemplateColumns = gridTrackTemplate(
+      columnRatios(effectiveTrackRatios, trackColumns),
+    );
+  }
+  if (trackRows > 1) {
+    workspaceStyle.gridTemplateRows = gridTrackTemplate(
+      rowRatios(effectiveTrackRatios, trackColumns, trackRows),
+    );
+  }
   return (
     <>
     {/* `relative`: Anker für `GridSplitters` (Ticket 21) — sein Overlay ist
@@ -546,7 +571,11 @@ export function PaneGrid({
         `maximizedPaneId`): das Template bleibt unverändert stehen, nur EINE
         Zelle wird per `grid-area`-Inline-Style auf das ganze Raster gespannt
         (s. u.) — kein Unmount, keine zweite Layout-Klasse nötig. */}
-    <div ref={workspaceRef} className={`pc-workspace pc-layout--${state.template}`}>
+    <div
+      ref={workspaceRef}
+      className={`pc-workspace pc-layout--${state.template}`}
+      style={workspaceStyle}
+    >
       {views.map((view, index) =>
         view ? (
           <PaneCell

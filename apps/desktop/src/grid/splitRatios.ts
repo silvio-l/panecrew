@@ -149,6 +149,17 @@ export function resizeAxisRatios(
   return next;
 }
 
+/** Wandelt Anteile einer Achse in einen `grid-template-columns`/`-rows`-Wert
+ * um — `minmax(0, Nfr)` je Spur (nicht bares `Nfr`), dieselbe Begründung wie
+ * die statischen `.pc-layout--*`-Regeln in `templateGlyph.css`: ohne das
+ * `minmax(0, …)` könnte eine Spur nicht unter den Inhalt ihrer Zelle
+ * schrumpfen und den Track sprengen. Leer (keine verstellbare Achse) liefert
+ * einen leeren String — `PaneGrid.tsx` setzt das `style`-Attribut dann gar
+ * nicht erst, die statische CSS-Klasse greift unverändert. */
+export function gridTrackTemplate(ratios: readonly number[]): string {
+  return ratios.map((r) => `minmax(0, ${r * 100}fr)`).join(" ");
+}
+
 export interface SplitterOffsetsPx {
   /** Pixel-Position (vom linken Rand) jeder Spalten-Schnittkante, mittig in
    * ihrer Lücke, in Track-Reihenfolge. */

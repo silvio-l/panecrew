@@ -3,6 +3,7 @@ import {
   columnRatios,
   defaultRatios,
   effectiveRatios,
+  gridTrackTemplate,
   normalizeRatios,
   ratioLength,
   resizeAxisRatios,
@@ -196,5 +197,21 @@ describe("splitterOffsetsPx", () => {
     const offsets = splitterOffsetsPx([], 1, 1, 800, 600, 8);
     expect(offsets.columns).toEqual([]);
     expect(offsets.rows).toEqual([]);
+  });
+});
+
+describe("gridTrackTemplate", () => {
+  it("wandelt gleiche Anteile in gleich große `minmax(0, Nfr)`-Spuren um", () => {
+    expect(gridTrackTemplate([0.5, 0.5])).toBe("minmax(0, 50fr) minmax(0, 50fr)");
+  });
+
+  it("skaliert ungleiche Anteile proportional (row-3-artig, krumme Werte)", () => {
+    expect(gridTrackTemplate([0.25, 0.5, 0.25])).toBe(
+      "minmax(0, 25fr) minmax(0, 50fr) minmax(0, 25fr)",
+    );
+  });
+
+  it("liefert einen leeren String ohne Anteile (keine verstellbare Achse)", () => {
+    expect(gridTrackTemplate([])).toBe("");
   });
 });

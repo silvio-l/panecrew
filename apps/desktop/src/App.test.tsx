@@ -3070,6 +3070,45 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     });
   });
 
+  it("wendet wiederhergestellte Schnittkanten-Ratios als echte Grid-Track-Größen an (Ticket 21)", async () => {
+    // jsdom rechnet kein CSS-Grid-Layout (`grid/splitRatios.ts`s
+    // Kopfkommentar) — dieser Test sichert deshalb, wie der Test oben zum
+    // Fokus-Modus-`grid-area`, nur die VERDRAHTUNG: das restorete
+    // `split_ratios` muss als Inline-`gridTemplateColumns` auf `.pc-workspace`
+    // ankommen, nicht bei der gleichverteilten CSS-Klassenvorgabe bleiben.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "split",
+              split_ratios: [0.7, 0.3],
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+    const workspace = container.querySelector<HTMLElement>(".pc-workspace");
+    expect(workspace?.style.gridTemplateColumns).toBe(
+      "minmax(0, 70fr) minmax(0, 30fr)",
+    );
+  });
+
   it("setzt im Fokus-Modus der breiten volle-Zeile-Pane das grid-area inline auf auto zurück (3er-Grid, one-over-two)", async () => {
     // Nutzer-Befund: "das breite 2er pane lasst sich nicht sauber in den
     // fucus modus setzen ... nimmt in der höhe nicht den verfügbaren
