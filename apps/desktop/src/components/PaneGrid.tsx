@@ -237,6 +237,17 @@ export function PaneGrid({
     tabId: string;
     nonce: number;
   } | null>(null);
+  // Sichtbarer Zwischenstand eines laufenden Schnittkanten-Drags (Ticket 21)
+  // — lebt HIER statt in `GridSplitters.tsx` selbst, weil die ECHTEN
+  // Grid-Tracks von `.pc-workspace` (unten, `workspaceStyle`) live mit dem
+  // Zeiger mitwandern müssen, genau wie `App.tsx`s Explorer-Resize-Handle
+  // `explorerWidth` live setzt und nur die Persistenz
+  // (`persistedExplorerWidth`) bis `pointerup` aufschiebt. `null` außerhalb
+  // eines Drags, dann zählt allein `state.splitRatios` (der committete
+  // Stand, über `onChangeSplitRatios` erst bei `pointerup` geschrieben).
+  const [liveSplitRatios, setLiveSplitRatios] = useState<readonly number[] | null>(
+    null,
+  );
   // Im Fokus-Modus ist genau eine Pane sichtbar: es gibt kein Ziel, auf das
   // man zielen könnte, und die ausgeblendeten Nachbarn behalten ihre
   // Rechtecke (`visibility: hidden`, s. u.) — ohne diese Sperre träfe die
@@ -541,7 +552,11 @@ export function PaneGrid({
   // Auflösung). Nur die Achse mit mehr als einer Spur bekommt einen Wert —
   // eine Achse ohne verstellbare Kante behält die CSS-Klassenvorgabe.
   const { columns: trackColumns, rows: trackRows } = trackShape(state.template);
-  const effectiveTrackRatios = effectiveRatios(state.splitRatios, trackColumns, trackRows);
+  const effectiveTrackRatios = effectiveRatios(
+    liveSplitRatios ?? state.splitRatios,
+    trackColumns,
+    trackRows,
+  );
   const workspaceStyle: CSSProperties = {};
   if (trackColumns > 1) {
     workspaceStyle.gridTemplateColumns = gridTrackTemplate(
@@ -644,6 +659,8 @@ export function PaneGrid({
         template={state.template}
         splitRatios={state.splitRatios}
         onChange={onChangeSplitRatios}
+        liveRatios={liveSplitRatios}
+        onLiveRatiosChange={setLiveSplitRatios}
         workspaceRef={workspaceRef}
       />
     )}

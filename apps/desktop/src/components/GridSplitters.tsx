@@ -49,6 +49,15 @@ interface GridSplittersProps {
    * `nudgeExplorerWidth` es für die Explorer-Breite ebenfalls tut — ein
    * Tastendruck ist bereits diskret, kein Zwischenzustand nötig. */
   onChange: (ratios: readonly number[]) => void;
+  /** Sichtbarer Zwischenstand eines laufenden Pointer-Drags, gehalten in
+   * `PaneGrid.tsx` (nicht hier drin) — die ECHTEN Grid-Tracks von
+   * `.pc-workspace` brauchen denselben Zwischenstand, um während des Drags
+   * live mitzuwandern, genau wie der Explorer-Resize-Handle `explorerWidth`
+   * live setzt und nur `persistedExplorerWidth` bis `pointerup` aufschiebt
+   * (`App.tsx`s `startExplorerResize`). `null` außerhalb eines Drags, dann
+   * zählt allein `splitRatios` (der committete Stand). */
+  liveRatios: readonly number[] | null;
+  onLiveRatiosChange: (ratios: readonly number[] | null) => void;
   /** `.pc-workspace`s eigener Ref (`PaneGrid.tsx`) — diese Komponente rendert
    * als sein GESCHWISTER (nie als Kind, s. `PaneGrid.tsx`s Kopfkommentar zur
    * DOM-Reihenfolge-Invariante), braucht aber seine reale Pixelgröße für die
@@ -67,15 +76,13 @@ export function GridSplitters({
   template,
   splitRatios,
   onChange,
+  liveRatios,
+  onLiveRatiosChange,
   workspaceRef,
 }: GridSplittersProps) {
   const { t } = useTranslation();
   const { columns, rows } = trackShape(template);
   const [container, setContainer] = useState({ width: 0, height: 0, gapPx: 8 });
-  // Sichtbarer Zwischenstand eines laufenden Pointer-Drags — `null` außerhalb
-  // eines Drags, dann zählt allein `splitRatios` (der committete Stand). Der
-  // Kommentar an `onChange` oben begründet die Trennung.
-  const [liveRatios, setLiveRatios] = useState<readonly number[] | null>(null);
 
   useLayoutEffect(() => {
     const el = workspaceRef.current;
@@ -132,6 +139,13 @@ export function GridSplitters({
         axis === "columns"
           ? withColumnRatios(committed, columns, rows, next)
           : withRowRatios(committed, columns, next);
+      // Lokal statt in `liveRatios` selbst gelesen: `onUp` braucht den
+      // LETZTEN Zwischenstand zum Committen, aber `onLiveRatiosChange` ist
+      // eine reine Setter-Funktion ohne Rückgabewert (anders als
+      // `setLiveRatios`s Updater-Form vorher) — derselbe Grund, aus dem
+      // `App.tsx`s `startExplorerResize` `latestWidth` als Closure-Variable
+      // statt aus State liest.
+      let latest: readonly number[] | null = null;
       handle.setPointerCapture(e.pointerId);
       const onMove = (ev: PointerEvent) => {
         const pos = axis === "columns" ? ev.clientX : ev.clientY;
@@ -142,13 +156,12 @@ export function GridSplitters({
           axisAvailablePx,
           MIN_SLOT_PX,
         );
-        setLiveRatios(merge(nextAxisRatios));
+        latest = merge(nextAxisRatios);
+        onLiveRatiosChange(latest);
       };
       const onUp = () => {
-        setLiveRatios((current) => {
-          if (current !== null) onChange(current);
-          return null;
-        });
+        if (latest !== null) onChange(latest);
+        onLiveRatiosChange(null);
         handle.removeEventListener("pointermove", onMove);
         handle.removeEventListener("pointerup", onUp);
         handle.removeEventListener("pointercancel", onUp);

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TemplateId } from "../grid/gridState";
 import { GridSplitters } from "./GridSplitters";
@@ -26,12 +26,20 @@ function Harness({
   template,
   splitRatios,
   onChange,
+  onLiveRatiosChange,
 }: {
   template: TemplateId;
   splitRatios: readonly number[];
   onChange: (ratios: readonly number[]) => void;
+  /** Optionaler Spion — spiegelt `PaneGrid.tsx`s eigenen `liveSplitRatios`-
+   * State, den dieser Harness hier selbst hält, damit die Splitter-Offsets
+   * während eines Drags exakt wie im echten Baum aus PROPS kommen, nicht aus
+   * internem State der Komponente selbst (der wurde nach oben verschoben,
+   * s. `GridSplitters.tsx`s Kopfkommentar zu `liveRatios`). */
+  onLiveRatiosChange?: (ratios: readonly number[] | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [liveRatios, setLiveRatios] = useState<readonly number[] | null>(null);
   return (
     <div>
       <div ref={ref} />
@@ -39,6 +47,11 @@ function Harness({
         template={template}
         splitRatios={splitRatios}
         onChange={onChange}
+        liveRatios={liveRatios}
+        onLiveRatiosChange={(next) => {
+          setLiveRatios(next);
+          onLiveRatiosChange?.(next);
+        }}
         workspaceRef={ref}
       />
     </div>
@@ -142,6 +155,47 @@ describe("GridSplitters", () => {
       .find((el) => el.getAttribute("aria-orientation") === "vertical");
     expect(column?.style.top).toBe("400px");
     expect(column?.style.height).toBe("400px");
+  });
+
+  it("meldet während des Pointer-Drags LIVE Zwischenstände, committet aber erst bei pointerup", () => {
+    // Deckt den Pfad, in dem der ursprüngliche Bug saß: die echten
+    // Grid-Tracks (`PaneGrid.tsx`s `workspaceStyle`) müssen dem Zeiger
+    // während des Drags folgen, nicht erst beim Loslassen springen — genau
+    // wie `App.tsx`s Explorer-Resize-Handle `explorerWidth` live setzt und
+    // nur die Persistenz aufschiebt. `setPointerCapture` existiert unter
+    // jsdom nicht (`App.test.tsx` stubt es an denselben Stellen).
+    const onChange = vi.fn();
+    const liveSpy = vi.fn();
+    render(
+      <Harness
+        template="split"
+        splitRatios={[]}
+        onChange={onChange}
+        onLiveRatiosChange={liveSpy}
+      />,
+    );
+    const separator = screen.getByRole("separator");
+    separator.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(separator, { clientX: 800 });
+    fireEvent.pointerMove(separator, { clientX: 900 });
+
+    // Während des Drags: der Zwischenstand kam an, aber noch KEIN Commit.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(liveSpy).toHaveBeenCalledTimes(1);
+    const [liveRatios] = liveSpy.mock.calls[0] as [number[]];
+    // 1600px Nutzfläche, 0 Lücke, +100px Zeigerbewegung: 900px/700px.
+    expect(liveRatios[0]).toBeCloseTo(900 / 1600);
+    expect(liveRatios[1]).toBeCloseTo(700 / 1600);
+
+    fireEvent.pointerUp(separator);
+
+    // Bei pointerup: exakt der letzte Zwischenstand wird committet, und der
+    // Live-State wird wieder auf `null` (= "kein Drag mehr") zurückgesetzt.
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [committed] = onChange.mock.calls[0] as [number[]];
+    expect(committed[0]).toBeCloseTo(900 / 1600);
+    expect(liveSpy).toHaveBeenLastCalledWith(null);
   });
 
   it("fällt bei falscher Länge der gespeicherten Ratios auf das Template-Default zurück", () => {

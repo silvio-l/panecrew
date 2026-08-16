@@ -3109,6 +3109,67 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     );
   });
 
+  it("lässt die echten Grid-Tracks WÄHREND des Pointer-Drags live mitwandern, nicht erst bei pointerup (Ticket 21)", async () => {
+    // Modelliert nach dem Explorer-Resize-Handle: `explorerWidth` (die echte
+    // Breite) ist live, nur die Persistenz (`persistedExplorerWidth`) wird
+    // bis `pointerup` aufgeschoben (`App.tsx`s `startExplorerResize`). Der
+    // ursprüngliche Ticket-21-Bug bestand genau darin, dass die Splitter-UI
+    // zwar lief, aber `.pc-workspace`s echte Tracks erst beim Loslassen
+    // sprangen — dieser Test fasst also VOR `pointerup` nach.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 1600,
+      height: 800,
+      top: 0,
+      left: 0,
+      right: 1600,
+      bottom: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => "",
+    });
+
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "split",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{}],
+                  active_tab: { kind: "terminal", index: 0 },
+                },
+                null,
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+    expect(await screen.findByLabelText("Terminal storefront")).toBeInTheDocument();
+
+    const separator = screen.getByRole("separator", { name: /Spaltenbreite/ });
+    separator.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(separator, { clientX: 800 });
+    fireEvent.pointerMove(separator, { clientX: 900 });
+
+    const workspace = container.querySelector<HTMLElement>(".pc-workspace");
+    // Noch VOR pointerup: 1600px Nutzfläche, 0 Lücke, +100px Zeigerbewegung
+    // aus der 50/50-Ausgangslage -> 900px/700px, bereits als echte Tracks.
+    expect(workspace?.style.gridTemplateColumns).toBe(
+      "minmax(0, 56.25fr) minmax(0, 43.75fr)",
+    );
+
+    fireEvent.pointerUp(separator);
+    vi.restoreAllMocks();
+  });
+
   it("setzt im Fokus-Modus der breiten volle-Zeile-Pane das grid-area inline auf auto zurück (3er-Grid, one-over-two)", async () => {
     // Nutzer-Befund: "das breite 2er pane lasst sich nicht sauber in den
     // fucus modus setzen ... nimmt in der höhe nicht den verfügbaren
