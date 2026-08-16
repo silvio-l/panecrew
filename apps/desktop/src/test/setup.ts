@@ -50,6 +50,16 @@ class ResizeObserverStub implements ResizeObserver {
 // überschrieben werden könnte.
 globalThis.ResizeObserver = ResizeObserverStub;
 
+// jsdom implementiert `HTMLCanvasElement.getContext()` nicht (xterm.js'
+// Standard-Renderer zeichnet Glyphen auf ein Canvas, das beim Mounten einer
+// echten Terminal-Pane in Tests entsteht) und loggt bei jedem Aufruf lautstark
+// über seine eigene virtuelle Console, obwohl xterm.js den resultierenden
+// `null`-Kontext bereits klaglos toleriert — dieser Stub liefert denselben
+// `null` zurück, nur ohne die Konsolenwarnung.
+HTMLCanvasElement.prototype.getContext = vi.fn(
+  () => null,
+) as typeof HTMLCanvasElement.prototype.getContext;
+
 // jsdom rechnet kein Layout: jedes Element meldet `offsetHeight` 0. Für die
 // virtualisierte Explorer-Liste (ExplorerPanel.tsx) ist das nicht bloß ungenau,
 // sondern der Aus-Zustand — ein Sichtfenster der Höhe 0 enthält keine sichtbare
