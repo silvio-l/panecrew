@@ -568,7 +568,9 @@ function App() {
     wizardStartupDecisionMadeRef.current = true;
     if (!wizardCompleted && activePanes(gridState).length > 0) {
       void setOnboardingWizardCompleted(true);
-      void info("onboarding: wizard skipped, existing session detected at startup");
+      void info(
+        "onboarding: [onboarding_skipped] phase=wizard reason=existing-session-at-startup",
+      );
     }
   }, [hydrated, gridState, wizardCompleted]);
 
@@ -587,7 +589,7 @@ function App() {
     const nowReached = onboardingShouldComplete(gridState);
     if (onboardingCompleted === false && !previousAhaMomentReachedRef.current && nowReached) {
       void setOnboardingCompleted(true);
-      void info("onboarding: aha moment reached, marking completed");
+      void info("onboarding: [onboarding_completed] [activation_event] trigger=aha-moment");
     }
     previousAhaMomentReachedRef.current = nowReached;
   }, [gridState, onboardingCompleted]);
@@ -988,7 +990,7 @@ function App() {
     onboardingHintVariant(gridState) === "ahaReached";
   const dismissOnboardingHint = () => {
     void setOnboardingCompleted(true);
-    void info("onboarding: hint dismissed");
+    void info("onboarding: [onboarding_skipped] phase=tour");
   };
   const onboardingHintCopyKey = {
     empty: { title: "onboarding.hint.empty.title", body: "onboarding.hint.empty.body" },
@@ -1023,10 +1025,12 @@ function App() {
     const shown = onboardingHintSlotIndex !== null || onboardingFloatingActive;
     if (shown && !onboardingHintShownLoggedRef.current) {
       onboardingHintShownLoggedRef.current = true;
-      void info("onboarding: hint shown");
+      void info(
+        `onboarding: [onboarding_step_viewed] phase=tour variant=${onboardingHintVariant(gridState)}`,
+      );
     }
     if (!shown) onboardingHintShownLoggedRef.current = false;
-  }, [onboardingHintSlotIndex, onboardingFloatingActive]);
+  }, [onboardingHintSlotIndex, onboardingFloatingActive, gridState]);
 
   // Phase 1, der Wizard: grid-unabhängig sichtbar (App-Fenster-Overlay, kein
   // Slot-Anker) — das macht "Einführung neu starten" zuverlässig, egal wie
@@ -1035,18 +1039,31 @@ function App() {
   // `hydrated`, um den Bestandsnutzer-Check oben eine Chance zu geben, ihn
   // lautlos zu unterdrücken, bevor er je sichtbar wird.
   const showOnboardingWizard = hydrated && wizardCompleted === false;
+  const onboardingWizardStartedLoggedRef = useRef(false);
+  useEffect(() => {
+    if (showOnboardingWizard && !onboardingWizardStartedLoggedRef.current) {
+      onboardingWizardStartedLoggedRef.current = true;
+      void info("onboarding: [onboarding_started] phase=wizard step=0");
+    }
+    if (!showOnboardingWizard) onboardingWizardStartedLoggedRef.current = false;
+  }, [showOnboardingWizard]);
+  const onboardingWizardStepViewed = (step: 0 | 1) => {
+    void info(`onboarding: [onboarding_step_viewed] phase=wizard step=${step}`);
+  };
   const finishOnboardingWizard = () => {
     setWizardCompletedState(true);
     void setOnboardingWizardCompleted(true);
   };
   const onboardingWizardOpenFirstProject = () => {
     finishOnboardingWizard();
-    void info("onboarding: wizard completed, opening first project");
+    void info(
+      "onboarding: [onboarding_step_completed] [activation_event] phase=wizard step=1 action=open-first-project",
+    );
     assignProjectToSlot(0);
   };
   const onboardingWizardSkip = () => {
     finishOnboardingWizard();
-    void info("onboarding: wizard skipped");
+    void info("onboarding: [onboarding_skipped] phase=wizard");
   };
 
   // Zwei native Menüpunkte teilen sich dasselbe Ziel-Verhalten: "Ordner
@@ -1833,10 +1850,13 @@ function App() {
               readyCtaContinue: t("onboarding.wizard.ready.ctaContinue"),
               back: t("onboarding.wizard.back"),
               closeLabel: t("onboarding.wizard.close"),
+              stepIndicator: (step, total) =>
+                t("onboarding.wizard.stepIndicator", { step, total }),
             }}
             hasExistingProject={activePanes(gridState).length > 0}
             onOpenFirstProject={onboardingWizardOpenFirstProject}
             onSkip={onboardingWizardSkip}
+            onStepChange={onboardingWizardStepViewed}
           />
         )}
       </div>

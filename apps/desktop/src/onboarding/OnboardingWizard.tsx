@@ -44,6 +44,13 @@ export interface OnboardingWizardCopy {
   readyCtaContinue: string;
   back: string;
   closeLabel: string;
+  /** `i18next` template with `{{step}}`/`{{total}}` — announced sr-only next
+   * to the (aria-hidden) dot indicator, since dots convey step position by
+   * color/position alone otherwise (onboarding-prompt.md §10/§235: "kein
+   * Verständnis ausschließlich durch Farbe"). Passed pre-formatted by the
+   * caller (which owns `t()`) rather than a raw i18n key, matching every
+   * other string on this interface. */
+  stepIndicator: (step: 1 | 2, total: 2) => string;
 }
 
 export function OnboardingWizard({
@@ -51,6 +58,7 @@ export function OnboardingWizard({
   hasExistingProject,
   onOpenFirstProject,
   onSkip,
+  onStepChange,
 }: {
   copy: OnboardingWizardCopy;
   /** True when the grid already has at least one project open — reachable
@@ -75,6 +83,11 @@ export function OnboardingWizard({
    * `hasExistingProject`) the primary CTA all resolve here alike, landing
    * back on the grid exactly as it already was. */
   onSkip: () => void;
+  /** Fires once per step, including the initial mount (step 0) — instrumentation
+   * hook for `onboarding_step_viewed` (§11 of the onboarding spec), kept
+   * separate from focus-management below since a future caller may want one
+   * without the other. */
+  onStepChange?: (step: 0 | 1) => void;
 }) {
   const [step, setStep] = useState<0 | 1>(0);
   const primaryCtaRef = useRef<HTMLButtonElement>(null);
@@ -84,6 +97,14 @@ export function OnboardingWizard({
   // the now-gone Welcome CTA instead of following to the new step's own.
   useEffect(() => {
     primaryCtaRef.current?.focus();
+  }, [step]);
+
+  useEffect(() => {
+    onStepChange?.(step);
+    // onStepChange is an instrumentation callback, not reactive state;
+    // including it would re-fire on every parent render instead of only on
+    // step transitions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   return (
@@ -107,6 +128,7 @@ export function OnboardingWizard({
               className={`h-1.5 w-1.5 rounded-full ${step === 1 ? "bg-(--pc-focusBorder)" : "bg-(--pc-widget-border)"}`}
             />
           </div>
+          <span className="sr-only">{copy.stepIndicator(step === 0 ? 1 : 2, 2)}</span>
 
           {step === 0 ? (
             <>
