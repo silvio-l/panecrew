@@ -36,7 +36,7 @@ type ZoomGlyph = "+" | "-" | "0";
 type DigitGlyph = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
 /** Anzeigeglyph fürs generierte Dokument — unabhängig vom Matching. */
-type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | DigitGlyph | "↵";
+type ShortcutGlyph = ZoomGlyph | "S" | "N" | "W" | "T" | "K" | "F" | DigitGlyph | "↵";
 
 export interface ShortcutDefinition {
   readonly id: string;
@@ -75,6 +75,24 @@ export const NEW_WINDOW_SHORTCUT_ID = "app.newWindow";
  * Kollisionsrisiko: PaneCrew ist ein natives Tauri-Fenster, kein Browser-Tab,
  * den dieselbe Kombination sonst schlösse. */
 export const CLOSE_TERMINAL_TAB_SHORTCUT_ID = "pane.closeTerminalTab";
+
+/** Id des Neuer-Terminal-Tab-Kürzels — `usePtyTerminal.ts`s Pane-Kürzel-Zweig
+ * schlägt seine Definition damit nach, aus demselben Grund wie
+ * `SAVE_FILE_SHORTCUT_ID` oben. `KeyT` statt eines Symbols (Referenz-Editors
+ * Standard wäre das Backtick-Zeichen): dieselbe Landmine wie Plus/Minus oben
+ * — Backtick sitzt auf US- und deutscher ISO-Tastatur an unterschiedlichen
+ * physischen Positionen, ein Buchstabe umgeht das ohne Mehrfach-Codes. */
+export const NEW_TERMINAL_TAB_SHORTCUT_ID = "pane.newTerminalTab";
+
+/** Id des Terminal-leeren-Kürzels — derselbe Nachschlage-Grund wie oben.
+ * `KeyK` matcht den Referenz-Editor 1:1 (dort ebenfalls Cmd/Ctrl+K ohne
+ * Shift). */
+export const CLEAR_TERMINAL_SHORTCUT_ID = "pane.clearTerminal";
+
+/** Id des Projektweite-Suche-Kürzels — App-weit statt pane-gebunden (anders
+ * als die drei Ids oben): es muss auch wirken, während der Explorer oder die
+ * Datei-Editorfläche fokussiert ist, nicht nur ein Terminal. */
+export const SEARCH_IN_FILES_SHORTCUT_ID = "app.searchInFiles";
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
@@ -177,6 +195,30 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     glyph: "W",
     codes: ["KeyW"],
     shift: false,
+  },
+  {
+    id: NEW_TERMINAL_TAB_SHORTCUT_ID,
+    description: "Open a new terminal tab in the active pane",
+    scope: "pane",
+    glyph: "T",
+    codes: ["KeyT"],
+    shift: true,
+  },
+  {
+    id: CLEAR_TERMINAL_SHORTCUT_ID,
+    description: "Clear the active terminal's scrollback",
+    scope: "pane",
+    glyph: "K",
+    codes: ["KeyK"],
+    shift: false,
+  },
+  {
+    id: SEARCH_IN_FILES_SHORTCUT_ID,
+    description: "Search file contents in the focused pane's project",
+    scope: "app",
+    glyph: "F",
+    codes: ["KeyF"],
+    shift: true,
   },
   // Terminal-Tab N der aktiven Pane anzeigen (Ticket 18-Nachtrag, Maus-only-
   // Beschwerde): neun Definitionen statt einer parametrisierten, weil

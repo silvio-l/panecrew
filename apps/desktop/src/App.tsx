@@ -44,7 +44,7 @@
  * (Geometrie in App.css, Slot-Zahl in grid/gridState.ts). Der Akzent trägt
  * jetzt tatsächlich nur EINE Pane: den Rahmen der fokussierten.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -104,6 +104,7 @@ import {
 } from "./shortcuts/registry";
 import { useAppZoom } from "./shortcuts/useAppZoom";
 import { useNewWindowShortcut } from "./shortcuts/useNewWindowShortcut";
+import { useSearchInFilesShortcut } from "./shortcuts/useSearchInFilesShortcut";
 import { useExplorerPathDrag } from "./terminal/useExplorerPathDrag";
 import { useWebviewFileDrop } from "./terminal/useWebviewFileDrop";
 import "./App.css";
@@ -404,6 +405,18 @@ function App() {
   const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
   const zoom = useAppZoom();
   useNewWindowShortcut();
+  // Cmd/Ctrl+Shift+F: klappt einen eingeklappten Explorer wieder auf und
+  // stößt sein Öffnen-plus-Fokussieren über einen reinen Nonce an (s.
+  // `openSearchSignal`-Prop-Doku in ExplorerPanel.tsx) — nichts davon
+  // überlebt einen Projektwechsel absichtlich, `ExplorerPanel` bekommt bei
+  // jedem ohnehin einen frischen `key`.
+  const [openSearchSignal, setOpenSearchSignal] = useState(0);
+  useSearchInFilesShortcut(
+    useCallback(() => {
+      setExplorerCollapsed(false);
+      setOpenSearchSignal((current) => current + 1);
+    }, []),
+  );
   // Die EINE Drop-Registrierung des Grids. Sie stand bis zum Explorer-Ziehen
   // in `PaneGrid.tsx` — mit einer zweiten Drop-QUELLE, die im Explorer
   // beginnt (einem Geschwister von `PaneGrid`, nicht einem Kind), muss sie
@@ -1134,6 +1147,7 @@ function App() {
                 onConsumeDragClick={explorerDrag.consumeDragClick}
                 onEntryRenamed={onEntryRenamed}
                 onEntryDeleted={onEntryDeleted}
+                openSearchSignal={openSearchSignal}
               />
               {/* tabIndex + Pfeiltasten, weil ein reiner Ziehgriff die
                   Explorer-Breite für Tastaturnutzer unerreichbar macht — das

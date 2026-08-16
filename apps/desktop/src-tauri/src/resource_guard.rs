@@ -122,6 +122,11 @@ pub const EVENT_SINGLE_KILL: &str = "pty:tab-single-kill";
 pub const EVENT_TERMINATED: &str = "pty:tab-terminated";
 
 const REASON_REPEATED_LIMIT_BREACH: &str = "memory-limit-exceeded-repeatedly";
+/// s. `kill_manual` unten. `pub` (nicht `pub(crate)`) aus keinem funktionalen
+/// Grund — der String selbst wird nirgends außerhalb dieser Datei
+/// referenziert (das Frontend kennt ihn nur als Payload-Feld) — sondern nur,
+/// damit ein späterer zweiter Aufrufer ihn nicht ein zweites Mal abtippen muss.
+pub const REASON_MANUAL_KILL: &str = "manual-kill";
 
 /// Eine reine Entscheidung des `step`-Automaten — die Wirkung (Signal senden,
 /// Prozess anfassen) liegt beim Aufrufer (`tick_all`/`execute`), hier steht
@@ -485,6 +490,35 @@ pub fn resource_guard_resume(guard: State<ResourceGuardState>, tab_id: String) -
     entry.cooldown_deadline = Some(Instant::now() + ESCALATION_WINDOW);
     entry.strikes = 0;
     Ok(())
+}
+
+/// Vom Kontextmenü "Terminal hart beenden" aufgerufen (PaneTabs.tsx) —
+/// derselbe Kill-Pfad wie Tier 4 der Eskalationskette (`Action::KillTab`
+/// oben), aber nutzerausgelöst statt automatisch. Meldet der Oberfläche das
+/// Ergebnis bewusst über einen EIGENEN Weg statt `execute(..., Action::
+/// EmitTerminated)`: dessen `EmitTerminated`-Zweig verdrahtet `reason` fest
+/// auf `REASON_REPEATED_LIMIT_BREACH` (kein Parameter), ein Aufruf von hier
+/// würde `TabResourceBanner.tsx` also fälschlich einen Speicherverbrauch
+/// behaupten, den es hier nie gab. Räumt aus demselben Grund wie
+/// `Action::KillTab` bewusst NICHT den `ResourceGuardState`-Eintrag ab —
+/// derselbe Tick-Automat, der einen ganz normal geschlossenen Tab schon
+/// unbeanstandet als verwaisten Registereintrag stehen lässt.
+#[tauri::command]
+pub fn resource_guard_kill_manual(app: AppHandle, tab_id: String) {
+    let state = app.state::<PtyState>();
+    let registry = app.state::<WindowPtyRegistry>();
+    registry.unregister(&tab_id);
+    if let Err(error) = pty_commands::kill(&state, &tab_id) {
+        eprintln!("PaneCrew: resource_guard: manueller Kill fehlgeschlagen: {error}");
+    }
+    let _ = app.emit(
+        EVENT_TERMINATED,
+        &TabTerminatedPayload {
+            tab_id,
+            percent: 0.0,
+            reason: REASON_MANUAL_KILL,
+        },
+    );
 }
 
 #[cfg(unix)]

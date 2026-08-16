@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { ContextMenu } from "radix-ui";
 import {
   CHROME_FOCUS_RING,
@@ -859,6 +860,29 @@ function TerminalTabChip({
               {t("paneTabs.closeTerminalTabsToRight", { count: tabsToRightCount })}
             </ContextMenu.Item>
           )}
+          {/* Eigene Trenngruppe: anders als "Schließen" oben bleibt der Tab
+              nach diesem Punkt BESTEHEN (nur der Prozess stirbt, dieselbe
+              Terminated-Anzeige wie Tier 4 der Ressourcen-Eskalationskette,
+              s. `resource_guard.rs`s `resource_guard_kill_manual`) — eine
+              andere Handlungsklasse als alles darüber, deshalb sichtbar
+              abgesetzt statt in dieselbe Gruppe gemischt. Kein
+              pendingActionRef-Umweg nötig: `invoke` öffnet keine zweite
+              Fokus-Trap-Fläche wie `onClose`/`onStartRename`, kollidiert also
+              nicht mit dem noch aktiven ContextMenu-Trap. */}
+          <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
+          <ContextMenu.Item
+            onSelect={() => {
+              logBug2(`onSelect tabId=${tabId} action=killTerminal`);
+              void invoke("resource_guard_kill_manual", { tabId }).catch(() => {
+                // Best-effort wie jeder andere PTY-Kill-Aufruf im Frontend
+                // (s. `ptyBackend.ts`s `reportIpcFailure`) — ein bereits
+                // toter/unbekannter Tab ist kein Nutzerfehler.
+              });
+            }}
+            className={CHROME_MENU_ITEM_CLASS}
+          >
+            {t("paneTabs.killTerminalTab", { number })}
+          </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

@@ -3,6 +3,14 @@ use tauri::{AppHandle, Runtime};
 
 pub const ABOUT: &str = "about";
 pub const CHECK_UPDATES: &str = "check-updates";
+/// macOS-Konvention: Cmd+, öffnet die Einstellungen, unabhängig vom Fenster,
+/// das gerade fokussiert ist — dasselbe Muster wie `CLOSE_WINDOW`:
+/// `on_menu_event` (lib.rs) ermittelt sich das Zielfenster über
+/// `windows::focused_content_window` selbst, weil `settings_window::show`
+/// einen "opener" zum Positionieren braucht (dessen Kopfkommentar: Settings
+/// zentriert sich über dem AUFRUFENDEN Fenster, nicht über einem festen
+/// Default-Monitor).
+pub const OPEN_SETTINGS: &str = "open-settings";
 /// Nur macOS (s. `build`s `Ablage`-Submenü) — `PredefinedMenuItem::close_window`
 /// bringt dort sein eigenes Cmd+W als OS-Menü-Akzelerator mit, AppKit löst das
 /// VOR jedem Webview-Keydown auf und hätte damit exakt dasselbe Kürzel wie
@@ -132,6 +140,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                         &about,
                         &check_updates,
                         &PredefinedMenuItem::separator(app)?,
+                        &MenuItem::with_id(
+                            app,
+                            OPEN_SETTINGS,
+                            "Einstellungen …",
+                            true,
+                            Some("Cmd+,"),
+                        )?,
+                        &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::services(app, Some("Dienste"))?,
                         &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::hide(app, Some("PaneCrew ausblenden"))?,
@@ -205,6 +221,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     "Datei",
                     true,
                     &[
+                        &MenuItem::with_id(
+                            app,
+                            OPEN_SETTINGS,
+                            "Einstellungen …",
+                            true,
+                            Some("Ctrl+,"),
+                        )?,
+                        &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::close_window(app, Some("Schließen"))?,
                         &PredefinedMenuItem::quit(app, Some("Beenden"))?,
                     ],

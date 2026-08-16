@@ -173,6 +173,7 @@ export function TerminalPane({
     projectPath,
     selectTerminalTabByNumber,
     closeActiveTerminalTab,
+    tabs.onOpenTerminalTab,
     notifyCopied,
     active,
   );

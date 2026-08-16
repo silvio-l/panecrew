@@ -26,6 +26,7 @@ vi.mock("../terminal/usePtyTerminal", () => ({
     _cwd: string,
     _onSelectTerminalTabByNumber: (number: number) => void,
     _onCloseTerminalTab: () => void,
+    _onOpenTerminalTab: () => void,
     onCopied: () => void,
   ) => {
     capturedOnCopied = onCopied;

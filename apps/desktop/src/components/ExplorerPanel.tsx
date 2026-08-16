@@ -91,6 +91,7 @@ export function ExplorerPanel({
   onConsumeDragClick,
   onEntryRenamed,
   onEntryDeleted,
+  openSearchSignal,
 }: {
   project: Project;
   width: number;
@@ -153,6 +154,13 @@ export function ExplorerPanel({
    * derselbe Abgleich wie bei `onEntryRenamed`, nur schließend statt
    * umziehend. */
   onEntryDeleted: (relPath: string) => void;
+  /** Erhöht sich, wenn das App-weite Kürzel Cmd/Ctrl+Shift+F
+   * (`SEARCH_IN_FILES_SHORTCUT_ID`) ausgelöst wurde — nur der Wechsel zählt,
+   * nicht der konkrete Zahlenwert (derselbe Nonce-statt-Boolean-Grund wie
+   * `TabResourceBanner.tsx`s `singleKillNonce`: zwei Aufrufe in Folge, bei
+   * denen die Suche zwischendurch nie geschlossen wurde, müssen trotzdem
+   * beide ein erneutes Fokussieren auslösen). `undefined` beim ersten Render. */
+  openSearchSignal?: number;
 }) {
   const { t } = useTranslation();
   // Ticket 05 (Live-Reload): derselbe `useSettings`, den auch der Settings-
@@ -325,6 +333,22 @@ export function ExplorerPanel({
     }
     setSearch(null);
   };
+
+  // Das App-weite Kürzel Cmd/Ctrl+Shift+F ruft nur "öffnen", nie "umschalten"
+  // — ein zweiter Druck bei bereits offener Suche soll das Feld erneut
+  // fokussieren, nicht schließen (anders als der Werkzeugleisten-Knopf oben,
+  // dessen `toggleSearch` genau das Umschalten IST). Bewusst kein Aufruf von
+  // `toggleSearch` selbst: der würde bei bereits offener Suche den zweiten
+  // Zweig nehmen und sie schließen.
+  const openSearchSignalRef = useRef(openSearchSignal);
+  useEffect(() => {
+    if (openSearchSignal === undefined || openSearchSignal === openSearchSignalRef.current) {
+      return;
+    }
+    openSearchSignalRef.current = openSearchSignal;
+    setSearch((current) => current ?? "");
+    setRootCollapsed(false);
+  }, [openSearchSignal]);
 
   const openDraft = (kind: DraftKind) => {
     setDraftKind(kind);
@@ -683,6 +707,12 @@ export function ExplorerPanel({
               stehen bleiben, statt oben hinauszurutschen. */}
           {searchQuery !== null && (
             <TreeFilterRow
+              // `key` statt eines gesonderten Fokus-Effekts: ein erneutes
+              // Cmd/Ctrl+Shift+F bei bereits offener Suche soll das Feld neu
+              // fokussieren (s. `openSearchSignal`-Effekt oben) — der
+              // einfachste Weg dahin ist derselbe Mount-Fokus-Effekt, den die
+              // Zeile beim ersten Öffnen schon hat, per erzwungenem Remount.
+              key={openSearchSignal ?? 0}
               value={searchQuery}
               onChange={setSearch}
               onClose={() => setSearch(null)}

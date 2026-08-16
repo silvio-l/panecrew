@@ -38,7 +38,7 @@ export function TabResourceBanner({
   onRestart: () => void;
 }) {
   const { t } = useTranslation();
-  const { status, percent, singleKillNonce } = useTabResourceGuard(tabId);
+  const { status, percent, reason, singleKillNonce } = useTabResourceGuard(tabId);
 
   const [singleKillFlash, setSingleKillFlash] = useState(false);
   const flashTimer = useRef<number | null>(null);
@@ -117,7 +117,15 @@ export function TabResourceBanner({
             <p className="text-(length:--pc-chrome-fontSize) text-(--pc-foreground)">
               {status === "paused"
                 ? t("resourceGuard.pausedMessage", { percent: Math.round(percent) })
-                : t("resourceGuard.terminatedMessage", { percent: Math.round(percent) })}
+                : reason === "manual-kill"
+                  ? // Kein `{{percent}}` hier: anders als die anderen beiden
+                    // Nachrichten oben geht ein manueller Kill (PaneTabs.tsx'
+                    // Kontextmenü "Terminal hart beenden") nie auf einen
+                    // Ressourcenwert zurück — `resource_guard.rs`s
+                    // `resource_guard_kill_manual` meldet deshalb bewusst
+                    // `percent: 0`, das hier zu zeigen wäre irreführend.
+                    t("resourceGuard.manualKillMessage")
+                  : t("resourceGuard.terminatedMessage", { percent: Math.round(percent) })}
             </p>
             <div className="flex gap-2">
               {status === "paused" ? (

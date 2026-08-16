@@ -132,6 +132,7 @@
     "terminateTab": "Beenden",
     "singleKillNotice": "Ein Prozess wurde beendet, da er zu viel Speicher verbraucht hat ({{percent}} %)",
     "terminatedMessage": "Sitzung beendet: Speicherverbrauch hat wiederholt {{percent}} % des System-RAMs überschritten",
+    "manualKillMessage": "Terminal manuell beendet",
     "restart": "Neu starten"
   },
   "focusMode": {
@@ -155,6 +156,7 @@
     "closeOtherTerminalTabs_other": "{{count}} andere Tabs schließen",
     "closeTerminalTabsToRight_one": "1 Tab rechts davon schließen",
     "closeTerminalTabsToRight_other": "{{count}} Tabs rechts davon schließen",
+    "killTerminalTab": "Terminal {{number}} hart beenden",
     "renameTerminalTab": "Terminal {{number}} umbenennen",
     "renameTerminalTabFieldLabel": "Name für Terminal {{number}}",
     "middleClickCloseHint": "Mittelklick zum Schließen",

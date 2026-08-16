@@ -84,6 +84,17 @@ pub fn run() {
             match id {
                 menu::ABOUT => about::show(app, false),
                 menu::CHECK_UPDATES => about::show(app, true),
+                menu::OPEN_SETTINGS => {
+                    if let Some(window) = windows::focused_content_window(app) {
+                        // `WebviewWindow`'s eigenes `window`-Feld ist crate-privat (Tauri-
+                        // intern) — der öffentliche Weg zum `Window` geht über
+                        // `AsRef<Webview<R>>` + `Webview::window()`, demselben Pfad, den
+                        // Tauris eigener `CommandArg`-Extractor für `WebviewWindow` intern
+                        // nimmt.
+                        let webview: &tauri::Webview<_> = window.as_ref();
+                        settings_window::show(app, &webview.window());
+                    }
+                }
                 menu::CLOSE_WINDOW => {
                     if let Some(window) = windows::focused_content_window(app) {
                         let _ = window.close();
@@ -172,6 +183,7 @@ pub fn run() {
             pty_commands::pty_kill,
             pty_commands::pty_detect_tool,
             resource_guard::resource_guard_resume,
+            resource_guard::resource_guard_kill_manual,
             shell_history::shell_history_read,
             explorer_fs::explorer_read_dir,
             explorer_fs::explorer_search_names,
