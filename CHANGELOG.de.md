@@ -44,6 +44,46 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.11] - 2026-08-16
+### Hinzugefügt
+- Erststart-Onboarding: Beim ersten Mal, wenn zwei Panes gleichzeitig
+  nebeneinander offen sind, erscheint kurz ein Hinweis direkt im Grid und
+  verschwindet wieder, sobald er ausprobiert wurde. Die Einstellungen haben
+  eine neue Kategorie "Hilfe" (macOS) mit einem Button, um den Hinweis
+  erneut zu zeigen, sowie direkten Links in die Systemeinstellungen zu
+  Vollzugriff, Dateien & Ordner sowie Datenschutz & Sicherheit für die
+  Berechtigungen, die PaneCrew braucht.
+
+### Geändert
+- Neuinstallationen starten jetzt standardmäßig im dunklen Theme statt der
+  Systemeinstellung zu folgen.
+
+### Behoben
+- Der Fokuswechsel zwischen Panes konnte die App auch nach dem letzten Fix
+  weiterhin gelegentlich kurzzeitig einfrieren lassen (Beachball unter
+  macOS): ein Neustart der Dateiüberwachung führte einen vollständigen,
+  unbegrenzten Verzeichnis-Scan auf dem Hauptthread aus. Das läuft jetzt im
+  Hintergrund.
+- Schnelles Schließen und erneutes Öffnen von Terminal-Tabs konnte sehr
+  selten einen verwaisten Shell-Prozess hinterlassen, nachdem das
+  zugehörige Fenster geschlossen wurde; ein großes Einfügen in ein Terminal
+  konnte das ganze Fenster kurz einfrieren lassen, während es an die Shell
+  gesendet wurde.
+- Ein veraltetes internes Flag konnte sehr selten ein leeres Geisterfenster
+  offen lassen, nachdem die App beendet und sofort wieder gestartet wurde.
+- Jedes offene Fenster prüfte fortlaufend jeden Terminal-Tab darauf, welches
+  CLI-Tool läuft — auch minimiert oder im Hintergrund. Diese Prüfung pausiert
+  jetzt, solange ein Fenster nicht sichtbar ist.
+- Das Ziehen am Größengriff des Explorer-Panels konnte sich bei vielen
+  offenen Panes träge anfühlen, weil jede Mausbewegung das ganze Grid neu
+  gerendert hat; jetzt löst nur noch die endgültige Breite ein Rerendern aus.
+- PaneCrew schrieb bei jedem Pane-Klick die komplette Sitzungsdatei neu,
+  selbst wenn sich nichts geändert hatte, und zwei gleichzeitig offene
+  Fenster konnten sich beim Speichern sehr selten gegenseitig überschreiben.
+  Beides behoben.
+- Bei einer Neuinstallation konnte die App kurz mit 100% Zoom erscheinen,
+  bevor sie sich auf ihren eigentlichen Standardwert einpendelte.
+
 ## [0.1.0-nightly.10] - 2026-08-16
 ### Geändert
 - Das Fenster-Ressourcenverbrauchs-Popover in der Titelleiste listet jetzt

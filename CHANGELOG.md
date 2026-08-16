@@ -42,6 +42,42 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.11] - 2026-08-16
+### Added
+- First-run onboarding: a short on-grid hint appears the first time you have
+  two panes open side by side, and clears itself once you've tried it.
+  Settings has a new "Help" category (macOS) with a button to replay the
+  hint and direct links into System Settings' Full Disk Access, Files &
+  Folders, and Privacy & Security panes for the permissions PaneCrew needs.
+
+### Changed
+- New installs now default to the dark theme instead of following the
+  system setting.
+
+### Fixed
+- Switching focus between panes could still occasionally make the app
+  briefly unresponsive (beachball on macOS) even after the previous fix: a
+  file-watcher restart was doing a full, unbounded filesystem scan on the
+  main thread. It now runs in the background.
+- Closing and reopening terminal tabs in quick succession could very rarely
+  leave an orphaned shell process running after its window closed, and a
+  large paste into a terminal could momentarily freeze the whole window
+  while it was being sent to the shell.
+- A stale internal flag could very rarely leave an empty ghost window open
+  after quitting and immediately reopening the app.
+- Every open window kept checking every terminal tab for which CLI tool is
+  running even while minimized or hidden; this check now pauses while a
+  window isn't visible.
+- Dragging the explorer panel's resize handle could feel sluggish with many
+  open panes, since every mouse movement re-rendered the whole grid; now
+  only the final width triggers a re-render.
+- PaneCrew rewrote its whole saved-session file on every single pane click,
+  even when nothing about it had actually changed, and two open windows
+  saving around the same moment could very rarely overwrite each other's
+  changes. Both fixed.
+- On a fresh install, the app could briefly appear at 100% zoom before
+  settling at its intended default.
+
 ## [0.1.0-nightly.10] - 2026-08-16
 ### Changed
 - The window resource usage popover in the title bar now lists every open
