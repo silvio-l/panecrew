@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePaneDrag } from "./usePaneDrag";
 
@@ -282,6 +283,62 @@ describe("usePaneDrag", () => {
     fireEvent.pointerUp(handle, { clientX: 150, clientY: 50 });
 
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("fängt den Zeiger nicht für einen pointerdown, dessen Ziel via React-Portal-Bubbling ankommt (Bug 2: tote Kontextmenü-Klicks)", () => {
+    // Ein `ContextMenu.Content`, das strukturell INNERHALB des Griffs
+    // gerendert wird (so wie `TerminalPane.tsx`s Header den ganzen
+    // `PaneTabs`-Baum inklusive jedes Tab-Chips eigenem `ContextMenu.Root`
+    // umschließt), hängt sein DOM an `document.body` — React lässt seine
+    // Events aber entlang des React-Baums bubbeln, nicht entlang des echten
+    // DOM-Baums. Entscheidend ist deshalb, dass der Griff hier ein ECHTER
+    // REACT-VORFAHRE der Portal-Nutzung ist (nicht bloß ihr DOM-Geschwister) —
+    // sonst bubbelt gar nichts zu ihm, ganz unabhängig vom Hook. Ohne die
+    // Prüfung `currentTarget.contains(target)` im Hook fängt
+    // `setPointerCapture` den Zeiger auf dem Griff ein, und der Menüpunkt
+    // bekommt sein eigenes `pointerup` nie — genau das Symptom, das sich real
+    // nur im echten Webview zeigte (jsdoms React-Laufzeit bubbelt Portale
+    // identisch, deshalb reproduziert dieser Test es ohne Webview).
+    function PortalMenuItem() {
+      return createPortal(
+        <div role="menuitem" data-testid="portal-item">
+          {"Portal-Menüpunkt"}
+        </div>,
+        document.body,
+      );
+    }
+
+    function PortalHarness({ onDrop }: { onDrop: (id: string, i: number | null) => void }) {
+      const drag = usePaneDrag<string>();
+      return (
+        <div
+          data-testid="griff"
+          onPointerDown={(event) => {
+            drag.startDrag(event, {
+              source: "pane-links",
+              candidatePaneIds: ["pane-rechts"],
+              onDrop,
+            });
+          }}
+        >
+          {"Griff"}
+          <PortalMenuItem />
+        </div>
+      );
+    }
+
+    const onDrop = vi.fn();
+    render(<PortalHarness onDrop={onDrop} />);
+    const handle = screen.getByTestId("griff");
+    const setPointerCapture = vi.fn();
+    handle.setPointerCapture = setPointerCapture;
+    handle.releasePointerCapture = vi.fn();
+    handle.hasPointerCapture = vi.fn(() => true);
+    const portalItem = screen.getByTestId("portal-item");
+
+    fireEvent.pointerDown(portalItem, { button: 0, clientX: 10, clientY: 10 });
+
+    expect(setPointerCapture).not.toHaveBeenCalled();
   });
 
   it("trägt eine Objekt-Quelle (Tab-Zug) genauso wie die String-Quelle des Slot-Tauschs", () => {

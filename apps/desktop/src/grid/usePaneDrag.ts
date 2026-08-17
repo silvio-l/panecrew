@@ -196,6 +196,21 @@ export function usePaneDrag<TSource>(): PaneDrag<TSource> {
       // (Tab-Chip, Terminalfläche), und ein mit ihr begonnenes Ziehen ließe
       // sich nur mit der linken beenden.
       if (event.button !== 0) return;
+      // React bubbelt Portal-Inhalte (z. B. ein `ContextMenu.Content`, das
+      // strukturell innerhalb dieses Griffs gerendert wird) entlang des
+      // React-Baums, nicht entlang des echten DOM-Baums — ein `pointerdown`
+      // auf einem Menüpunkt in `document.body` erreicht `handle` also trotzdem
+      // hier. Ohne diese Prüfung fängt `setPointerCapture` unten den Zeiger
+      // auf `handle` ein und der Menüpunkt bekommt sein eigenes `pointerup`
+      // nie — Radix' `onSelect` feuert dann nicht (Bug 2: Kontextmenü-Klicks
+      // wirkungslos). Bei echtem DOM-Bubbling ist `target` dagegen immer ein
+      // Nachfahre von `currentTarget`.
+      if (
+        event.target instanceof Node &&
+        !event.currentTarget.contains(event.target)
+      ) {
+        return;
+      }
       // Ohne erlaubtes Ziel gibt es nichts zu ziehen (einzige Pane im Grid,
       // einziger Tab der Pane, kein zweites Projektfenster desselben
       // Projekts): dann bleibt die Geste ein reiner Klick. Ein leerer Slot

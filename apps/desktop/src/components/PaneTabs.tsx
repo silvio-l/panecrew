@@ -16,15 +16,6 @@ import { useDetectedToolId } from "../terminal/useDetectedTool";
 import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
-import { debug } from "../logging/log";
-
-// [DEBUG-a4f2] Kept at debug level through the general sink (src/logging/log.ts)
-// for the still-open intermittent context-menu bug — grep `[bug2]`. Migrate to
-// a real regression test / delete once the bug is fixed and reproduced once
-// through this logging.
-function logBug2(line: string): void {
-  void debug(`[bug2] ${line}`);
-}
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert) plus höchstens ein File-Tab, immer hinter allen
@@ -792,11 +783,7 @@ function TerminalTabChip({
   );
 
   return (
-    <ContextMenu.Root
-      onOpenChange={(open) => {
-        logBug2(`onOpenChange tabId=${tabId} open=${String(open)}`);
-      }}
-    >
+    <ContextMenu.Root>
       {renaming ? trigger : <ChromeTooltip label={tooltipLabel}>{trigger}</ChromeTooltip>}
       <ContextMenu.Portal>
         <ContextMenu.Content
@@ -807,7 +794,6 @@ function TerminalTabChip({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const action = pendingActionRef.current;
-            logBug2(`onCloseAutoFocus tabId=${tabId} pending=${String(action)}`);
             pendingActionRef.current = null;
             if (action === "rename") {
               onStartRename();
@@ -823,7 +809,6 @@ function TerminalTabChip({
           <ContextMenu.Item
             onSelect={() => {
               pendingActionRef.current = "rename";
-              logBug2(`onSelect tabId=${tabId} action=rename`);
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
@@ -839,7 +824,6 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "close";
-                logBug2(`onSelect tabId=${tabId} action=close`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -850,7 +834,6 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeOthers";
-                logBug2(`onSelect tabId=${tabId} action=closeOthers`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -861,7 +844,6 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeToRight";
-                logBug2(`onSelect tabId=${tabId} action=closeToRight`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -880,7 +862,6 @@ function TerminalTabChip({
           <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
           <ContextMenu.Item
             onSelect={() => {
-              logBug2(`onSelect tabId=${tabId} action=killTerminal`);
               void invoke("resource_guard_kill_manual", { tabId }).catch(() => {
                 // Best-effort wie jeder andere PTY-Kill-Aufruf im Frontend
                 // (s. `ptyBackend.ts`s `reportIpcFailure`) — ein bereits
