@@ -16,10 +16,10 @@ use std::path::{Path, PathBuf};
 const MAX_ENTRIES: usize = 1000;
 
 /// Starting size of the tail read in `read_history_file` (Ticket 14, perf
-/// audit) — generous for real shell history line lengths (a few thousand
-/// `MAX_ENTRIES`-worth of typical commands fits well under this), so the
-/// common case is one single read from the end of the file, not the whole
-/// file however large it's grown over the years.
+/// audit) — at typical shell history line lengths, `MAX_ENTRIES` (1000)
+/// lines comfortably fits within this many bytes, so the common case is one
+/// single read from the end of the file, not the whole file however large
+/// it's grown over the years.
 const TAIL_WINDOW_SEED: u64 = 64 * 1024;
 
 // `async`: same reasoning as `explorer_fs.rs::explorer_read_tree` — a

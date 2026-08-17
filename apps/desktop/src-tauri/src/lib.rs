@@ -192,12 +192,8 @@ pub fn run() {
             // above -- see the comment there.
             menu::refresh(app.handle());
 
-            // Managed with `None` synchronously so a fast cold start can
-            // never hit "state accessed before `manage()`" in `pty_spawn`;
-            // the background thread below fills the `Mutex` in once
-            // materialization actually finishes. `None` is already a
-            // supported degrade path (see `pty_spawn`): panes just spawn
-            // unwrapped, exactly as before.
+            // See `ShellIntegrationDir`'s own doc comment for why this starts
+            // as `None` and who fills it in.
             app.manage(ShellIntegrationDir(Mutex::new(None)));
 
             // Ticket 04 (perf audit): none of `.setup()`'s filesystem-writing
