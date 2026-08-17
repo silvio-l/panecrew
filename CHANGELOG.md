@@ -42,6 +42,31 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.12] - 2026-08-17
+### Added
+- A guided first-run setup wizard: pick your language and theme (applied
+  immediately, live, as you click), grant macOS's Full Disk Access
+  permission if needed, then jump straight into your first project.
+  Replaces the previous single hint and now works correctly no matter how
+  full the grid already is.
+- Empty project slots show a "recent projects" panel on hover, docked right
+  into the slot itself, plus an entry to browse for a project that isn't on
+  the list yet.
+
+### Fixed
+- Right-clicking a terminal tab and choosing "Rename" or "Close" could
+  silently do nothing.
+- "Restart onboarding" in Settings left the Settings window open on top of
+  the wizard it triggers; it now closes itself.
+- Restarting onboarding on a grid that already has a project open no longer
+  offers to silently replace it.
+- Some notifications (the close-confirmation dialog, menu actions like
+  "Open Folder") could incorrectly fire in every open window instead of
+  just the one they were meant for.
+- A secondary window's title-bar resource-usage popover now correctly
+  groups its terminal tabs by pane instead of showing a flat, unlabeled
+  list.
+
 ## [0.1.0-nightly.11] - 2026-08-16
 ### Added
 - First-run onboarding: a short on-grid hint appears the first time you have

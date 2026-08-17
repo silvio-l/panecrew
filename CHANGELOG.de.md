@@ -44,6 +44,32 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.12] - 2026-08-17
+### Hinzugefügt
+- Ein geführter Erststart-Assistent: Sprache und Theme auswählen (wird
+  sofort beim Klicken live übernommen), bei Bedarf macOS' Vollzugriff-
+  Berechtigung erteilen, dann direkt ins erste Projekt starten. Ersetzt den
+  bisherigen einzelnen Hinweis und funktioniert jetzt unabhängig davon, wie
+  voll das Grid bereits ist.
+- Leere Projekt-Slots zeigen bei Hover ein "Zuletzt verwendet"-Panel direkt
+  im Slot an, plus einen Eintrag, um nach einem noch nicht gelisteten
+  Projekt zu suchen.
+
+### Behoben
+- Rechtsklick auf einen Terminal-Tab und Auswahl von "Umbenennen" oder
+  "Schließen" konnte stillschweigend nichts bewirken.
+- "Einführung neu starten" in den Einstellungen ließ das Einstellungsfenster
+  über dem dadurch ausgelösten Assistenten offen; es schließt sich jetzt
+  selbst.
+- Ein Neustart der Einführung auf einem Grid mit bereits offenem Projekt
+  bietet nicht mehr an, es stillschweigend zu ersetzen.
+- Manche Benachrichtigungen (der Schließen-Bestätigungsdialog,
+  Menü-Aktionen wie "Ordner öffnen") konnten fälschlich in jedem offenen
+  Fenster statt nur im betroffenen auslösen.
+- Das Ressourcen-Popover in der Titelleiste eines zweiten Fensters
+  gruppiert seine Terminal-Tabs jetzt korrekt nach Pane statt eine flache,
+  unbeschriftete Liste zu zeigen.
+
 ## [0.1.0-nightly.11] - 2026-08-16
 ### Hinzugefügt
 - Erststart-Onboarding: Beim ersten Mal, wenn zwei Panes gleichzeitig
