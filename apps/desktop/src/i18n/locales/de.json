@@ -193,6 +193,16 @@
         "body": "Mehrere echte Terminals gleichzeitig sichtbar, nebeneinander statt hintereinander — der Explorer folgt automatisch der Pane, an der du gerade arbeitest.",
         "cta": "Los geht's"
       },
+      "preferences": {
+        "title": "Deine Einstellungen",
+        "body": "Du kannst das jederzeit in den Einstellungen ändern.",
+        "cta": "Weiter"
+      },
+      "permissions": {
+        "title": "Terminal-Berechtigung",
+        "body": "Falls dein Terminal später mit „Keine Berechtigung“ auf einen Ordner außerhalb deines Projekts stößt, hilft das hier. Du kannst es auch jederzeit in den Einstellungen nachholen.",
+        "cta": "Weiter"
+      },
       "ready": {
         "title": "Bereit zum Start",
         "body": "Sobald zwei Projekte nebeneinander offen sind, siehst du das Raster in Aktion — öffne dazu dein erstes Projekt.",
@@ -285,10 +295,8 @@
       },
       "permissions": {
         "title": "Berechtigungen (macOS)",
-        "explainer": "macOS fragt bei bestimmten Zugriffen (z. B. auf Ordner außerhalb des Nutzerverzeichnisses) einzeln nach. Diese Zugriffe lassen sich hier zentral verwalten:",
-        "fullDiskAccess": "Vollständiger Festplattenzugriff",
-        "filesAndFolders": "Dateien und Ordner",
-        "privacySecurityOverview": "Datenschutz & Sicherheit (Übersicht)"
+        "explainer": "macOS fragt bei Zugriffen außerhalb deines Projektordners gesondert nach. Der vollständige Festplattenzugriff deckt das an einer Stelle ab:",
+        "fullDiskAccess": "Vollständiger Festplattenzugriff"
       }
     },
     "terminalRestartHint": "Gilt ab der nächsten neuen Terminal-Sitzung — die laufende Sitzung bleibt unverändert.",

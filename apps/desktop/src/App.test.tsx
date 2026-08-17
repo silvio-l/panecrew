@@ -19,6 +19,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn(() => Promise.resolve()),
+  // Permissions step of the Setup-Wizard (macOS only, `PermissionsSection.tsx`)
+  // deep-links to System Settings through this.
+  openUrl: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -3074,6 +3077,14 @@ describe("Onboarding", () => {
   // Phase 1, der Wizard — mit `wizardCompleted: false` gemockt, sonst
   // rendert er per Konstruktion nie.
   describe("Phase 1: Setup-Wizard", () => {
+    const ORIGINAL_USER_AGENT = window.navigator.userAgent;
+    afterEach(() => {
+      Object.defineProperty(window.navigator, "userAgent", {
+        value: ORIGINAL_USER_AGENT,
+        configurable: true,
+      });
+    });
+
     it("zeigt den Wizard bei echtem Erstlauf, nicht den Phase-2-Hinweis", async () => {
       mockOnboardingState(false, false);
 
@@ -3085,7 +3096,41 @@ describe("Onboarding", () => {
       ).not.toBeInTheDocument();
       // Step position must be perceivable without relying on the (aria-hidden)
       // dot indicator's color alone — onboarding-prompt.md §10/§235.
-      expect(screen.getByText("Schritt 1 von 2")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 1 von 3")).toBeInTheDocument();
+    });
+
+    it("zeigt auf macOS einen zusätzlichen, überspringbaren Berechtigungs-Schritt vor 'Bereit zum Start'", async () => {
+      Object.defineProperty(window.navigator, "userAgent", {
+        value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        configurable: true,
+      });
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Willkommen bei PaneCrew");
+
+      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Deine Einstellungen");
+      expect(screen.getByText("Schritt 2 von 4")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Terminal-Berechtigung")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 3 von 4")).toBeInTheDocument();
+      // Nichts zwingt zum Klick auf den Berechtigungs-Link — "Weiter" führt
+      // unabhängig davon weiter (der Skip liegt im normalen Weiterklicken,
+      // kein separater Skip-Link nötig).
+      expect(screen.getByRole("button", { name: "Vollständiger Festplattenzugriff →" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 4 von 4")).toBeInTheDocument();
+
+      // Zurück von "Bereit zum Start" landet wieder auf dem
+      // Berechtigungs-Schritt, nicht auf "Deine Einstellungen" — bestätigt,
+      // dass Zurück/Weiter relativ zur tatsächlichen (Mac-)Schrittfolge
+      // navigieren, nicht über hartkodierte Indizes.
+      fireEvent.click(screen.getByRole("button", { name: "Zurück" }));
+      expect(await screen.findByText("Terminal-Berechtigung")).toBeInTheDocument();
     });
 
     it("führt über Weiter zum Ready-Screen, dessen CTA das erste Projekt öffnet und den Wizard schließt", async () => {
@@ -3095,8 +3140,31 @@ describe("Onboarding", () => {
       await screen.findByText("Willkommen bei PaneCrew");
 
       fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      expect(await screen.findByText("Deine Einstellungen")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 2 von 3")).toBeInTheDocument();
+
+      // Each option persists immediately on click, not deferred to
+      // "Continue" — the user must see language/theme apply live, so the
+      // write can't wait for step-advance.
+      fireEvent.click(screen.getByRole("button", { name: "Deutsch" }));
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("settings_set_value", {
+          key: "appearance.language",
+          value: "de",
+        }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Hell" }));
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("settings_set_value", {
+          key: "appearance.theme",
+          value: "light",
+        }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
       expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
-      expect(screen.getByText("Schritt 2 von 2")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 3 von 3")).toBeInTheDocument();
 
       openMock.mockResolvedValueOnce("/Users/dev/projects/one");
       fireEvent.click(screen.getByRole("button", { name: "Erstes Projekt öffnen" }));
@@ -3158,6 +3226,8 @@ describe("Onboarding", () => {
 
       await screen.findByText("Willkommen bei PaneCrew");
       fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Deine Einstellungen");
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
       expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Erstes Projekt öffnen" }),
@@ -3181,6 +3251,8 @@ describe("Onboarding", () => {
       render(<App />);
       await screen.findByText("Willkommen bei PaneCrew");
       fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Deine Einstellungen");
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
       await screen.findByText("Bereit zum Start");
 
       fireEvent.click(screen.getByRole("button", { name: "Ohne Projekt fortfahren" }));

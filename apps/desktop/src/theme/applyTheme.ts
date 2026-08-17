@@ -17,7 +17,10 @@ function isThemeChoice(value: unknown): value is ThemeChoice {
   return value === "system" || value === "light" || value === "dark";
 }
 
-function resolveSystemTheme(): "light" | "dark" {
+/** Exported for the onboarding wizard's preferences step, which pre-selects
+ * the theme option matching the OS preference — same query, no duplicate
+ * media-query string. */
+export function resolveSystemTheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: light)").matches
     ? "light"
     : "dark";

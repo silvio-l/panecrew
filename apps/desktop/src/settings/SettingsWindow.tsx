@@ -16,8 +16,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
+import { PermissionsSection } from "../components/PermissionsSection";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
@@ -631,7 +631,11 @@ function HelpCategoryPanel({
   return (
     <div className="flex flex-col divide-y divide-(--pc-widget-border)">
       <OnboardingRestartRow t={t} />
-      {isMacPlatform() && <PermissionsSection t={t} />}
+      {isMacPlatform() && (
+        <div className="py-3">
+          <PermissionsSection t={t} />
+        </div>
+      )}
     </div>
   );
 }
@@ -681,70 +685,3 @@ function OnboardingRestartRow({
   );
 }
 
-// One deep link per row: `url` is a `x-apple.systempreferences:` scheme,
-// scoped in `capabilities/settings.json` (the plugin-opener default scope
-// only covers mailto/tel/http/https — this settings window needed its own
-// explicit scope entry for the systempreferences scheme). Only the two
-// long-stable anchors (Full Disk Access, Files and Folders) plus the bare
-// Privacy & Security pane are used — no Sequoia-specific "App Data" anchor,
-// since no stable one could be confirmed.
-function PermissionsSection({
-  t,
-}: {
-  t: (key: string, options?: Record<string, unknown>) => string;
-}) {
-  const [openError, setOpenError] = useState(false);
-  const open = (url: string) => {
-    setOpenError(false);
-    void openUrl(url).catch((error: unknown) => {
-      console.error("PaneCrew: Systemeinstellungen konnten nicht geöffnet werden", error);
-      setOpenError(true);
-    });
-  };
-
-  return (
-    <div className="py-3">
-      <p className="text-(length:--pc-chrome-fontSize) text-(--pc-foreground)">
-        {t("settings.help.permissions.title")}
-      </p>
-      <p className="mt-0.5 max-w-md text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
-        {t("settings.help.permissions.explainer")}
-      </p>
-      {openError && (
-        <p className="mt-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
-          {t("settings.loadError")}
-        </p>
-      )}
-      <div className="mt-2 flex flex-col items-start gap-1.5">
-        <PermissionsLinkButton
-          label={t("settings.help.permissions.fullDiskAccess")}
-          onClick={() =>
-            open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
-          }
-        />
-        <PermissionsLinkButton
-          label={t("settings.help.permissions.filesAndFolders")}
-          onClick={() =>
-            open("x-apple.systempreferences:com.apple.preference.security?Privacy_Files")
-          }
-        />
-        <PermissionsLinkButton
-          label={t("settings.help.permissions.privacySecurityOverview")}
-          onClick={() => open("x-apple.systempreferences:com.apple.preference.security")}
-        />
-      </div>
-    </div>
-  );
-}
-
-function PermissionsLinkButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-    >
-      {label} →
-    </button>
-  );
-}

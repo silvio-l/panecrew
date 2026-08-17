@@ -164,7 +164,7 @@ describe("SettingsWindow — Hilfe-Kategorie (Onboarding-Neustart + macOS-Berech
     expect(screen.queryByText("Berechtigungen (macOS)")).not.toBeInTheDocument();
   });
 
-  it("öffnet auf macOS die jeweilige Systemeinstellungen-URL über den Deep-Link-Button", async () => {
+  it("öffnet auf macOS die Systemeinstellungen-URL für Vollzugriff über den Deep-Link-Button", async () => {
     setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
     render(<SettingsWindow />);
     fireEvent.click(await screen.findByRole("button", { name: "Hilfe" }));
@@ -173,16 +173,6 @@ describe("SettingsWindow — Hilfe-Kategorie (Onboarding-Neustart + macOS-Berech
     fireEvent.click(screen.getByRole("button", { name: /Vollständiger Festplattenzugriff/ }));
     expect(openUrlMock).toHaveBeenCalledWith(
       "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Dateien und Ordner/ }));
-    expect(openUrlMock).toHaveBeenCalledWith(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Files",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Datenschutz & Sicherheit \(Übersicht\)/ }));
-    expect(openUrlMock).toHaveBeenCalledWith(
-      "x-apple.systempreferences:com.apple.preference.security",
     );
   });
 });

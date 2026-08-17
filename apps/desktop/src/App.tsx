@@ -1047,7 +1047,7 @@ function App() {
     }
     if (!showOnboardingWizard) onboardingWizardStartedLoggedRef.current = false;
   }, [showOnboardingWizard]);
-  const onboardingWizardStepViewed = (step: 0 | 1) => {
+  const onboardingWizardStepViewed = (step: number) => {
     void info(`onboarding: [onboarding_step_viewed] phase=wizard step=${step}`);
   };
   const finishOnboardingWizard = () => {
@@ -1057,7 +1057,7 @@ function App() {
   const onboardingWizardOpenFirstProject = () => {
     finishOnboardingWizard();
     void info(
-      "onboarding: [onboarding_step_completed] [activation_event] phase=wizard step=1 action=open-first-project",
+      "onboarding: [onboarding_step_completed] [activation_event] phase=wizard step=2 action=open-first-project",
     );
     assignProjectToSlot(0);
   };
@@ -1842,6 +1842,18 @@ function App() {
               welcomeTitle: t("onboarding.wizard.welcome.title"),
               welcomeBody: t("onboarding.wizard.welcome.body"),
               welcomeCta: t("onboarding.wizard.welcome.cta"),
+              preferencesTitle: t("onboarding.wizard.preferences.title"),
+              preferencesBody: t("onboarding.wizard.preferences.body"),
+              languageLabel: t("settings.schema.appearance.language.label"),
+              themeLabel: t("settings.schema.appearance.theme.label"),
+              languageOptionLabel: (lang) =>
+                t(`settings.schema.appearance.language.options.${lang}`),
+              themeOptionLabel: (theme) =>
+                t(`settings.schema.appearance.theme.options.${theme}`),
+              preferencesCta: t("onboarding.wizard.preferences.cta"),
+              permissionsTitle: t("onboarding.wizard.permissions.title"),
+              permissionsBody: t("onboarding.wizard.permissions.body"),
+              permissionsCta: t("onboarding.wizard.permissions.cta"),
               readyTitle: t("onboarding.wizard.ready.title"),
               readyBody: t("onboarding.wizard.ready.body"),
               readyCtaOpenProject: t("onboarding.wizard.ready.cta"),

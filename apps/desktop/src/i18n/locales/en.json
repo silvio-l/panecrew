@@ -193,6 +193,16 @@
         "body": "Multiple real terminals visible at once, side by side instead of one after another — the explorer automatically follows whichever pane you're working in.",
         "cta": "Let's go"
       },
+      "preferences": {
+        "title": "Your preferences",
+        "body": "You can change this anytime in Settings.",
+        "cta": "Continue"
+      },
+      "permissions": {
+        "title": "Terminal permissions",
+        "body": "If your terminal ever hits “Operation not permitted” outside your project folder, this fixes it. You can do this anytime later in Settings too.",
+        "cta": "Continue"
+      },
       "ready": {
         "title": "Ready to start",
         "body": "Once two projects are open side by side, you'll see the grid in action — start by opening your first one.",
@@ -285,10 +295,8 @@
       },
       "permissions": {
         "title": "Permissions (macOS)",
-        "explainer": "macOS asks individually for certain kinds of access (e.g. folders outside your user directory). These can be managed centrally here:",
-        "fullDiskAccess": "Full Disk Access",
-        "filesAndFolders": "Files and Folders",
-        "privacySecurityOverview": "Privacy & Security (overview)"
+        "explainer": "macOS asks for extra access when a terminal command reaches outside your project folder. Full Disk Access covers that in one place:",
+        "fullDiskAccess": "Full Disk Access"
       }
     },
     "terminalRestartHint": "Applies starting with the next new terminal session — the running session is unaffected.",
