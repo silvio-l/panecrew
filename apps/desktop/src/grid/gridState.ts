@@ -351,7 +351,7 @@ export function openTerminalTab(
  * darin, was DANACH mit ihm passiert (sterben bzw. in einer anderen Pane
  * weiterleben). Aufrufer garantieren `terminalTabs.length > 1` und einen
  * gültigen `tabIndex`; der Fallback-Zugriff unten ist deshalb nie leer. */
-function withoutTerminalTab(
+export function withoutTerminalTab(
   pane: Pane,
   tabIndex: number,
 ): Pick<Pane, "terminalTabs" | "activeTerminalTabId"> {
