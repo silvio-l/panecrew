@@ -13,7 +13,7 @@ import {
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 import { useDetectedToolId } from "../terminal/useDetectedTool";
-import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
+import { markTabViewed, useTerminalAwaitingAttention } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
 
@@ -193,22 +193,38 @@ import { resolveToolIcon } from "../terminal/toolIcons";
 // Umbau 2026-08-13, noch später (Nutzer-Neuspezifikation nach Abnahme des
 // Hintergrund-Pane-Fixes): das bis dahin blinkende `bg-current`-Badge
 // ("aktiv im Hintergrund", reine Streaming-Anzeige, s. Korrektur oben) wird
-// hier durch ein zweistufiges Signal ersetzt, wörtliches Nutzer-Zitat: "das
-// Tab gerät farblich in den Vordergrund und geht dann langsam wieder aus...
-// und dann bleibt halt bloß noch dieser typische rote Punkt... und zwar so
-// lange, bis man den Tab aufgemacht hat". Zwei GETRENNTE Zustände in
-// terminalActivity.ts (dortiger Kopfkommentar zu `viewedTabId`/`unread`,
-// nicht hier wiederholt):
+// hier durch ein persistentes "ungelesen"-Signal ersetzt.
 //
-// 1. `unread` (persistent, KEIN Zeitablauf) treibt den kleinen Punkt — jetzt
-//    statisch statt blinkend, in `--pc-icon-red` statt `bg-current`. Dieselbe
-//    Farbe wie ConfirmDialog.tsx' Gefahren-Icon und ExplorerPanel.tsx' Alarm-
-//    Rahmen (beide bereits "hier ist etwas, das Aufmerksamkeit braucht"),
-//    bewusst NICHT `--pc-terminal-ansiRed`: die dortige Datei trennt eigens
-//    einen Chrome-Rot-Ton vom Terminal-Inhalts-Rot, genau die Trennung, die
-//    ein Notiz-Punkt in der Tab-Leiste (Chrome, kein Terminal-Inhalt)
-//    braucht, um nicht als ANSI-Fehlerfarbe gelesen zu werden.
-// 2. Der false→true-Übergang von `unread` löst zusätzlich EINMALIG den
+// Umbau 2026-08-17 (Nutzer-Bugreport: Aktivitätserkennung "funktioniert
+// noch nicht sinnvoll", insbesondere innerhalb von Claude Code): das // brandlint-ok: functional reference to the specific tool tested, not marketing
+// "ungelesen"-Signal von 2026-08-13 war das falsche Modell — es erschien bei
+// jedem neuen Hintergrund-Output und blieb bestehen bis zum Ansehen,
+// UNABHÄNGIG von weiterer Aktivität in der Zwischenzeit (ein durchgehend
+// streamender Tab zeigte denselben Punkt wie ein längst fertiger). Der
+// Nutzer wollte tatsächlich das Gegenteil, wörtliches Zitat auf Rückfrage
+// (Option "1a"): der Marker soll erscheinen, wenn eine Pane FERTIG/STILL ist
+// (nichts mehr passiert), und wieder verschwinden, sobald neuer Output
+// kommt. `useTerminalAwaitingAttention` (terminalActivity.ts, dortiger
+// Kopfkommentar für die vollständige Herleitung inkl. des Root-Cause-Funds
+// zur Spinner-Lücke) liefert genau dieses Signal, live aus dem aktuellen
+// Zustand abgeleitet statt als eigener, manuell zu invalidierender Flag:
+//
+// 1. Der zugrundeliegende Zustand (`busy`/`hasBeenActive` in
+//    terminalActivity.ts) treibt den kleinen Punkt — in `--pc-icon-red`.
+//    Dieselbe Farbe wie ConfirmDialog.tsx' Gefahren-Icon und
+//    ExplorerPanel.tsx' Alarm-Rahmen (beide bereits "hier ist etwas, das
+//    Aufmerksamkeit braucht"), bewusst NICHT `--pc-terminal-ansiRed`: die
+//    dortige Datei trennt eigens einen Chrome-Rot-Ton vom
+//    Terminal-Inhalts-Rot, genau die Trennung, die ein Notiz-Punkt in der
+//    Tab-Leiste (Chrome, kein Terminal-Inhalt) braucht, um nicht als
+//    ANSI-Fehlerfarbe gelesen zu werden.
+// 2. Zusätzlich hebt sich der ganze Chip beim false→true-Übergang optisch an
+//    ("Karteireiter, der ein Stück herausgezogen wird", Nutzer-Zitat) — ein
+//    persistenter `-translate-y` + Schatten, kein einmaliger Flash, bleibt
+//    also so lange angehoben, wie der Marker aktiv ist, und sinkt animiert
+//    wieder ab, sobald er verschwindet (motion-safe: reduzierte Bewegung
+//    bekommt nur den Sprung ohne Animation, s. dortiger Kommentar).
+// 3. Der false→true-Übergang löst zusätzlich EINMALIG den
 //    `pc-attention-flash`-Wasch über den ganzen Chip aus (App.css, dortiger
 //    Kommentar zur Hüllkurve/Farbwahl) — per `key`-Neumount erkannt
 //    (`flashKey` unten), derselbe Mechanismus wie am Tool-Icon-Badge.
@@ -549,10 +565,11 @@ function TerminalTabChip({
   const baseLabel = t("paneTabs.terminalTab", { number });
   const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
   const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
-  // Persistent statt transient (Kopfkommentar dieser Datei, Umbau-Absatz;
-  // terminalActivity.ts' Kommentar an `viewedTabId`/`unread`) — bleibt
-  // gesetzt über Sprechpausen hinweg, bis `markTabViewed` unten feuert.
-  const isUnread = useTerminalUnread(tabId);
+  // Derived live from terminalActivity.ts' module state (this file's header
+  // comment, Umbau 2026-08-17) — true once this tab has done real work and
+  // then fallen silent, false again the instant new output arrives or the
+  // user looks at it via `markTabViewed` below.
+  const isAwaitingAttention = useTerminalAwaitingAttention(tabId);
   // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "warn" ist die
   // einzige Stufe, die dieser Chip selbst zeigt — "paused"/"terminated"
   // übernimmt `TabResourceBanner.tsx` in der Terminalfläche, hier reicht ein
@@ -562,25 +579,30 @@ function TerminalTabChip({
   // `markTabViewed` meldet "der Nutzer sieht diesen Tab gerade tatsächlich"
   // an terminalActivity.ts, sobald Auswahl UND Pane-Fokus zusammenfallen —
   // dieselbe Kombination wie zuvor die reine Badge-Unterdrückung, jetzt
-  // zusätzlich der einzige Weg, `unread` wieder zu löschen.
+  // zusätzlich der einzige Weg, den Marker sofort zu löschen statt erst über
+  // die nächste Aktivität abzuwarten.
   useEffect(() => {
     if (isViewed) markTabViewed(tabId);
   }, [isViewed, tabId]);
-  // Löst den einmaligen Aufblitz-Effekt (App.css' `pc-attention-flash`) exakt
-  // am false→true-Übergang von `isUnread` aus, nicht bei jedem Re-Render
-  // während `isUnread` bereits `true` ist — ein `key`-Neumount pro Übergang
-  // startet die `animation` jedes Mal frisch (dasselbe Muster wie das
-  // Tool-Icon-Badge, s. `pc-overlay-in` oben im Kopfkommentar).
-  const wasUnreadRef = useRef(isUnread);
+  // Fires the one-shot flash effect (App.css' `pc-attention-flash`) exactly
+  // on the false→true transition of `isAwaitingAttention`, not on every
+  // re-render while it's already true — a `key` remount per transition
+  // restarts the `animation` fresh each time (same pattern as the tool icon
+  // badge, see `pc-overlay-in` in the header comment above). Also drives the
+  // persistent "lifted" resting state further below for as long as the
+  // marker stays active, not just the one-shot flash.
+  const wasAwaitingAttentionRef = useRef(isAwaitingAttention);
   const [flashKey, setFlashKey] = useState(0);
   useEffect(() => {
-    if (isUnread && !wasUnreadRef.current) {
+    if (isAwaitingAttention && !wasAwaitingAttentionRef.current) {
       setFlashKey((key) => key + 1);
       onAttentionFlash?.();
     }
-    wasUnreadRef.current = isUnread;
-  }, [isUnread, onAttentionFlash]);
-  const needsAttentionLabel = isUnread ? t("paneTabs.unreadActivityLabel") : null;
+    wasAwaitingAttentionRef.current = isAwaitingAttention;
+  }, [isAwaitingAttention, onAttentionFlash]);
+  const needsAttentionLabel = isAwaitingAttention
+    ? t("paneTabs.awaitingAttentionLabel")
+    : null;
   const resourceWarnLabel = isResourceWarn ? t("resourceGuard.warnTabSuffix") : null;
   // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
   // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
@@ -713,9 +735,33 @@ function TerminalTabChip({
             // Pointer-Capture hält den Zeiger am Chip, dessen Cursor gilt
             // also für den ganzen Zug — die geschlossene Hand ist das
             // systemübliche "ich halte gerade etwas".
-            className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
+            //
+            // `isAwaitingAttention` (2026-08-17): der Chip hebt sich dauerhaft
+            // ein Stück an, solange der Marker aktiv ist — "als würde man
+            // diese Karteikarte ein bisschen rausziehen", Nutzer-Zitat zur
+            // gewünschten Optik. Ein `-translate-y` + Schatten statt eines
+            // einmaligen Keyframes, weil der Zustand PERSISTENT ist (anders
+            // als der `pc-attention-flash`-Wasch weiter unten, der nur den
+            // Übergang markiert) — er muss so lange sichtbar bleiben, wie
+            // `isAwaitingAttention` es ist, und beim Zurückgehen genauso
+            // animiert absinken wie er angehoben ist. Dieselbe
+            // Transition-Größenordnung wie ToggleSwitch.tsx' Thumb-Slide
+            // (auch `transform`, ebenfalls ungated) statt der größeren,
+            // eigens hinter `prefers-reduced-motion` gestellten
+            // Keyframe-Effekte in App.css — ein 3px-Versatz zählt in dieser
+            // Codebase nicht als die Art Bewegung, die reduzierte Bewegung
+            // abschalten soll. Bewusst keine Akzentfarbe im Schatten — der
+            // eine App-Akzent ist für Fokus/aktiven Tab reserviert
+            // (Kopfkommentar Datei, Korrektur "Akzent auf Tabs erlaubt"), ein
+            // dritter Bedeutungsträger in derselben Farbe würde genau die
+            // dort geforderte Formunterscheidung wieder aufheben.
+            className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-[color,background-color,border-color,transform,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               dragging ? "cursor-grabbing" : draggable ? "cursor-grab" : ""
             } ${dragging ? "opacity-50" : ""} ${
+              isAwaitingAttention
+                ? "-translate-y-[3px] shadow-[0_3px_8px_rgba(0,0,0,0.35)]"
+                : ""
+            } ${
               active
                 ? `${
                     paneFocused
@@ -746,7 +792,7 @@ function TerminalTabChip({
               />
             )}
             <span className="flex items-center gap-1">
-              {isUnread && (
+              {isAwaitingAttention && (
                 <span
                   aria-hidden="true"
                   className="size-1.5 shrink-0 rounded-full bg-(--pc-icon-red)"

@@ -165,7 +165,7 @@
     "renameTerminalTab": "Rename terminal {{number}}",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
     "middleClickCloseHint": "Middle-click to close",
-    "unreadActivityLabel": "Unread activity",
+    "awaitingAttentionLabel": "Waiting for you",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -321,12 +321,12 @@
           "description": "Character size in the terminal, in pixels."
         },
         "activityIdleMs": {
-          "label": "Unread time window",
-          "description": "How long to wait after the last new line before an activity burst counts as its own event. Only controls how easily the persistent unread dot triggers — the dot itself never expires on its own, only by viewing the tab. In milliseconds."
+          "label": "Idle time before \"waiting for you\"",
+          "description": "How long a terminal tab must produce no output at all before it's flagged as done and waiting for you. Clears immediately once new output arrives or you open the tab. In milliseconds."
         },
         "activityLineThreshold": {
-          "label": "Unread threshold (lines)",
-          "description": "Minimum number of new lines within the time window before an unviewed terminal tab gets the unread dot."
+          "label": "Activity threshold (lines)",
+          "description": "Minimum number of new lines a terminal tab must produce before it's considered to have done real work at all — a freshly opened, still-empty shell won't be flagged as \"waiting for you\"."
         }
       },
       "explorer": {

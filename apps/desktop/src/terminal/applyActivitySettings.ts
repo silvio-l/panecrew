@@ -3,7 +3,7 @@
 // config_core.rs) statt einer CSS-Custom-Property: beides reine JS-Logik-
 // Werte, kein CSS-Konsument. Bewusst eigenes Modul statt der Tauri-Invoke/
 // Listen-Aufrufe direkt in terminalActivity.ts: das hielte diese Datei frei
-// von Tauri-Imports (terminalActivity.test.ts ruft reportLineAdvance direkt
+// von Tauri-Imports (terminalActivity.test.ts ruft reportOutput direkt
 // auf, ohne echtes Backend) — dieses Modul ist die einzige Stelle, die
 // `setActivityIdleMs`/`setActivityLineThreshold` tatsächlich aus dem
 // Settings-Store befüllt.

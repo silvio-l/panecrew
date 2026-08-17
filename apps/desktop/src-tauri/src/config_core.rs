@@ -38,18 +38,20 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Number,
         serde_json::json!(14),
     ))?;
-    // Needs-Attention-Grundlage (terminalActivity.ts, Task #7/#13): ein Tab
-    // gilt intern als "aktiv", sobald innerhalb von activityIdleMs mindestens
-    // activityLineThreshold neue Zeilen committet wurden — das steuert aber
-    // seit dem Ungelesen-Umbau (terminalActivity.ts, Nutzer-Neuspezifikation
-    // 2026-08-13) KEIN sichtbares Aktiv/Inaktiv mehr, sondern nur noch, wie
-    // empfindlich der PERSISTENTE Ungelesen-Punkt anschlägt (der bleibt dann
-    // bestehen, bis der Tab angesehen wird, unabhängig von activityIdleMs).
-    // Default 15000 (statt vormals 1500) trägt dieser neuen, nicht mehr
-    // selbstheilenden Semantik Rechnung — ein zu kurzes Fenster markierte bei
-    // jedem harmlosen Gelegenheits-Log-Zeilchen sofort "ungelesen" (Fund
-    // 2026-08-13, Nutzer-Bugreport: mehrere echte Hintergrund-Agenten lösten
-    // den Punkt korrekt, aber zu leichtfertig aus).
+    // "Awaiting attention" basis (terminalActivity.ts, 2026-08-17 rewrite):
+    // activityIdleMs is how long a tab must receive NO output at all (not
+    // just no new committed line — see terminalActivity.ts header comment on
+    // why liveness needs the broader signal) before it flags as "done,
+    // waiting on you"; activityLineThreshold is how many committed lines a
+    // tab needs before it's considered to have done real work at all (a
+    // freshly spawned, still-empty shell must not flag immediately).
+    // 15000 verified against a real captured Claude Code PTY session // brandlint-ok: functional reference to the specific tool tested, not marketing
+    // (root-cause investigation for this rewrite): observed intra-turn
+    // "thinking" pauses between tool calls topped out around 8s with no new
+    // committed line, so 15000 leaves roughly 2x headroom against a false
+    // "done" flag while the tool is still visibly working. Kept unchanged
+    // from the previous (differently-motivated) default rather than tuned
+    // down, since that sample size doesn't justify tightening it further.
     registry.register(entry(
         "terminal.activityIdleMs",
         SettingType::Number,

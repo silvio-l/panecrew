@@ -26,7 +26,7 @@ import { loadShellHistory } from "./shellHistory";
 import {
   committedLineCount,
   disposeTerminalActivity,
-  reportLineAdvance,
+  reportOutput,
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import {
@@ -310,18 +310,25 @@ export function usePtyTerminal(
       if (disposed || !pendingOutput) return;
       const text = pendingOutput;
       pendingOutput = "";
-      // Zeilen-Delta für das Aktivitätssignal (terminalActivity.ts) — VOR dem
-      // eigentlichen write() gemessen, ausgewertet erst im Callback: xterm
-      // parst asynchron, der Puffer spiegelt den geschriebenen Text laut
-      // eigener Doku erst nach dessen Abschluss wider (@xterm/xterm.d.ts,
-      // `write()`-Kommentar).
+      // Line delta for the activity signal (terminalActivity.ts) — measured
+      // BEFORE the actual write(), evaluated only in the callback: xterm
+      // parses asynchronously, per its own docs the buffer only reflects the
+      // written text once write() completes (@xterm/xterm.d.ts, `write()`
+      // comment).
+      //
+      // reportOutput() is called unconditionally, even when nothing was
+      // committed (null/0 delta) — a flush that only redrew the spinner or
+      // status line still proves the process is alive, which the "awaiting
+      // attention" idle timer needs to know about (terminalActivity.ts
+      // header comment: gating liveness on line advances alone let that
+      // timer expire mid-turn during a pure "thinking" phase).
       const linesBefore = committedLineCount(terminal);
       terminal.write(text, () => {
         if (disposed) return;
         const linesAfter = committedLineCount(terminal);
-        if (linesBefore !== null && linesAfter !== null) {
-          reportLineAdvance(tabId, linesAfter - linesBefore);
-        }
+        const linesAdvanced =
+          linesBefore !== null && linesAfter !== null ? linesAfter - linesBefore : 0;
+        reportOutput(tabId, linesAdvanced);
       });
     };
     // Zwei parallele Fallbacks statt einem: requestAnimationFrame feuert

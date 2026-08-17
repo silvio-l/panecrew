@@ -165,7 +165,7 @@
     "renameTerminalTab": "Terminal {{number}} umbenennen",
     "renameTerminalTabFieldLabel": "Name für Terminal {{number}}",
     "middleClickCloseHint": "Mittelklick zum Schließen",
-    "unreadActivityLabel": "Ungelesene Aktivität",
+    "awaitingAttentionLabel": "Wartet auf dich",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -321,12 +321,12 @@
           "description": "Zeichengröße im Terminal, in Pixel."
         },
         "activityIdleMs": {
-          "label": "Ungelesen-Zeitfenster",
-          "description": "Wie lange nach dem letzten Zeilen-Nachschub gewartet wird, bevor ein Aktivitäts-Burst als eigenständig zählt. Steuert nur, wie leicht der persistente Ungelesen-Punkt anspringt — der Punkt selbst verfällt nicht von selbst, sondern ausschließlich durchs Ansehen des Tabs. In Millisekunden."
+          "label": "Leerlaufzeit bis \"wartet auf dich\"",
+          "description": "Wie lange ein Terminal-Tab gar keine Ausgabe mehr produzieren muss, bevor er als fertig und wartend markiert wird. Verschwindet sofort wieder, sobald neue Ausgabe kommt oder du den Tab öffnest. In Millisekunden."
         },
         "activityLineThreshold": {
-          "label": "Ungelesen-Schwelle (Zeilen)",
-          "description": "Mindestzahl neuer Zeilen innerhalb des Zeitfensters, ab der ein nicht angesehener Terminal-Tab den Ungelesen-Punkt bekommt."
+          "label": "Aktivitäts-Schwelle (Zeilen)",
+          "description": "Mindestzahl neuer Zeilen, die ein Terminal-Tab produzieren muss, um überhaupt als \"hat etwas getan\" zu gelten — ein frisch geöffneter, noch leerer Shell-Tab wird dadurch nicht sofort als \"wartet auf dich\" markiert."
         }
       },
       "explorer": {

@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Tooltip } from "radix-ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
-import { reportLineAdvance, resetTerminalActivityForTests } from "../terminal/terminalActivity";
+import {
+  reportOutput,
+  resetTerminalActivityForTests,
+  setActivityIdleMs,
+} from "../terminal/terminalActivity";
 import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 
 // Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
@@ -265,77 +269,106 @@ describe("PaneTabs", () => {
     });
   });
 
-  describe("Needs-Attention: Ungelesen-Punkt", () => {
-    // Umbau 2026-08-13 (Nutzer-Neuspezifikation, s. Kopfkommentar von
-    // PaneTabs.tsx, Umbau-Absatz): persistent statt transient. Der
-    // allererste Burst eines frischen Tab-Eintrags gilt als Shell-Start-
-    // Prompt und wird konsumiert, ohne zu markieren (terminalActivity.ts'
-    // `firstBurstConsumed`) — deshalb meldet jeder Test hier zuerst einen
-    // "Freipass"-Burst, bevor der eigentlich zu prüfende Burst kommt.
-    // `resetTerminalActivityForTests` statt einzelner
-    // `disposeTerminalActivity`-Aufrufe: löscht zusätzlich `viewedTabId`
-    // (terminalActivity.ts), das an keinem einzelnen Tab-Eintrag hängt und
-    // sonst aus früheren Tests dieser Datei durchsickern würde — jeder
-    // vorherige Test in dieser Datei rendert mit dem `baseProps`-Default
-    // (`activeTerminalTabId: "tab-1", paneFocused: true`) und setzt darüber
-    // unbemerkt `viewedTabId = "tab-1"`.
+  describe("Needs-Attention: wartet-auf-dich-Punkt", () => {
+    // 2026-08-17 rewrite (user bug report: activity detection "doesn't work
+    // meaningfully" — see terminalActivity.ts header comment for the full
+    // root-cause finding and semantic rewrite). The marker now means "this
+    // tab did real work, then went quiet" — the inverse of the previous
+    // "unread" signal: it appears once idle instead of on new output, and
+    // disappears the instant new output arrives instead of only on viewing.
+    //
+    // The very first burst of a fresh tab entry still counts as the shell's
+    // own startup prompt and gets consumed without arming the marker
+    // (terminalActivity.ts' `bootBurstConsumed`) — every test here reports
+    // that "free pass" burst before the one actually under test.
+    //
+    // idleMs is lowered to keep these tests fast (the real default is
+    // 15000ms, config_core.rs) — reset in afterEach so it can't leak into
+    // later tests in this file. `resetTerminalActivityForTests` (rather than
+    // individual `disposeTerminalActivity` calls) additionally clears
+    // `viewedTabId` (terminalActivity.ts), which isn't tied to any single
+    // tab entry and would otherwise leak from earlier tests in this file —
+    // every prior test here renders with the `baseProps` default
+    // (`activeTerminalTabId: "tab-1", paneFocused: true`), which sets
+    // `viewedTabId = "tab-1"` unnoticed.
+    const TEST_IDLE_MS = 1000;
     beforeEach(() => {
       resetTerminalActivityForTests();
+      setActivityIdleMs(TEST_IDLE_MS);
+      vi.useFakeTimers();
     });
     afterEach(() => {
+      vi.useRealTimers();
       resetTerminalActivityForTests();
+      setActivityIdleMs(15000);
     });
 
-    it("zeigt den Punkt für einen Hintergrund-Tab einer unfokussierten Pane, ab dem zweiten Burst", () => {
+    it("shows the dot for a background tab of an unfocused pane once it goes idle after real work", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }));
 
       act(() => {
-        reportLineAdvance("tab-2", 1); // Freipass (Start-Prompt)
-        reportLineAdvance("tab-2", 1);
+        reportOutput("tab-2", 1); // free pass (boot prompt)
+        reportOutput("tab-2", 1);
       });
-
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.queryByRole("button", { name: "Terminal 2: Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).toBeInTheDocument();
     });
 
-    it("unterdrückt den Punkt nur für den Tab, den der Nutzer in der fokussierten Pane gerade ansieht", () => {
+    it("never shows the dot for the tab the user is currently viewing, even once idle", () => {
       renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: true }));
 
       act(() => {
-        reportLineAdvance("tab-2", 1);
-        reportLineAdvance("tab-2", 1);
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
 
       expect(
-        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.queryByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
     });
 
-    it("löscht den Punkt erst, wenn der Tab tatsächlich geöffnet wird — nicht durch Zeitablauf", () => {
-      vi.useFakeTimers();
+    it("clears the dot the instant new output arrives, without needing to open the tab", () => {
+      renderTabs(baseProps({ activeTerminalTabId: "tab-1", paneFocused: true }));
+
+      act(() => {
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
+      ).toBeInTheDocument();
+
+      act(() => {
+        reportOutput("tab-2", 1); // e.g. the agent starts working again
+      });
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("clears the dot as soon as the tab is actually opened", () => {
       const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
       const { rerender } = renderTabs(props);
 
       act(() => {
-        reportLineAdvance("tab-2", 1);
-        reportLineAdvance("tab-2", 1);
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).toBeInTheDocument();
-
-      // Beliebig langes Verstreichen von Zeit — weit über jedes Idle-Fenster
-      // hinaus — löscht den Punkt NICHT, nur tatsächliches Öffnen darf das
-      // (Nutzer-Zitat: "so lange, bis man den Tab aufgemacht hat").
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-      expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).toBeInTheDocument();
-      vi.useRealTimers();
 
       rerender(
         <Tooltip.Provider>
@@ -344,28 +377,54 @@ describe("PaneTabs", () => {
       );
 
       expect(
-        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.queryByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
     });
 
-    it("re-armiert den Punkt nach dem Ansehen erneut, sobald neue Hintergrund-Aktivität die Schwelle wieder erreicht", () => {
-      // Regressionstest zum Fund 2026-08-13 ("Ich habe alle angeklickt...
-      // aber danach passierte nichts") — genau das Szenario, das der Nutzer
-      // beschrieben hat: Punkt sehen, Tab öffnen (löscht ihn), Tab
-      // verlassen, neue Aktivität, Punkt muss zurückkommen.
+    it("flags the tab again immediately once the user looks away, if it's still idle and nothing changed", () => {
+      // Not a bug: `isTabAwaitingAttention` is derived live from current
+      // state (terminalActivity.ts), not a sticky dismissal flag — a tab
+      // that finished while being watched, and still hasn't produced
+      // anything new, genuinely IS "done and not being looked at" the
+      // moment the user moves on.
+      const props = baseProps({ activeTerminalTabId: "tab-2", paneFocused: true });
+      const { rerender } = renderTabs(props);
+
+      act(() => {
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS); // finishes while being watched
+      });
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTerminalTabId="tab-1" />
+        </Tooltip.Provider>,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
+      ).toBeInTheDocument();
+    });
+
+    it("re-arms after being opened, once new background activity goes idle again", () => {
       const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
       const { rerender } = renderTabs(props);
 
       act(() => {
-        reportLineAdvance("tab-2", 1); // Freipass
-        reportLineAdvance("tab-2", 1); // markiert unread
+        reportOutput("tab-2", 1); // free pass
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).toBeInTheDocument();
 
-      // Tab 2 öffnen (fokussierte Pane) — löscht den Punkt.
+      // Open tab 2 (focused pane) — clears the dot.
       rerender(
         <Tooltip.Provider>
           <PaneTabs {...props} activeTerminalTabId="tab-2" />
@@ -373,18 +432,19 @@ describe("PaneTabs", () => {
       );
       expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
 
-      // Zurück zu Tab 1, tab-2 bekommt neue Hintergrund-Aktivität.
+      // Back to tab 1, tab-2 gets new background activity, then goes idle again.
       rerender(
         <Tooltip.Provider>
           <PaneTabs {...props} activeTerminalTabId="tab-1" />
         </Tooltip.Provider>,
       );
       act(() => {
-        reportLineAdvance("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
 
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).toBeInTheDocument();
     });
   });
