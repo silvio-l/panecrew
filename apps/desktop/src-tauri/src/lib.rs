@@ -192,29 +192,62 @@ pub fn run() {
             // above -- see the comment there.
             menu::refresh(app.handle());
 
-            // Written once here rather than per spawn, so concurrently opening
-            // panes can't race on the same three files. A failure is
+            // Managed with `None` synchronously so a fast cold start can
+            // never hit "state accessed before `manage()`" in `pty_spawn`;
+            // the background thread below fills the `Mutex` in once
+            // materialization actually finishes. `None` is already a
+            // supported degrade path (see `pty_spawn`): panes just spawn
+            // unwrapped, exactly as before.
+            app.manage(ShellIntegrationDir(Mutex::new(None)));
+
+            // Ticket 04 (perf audit): none of `.setup()`'s filesystem-writing
+            // or window-building work may run synchronously here, or the
+            // splash's first frame can't render until all of it finishes.
+            // Written once per launch rather than per spawn, so concurrently
+            // opening panes can't race on the same three files. A failure is
             // survivable: panes then run the user's shell exactly as before,
             // without PaneCrew's prompt and without cwd reporting.
-            let root = app
-                .path()
-                .app_config_dir()
-                .map(|dir| dir.join("shell-integration"))
-                .ok()
-                .filter(|root| match shell_integration::materialize(root) {
-                    Ok(()) => true,
-                    Err(error) => {
-                        log::warn!("shell integration unavailable: {error}");
-                        false
+            let integration_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let Ok(root) = integration_handle
+                    .path()
+                    .app_config_dir()
+                    .map(|dir| dir.join("shell-integration"))
+                else {
+                    return;
+                };
+                match shell_integration::materialize(&root) {
+                    Ok(()) => {
+                        let state = integration_handle.state::<ShellIntegrationDir>();
+                        *state.0.lock().expect("shell integration dir poisoned") = Some(root);
                     }
-                });
-            app.manage(ShellIntegrationDir(root));
+                    Err(error) => log::warn!("shell integration unavailable: {error}"),
+                }
+            });
+
             #[cfg(target_os = "macos")]
             dock::install(app.handle());
-            windows::restore_persisted_windows(app.handle());
+
+            // Window creation has main-thread affinity (Cocoa `NSWindow` and
+            // friends) — queued onto the main thread instead of run inline
+            // here so `.setup()` still returns immediately either way and the
+            // event loop starts pumping without waiting on either call.
+            let restore_handle = app.handle().clone();
+            if let Err(error) = app.handle().run_on_main_thread(move || {
+                windows::restore_persisted_windows(&restore_handle);
+            }) {
+                log::warn!("failed to queue persisted-window restore: {error}");
+            }
+
+            let settings_handle = app.handle().clone();
+            if let Err(error) = app.handle().run_on_main_thread(move || {
+                settings_window::prewarm(&settings_handle);
+            }) {
+                log::warn!("failed to queue settings-window prewarm: {error}");
+            }
+
             splash::position_on_cursor_monitor(app.handle());
             splash::arm_watchdog(app.handle());
-            settings_window::prewarm(app.handle());
             resource_monitor::start(app.handle().clone());
             Ok(())
         })

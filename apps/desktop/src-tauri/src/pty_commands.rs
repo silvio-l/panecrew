@@ -34,9 +34,14 @@ impl PtyState {
     }
 }
 
-/// Where PaneCrew's shell wrappers were written at startup — `None` if that
-/// failed, in which case panes spawn unwrapped rather than not at all.
-pub struct ShellIntegrationDir(pub Option<PathBuf>);
+/// Where PaneCrew's shell wrappers were written at startup — `None` if
+/// materialization hasn't finished yet or failed, in which case panes spawn
+/// unwrapped rather than not at all. Managed with `None` synchronously
+/// during `.setup()` (so `pty_spawn` never sees "state accessed before
+/// `manage()`" on a fast cold start) and filled in by a background thread
+/// once `shell_integration::materialize` actually finishes (ticket 04, perf
+/// audit — that write must not block the event loop from starting).
+pub struct ShellIntegrationDir(pub Mutex<Option<PathBuf>>);
 
 /// Which `tab_id`s belong to which native window (Ticket 27, landmine 5):
 /// `PtyState` itself has no notion of windows, only tabs, so a window's
@@ -187,6 +192,8 @@ pub async fn pty_spawn<R: Runtime>(
     };
     let integration = integration_dir
         .0
+        .lock()
+        .expect("shell integration dir poisoned")
         .as_deref()
         .map(|root| shell_integration::for_shell(&shell, root))
         .unwrap_or_default();
