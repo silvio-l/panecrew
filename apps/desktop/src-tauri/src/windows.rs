@@ -466,6 +466,13 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
 /// splash gate. A single window failing to restore is survivable (same
 /// "worst case: the picker" stance as a missing/corrupt session file
 /// elsewhere) and never aborts startup.
+/// Ticket 07 (perf audit): each restored window is queued as its own
+/// `run_on_main_thread` closure instead of being built inline in one loop —
+/// native window construction has main-thread affinity on macOS, so this
+/// can't make the underlying `build()` calls run concurrently, but it stops
+/// them from forming one uninterruptible block. Queued this way, the event
+/// loop gets to process other main-thread work (rendering, IPC) between each
+/// window instead of only after all of them finish.
 pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
     let Ok(dir) = app_data_dir(app) else {
         return;
@@ -477,8 +484,14 @@ pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
         if window.label == MAIN {
             continue;
         }
-        if let Err(error) = open_restored(app, &window.label) {
-            log::warn!("restoring window failed: {error}");
+        let label = window.label.clone();
+        let handle = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            if let Err(error) = open_restored(&handle, &label) {
+                log::warn!("restoring window failed: {error}");
+            }
+        }) {
+            log::warn!("failed to queue restore for window {}: {error}", window.label);
         }
     }
 }

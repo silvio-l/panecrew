@@ -228,16 +228,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             dock::install(app.handle());
 
-            // Window creation has main-thread affinity (Cocoa `NSWindow` and
-            // friends) — queued onto the main thread instead of run inline
-            // here so `.setup()` still returns immediately either way and the
-            // event loop starts pumping without waiting on either call.
-            let restore_handle = app.handle().clone();
-            if let Err(error) = app.handle().run_on_main_thread(move || {
-                windows::restore_persisted_windows(&restore_handle);
-            }) {
-                log::warn!("failed to queue persisted-window restore: {error}");
-            }
+            // `restore_persisted_windows` only synchronously reads
+            // `session.json` (cheap) here — it queues each window's own
+            // `build()` call onto the main thread itself (ticket 07), so
+            // `.setup()` still returns immediately without waiting on any of
+            // them.
+            windows::restore_persisted_windows(app.handle());
 
             let settings_handle = app.handle().clone();
             if let Err(error) = app.handle().run_on_main_thread(move || {
