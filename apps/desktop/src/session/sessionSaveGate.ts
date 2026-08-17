@@ -14,7 +14,7 @@ export interface SessionSaveGateScheduler {
 export function createSessionSaveGate<T>(
   save: (payload: T) => void,
   scheduler: SessionSaveGateScheduler,
-): { request: (payload: T) => void; cancel: () => void } {
+): { request: (payload: T) => void; cancel: () => void; flush: () => void } {
   let cancelPending: (() => void) | null = null;
   let latest: { value: T } | null = null;
 
@@ -35,5 +35,17 @@ export function createSessionSaveGate<T>(
     cancelPending = null;
   };
 
-  return { request, cancel };
+  /** Applies a still-pending debounced save immediately instead of waiting
+   * out the rest of the debounce window — App.tsx's unmount cleanup uses
+   * this instead of `cancel()`, so the last state change before a window
+   * closes isn't silently dropped just because it landed inside the
+   * trailing debounce window (perf audit ticket 02 review finding). A no-op
+   * if nothing is pending. */
+  const flush = () => {
+    cancelPending?.();
+    cancelPending = null;
+    if (latest) save(latest.value);
+  };
+
+  return { request, cancel, flush };
 }

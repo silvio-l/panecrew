@@ -85,6 +85,40 @@ describe("createSessionSaveGate", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("flush() applies a still-pending save immediately instead of waiting out the debounce", () => {
+    const save = vi.fn();
+    const scheduler = createFakeScheduler();
+    const { request, flush } = createSessionSaveGate(save, scheduler);
+
+    request({ value: 1 });
+    flush();
+
+    expect(save).toHaveBeenCalledExactlyOnceWith({ value: 1 });
+    expect(scheduler.hasPending()).toBe(false);
+  });
+
+  it("flush() is a no-op when nothing is pending", () => {
+    const save = vi.fn();
+    const scheduler = createFakeScheduler();
+    const { flush } = createSessionSaveGate(save, scheduler);
+
+    flush();
+
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("flush() does not double-apply once the original timer fires anyway", () => {
+    const save = vi.fn();
+    const scheduler = createFakeScheduler();
+    const { request, flush } = createSessionSaveGate(save, scheduler);
+
+    request({ value: 1 });
+    flush();
+    scheduler.fire();
+
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it("starts a fresh debounce window for a request arriving after a prior one already fired", () => {
     const save = vi.fn();
     const scheduler = createFakeScheduler();

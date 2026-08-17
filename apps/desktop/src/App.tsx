@@ -850,7 +850,11 @@ function App() {
     windowId.label,
   ]);
 
-  useEffect(() => () => sessionSaveGateRef.current?.cancel(), []);
+  // `flush()`, not `cancel()`: on unmount (window close) a still-pending
+  // debounced save must still land, or the last state change before closing
+  // is silently lost for up to SESSION_SAVE_DEBOUNCE_MS (perf audit ticket
+  // 02 review finding).
+  useEffect(() => () => sessionSaveGateRef.current?.flush(), []);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
