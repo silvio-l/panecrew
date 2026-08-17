@@ -141,7 +141,12 @@ const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
 
 function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // The wizard's Welcome screen (step 0) always renders in English, even on
+  // a German OS/app language — the language picker doesn't happen until the
+  // next step (Preferences), so step 0 can't yet reflect a choice the user
+  // hasn't made (user report, 2026-08-17).
+  const tWelcome = i18n.getFixedT("en");
   // Destrukturiert wie `useProjects()`s Rückgabe: `assignProject`/
   // `closePane` sind in `useGrid.ts` per `useCallback` memoisiert, ein
   // `grid`-Objekt als Ganzes wäre dagegen bei jedem Render neu und risse
@@ -1839,9 +1844,9 @@ function App() {
         {showOnboardingWizard && (
           <OnboardingWizard
             copy={{
-              welcomeTitle: t("onboarding.wizard.welcome.title"),
-              welcomeBody: t("onboarding.wizard.welcome.body"),
-              welcomeCta: t("onboarding.wizard.welcome.cta"),
+              welcomeTitle: tWelcome("onboarding.wizard.welcome.title"),
+              welcomeBody: tWelcome("onboarding.wizard.welcome.body"),
+              welcomeCta: tWelcome("onboarding.wizard.welcome.cta"),
               preferencesTitle: t("onboarding.wizard.preferences.title"),
               preferencesBody: t("onboarding.wizard.preferences.body"),
               languageLabel: t("settings.schema.appearance.language.label"),
@@ -1863,7 +1868,12 @@ function App() {
               back: t("onboarding.wizard.back"),
               closeLabel: t("onboarding.wizard.close"),
               stepIndicator: (step, total) =>
-                t("onboarding.wizard.stepIndicator", { step, total }),
+                // Step 1 (Welcome) is forced to English above — its sr-only
+                // step indicator must match, or a screen-reader user gets an
+                // English page announced with a German position label.
+                step === 1
+                  ? tWelcome("onboarding.wizard.stepIndicator", { step, total })
+                  : t("onboarding.wizard.stepIndicator", { step, total }),
             }}
             hasExistingProject={activePanes(gridState).length > 0}
             onOpenFirstProject={onboardingWizardOpenFirstProject}

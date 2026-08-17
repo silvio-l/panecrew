@@ -290,8 +290,7 @@
       "onboarding": {
         "label": "Einführung erneut anzeigen",
         "description": "Zeigt die Einführung (Setup-Assistent und geführte Tour) erneut an, so als würdest du PaneCrew zum ersten Mal starten.",
-        "button": "Einführung neu starten",
-        "confirmation": "Zurückgesetzt — wechsle ins Hauptfenster, dort startet die Einführung erneut."
+        "button": "Einführung neu starten"
       },
       "permissions": {
         "title": "Berechtigungen (macOS)",

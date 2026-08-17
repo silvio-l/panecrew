@@ -3090,13 +3090,13 @@ describe("Onboarding", () => {
 
       render(<App />);
 
-      expect(await screen.findByText("Willkommen bei PaneCrew")).toBeInTheDocument();
+      expect(await screen.findByText("Welcome to PaneCrew")).toBeInTheDocument();
       expect(
         screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
       ).not.toBeInTheDocument();
       // Step position must be perceivable without relying on the (aria-hidden)
       // dot indicator's color alone — onboarding-prompt.md §10/§235.
-      expect(screen.getByText("Schritt 1 von 3")).toBeInTheDocument();
+      expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
     });
 
     it("zeigt auf macOS einen zusätzlichen, überspringbaren Berechtigungs-Schritt vor 'Bereit zum Start'", async () => {
@@ -3107,9 +3107,9 @@ describe("Onboarding", () => {
       mockOnboardingState(false, false);
 
       render(<App />);
-      await screen.findByText("Willkommen bei PaneCrew");
+      await screen.findByText("Welcome to PaneCrew");
 
-      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
       await screen.findByText("Deine Einstellungen");
       expect(screen.getByText("Schritt 2 von 4")).toBeInTheDocument();
 
@@ -3137,9 +3137,9 @@ describe("Onboarding", () => {
       mockOnboardingState(false, false);
 
       render(<App />);
-      await screen.findByText("Willkommen bei PaneCrew");
+      await screen.findByText("Welcome to PaneCrew");
 
-      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
       expect(await screen.findByText("Deine Einstellungen")).toBeInTheDocument();
       expect(screen.getByText("Schritt 2 von 3")).toBeInTheDocument();
 
@@ -3224,8 +3224,8 @@ describe("Onboarding", () => {
         });
       });
 
-      await screen.findByText("Willkommen bei PaneCrew");
-      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Welcome to PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
       await screen.findByText("Deine Einstellungen");
       fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
       expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
@@ -3249,8 +3249,8 @@ describe("Onboarding", () => {
       mockOnboardingState(false, false);
 
       render(<App />);
-      await screen.findByText("Willkommen bei PaneCrew");
-      fireEvent.click(screen.getByRole("button", { name: "Los geht's" }));
+      await screen.findByText("Welcome to PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
       await screen.findByText("Deine Einstellungen");
       fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
       await screen.findByText("Bereit zum Start");
@@ -3273,7 +3273,7 @@ describe("Onboarding", () => {
       mockOnboardingState(false, false);
 
       render(<App />);
-      await screen.findByText("Willkommen bei PaneCrew");
+      await screen.findByText("Welcome to PaneCrew");
 
       fireEvent.keyDown(document, { key: "Escape" });
 
@@ -3282,7 +3282,7 @@ describe("Onboarding", () => {
           completed: true,
         }),
       );
-      expect(screen.queryByText("Willkommen bei PaneCrew")).not.toBeInTheDocument();
+      expect(screen.queryByText("Welcome to PaneCrew")).not.toBeInTheDocument();
     });
 
     it("unterdrückt den Wizard lautlos, wenn eine wiederhergestellte Sitzung bereits ein Projekt führt (Bestandsnutzer-Migration)", async () => {
@@ -3335,7 +3335,7 @@ describe("Onboarding", () => {
           payload: { completed: false, wizardCompleted: true },
         });
       });
-      expect(screen.queryByText("Willkommen bei PaneCrew")).not.toBeInTheDocument();
+      expect(screen.queryByText("Welcome to PaneCrew")).not.toBeInTheDocument();
     });
   });
 });

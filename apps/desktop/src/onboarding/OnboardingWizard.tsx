@@ -272,6 +272,19 @@ export function OnboardingWizard({
               <Dialog.Description className="mt-2 text-center text-(length:--pc-chrome-fontSize) leading-relaxed text-(--pc-descriptionForeground)">
                 {copy.preferencesBody}
               </Dialog.Description>
+              {/* Selected state carries the app's established "this one is
+                  active" chip pairing from `PaneTabs.tsx` (active tab chips):
+                  1px `--pc-pane-activeBorder` box, warm `/14` accent wash,
+                  `--pc-paneHeader-activeForeground` text — NOT a new
+                  combination. The earlier ad-hoc mix here (`--pc-focusBorder`
+                  border on a neutral selection fill) was exactly the
+                  mispairing the direction contract warns against at the tabs
+                  ("korrekt mit --pc-paneHeader-activeForeground gepaart …
+                  statt eine neue Kombination einzuführen"); the accent was
+                  already on these buttons, only wrongly paired. Shape stays
+                  a standalone rounded-md chip, so it never reads as a pane
+                  focus ring (full-perimeter hairline) or an active tab
+                  (rounded-t, doubled bottom edge). */}
               <div className="mt-6 space-y-4">
                 <div>
                   <div className="mb-1.5 text-(length:--pc-chrome-fontSizeSmall) font-medium text-(--pc-descriptionForeground)">
@@ -289,7 +302,7 @@ export function OnboardingWizard({
                         aria-pressed={language === lang}
                         className={`flex h-8 flex-1 items-center justify-center rounded-md border px-3 text-(length:--pc-chrome-fontSize) transition-colors ${CHROME_FOCUS_RING} ${
                           language === lang
-                            ? "border-(--pc-focusBorder) bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
+                            ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)"
                             : "border-(--pc-widget-border) text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground)"
                         }`}
                       >
@@ -314,7 +327,7 @@ export function OnboardingWizard({
                         aria-pressed={theme === option}
                         className={`flex h-8 flex-1 items-center justify-center rounded-md border px-2 text-(length:--pc-chrome-fontSize) transition-colors ${CHROME_FOCUS_RING} ${
                           theme === option
-                            ? "border-(--pc-focusBorder) bg-(--pc-list-activeSelectionBackground) text-(--pc-foreground)"
+                            ? "border-(--pc-pane-activeBorder) bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)"
                             : "border-(--pc-widget-border) text-(--pc-descriptionForeground) hover:bg-(--pc-list-hoverBackground)"
                         }`}
                       >

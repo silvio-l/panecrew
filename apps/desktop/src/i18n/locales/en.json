@@ -290,8 +290,7 @@
       "onboarding": {
         "label": "Show onboarding again",
         "description": "Shows the introduction (setup wizard and guided tour) again, as if you were starting PaneCrew for the first time.",
-        "button": "Restart onboarding",
-        "confirmation": "Reset — switch to the main window, the introduction starts there."
+        "button": "Restart onboarding"
       },
       "permissions": {
         "title": "Permissions (macOS)",

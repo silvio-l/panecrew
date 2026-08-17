@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
 import { PermissionsSection } from "../components/PermissionsSection";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
@@ -649,12 +650,6 @@ function OnboardingRestartRow({
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
-  // Local-only "restarted" confirmation. `restartOnboarding()` resets BOTH
-  // onboarding phases and shows the wizard as an app-window overlay in the
-  // MAIN window, not this one — this confirmation is what tells the user
-  // to go look there, since the settings window itself shows nothing.
-  const [restarted, setRestarted] = useState(false);
-
   return (
     <div className="flex items-start justify-between gap-4 py-3">
       <div className="min-w-0">
@@ -664,18 +659,22 @@ function OnboardingRestartRow({
         <p className="mt-0.5 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
           {t("settings.help.onboarding.description")}
         </p>
-        {restarted && (
-          <p className="mt-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground)">
-            {t("settings.help.onboarding.confirmation")}
-          </p>
-        )}
       </div>
       <button
         type="button"
         onClick={() => {
-          void restartOnboarding();
-          void info("onboarding: restarted from settings");
-          setRestarted(true);
+          // `restartOnboarding()` shows the wizard as an app-window overlay
+          // in the MAIN window, not this one — awaited before closing this
+          // window so the broadcast that arms it has actually gone out
+          // first. Closing (rather than a "go look at the main window"
+          // confirmation, the previous approach) is what actually gets the
+          // wizard in front of the user: this window sits on top of
+          // everything else on most window managers, otherwise.
+          void (async () => {
+            await restartOnboarding();
+            void info("onboarding: restarted from settings");
+            await getCurrentWindow().close();
+          })();
         }}
         className={`shrink-0 rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
       >
