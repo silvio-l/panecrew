@@ -23,61 +23,78 @@ struct Signals {
 /// bewusst hinter deren 6 s, damit sie den regulären Ablauf nie abschneidet.
 const WATCHDOG: Duration = Duration::from_secs(8);
 
-/// Same logical size as `tauri.conf.json`'s `splashscreen` entry — kept here
-/// too since `position_on_launch_monitor` below needs it and the JSON config
-/// has no Rust-side counterpart to read it back from.
+/// Same logical sizes as `tauri.conf.json`'s window entries — kept here too
+/// since `position_on_launch_monitor` below needs them and the JSON config
+/// has no Rust-side counterpart to read them back from.
 const SPLASH_WIDTH: f64 = 940.0;
 const SPLASH_HEIGHT: f64 = 590.0;
+const MAIN_WIDTH: f64 = 1440.0;
+const MAIN_HEIGHT: f64 = 900.0;
 
-/// Repositions the splash window (still hidden, declaratively `"center":
-/// true` in `tauri.conf.json`) onto the monitor the app is actually starting
-/// on, instead of always the primary monitor (2026-08-14 multi-monitor
-/// report — same root cause as the Settings window). "main" has no explicit
-/// position in `tauri.conf.json` either, so the OS/window manager has
-/// already picked some monitor for it by the time `.setup()` runs (it's
-/// config-declared, so it exists — just hidden — before this is called);
-/// `main.current_monitor()` reads that back directly, which is a hard
-/// guarantee splash and the eventual reveal land on the same screen, rather
-/// than a proxy for it (2026-08-17 follow-up report: the previous
-/// cursor-position proxy put the splash whenever the mouse happened to be at
-/// launch — arbitrary for `pnpm tauri dev`, launched from a terminal that's
-/// often not on the monitor the app is meant to appear on — while "main"
-/// itself was never repositioned to match, so the two could end up on
-/// different monitors even though only the splash was "wrong"). Cursor
-/// position remains a fallback for the case `main` can't report a monitor.
-/// Best-effort throughout: any failed platform query (headless CI, an
-/// environment without a cursor) leaves the declarative primary-monitor
-/// center in place — called once from `run()`'s `setup()`, before the
-/// splash-reveal watchdog arms, so the reposition always lands before the
-/// window can ever become visible.
+/// Decides which monitor the app is starting on and moves BOTH "main" and
+/// "splashscreen" onto it, centered, instead of trusting either window's own
+/// declarative/OS-default placement (2026-08-14 multi-monitor report). Only
+/// `splashscreen` declares `"center": true` in `tauri.conf.json` — "main" has
+/// no `center`/`x`/`y` there at all, so by the time `.setup()` runs (it's
+/// config-declared, so it exists — just hidden — before this is called) the
+/// OS/window manager has already put it wherever it likes, which need not be
+/// the same monitor splash centers on. An earlier version of this function
+/// (2026-08-17) read "main"'s own position back via `current_monitor()` and
+/// moved splash to match it — that only makes splash agree with an arbitrary
+/// placement, it doesn't make either window correct. The only real signal for
+/// "where the user is" at launch is the OS cursor position: for a
+/// Dock/Finder/Spotlight launch it's exactly where the user just clicked; for
+/// `pnpm tauri dev` from a terminal it's a best-effort guess with no better
+/// signal available — an inherent limitation of that launch path, not
+/// something this function can fix. Deciding the monitor once from the
+/// cursor and moving both windows onto it guarantees splash and the eventual
+/// reveal always land on the same, deliberately-chosen screen. Best-effort
+/// throughout: a failed platform query (headless CI, an environment without a
+/// cursor) leaves each window's declarative/OS default in place — called
+/// once from `run()`'s `setup()`, before the splash-reveal watchdog arms, so
+/// the reposition always lands before either window can ever become visible.
 pub fn position_on_launch_monitor(app: &AppHandle) {
-    let Some(splash) = app.get_webview_window("splashscreen") else {
-        return;
-    };
     let Some(monitor) = launch_monitor(app) else {
         return;
     };
 
-    let scale_factor = monitor.scale_factor();
-    let target_width = (SPLASH_WIDTH * scale_factor).round() as i32;
-    let target_height = (SPLASH_HEIGHT * scale_factor).round() as i32;
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
-    let x = monitor_position.x + (monitor_size.width as i32 - target_width) / 2;
-    let y = monitor_position.y + (monitor_size.height as i32 - target_height) / 2;
-
-    let _ = splash.set_position(tauri::PhysicalPosition::new(x, y));
+    if let Some(splash) = app.get_webview_window("splashscreen") {
+        center_on_monitor(&splash, &monitor, SPLASH_WIDTH, SPLASH_HEIGHT);
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        center_on_monitor(&main, &monitor, MAIN_WIDTH, MAIN_HEIGHT);
+    }
 }
 
-/// "main"'s own monitor if it can be determined, falling back to the
-/// monitor under the OS cursor — see `position_on_launch_monitor`'s doc
-/// comment for why the former is preferred.
+/// `Monitor::position()`/`size()` are physical pixels, but `set_position`
+/// must get a `LogicalPosition`, not a `PhysicalPosition` built from them
+/// directly — empirically confirmed on this machine's 2x Retina display: a
+/// `PhysicalPosition` here lands the window at exactly 2x the intended
+/// offset (`set_position` doesn't divide it back down by the scale factor on
+/// this platform/version), so the conversion has to happen on this side.
+fn center_on_monitor(
+    window: &tauri::WebviewWindow,
+    monitor: &tauri::Monitor,
+    logical_width: f64,
+    logical_height: f64,
+) {
+    let scale_factor = monitor.scale_factor();
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let logical_monitor_x = monitor_position.x as f64 / scale_factor;
+    let logical_monitor_y = monitor_position.y as f64 / scale_factor;
+    let logical_monitor_width = monitor_size.width as f64 / scale_factor;
+    let logical_monitor_height = monitor_size.height as f64 / scale_factor;
+    let x = logical_monitor_x + (logical_monitor_width - logical_width) / 2.0;
+    let y = logical_monitor_y + (logical_monitor_height - logical_height) / 2.0;
+
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+}
+
+/// The monitor under the OS cursor at launch — see
+/// `position_on_launch_monitor`'s doc comment for why this is the best
+/// available signal for "where the user is".
 fn launch_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
-    if let Some(main) = app.get_webview_window("main") {
-        if let Ok(Some(monitor)) = main.current_monitor() {
-            return Some(monitor);
-        }
-    }
     let cursor = app.cursor_position().ok()?;
     app.monitor_from_point(cursor.x, cursor.y).ok().flatten()
 }
