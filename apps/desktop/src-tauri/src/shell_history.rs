@@ -8,11 +8,19 @@
 //! user's history file is theirs, and a terminal that edits it would be a
 //! surprise nobody asked for.
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// Enough for prefix matching to feel complete without shipping a multi-megabyte
 /// payload over IPC on every app start.
 const MAX_ENTRIES: usize = 1000;
+
+/// Starting size of the tail read in `read_history_file` (Ticket 14, perf
+/// audit) — generous for real shell history line lengths (a few thousand
+/// `MAX_ENTRIES`-worth of typical commands fits well under this), so the
+/// common case is one single read from the end of the file, not the whole
+/// file however large it's grown over the years.
+const TAIL_WINDOW_SEED: u64 = 64 * 1024;
 
 // `async`: same reasoning as `explorer_fs.rs::explorer_read_tree` — a
 // history file can grow large, and a file read must not run on the thread
@@ -22,13 +30,61 @@ pub fn shell_history_read() -> Vec<String> {
     let Some(path) = history_path(&crate::pty_manager::default_shell()) else {
         return Vec::new();
     };
-    let Ok(bytes) = std::fs::read(path) else {
+    read_history_file(&path, MAX_ENTRIES)
+}
+
+/// Reads only as much of the tail of `path` as needed to satisfy `limit`
+/// distinct entries, growing the read window (doubling from
+/// `TAIL_WINDOW_SEED`) instead of loading and parsing the entire file up
+/// front. A window's leading line is dropped unless it starts at the true
+/// beginning of the file — it's the truncated tail of whatever line preceded
+/// the window, not a full one.
+///
+/// Known, narrow trade-off: if a window boundary happens to land inside a
+/// backslash-continued multi-line command (see `parse_history`'s doc
+/// comment), that one boundary-adjacent entry can come out mis-parsed. In
+/// practice this only risks the single oldest entry of a result that already
+/// found `>= limit` distinct entries elsewhere in the window, and multi-line
+/// continuations are rare in real shell history — accepted here rather than
+/// building a full backward-aware continuation parser for a Low-severity,
+/// read-only autocomplete data source.
+fn read_history_file(path: &Path, limit: usize) -> Vec<String> {
+    let Ok(mut file) = std::fs::File::open(path) else {
         return Vec::new();
     };
-    // Lossy on purpose: zsh "metafies" some bytes when writing its history, so
-    // the file is not guaranteed to be valid UTF-8. A single unreadable entry
-    // must not cost us the other thousand.
-    parse_history(&String::from_utf8_lossy(&bytes), MAX_ENTRIES)
+    let Ok(file_len) = file.metadata().map(|meta| meta.len()) else {
+        return Vec::new();
+    };
+
+    let mut window = TAIL_WINDOW_SEED.min(file_len);
+    loop {
+        let at_start = window >= file_len;
+        let Ok(chunk) = read_tail(&mut file, file_len, window) else {
+            return Vec::new();
+        };
+        let text = String::from_utf8_lossy(&chunk);
+        let tail = if at_start {
+            text
+        } else {
+            match text.find('\n') {
+                Some(index) => std::borrow::Cow::Owned(text[index + 1..].to_owned()),
+                None => std::borrow::Cow::Borrowed(""),
+            }
+        };
+
+        let entries = parse_history(&tail, limit);
+        if entries.len() >= limit || at_start {
+            return entries;
+        }
+        window = (window * 2).min(file_len);
+    }
+}
+
+fn read_tail(file: &mut std::fs::File, file_len: u64, window: u64) -> std::io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(file_len - window))?;
+    let mut buf = vec![0u8; window as usize];
+    file.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
 pub(crate) fn home_dir() -> Option<PathBuf> {
@@ -126,6 +182,85 @@ fn strip_zsh_metadata(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A throwaway history file under the system temp dir, removed by `drop`
+    /// — same shape as `explorer_fs.rs`'s own `Fixture`.
+    struct Fixture(std::path::PathBuf);
+
+    impl Fixture {
+        fn new(name: &str) -> Self {
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
+            let root = std::env::temp_dir().join(format!(
+                "panecrew-shell-history-{}-{name}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&root).expect("test fixture root should be creatable");
+            Self(root)
+        }
+
+        fn write_history(&self, contents: &str) -> PathBuf {
+            let path = self.0.join("history_file");
+            std::fs::write(&path, contents).expect("write fixture history file");
+            path
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    /// Ticket 14 (perf audit): a file far bigger than the configured limit —
+    /// 20,000 single-line entries, ~230KB — forces `read_history_file` past
+    /// its initial tail-read window (`TAIL_WINDOW_SEED`, 64KB) at least once,
+    /// so this exercises the growing-window path, not just a single read
+    /// that already happened to be big enough.
+    #[test]
+    fn reading_a_history_file_far_larger_than_the_limit_still_returns_the_correct_newest_entries()
+    {
+        let fixture = Fixture::new("large-file-forces-growth");
+        let mut raw = String::new();
+        for i in 0..20_000 {
+            raw.push_str(&format!("command-{i}\n"));
+        }
+        let path = fixture.write_history(&raw);
+
+        // limit=6000 exceeds what a single 64KB window holds (~5000 lines at
+        // this fixture's line length) — the result must still be correct,
+        // not merely "whatever the first window happened to contain".
+        let entries = read_history_file(&path, 6000);
+
+        let expected: Vec<String> = (14_000..20_000).rev().map(|i| format!("command-{i}")).collect();
+        assert_eq!(entries.len(), 6000);
+        assert_eq!(entries, expected);
+    }
+
+    /// The common case: a file smaller than the tail window is read whole in
+    /// one pass (the `at_start` branch), same as before this ticket.
+    #[test]
+    fn reading_a_small_history_file_returns_every_entry_newest_first() {
+        let fixture = Fixture::new("small-file");
+        let path = fixture.write_history("git status\nls\ngit status\npnpm test\n");
+
+        let entries = read_history_file(&path, 10);
+
+        // Dedup keeps the MORE RECENT occurrence of "git status" (the third
+        // line), so the earlier one drops out entirely — same behavior as
+        // `parse_history` on its own, see
+        // `returns_most_recent_first_and_deduplicated` above.
+        assert_eq!(entries, vec!["pnpm test", "git status", "ls"]);
+    }
+
+    /// A history file that doesn't exist at all (fresh install, no shell
+    /// history yet) degrades to an empty suggestion list rather than erroring.
+    #[test]
+    fn a_missing_history_file_returns_no_entries() {
+        let fixture = Fixture::new("missing-file");
+        let path = fixture.0.join("does-not-exist");
+
+        assert_eq!(read_history_file(&path, 10), Vec::<String>::new());
+    }
 
     #[test]
     fn returns_most_recent_first_and_deduplicated() {
