@@ -115,17 +115,17 @@ pub fn run() {
                 }
                 menu::OPEN_FOLDER => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_OPEN_FOLDER, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_OPEN_FOLDER, ());
                     }
                 }
                 menu::SHOW_SHORTCUTS => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_SHOW_SHORTCUTS, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_SHOW_SHORTCUTS, ());
                     }
                 }
                 menu::SHOW_COMMAND_PALETTE => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_SHOW_COMMAND_PALETTE, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_SHOW_COMMAND_PALETTE, ());
                     }
                 }
                 menu::CLOSE_WINDOW => {
@@ -136,7 +136,7 @@ pub fn run() {
                 _ if id.starts_with(menu::RECENT_PROJECT_ITEM_PREFIX) => {
                     let path = &id[menu::RECENT_PROJECT_ITEM_PREFIX.len()..];
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_OPEN_RECENT_PROJECT, path);
+                        let _ = window.emit_to(window.label(), menu::EVENT_OPEN_RECENT_PROJECT, path);
                     }
                 }
                 menu::CLOSE_ALL_WINDOWS => {

@@ -421,12 +421,14 @@ function App() {
       // Live-Updates zurück, genau wie vor diesem Feature — der manuelle
       // Button funktioniert unverändert weiter.
     });
-    const unlistenPromise = listen("explorer:changed", () => refreshExplorer());
+    const unlistenPromise = listen("explorer:changed", () => refreshExplorer(), {
+      target: windowId.label,
+    });
     return () => {
       void invoke("explorer_watch_stop");
       void unlistenPromise.then((unlisten) => unlisten());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `refreshExplorer` schließt `focusedPath` bereits über dieselbe Abhängigkeit ein, ein Re-Run bei jeder Neudefinition wäre nur Start/Stop-Lärm ohne Verhaltensänderung.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `refreshExplorer` schließt `focusedPath` bereits über dieselbe Abhängigkeit ein, ein Re-Run bei jeder Neudefinition wäre nur Start/Stop-Lärm ohne Verhaltensänderung. `windowId.label` ändert sich nie über die Lebenszeit dieses Fensters.
   }, [focusedPath]);
 
   // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): einmalig pro
@@ -873,20 +875,24 @@ function App() {
   // `run()` denselben Schließversuch über den eigens dafür vorgesehenen
   // Befehl noch einmal auf, diesmal als bereits bestätigt.
   useEffect(() => {
-    const unlistenPromise = listen("pc://window-close-requested", () => {
-      setPendingClose({
-        target: "window",
-        run: () => {
-          invoke("window_close_confirmed").catch((error: unknown) => {
-            console.error("PaneCrew: Fenster konnte nicht geschlossen werden", error);
-          });
-        },
-      });
-    });
+    const unlistenPromise = listen(
+      "pc://window-close-requested",
+      () => {
+        setPendingClose({
+          target: "window",
+          run: () => {
+            invoke("window_close_confirmed").catch((error: unknown) => {
+              console.error("PaneCrew: Fenster konnte nicht geschlossen werden", error);
+            });
+          },
+        });
+      },
+      { target: windowId.label },
+    );
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, []);
+  }, [windowId.label]);
 
   // Der EINE Durchgang für jeden Weg, der eine offene Datei verlässt. Steht
   // absichtlich zwischen Absicht und Ausführung statt in den Aufrufern:
@@ -1130,20 +1136,23 @@ function App() {
   // Zustand.
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   useEffect(() => {
+    const target = { target: windowId.label };
     const unlistenPromises = [
-      listen("menu:open-folder", () => openFolderMenuHandlerRef.current?.()),
-      listen<string>("menu:open-recent-project", (event) =>
-        openRecentProjectMenuHandlerRef.current?.(event.payload),
+      listen("menu:open-folder", () => openFolderMenuHandlerRef.current?.(), target),
+      listen<string>(
+        "menu:open-recent-project",
+        (event) => openRecentProjectMenuHandlerRef.current?.(event.payload),
+        target,
       ),
-      listen("menu:show-shortcuts", () => setShortcutsDialogOpen(true)),
-      listen("menu:show-command-palette", () => setCommandPaletteOpen(true)),
+      listen("menu:show-shortcuts", () => setShortcutsDialogOpen(true), target),
+      listen("menu:show-command-palette", () => setCommandPaletteOpen(true), target),
     ];
     return () => {
       for (const unlistenPromise of unlistenPromises) {
         void unlistenPromise.then((unlisten) => unlisten());
       }
     };
-  }, []);
+  }, [windowId.label]);
 
   // Befehlsliste: bewusst kein eigenes Registry-Modul — die Handlungen selbst
   // sind App.tsx-Closures (dieselben, die Menü/Knöpfe schon aufrufen), ein

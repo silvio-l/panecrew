@@ -1407,6 +1407,41 @@ describe("App", () => {
       screen.getAllByRole("button", { name: "Projekt wählen" }),
     ).toHaveLength(4);
   });
+
+  // Regression test for the bug where closing one window with open panes
+  // showed the confirmation dialog in every window: `listen()` without a
+  // `target` option registers as `EventTarget::Any`, which Tauri's own
+  // `emit_to(window.label(), ...)` filter does not narrow down (see
+  // `windows.rs`'s `CLOSE_CONFIRM_EVENT` comment and `lib.rs`'s menu
+  // handlers). Every per-window event must scope its listener to this
+  // window's own label instead of the default `Any`.
+  it("scopes the window-close-confirmation and menu-action listeners to this window's own label, not every window", () => {
+    render(<App />);
+
+    for (const eventName of [
+      "pc://window-close-requested",
+      "menu:open-folder",
+      "menu:open-recent-project",
+      "menu:show-shortcuts",
+      "menu:show-command-palette",
+    ]) {
+      const call = listenMock.mock.calls.find((candidate) => candidate[0] === eventName);
+      expect(call?.[2]).toEqual({ target: "main" });
+    }
+  });
+
+  it("scopes the explorer:changed listener to this window's own label once a project is open", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    const call = listenMock.mock.calls.find((candidate) => candidate[0] === "explorer:changed");
+    expect(call?.[2]).toEqual({ target: "main" });
+  });
 });
 
 // Mehrfach-Pane (Ticket 03, Schritt 5): Quad mit N unabhängigen PTYs. Jeder

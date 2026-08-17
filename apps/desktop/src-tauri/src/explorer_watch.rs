@@ -152,7 +152,7 @@ pub fn explorer_watch_start(
 
     let emit_window = window.clone();
     let watcher = ProjectWatcher::start(root, move || {
-        let _ = emit_window.emit(CHANGED_EVENT, ());
+        let _ = emit_window.emit_to(emit_window.label(), CHANGED_EVENT, ());
     })?;
     // Benign check-then-act race with a concurrent start for the same
     // window (e.g. two rapid focus switches): both walk, both finish, last
