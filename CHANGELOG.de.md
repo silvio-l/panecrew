@@ -44,6 +44,33 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.13] - 2026-08-17
+### Geändert
+- Terminal-Tabs bleiben jetzt während der gesamten Denk-/Arbeitsphase eines
+  Tools als "aktiv" markiert, statt bei Ausgabepausen kurzzeitig auf
+  "inaktiv" zu springen; die Tab-Markierung bedeutet jetzt "fertig, wartet
+  auf dich" statt "ungelesen" und verschwindet in dem Moment, in dem du
+  wieder auf den Tab schaust.
+- Das Schließen einer Terminal-Pane oder eines Tabs beendet jetzt
+  zuverlässig jeden Prozess, den sie gestartet hat, nicht nur die Shell
+  selbst — ein im Hintergrund laufender Dev-Server oder CLI-Agent kann
+  danach nicht mehr unsichtbar weiterlaufen.
+- Das Über-Fenster öffnet sich jetzt sofort wieder, statt sich jedes Mal
+  neu aufzubauen.
+- Geringerer Hintergrund-CPU-/Akkuverbrauch durch die Terminal-Tool-
+  Erkennung, besonders bei vielen offenen Tabs.
+- App-Start und das Wiederherstellen von Fenstern aus der letzten Sitzung
+  sind beide schneller, besonders mit mehreren offenen Fenstern.
+
+### Behoben
+- Der Splash Screen — und das Hauptfenster dahinter — konnte auf Mehr-
+  Monitor-Setups außermittig oder komplett auf dem falschen Monitor
+  erscheinen. Beide zentrieren sich jetzt immer korrekt auf dem Monitor,
+  auf dem die App startet.
+- Das Layout eines Fensters (offene Projekte, geteilte Panes, welche Pane
+  fokussiert war) konnte gelegentlich nicht gespeichert werden, wenn das
+  Fenster sehr kurz nach einer Änderung geschlossen wurde.
+
 ## [0.1.0-nightly.12] - 2026-08-17
 ### Hinzugefügt
 - Ein geführter Erststart-Assistent: Sprache und Theme auswählen (wird

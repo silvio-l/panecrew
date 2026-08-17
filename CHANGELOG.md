@@ -42,6 +42,31 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.13] - 2026-08-17
+### Changed
+- Terminal tabs now stay marked "active" through a tool's whole
+  thinking/working phase instead of flickering to idle during pauses with
+  no new output; the tab highlight now means "finished, waiting for you"
+  instead of "unread", and clears the moment you look back at that tab.
+- Closing a terminal pane or tab now reliably stops every process it
+  started, not just its shell — a background dev server or CLI agent you
+  were running can no longer keep running invisibly after its pane closes.
+- The About window reopens instantly instead of rebuilding itself every
+  time.
+- Reduced background CPU/battery use from terminal tool-detection,
+  especially with many tabs open.
+- App startup and restoring windows from your last session are both
+  faster, especially with several windows open.
+
+### Fixed
+- The splash screen — and the main window behind it — could appear
+  off-center, or on the wrong monitor entirely, on multi-monitor setups.
+  Both now always center correctly on whichever monitor the app is
+  starting on.
+- A window's layout (open projects, split panes, which pane was focused)
+  could occasionally fail to be saved if you closed the window very soon
+  after making a change.
+
 ## [0.1.0-nightly.12] - 2026-08-17
 ### Added
 - A guided first-run setup wizard: pick your language and theme (applied
