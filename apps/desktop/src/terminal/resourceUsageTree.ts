@@ -51,23 +51,40 @@ function dominantPercent(row: TabUsageSample): number {
   return Math.max(row.memPercent, row.cpuPercent);
 }
 
-/** Gruppiert die flache Sample-Liste anhand des AKTUELLEN Grid-Zustands nach
- * Pane. Tabs ohne Sample (gerade erst geöffnet, vor dem ersten 5s-Tick)
- * bleiben aus der Baumansicht außen vor statt mit `0%`/`0%` zu erscheinen —
- * dasselbe "kein Platzhalter-Flackern"-Prinzip wie `ResourceUsageReadout`s
- * eigenes `usage === null`. Panes ohne ein einziges gesampeltes Tab liefern
- * gar keine Gruppe. Sowohl Panes als auch ihre Tabs sind absteigend nach
- * `dominantPercent` sortiert — der stärkste Verbraucher steht ganz oben. */
-export function groupTabUsageByPane(
-  panes: readonly Pane[],
+/** Window-agnostic pane/tab structure — everything the grouping below needs,
+ * whether it comes from this window's own `Pane[]` grid state
+ * (`groupTabUsageByPane`) or from a foreign window via `windowState.ts`'s
+ * cross-window broadcast (`groupTabUsageByWindow`'s `foreignPaneStructures`).
+ * One shared input type instead of two grouping implementations that could
+ * otherwise drift apart. */
+interface PaneStructureTab {
+  tabId: string;
+  label: string | null;
+}
+
+export interface PaneStructure {
+  paneId: string;
+  projectName: string;
+  tabs: readonly PaneStructureTab[];
+}
+
+/** Groups the flat sample list against an already window-agnostic pane
+ * structure. Tabs without a sample (just opened, before the first 5s tick)
+ * stay out of the tree view instead of appearing as `0%`/`0%` — the same
+ * "no placeholder flicker" principle as `ResourceUsageReadout`'s own
+ * `usage === null`. Panes with no sampled tab at all yield no group. Both
+ * panes and their tabs are sorted descending by `dominantPercent` — the
+ * heaviest consumer sits on top. */
+function groupTabUsageByPaneStructure(
+  paneStructures: readonly PaneStructure[],
   samples: readonly TabUsageSample[],
 ): PaneUsageGroup[] {
   const sampleByTabId = new Map(samples.map((sample) => [sample.tabId, sample]));
 
   const groups: { group: PaneUsageGroup; topPercent: number }[] = [];
-  for (const pane of panes) {
+  for (const paneStructure of paneStructures) {
     const rows: TabUsageRow[] = [];
-    pane.terminalTabs.forEach((tab, index) => {
+    paneStructure.tabs.forEach((tab, index) => {
       const sample = sampleByTabId.get(tab.tabId);
       if (!sample) return;
       rows.push({ ...sample, number: index + 1, label: tab.label });
@@ -76,8 +93,8 @@ export function groupTabUsageByPane(
     rows.sort((a, b) => dominantPercent(b) - dominantPercent(a));
     groups.push({
       group: {
-        paneId: pane.paneId,
-        projectName: projectNameFromPath(pane.projectPath),
+        paneId: paneStructure.paneId,
+        projectName: paneStructure.projectName,
         tabs: rows,
       },
       // `rows` ist bereits absteigend sortiert, `[0]` ist damit der stärkste
@@ -89,6 +106,24 @@ export function groupTabUsageByPane(
   }
   groups.sort((a, b) => b.topPercent - a.topPercent);
   return groups.map(({ group }) => group);
+}
+
+/** Derives the window-agnostic structure from this window's own, live
+ * `Pane[]` grid state — the same shape this window also publishes for other
+ * windows under the `"pane-tree"` topic (`TitleBar.tsx`). */
+export function paneStructuresFromPanes(panes: readonly Pane[]): PaneStructure[] {
+  return panes.map((pane) => ({
+    paneId: pane.paneId,
+    projectName: projectNameFromPath(pane.projectPath),
+    tabs: pane.terminalTabs.map((tab) => ({ tabId: tab.tabId, label: tab.label })),
+  }));
+}
+
+export function groupTabUsageByPane(
+  panes: readonly Pane[],
+  samples: readonly TabUsageSample[],
+): PaneUsageGroup[] {
+  return groupTabUsageByPaneStructure(paneStructuresFromPanes(panes), samples);
 }
 
 export interface WindowInfo {
@@ -112,18 +147,24 @@ export interface WindowUsageGroup {
  * Top-level window grouping over the flat, app-wide sample list the backend
  * emits every tick (`resource_monitor.rs`'s `windowLabel` per tab). The
  * CURRENT window gets full pane grouping via `groupTabUsageByPane`, reusing
- * this window's own live grid state; every OTHER window is grouped by its
- * `windowLabel` alone into a flat, dominant-consumer-first tab list. Always
- * returns the current window first (even with zero panes: the tree the user
- * is looking at stays anchored), the rest ordered by their heaviest tab.
- * With only one window open, the result is a single-element array — callers
- * collapse that case to the pre-existing flat (no window heading) view.
+ * this window's own live grid state. Every OTHER window gets the SAME pane
+ * grouping (`groupTabUsageByPaneStructure`) whenever its structure has
+ * already arrived via `windowState.ts`'s `"pane-tree"` cross-window
+ * broadcast (`foreignPaneStructures`, keyed by window label); any of its
+ * tabs not yet covered by that structure (the brief race before that
+ * window's first publish lands) fall back to a flat, generically-numbered
+ * row, same as before this broadcast existed. Always returns the current
+ * window first (even with zero panes: the tree the user is looking at stays
+ * anchored), the rest ordered by their heaviest tab. With only one window
+ * open, the result is a single-element array — callers collapse that case to
+ * the pre-existing flat (no window heading) view.
  */
 export function groupTabUsageByWindow(
   ownWindowLabel: string,
   windowInfos: readonly WindowInfo[],
   panes: readonly Pane[],
   samples: readonly TabUsageSample[],
+  foreignPaneStructures: ReadonlyMap<string, readonly PaneStructure[]> = new Map(),
 ): WindowUsageGroup[] {
   const ownSamples = samples.filter((sample) => sample.windowLabel === ownWindowLabel);
   const otherByWindow = new Map<string, TabUsageSample[]>();
@@ -148,14 +189,28 @@ export function groupTabUsageByWindow(
 
   const otherGroups: { group: WindowUsageGroup; topPercent: number }[] = [];
   for (const [windowLabel, windowSamples] of otherByWindow) {
-    // Kein `label` bekannt (s. Interface-Kommentar oben) -> immer `null`,
-    // dieselbe Positionsnummerierung wie sonst als einziger Anker.
-    const rows: TabUsageRow[] = windowSamples
+    const structure = foreignPaneStructures.get(windowLabel);
+    const panesForWindow = structure ? groupTabUsageByPaneStructure(structure, windowSamples) : [];
+    const groupedTabIds = new Set(panesForWindow.flatMap((pane) => pane.tabs.map((tab) => tab.tabId)));
+    // No `label` known (either this window's structure hasn't arrived yet,
+    // or a tab its structure doesn't know about yet) -> `null`, the same
+    // positional numbering as elsewhere as the sole anchor.
+    const looseRows: TabUsageRow[] = windowSamples
+      .filter((sample) => !groupedTabIds.has(sample.tabId))
       .map((sample, index) => ({ ...sample, number: index + 1, label: null }))
       .sort((a, b) => dominantPercent(b) - dominantPercent(a));
+    // Over ALL of this window's samples, not just `looseRows` — otherwise a
+    // window whose heaviest consumer just moved into a pane group would
+    // wrongly sink in the window ordering.
+    const topPercent = windowSamples.reduce((max, sample) => Math.max(max, dominantPercent(sample)), -Infinity);
     otherGroups.push({
-      group: { windowLabel, windowTitle: titleFor(windowLabel), panes: [], tabs: rows },
-      topPercent: dominantPercent(rows[0] as TabUsageRow),
+      group: {
+        windowLabel,
+        windowTitle: titleFor(windowLabel),
+        panes: panesForWindow,
+        tabs: looseRows,
+      },
+      topPercent,
     });
   }
   otherGroups.sort((a, b) => b.topPercent - a.topPercent);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -7,8 +7,14 @@ import type { Pane } from "../grid/gridState";
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, NEW_WINDOW_SHORTCUT_ID, SHORTCUTS } from "../shortcuts/registry";
 import { DEFAULT_APP_ZOOM } from "../shortcuts/zoom";
-import { formatMemoryBytes, groupTabUsageByWindow } from "../terminal/resourceUsageTree";
+import {
+  formatMemoryBytes,
+  groupTabUsageByWindow,
+  paneStructuresFromPanes,
+  type PaneStructure,
+} from "../terminal/resourceUsageTree";
 import { windowIdentity } from "../window/useWindowIdentity";
+import { publishWindowState, useCrossWindowState } from "../window/windowState";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { ResourceUsageTreeTooltip } from "./ResourceUsageTree";
 
@@ -535,6 +541,26 @@ function ResourceUsageReadout({
     };
   }, []);
 
+  // Publish our own pane structure (project name + tab labels per pane)
+  // under the `"pane-tree"` topic for other windows — the only way their
+  // resource popover can learn about our pane headers/tab renames at all
+  // (see `resourceUsageTree.ts`'s `groupTabUsageByWindow` comment). `panes`
+  // comes from `App.tsx`'s inline `activePanes(gridState).filter(...)` call
+  // — a new array reference on EVERY App render, even when nothing about the
+  // pane structure actually changed. A `useMemo`/`useEffect` keyed on that
+  // reference alone would therefore republish on every unrelated App
+  // re-render. Hence a value comparison via serialization here instead of a
+  // reference comparison, before an IPC call actually goes out.
+  const ownPaneStructure = useMemo(() => paneStructuresFromPanes(panes), [panes]);
+  const publishedPaneStructureRef = useRef<string>("");
+  useEffect(() => {
+    const serialized = JSON.stringify(ownPaneStructure);
+    if (serialized === publishedPaneStructureRef.current) return;
+    publishedPaneStructureRef.current = serialized;
+    publishWindowState("pane-tree", ownPaneStructure);
+  }, [ownPaneStructure]);
+  const foreignPaneStructures = useCrossWindowState<PaneStructure[]>("pane-tree");
+
   if (usage === null) {
     return null;
   }
@@ -550,7 +576,13 @@ function ResourceUsageReadout({
     memStatus: memStatusLabel,
     cpuStatus: cpuStatusLabel,
   });
-  const windowGroups = groupTabUsageByWindow(windowIdentity().label, usage.windows, panes, usage.tabs);
+  const windowGroups = groupTabUsageByWindow(
+    windowIdentity().label,
+    usage.windows,
+    panes,
+    usage.tabs,
+    foreignPaneStructures,
+  );
 
   return (
     <ResourceUsageTreeTooltip summary={tooltip} windowGroups={windowGroups}>

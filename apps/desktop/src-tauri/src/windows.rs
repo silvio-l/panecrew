@@ -18,6 +18,7 @@ use tauri::{
 use crate::pty_commands::{self, PtyState, WindowPtyRegistry};
 use crate::session_store;
 use crate::settings_commands::app_data_dir;
+use crate::window_state::{self, WindowStateStore};
 
 pub(crate) const MAIN: &str = "main";
 
@@ -582,6 +583,7 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 
     log::info!("window closing: {}", window.label());
     pty_commands::kill_all_for_window(&pty_state, &registry, window.label());
+    window_state::remove_window(app, &app.state::<WindowStateStore>(), window.label());
 
     let is_quitting_close =
         resolve_quitting_close(&deferred_quit, &quitting_flag, window.label(), is_confirmed_retry);

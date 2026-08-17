@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Pane } from "../grid/gridState";
-import { formatMemoryBytes, groupTabUsageByPane, groupTabUsageByWindow } from "./resourceUsageTree";
+import {
+  formatMemoryBytes,
+  groupTabUsageByPane,
+  groupTabUsageByWindow,
+  paneStructuresFromPanes,
+  type PaneStructure,
+} from "./resourceUsageTree";
 
 function pane(overrides: Partial<Pane> & Pick<Pane, "paneId" | "projectPath">): Pane {
   return {
@@ -115,7 +121,7 @@ describe("groupTabUsageByWindow", () => {
     expect(groups[0]?.tabs).toEqual([]);
   });
 
-  it("gruppiert Tabs fremder Fenster flach nach Fensterlabel, ohne Pane-Zuordnung", () => {
+  it("gruppiert Tabs fremder Fenster flach nach Fensterlabel, solange dessen Pane-Struktur noch nicht über windowState.ts eingetroffen ist", () => {
     const panes = [
       pane({
         paneId: "pane-a",
@@ -173,6 +179,108 @@ describe("groupTabUsageByWindow", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.panes).toEqual([]);
     expect(groups[0]?.tabs).toEqual([]);
+  });
+
+  it("gibt einem fremden Fenster dieselbe Pane-Aufschlüsselung wie dem eigenen, sobald dessen Struktur über foreignPaneStructures vorliegt (der eigentliche Fix: Fenster 2 zeigte bislang keine Pane-Header/Tab-Umbenennungen)", () => {
+    const panes = [pane({ paneId: "own-pane", projectPath: "/tmp/own" })];
+    const foreignStructures: readonly PaneStructure[] = [
+      {
+        paneId: "foreign-pane",
+        projectName: "panecrew",
+        tabs: [{ tabId: "foreign-tab-1", label: "Build" }],
+      },
+    ];
+    const groups = groupTabUsageByWindow(
+      "main",
+      [
+        { label: "main", title: "PaneCrew" },
+        { label: "window-2", title: "PaneCrew — Fenster 2" },
+      ],
+      panes,
+      [
+        { tabId: "own-pane-tab-1", memPercent: 1, cpuPercent: 1, memBytes: 100, windowLabel: "main" },
+        { tabId: "foreign-tab-1", memPercent: 5, cpuPercent: 1, memBytes: 500, windowLabel: "window-2" },
+      ],
+      new Map([["window-2", foreignStructures]]),
+    );
+
+    const foreignGroup = groups[1];
+    expect(foreignGroup?.windowLabel).toBe("window-2");
+    expect(foreignGroup?.panes).toHaveLength(1);
+    expect(foreignGroup?.panes[0]?.projectName).toBe("panecrew");
+    expect(foreignGroup?.panes[0]?.tabs[0]?.label).toBe("Build");
+    // Fully covered by the pane group -> no flat leftover row needed anymore.
+    expect(foreignGroup?.tabs).toEqual([]);
+  });
+
+  it("fällt für Tabs eines fremden Fensters, die seine (bereits eingetroffene) Struktur noch nicht kennt, auf eine flache Restzeile zurück, statt sie verschwinden zu lassen", () => {
+    const foreignStructures: readonly PaneStructure[] = [
+      { paneId: "foreign-pane", projectName: "panecrew", tabs: [{ tabId: "known-tab", label: null }] },
+    ];
+    const groups = groupTabUsageByWindow(
+      "main",
+      [{ label: "main", title: "PaneCrew" }, { label: "window-2", title: "PaneCrew — Fenster 2" }],
+      [],
+      [
+        { tabId: "known-tab", memPercent: 1, cpuPercent: 1, memBytes: 100, windowLabel: "window-2" },
+        { tabId: "brand-new-tab", memPercent: 2, cpuPercent: 1, memBytes: 200, windowLabel: "window-2" },
+      ],
+      new Map([["window-2", foreignStructures]]),
+    );
+
+    const foreignGroup = groups[1];
+    expect(foreignGroup?.panes).toHaveLength(1);
+    expect(foreignGroup?.tabs.map((row) => row.tabId)).toEqual(["brand-new-tab"]);
+    expect(foreignGroup?.tabs[0]?.label).toBeNull();
+  });
+
+  it("reiht ein fremdes Fenster nach seinem stärksten Tab ein, egal ob der in einer Pane-Gruppe oder in der flachen Restzeile landet", () => {
+    const foreignStructures: readonly PaneStructure[] = [
+      { paneId: "foreign-pane", projectName: "panecrew", tabs: [{ tabId: "quiet-grouped-tab", label: null }] },
+    ];
+    const groups = groupTabUsageByWindow(
+      "main",
+      [
+        { label: "main", title: "PaneCrew" },
+        { label: "window-2", title: "PaneCrew — Fenster 2" },
+      ],
+      [pane({ paneId: "own-pane", projectPath: "/tmp/own" })],
+      [
+        { tabId: "own-pane-tab-1", memPercent: 1, cpuPercent: 1, memBytes: 100, windowLabel: "main" },
+        { tabId: "quiet-grouped-tab", memPercent: 2, cpuPercent: 1, memBytes: 200, windowLabel: "window-2" },
+        // Ungrouped (no structure known for it), but the window's heaviest
+        // consumer -> must still determine its placement.
+        { tabId: "loud-ungrouped-tab", memPercent: 95, cpuPercent: 1, memBytes: 9500, windowLabel: "window-2" },
+      ],
+      new Map([["window-2", foreignStructures]]),
+    );
+
+    expect(groups.map((group) => group.windowLabel)).toEqual(["main", "window-2"]);
+  });
+});
+
+describe("paneStructuresFromPanes", () => {
+  it("leitet Fenster-agnostische Struktur (Projektname statt Pfad, nur tabId+label) aus dem Grid-State ab — dieselbe Form, die TitleBar.tsx unter dem pane-tree-Topic publiziert", () => {
+    const panes = [
+      pane({
+        paneId: "pane-a",
+        projectPath: "/tmp/mein-projekt",
+        terminalTabs: [
+          { tabId: "tab-1", label: null },
+          { tabId: "tab-2", label: "Build" },
+        ],
+      }),
+    ];
+    expect(paneStructuresFromPanes(panes)).toEqual([
+      {
+        paneId: "pane-a",
+        projectName: "mein-projekt",
+        tabs: [
+          { tabId: "tab-1", label: null },
+          { tabId: "tab-2", label: "Build" },
+        ],
+      },
+    ]);
   });
 });
 

@@ -28,6 +28,7 @@ pub mod shell_integration;
 pub mod splash;
 pub mod tool_detect;
 pub mod updater;
+pub mod window_state;
 pub mod windows;
 
 use about::PendingUpdateCheck;
@@ -84,6 +85,7 @@ pub fn run() {
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
         .manage(SessionWriteLock::default())
+        .manage(window_state::WindowStateStore::default())
         // Not `.menu(menu::build)`: Tauri evaluates that closure while
         // building the `App` itself, before `register_core_plugins()` has
         // managed the internal `PathResolver` state -- and `menu::build`
@@ -267,6 +269,8 @@ pub fn run() {
             windows::window_open_new,
             windows::take_pending_window_project,
             windows::window_close_confirmed,
+            window_state::window_state_publish,
+            window_state::window_state_snapshot,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
