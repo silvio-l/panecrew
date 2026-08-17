@@ -12,9 +12,13 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(() => Promise.resolve()) }));
-const closeMock = vi.fn(() => Promise.resolve());
+// `hide`, nicht `close`: das Settings-Fenster ist ein vorgewärmtes
+// Singleton, das sich nur verstecken, nie zerstören darf
+// (settings_window.rs) — und `close` ist in seiner Capability bewusst
+// gar nicht freigegeben (src-tauri/capabilities/settings.json).
+const hideMock = vi.fn(() => Promise.resolve());
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ close: closeMock }),
+  getCurrentWindow: () => ({ hide: hideMock }),
 }));
 
 const invokeMock = vi.mocked(invoke);
@@ -52,7 +56,7 @@ const ORIGINAL_USER_AGENT = window.navigator.userAgent;
 beforeEach(() => {
   invokeMock.mockReset();
   openUrlMock.mockClear();
-  closeMock.mockClear();
+  hideMock.mockClear();
   // Ticket 08: `useSettings` holt seine Werte jetzt über den geteilten
   // `settingsStore.ts` — dessen Zwischenstand ist modulweit und würde ohne
   // Reset unbemerkt aus einem Test in den nächsten durchsickern.
@@ -146,17 +150,17 @@ describe("SettingsWindow — Extension-Settings (Ticket 09)", () => {
 });
 
 describe("SettingsWindow — Hilfe-Kategorie (Onboarding-Neustart + macOS-Berechtigungen)", () => {
-  it("setzt den Onboarding-Stand über den Neustart-Button zurück und schließt danach dieses Fenster", async () => {
+  it("setzt den Onboarding-Stand über den Neustart-Button zurück und versteckt danach dieses Fenster", async () => {
     render(<SettingsWindow />);
     fireEvent.click(await screen.findByRole("button", { name: "Hilfe" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Einführung neu starten" }));
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("onboarding_restart"));
-    // Schließt sich selbst statt nur eine "wechsle ins Hauptfenster"-
+    // Versteckt sich selbst statt nur eine "wechsle ins Hauptfenster"-
     // Bestätigung anzuzeigen — sonst überdeckt das Settings-Fenster den
     // Wizard, der im Hauptfenster erscheint (Nutzer-Bugreport 2026-08-17).
-    await waitFor(() => expect(closeMock).toHaveBeenCalled());
+    await waitFor(() => expect(hideMock).toHaveBeenCalled());
   });
 
   it("zeigt den macOS-Berechtigungsabschnitt nur auf macOS", async () => {

@@ -22,7 +22,7 @@ import { PermissionsSection } from "../components/PermissionsSection";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
-import { info } from "../logging/log";
+import { info, warn } from "../logging/log";
 import { restartOnboarding } from "../onboarding/onboarding";
 import { isMacPlatform } from "../shortcuts/platform";
 import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
@@ -673,7 +673,22 @@ function OnboardingRestartRow({
           void (async () => {
             await restartOnboarding();
             void info("onboarding: restarted from settings");
-            await getCurrentWindow().close();
+            // `hide()`, not `About.tsx`'s `close()`: this window is a
+            // prewarmed singleton that must never be destroyed
+            // (`settings_window.rs`), and its `CloseRequested` handler
+            // would only translate a close back into exactly this `hide()`
+            // anyway. Going straight there skips that round-trip.
+            //
+            // Needs `core:window:allow-hide` in
+            // `src-tauri/capabilities/settings.json` — without it Tauri's
+            // ACL rejects the call, which is what made two earlier fixes
+            // look like no-ops (the rejection was swallowed by a bare
+            // `void`). Hence the `catch`: never fail silently here again.
+            void getCurrentWindow()
+              .hide()
+              .catch((cause: unknown) => {
+                void warn(`onboarding: settings window hide failed: ${String(cause)}`);
+              });
           })();
         }}
         className={`shrink-0 rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
