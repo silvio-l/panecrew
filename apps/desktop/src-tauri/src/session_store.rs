@@ -152,14 +152,27 @@ fn session_path(dir: &Path) -> PathBuf {
     dir.join(FILE_NAME)
 }
 
+/// Parses the persisted session with no per-pane project-path existence
+/// check — the raw round-trip, no filesystem stat beyond the read itself.
+/// Used by the save path's internal read-modify-write (`session_save_
+/// window`), which only needs *some* other windows'/globals' last-known
+/// state to merge into, not a freshly re-validated one: paths were already
+/// checked once at load/restore time (`read_session` below), and nothing
+/// changes a project's existence between one live save and the next within
+/// the same session (perf-audit ticket 02 — re-`is_dir()`-ing every pane on
+/// every save was pure syscall overhead the save path never needed).
+fn read_session_raw(dir: &Path) -> Option<SessionState> {
+    let bytes = std::fs::read(session_path(dir)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
 /// Reads the persisted session, or `None` if there is none yet, the file is
 /// unreadable, or it fails to parse — a corrupt, foreign, or v1-shaped file
 /// must not fail app startup (same "survivable, not fatal" stance as
 /// `launch.rs`), it just means starting at the picker exactly as on first
 /// launch.
 pub fn read_session(dir: &Path) -> Option<SessionState> {
-    let bytes = std::fs::read(session_path(dir)).ok()?;
-    let mut state: SessionState = serde_json::from_slice(&bytes).ok()?;
+    let mut state = read_session_raw(dir)?;
     for window in &mut state.windows {
         for slot in &mut window.slots {
             if let Some(pane) = slot {
@@ -292,7 +305,7 @@ pub fn session_save_window(
 ) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
     let _guard = lock.0.lock().unwrap();
-    let previous = read_session(&dir).unwrap_or_default();
+    let previous = read_session_raw(&dir).unwrap_or_default();
     let (state, recent_projects_changed) = merge_window_state(
         previous.clone(),
         window,
@@ -846,6 +859,57 @@ mod tests {
         assert_eq!(read_back.explorer_width, Some(300.0));
     }
 
+    /// Perf-audit ticket 02: the save path's internal read-modify-write must
+    /// not re-run `is_dir()` project-path validation — paths were already
+    /// checked once at load/restore time, and nothing changes a project's
+    /// existence between one live save and the next within the same
+    /// session. A slot whose project folder disappears mid-session must
+    /// therefore still round-trip through an unrelated window's save,
+    /// rather than getting silently nulled out by a stat the save path has
+    /// no business performing.
+    #[test]
+    fn session_save_window_does_not_revalidate_project_paths_on_its_internal_read() {
+        let fixture = Fixture::new("save-window-no-revalidate");
+        let vanishing = fixture.0.join("vanishing-project");
+        std::fs::create_dir_all(&vanishing).expect("fixture dir");
+        let vanishing_path = vanishing.to_string_lossy().into_owned();
+
+        let mut main_window = empty_quad_window("main");
+        main_window.slots[0] = terminal_only_pane(&vanishing_path);
+        write_session(
+            &fixture.0,
+            &SessionState {
+                windows: vec![main_window],
+                ..SessionState::default()
+            },
+        )
+        .expect("seed initial state");
+
+        // The project folder is gone now — a real `is_dir()` check on this
+        // path would fail.
+        std::fs::remove_dir_all(&vanishing).expect("remove project dir");
+
+        // Saves an unrelated second window; "main"'s own entry is only
+        // carried through the save path's internal read, never touched
+        // directly.
+        session_save_window_for_test(&fixture.0, empty_quad_window("main-2"))
+            .expect("save unrelated window");
+
+        let raw_bytes = std::fs::read(session_path(&fixture.0)).expect("file exists");
+        let raw: SessionState = serde_json::from_slice(&raw_bytes).expect("valid json");
+        let main = raw
+            .windows
+            .iter()
+            .find(|w| w.label == "main")
+            .expect("main window still present");
+        assert_eq!(
+            main.slots[0],
+            terminal_only_pane(&vanishing_path),
+            "expected the save path's internal read to leave the now-nonexistent \
+             project's slot untouched instead of nulling it out"
+        );
+    }
+
     /// `recent_projects`' own analogue to the two tests above — same
     /// merge-not-overwrite/leave-untouched contract, kept as a separate test
     /// rather than folded into `..._expanded_folders_and_explorer_width_...`
@@ -991,7 +1055,7 @@ mod tests {
         explorer_width: Option<f64>,
         recent_projects: Option<Vec<String>>,
     ) -> Result<(), String> {
-        let previous = read_session(dir).unwrap_or_default();
+        let previous = read_session_raw(dir).unwrap_or_default();
         let (state, _) = merge_window_state(
             previous.clone(),
             window,

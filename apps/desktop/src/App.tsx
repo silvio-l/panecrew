@@ -119,6 +119,7 @@ import {
 } from "./session/sessionState";
 import { normalizeRatios } from "./grid/splitRatios";
 import { loadSession, saveSessionWindow } from "./session/sessionStore";
+import { createSessionSaveGate } from "./session/sessionSaveGate";
 import { windowIdentity } from "./window/useWindowIdentity";
 import { info } from "./logging/log";
 import { isMacPlatform } from "./shortcuts/platform";
@@ -139,6 +140,11 @@ import "./App.css";
 const EXPLORER_MIN_WIDTH = 180;
 const EXPLORER_MAX_WIDTH = 480;
 const EXPLORER_DEFAULT_WIDTH = 224;
+/** Trailing debounce for the session-autosave effect (perf audit ticket 02)
+ * — collapses rapid repeated persisted-state changes (fast terminal-tab
+ * cycling via number hotkeys) into one disk write, the same category of fix
+ * as `resizeGate.ts`'s `COLS_RESIZE_DEBOUNCE_MS`. */
+const SESSION_SAVE_DEBOUNCE_MS = 300;
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -796,23 +802,55 @@ function App() {
   // decken nur Template/Panes/Fokus-Modus ab), keine Regression gegenüber
   // dem Vor-Ticket-27-Verhalten, das dieselbe Zuletzt-gewinnt-Semantik schon
   // hatte, nur eben nie mit einem zweiten Fenster.
+  // Stable across renders (created once via useRef): a debounce gate would
+  // reset its pending timer on every re-creation otherwise, which defeats
+  // the point of debouncing rapid triggers together. See sessionSaveGate.ts
+  // for the collapse-into-one-write behavior itself.
+  const sessionSaveGateRef = useRef<ReturnType<
+    typeof createSessionSaveGate<Parameters<typeof saveSessionWindow>>
+  > | null>(null);
+  sessionSaveGateRef.current ??= createSessionSaveGate(
+    (args) => void saveSessionWindow(...args),
+    {
+      schedule: (run) => {
+        const id = window.setTimeout(run, SESSION_SAVE_DEBOUNCE_MS);
+        return () => window.clearTimeout(id);
+      },
+    },
+  );
+
   useEffect(() => {
     if (!hydrated) return;
-    void saveSessionWindow(
+    sessionSaveGateRef.current?.request([
       buildWindowState(windowId.label, gridState, selectedFile),
       expandedFolders,
       persistedExplorerWidth,
       recentProjects,
-    );
+    ]);
+    // Deliberately narrower than "every field the callback reads": `gridState`
+    // itself changes identity on every focus switch (`focusedPaneId` isn't
+    // part of the persisted payload, see `buildWindowState`), so depending on
+    // the whole object would re-trigger this effect — and thus schedule a
+    // debounced write — on pure focus changes with nothing to actually save.
+    // `gridState.slots`/`.template`/`.splitRatios`/`.maximizedPaneId` stay
+    // referentially stable across a pure focus change (`setFocusedPane`
+    // spreads only `focusedPaneId`), so depending on them directly reaches
+    // exactly the fields `buildWindowState` reads, none more.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     hydrated,
-    gridState,
+    gridState.slots,
+    gridState.template,
+    gridState.splitRatios,
+    gridState.maximizedPaneId,
     selectedFile,
     expandedFolders,
     persistedExplorerWidth,
     recentProjects,
     windowId.label,
   ]);
+
+  useEffect(() => () => sessionSaveGateRef.current?.cancel(), []);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
