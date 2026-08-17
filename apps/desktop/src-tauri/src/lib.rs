@@ -238,7 +238,7 @@ pub fn run() {
                 log::warn!("failed to queue settings-window prewarm: {error}");
             }
 
-            splash::position_on_cursor_monitor(app.handle());
+            splash::position_on_launch_monitor(app.handle());
             splash::arm_watchdog(app.handle());
             resource_monitor::start(app.handle().clone());
             Ok(())
