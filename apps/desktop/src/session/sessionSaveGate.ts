@@ -12,9 +12,13 @@ export interface SessionSaveGateScheduler {
 }
 
 export function createSessionSaveGate<T>(
-  save: (payload: T) => void,
+  save: (payload: T) => void | Promise<void>,
   scheduler: SessionSaveGateScheduler,
-): { request: (payload: T) => void; cancel: () => void; flush: () => void } {
+): {
+  request: (payload: T) => void;
+  cancel: () => void;
+  flush: () => void | Promise<void>;
+} {
   let cancelPending: (() => void) | null = null;
   let latest: { value: T } | null = null;
 
@@ -23,7 +27,7 @@ export function createSessionSaveGate<T>(
     cancelPending?.();
     cancelPending = scheduler.schedule(() => {
       cancelPending = null;
-      if (latest) save(latest.value);
+      if (latest) void save(latest.value);
     });
   };
 
@@ -36,15 +40,17 @@ export function createSessionSaveGate<T>(
   };
 
   /** Applies a still-pending debounced save immediately instead of waiting
-   * out the rest of the debounce window — App.tsx's unmount cleanup uses
-   * this instead of `cancel()`, so the last state change before a window
-   * closes isn't silently dropped just because it landed inside the
-   * trailing debounce window (perf audit ticket 02 review finding). A no-op
-   * if nothing is pending. */
+   * out the rest of the debounce window, and returns whatever `save` itself
+   * returns so a caller that needs the write to actually land before doing
+   * something else (App.tsx's close-confirmation listener, ahead of the
+   * IPC round-trip that lets the window actually close) can await it —
+   * unmount-cleanup timing alone isn't a reliable signal for "the native
+   * window is about to be destroyed" (perf audit ticket 02 review finding).
+   * A no-op if nothing is pending. */
   const flush = () => {
     cancelPending?.();
     cancelPending = null;
-    if (latest) save(latest.value);
+    if (latest) return save(latest.value);
   };
 
   return { request, cancel, flush };

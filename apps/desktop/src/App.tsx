@@ -810,7 +810,7 @@ function App() {
     typeof createSessionSaveGate<Parameters<typeof saveSessionWindow>>
   > | null>(null);
   sessionSaveGateRef.current ??= createSessionSaveGate(
-    (args) => void saveSessionWindow(...args),
+    (args) => saveSessionWindow(...args),
     {
       schedule: (run) => {
         const id = window.setTimeout(run, SESSION_SAVE_DEBOUNCE_MS);
@@ -850,11 +850,19 @@ function App() {
     windowId.label,
   ]);
 
-  // `flush()`, not `cancel()`: on unmount (window close) a still-pending
-  // debounced save must still land, or the last state change before closing
-  // is silently lost for up to SESSION_SAVE_DEBOUNCE_MS (perf audit ticket
-  // 02 review finding).
-  useEffect(() => () => sessionSaveGateRef.current?.flush(), []);
+  // `flush()`, not `cancel()`: IF this component ever does unmount (Strict
+  // Mode double-invoke, hot reload) a still-pending debounced save must
+  // still land, not be silently discarded. This is a defensive fallback,
+  // not the primary fix for the window-close case that motivated it (perf
+  // audit ticket 02 review finding) — a real window close never unmounts
+  // this tree, it tears the native window down directly, so the
+  // `pc://window-close-requested` listener below flushes explicitly instead
+  // of relying on this ever firing at the right time.
+  useEffect(() => {
+    return () => {
+      void sessionSaveGateRef.current?.flush();
+    };
+  }, []);
 
   // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
   // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
@@ -916,10 +924,19 @@ function App() {
   // hängen — sonst wäre es hier nie eingetroffen. Bestätigt der Nutzer, ruft
   // `run()` denselben Schließversuch über den eigens dafür vorgesehenen
   // Befehl noch einmal auf, diesmal als bereits bestätigt.
+  //
+  // Explicit `flush()` here, not a reliance on unmount cleanup: this window
+  // never actually unmounts on close (the native window is torn down
+  // directly), so the effect-cleanup flush at the `sessionSaveGateRef`
+  // declaration above is dead code for this path — this is the one place
+  // that's guaranteed to run before the eventual real teardown, with the
+  // human reaction time before the user answers the dialog as ample margin
+  // for the write's IPC round-trip to land.
   useEffect(() => {
     const unlistenPromise = listen(
       "pc://window-close-requested",
       () => {
+        void sessionSaveGateRef.current?.flush();
         setPendingClose({
           target: "window",
           run: () => {

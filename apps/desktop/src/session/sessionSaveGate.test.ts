@@ -91,10 +91,21 @@ describe("createSessionSaveGate", () => {
     const { request, flush } = createSessionSaveGate(save, scheduler);
 
     request({ value: 1 });
-    flush();
+    void flush();
 
     expect(save).toHaveBeenCalledExactlyOnceWith({ value: 1 });
     expect(scheduler.hasPending()).toBe(false);
+  });
+
+  it("flush() returns save()'s own promise so a caller can await the write landing", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createFakeScheduler();
+    const { request, flush } = createSessionSaveGate(save, scheduler);
+
+    request({ value: 1 });
+    await flush();
+
+    expect(save).toHaveBeenCalledExactlyOnceWith({ value: 1 });
   });
 
   it("flush() is a no-op when nothing is pending", () => {
@@ -102,7 +113,7 @@ describe("createSessionSaveGate", () => {
     const scheduler = createFakeScheduler();
     const { flush } = createSessionSaveGate(save, scheduler);
 
-    flush();
+    void flush();
 
     expect(save).not.toHaveBeenCalled();
   });
@@ -113,7 +124,7 @@ describe("createSessionSaveGate", () => {
     const { request, flush } = createSessionSaveGate(save, scheduler);
 
     request({ value: 1 });
-    flush();
+    void flush();
     scheduler.fire();
 
     expect(save).toHaveBeenCalledTimes(1);

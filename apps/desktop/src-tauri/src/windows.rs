@@ -581,6 +581,17 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     // as a `CloseRequested` for this window — until the frontend confirms
     // losing whatever's still running in it. Nothing to lose (no PTYs
     // registered) skips straight through, same as an already-confirmed close.
+    //
+    // Known accepted gap (2026-08-17, perf audit ticket 02 review follow-up):
+    // this fast path never round-trips into the frontend, so a still-pending
+    // debounced session-layout write (SESSION_SAVE_DEBOUNCE_MS, App.tsx) has
+    // no chance to flush before the native window is torn down — unlike the
+    // branch below, which the frontend's confirmation dialog gives ample
+    // time to flush in. Deliberately not widening this gate to always pause:
+    // that would touch the same `quitting_flag`/`deferred_quit` bookkeeping
+    // this function's own doc comment calls out as landmine-prone (Ticket
+    // 27), for a window whose only cost is up to `SESSION_SAVE_DEBOUNCE_MS`
+    // of stale grid-layout metadata on next launch — not lost file content.
     let confirmed = app.state::<ConfirmedCloseWindows>();
     let is_confirmed_retry = confirmed.take(window.label());
     if !is_confirmed_retry && !registry.tab_ids_for_window(window.label()).is_empty() {
