@@ -136,10 +136,82 @@ jobs:
           echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
+      # Build + sign + notarize WITHOUT publishing yet: omitting tagName/
+      # releaseId makes tauri-action skip all release/upload steps (verified
+      # against its source -- it logs "No releaseId or tagName provided,
+      # skipping all uploads..." and just builds). This is the seam the
+      # 2026-08-19 nightly-crash incident was missing: a build that passes
+      # notarization can still fail to *launch* (hardened-runtime library
+      # validation), and that only shows up once the artifact actually runs.
+      # The smoke-test step below is the real gate; the second tauri-action
+      # call further down is what actually publishes, and only runs if the
+      # smoke test passed. macOS only -- see the smoke-test step's comment
+      # for why Windows keeps the original single-step build+publish below.
+      - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+        with:
+          projectPath: apps/desktop
+          # --config-Pfad relativ zu `projectPath` und Tauris Merge-Verhalten
+          # sind gegen einen echten lokalen Build verifiziert (identifier,
+          # Fenstertitel, Updater-Endpoints landen wie erwartet aus dem
+          # Nightly-Overlay) -- s. docs/decisions.md, Ticket 30.
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json
+
+      # Launch the actual signed/notarized .app and confirm it survives past
+      # launch -- this is exactly the check that would have caught the
+      # 2026-08-19 incident (dyld aborted the process before any window
+      # opened; `cargo test`/notarization both stayed green through that).
+      # macOS only: this incident's failure mode (hardened-runtime library
+      # validation) is macOS-specific, and there is no verified-safe way to
+      # smoke-launch a GUI app headlessly on the windows-latest runner here.
+      - name: "Smoke test: launch built app, verify it doesn't crash (macOS)"
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path=$(find apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)
+          if [[ -z "$app_path" ]]; then
+            echo "::error::No .app bundle found to smoke test" >&2
+            exit 1
+          fi
+          exe_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")
+          "$app_path/Contents/MacOS/$exe_name" > /tmp/smoke-test.log 2>&1 &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::Built app crashed within 5s of launch -- see log below:" >&2
+            cat /tmp/smoke-test.log >&2
+            exit 1
+          fi
+          echo "App still running after 5s (pid $pid) -- smoke test passed."
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # Only reached if the smoke test above passed. Re-running `tauri build`
+      # here is a near-no-op (Rust compile output and the frontend dist are
+      # already cached from the step above, only bundling/signing/
+      # notarization redo their work) -- the bundle dir is cleared first so
+      # the DMG step doesn't choke on a file that already exists.
+      - name: Clear previous bundle output before republishing
+        if: matrix.platform == 'macos-latest'
+        run: rm -rf apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+
       # Eigenes Keypaar, eigener `identifier`, eigenes Overlay (Punkt 1): der
       # Nightly-Signing-Key ist häufiger exponiert als der Stable-Key, ein
       # kompromittierter Nightly-Key darf Stable nicht mitgefährden.
       - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'macos-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
@@ -164,10 +236,25 @@ jobs:
           # bewusst gesetzten Tags" -- der Tag-Push selbst ist das Gate).
           releaseDraft: false
           prerelease: true
-          # --config-Pfad relativ zu `projectPath` und Tauris Merge-Verhalten
-          # sind gegen einen echten lokalen Build verifiziert (identifier,
-          # Fenstertitel, Updater-Endpoints landen wie erwartet aus dem
-          # Nightly-Overlay) -- s. docs/decisions.md, Ticket 30.
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json
+
+      # Windows: no build/smoke/republish split above (this incident's
+      # failure mode -- macOS hardened-runtime library validation -- doesn't
+      # apply here, and there's no verified-safe way to smoke-launch a GUI
+      # app headlessly on this runner) -- single build+publish step as
+      # before.
+      - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: nightly-latest
+          releaseName: "PaneCrew Nightly"
+          releaseDraft: false
+          prerelease: true
           args: --target ${{ matrix.target }} --config src-tauri/tauri.nightly.conf.json
 
   # tauri-action verlinkt in latest.json pro Plattform die GitHub-API-Asset-URL

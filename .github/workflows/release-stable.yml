@@ -70,7 +70,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
+      # Build + sign + notarize WITHOUT publishing yet, same reasoning and
+      # verified tauri-action behavior as release-nightly.yml (see its
+      # comment on this step): a build that passes notarization can still
+      # fail to *launch* (2026-08-19 incident, macOS hardened-runtime
+      # library validation), which only shows up once the artifact runs.
       - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'macos-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}
@@ -81,6 +87,66 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.target }}
+
+      # Same smoke test as release-nightly.yml -- macOS only, see that
+      # workflow's comment for why Windows has no equivalent gate here.
+      - name: "Smoke test: launch built app, verify it doesn't crash (macOS)"
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path=$(find apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)
+          if [[ -z "$app_path" ]]; then
+            echo "::error::No .app bundle found to smoke test" >&2
+            exit 1
+          fi
+          exe_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")
+          "$app_path/Contents/MacOS/$exe_name" > /tmp/smoke-test.log 2>&1 &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::Built app crashed within 5s of launch -- see log below:" >&2
+            cat /tmp/smoke-test.log >&2
+            exit 1
+          fi
+          echo "App still running after 5s (pid $pid) -- smoke test passed."
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      - name: Clear previous bundle output before republishing
+        if: matrix.platform == 'macos-latest'
+        run: rm -rf apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+
+      - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "PaneCrew ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
+
+      # Windows: no build/smoke/republish split, see release-nightly.yml.
+      - uses: tauri-apps/tauri-action@v1
+        if: matrix.platform == 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
