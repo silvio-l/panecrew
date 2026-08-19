@@ -272,6 +272,7 @@ pub fn run() {
             path_probe::list_subdirectories,
             launch::get_launch_project,
             snippet_fs::snippet_init,
+            snippet_fs::snippet_list,
             session_store::session_load,
             session_store::session_save,
             session_store::session_save_window,

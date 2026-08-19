@@ -31,7 +31,8 @@ import {
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import { launchLineFor, resolveAdapter } from "./adapters";
-import { snippetInit } from "./snippetCommands";
+import { snippetInit, snippetList } from "./snippetCommands";
+import type { SnippetCandidate } from "./snippetTrigger";
 import { systemCommands } from "./systemCommands";
 import {
   createDirectoryProbe,
@@ -449,9 +450,6 @@ export function usePtyTerminal(
     const subdirectories = createSubdirectoryIndex(() => {
       refreshSuggestion();
     });
-    // Ticket 01 (snippet-trigger-system): nur die feste `SYSTEM_COMMANDS`-
-    // Liste — echte Projekt-/User-Snippets aus `.panecrew/snippets/` bzw.
-    // `app_data_dir()/snippets/` kommen erst mit Ticket 02 dazu.
     const runSnippetCommand = (trigger: string) => {
       if (trigger !== "init") return;
       void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
@@ -461,13 +459,30 @@ export function usePtyTerminal(
         );
       });
     };
+    // Ticket 02 (snippet-trigger-system): real project/user snippets, read
+    // once at mount — spec: "read all snippet files once at app startup", no
+    // filesystem watching. `://reload-snippets` (Ticket 03) re-runs this same
+    // fetch on demand instead. A failed load (e.g. malformed IPC response)
+    // just leaves the popup showing System-Befehle only, same as before this
+    // ticket — not worth a visible error for a feature that's still usable
+    // without it.
+    let loadedSnippets: readonly SnippetCandidate[] = [];
+    void snippetList(cwd)
+      .then((loaded) => {
+        if (disposed) return;
+        loadedSnippets = loaded;
+        refreshSuggestion();
+      })
+      .catch(() => {
+        /* popup falls back to System-Befehle only */
+      });
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,
       cwd: () => liveCwd,
       isDirectory: directories.isDirectory,
       listSubdirectories: subdirectories.list,
-      listSnippetCandidates: systemCommands,
+      listSnippetCandidates: () => [...systemCommands(), ...loadedSnippets],
       runSnippetCommand,
       font: terminalOptions,
     });
