@@ -231,6 +231,25 @@ fn step(input: StepInput) -> (StageKind, Option<u32>, u8, Vec<Action>) {
     }
 }
 
+/// Computes the new `paused_pid` value for a tab entry from what `step()`
+/// returned this tick. A dedicated function instead of inline logic in
+/// `tick_all` because this is exactly where a real bug lived: `step()`'s
+/// `Paused` arm deliberately returns `next_pid = None` on every tick that
+/// does NOT newly transition into `Paused` (i.e. every further tick while
+/// the tab is already paused) — that means "no NEW pid to remember this
+/// tick", NOT "there is no longer a paused pid". A naive `if next_kind ==
+/// Paused { next_pid } else { None }` conflated the two and wiped the
+/// remembered pid exactly one tick (5s) after pausing — `resource_guard_resume`
+/// then failed permanently with "paused tab has no remembered pid", leaving
+/// the user unable to ever resume the session.
+fn commit_paused_pid(current: Option<u32>, next_kind: StageKind, next_pid: Option<u32>) -> Option<u32> {
+    if next_kind == StageKind::Paused {
+        next_pid.or(current)
+    } else {
+        None
+    }
+}
+
 /// Rekursive RSS- und CPU-Summe eines Tab-Prozessbaums ab `root` (Shell +
 /// alle Nachfahren, per Eltern-Zeiger gefunden — nicht nur
 /// Prozessgruppen-Mitglieder, s. Modul-Kopfkommentar: auch ein
@@ -272,17 +291,16 @@ pub(crate) fn walk_tree(
 
 fn execute(app: &AppHandle, tab_id: &str, percent: f32, action: Action) {
     match action {
-        Action::Suspend(pid) => {
-            if let Err(error) = suspend_process(pid) {
-                log::warn!("resource_guard: suspending pid {pid} failed: {error}");
-            }
-        }
-        Action::KillSingle(pid) => {
-            if let Err(error) = kill_single_process(pid) {
-                log::warn!("resource_guard: targeted kill of pid {pid} failed: {error}");
-            }
-        }
+        Action::Suspend(pid) => match suspend_process(pid) {
+            Ok(()) => log::info!("resource_guard: tab {tab_id} suspended offender pid {pid} at {percent:.1}%"),
+            Err(error) => log::warn!("resource_guard: suspending pid {pid} failed: {error}"),
+        },
+        Action::KillSingle(pid) => match kill_single_process(pid) {
+            Ok(()) => log::info!("resource_guard: tab {tab_id} killed single offending pid {pid} at {percent:.1}%"),
+            Err(error) => log::warn!("resource_guard: targeted kill of pid {pid} failed: {error}"),
+        },
         Action::KillTab => {
+            log::info!("resource_guard: tab {tab_id} killed entirely at {percent:.1}%");
             let state = app.state::<PtyState>();
             let registry = app.state::<WindowPtyRegistry>();
             registry.unregister(tab_id);
@@ -428,6 +446,29 @@ pub fn tick_all(
             .unwrap_or(root);
         let offender_is_root = offender == root;
 
+        // Diagnostics for exactly the case that was previously unobservable:
+        // a tab sitting above the warn threshold (normal/warn/paused/cooldown
+        // alike) whose process-tree composition nobody could inspect without
+        // standing in a live debugger. Only logged for tabs already standing
+        // out (not on every 5s tick for every healthy tab) — resource-light,
+        // but informative exactly where an incident like this one needs to be
+        // reconstructed later.
+        if percent > SOFT_THRESHOLD_PERCENT {
+            let mut ranked: Vec<&(Pid, u64)> = members.iter().collect();
+            ranked.sort_unstable_by_key(|(_, rss)| std::cmp::Reverse(*rss));
+            let top3: Vec<String> = ranked
+                .iter()
+                .take(3)
+                .map(|(pid, rss)| format!("{}:{}MB", pid.as_u32(), rss / (1024 * 1024)))
+                .collect();
+            log::info!(
+                "resource_guard: tab {tab_id} root={} percent={percent:.1}% mem_bytes={total_rss} members={} top3=[{}]",
+                root.as_u32(),
+                members.len(),
+                top3.join(", ")
+            );
+        }
+
         let entry = map.entry(tab_id.clone()).or_default();
         let cooldown_expired = entry
             .cooldown_deadline
@@ -445,7 +486,7 @@ pub fn tick_all(
 
         entry.kind = next_kind;
         entry.strikes = next_strikes;
-        entry.paused_pid = if next_kind == StageKind::Paused { next_pid } else { None };
+        entry.paused_pid = commit_paused_pid(entry.paused_pid, next_kind, next_pid);
 
         let started_new_cooldown = actions.iter().any(|a| matches!(a, Action::KillSingle(_)));
         if started_new_cooldown {
@@ -469,7 +510,7 @@ pub fn tick_all(
 /// Schwelle innerhalb von `ESCALATION_WINDOW` erneut, killt der nächste Tick
 /// gezielt nur diesen einen Prozess, nicht die ganze Shell.
 #[tauri::command]
-pub fn resource_guard_resume(guard: State<ResourceGuardState>, tab_id: String) -> Result<(), String> {
+pub fn resource_guard_resume(app: AppHandle, guard: State<ResourceGuardState>, tab_id: String) -> Result<(), String> {
     let mut map = guard.0.lock().unwrap();
     let entry = map
         .get_mut(&tab_id)
@@ -481,12 +522,31 @@ pub fn resource_guard_resume(guard: State<ResourceGuardState>, tab_id: String) -
         .paused_pid
         .ok_or_else(|| "paused tab has no remembered pid".to_string())?;
 
-    resume_process(pid).map_err(|e| e.to_string())?;
+    // A failure here (e.g. the pid no longer exists) must not trap the tab
+    // in `Paused` forever — that would be the same effect as the
+    // `commit_paused_pid` bug fixed above, just triggered from the other
+    // side. The tab leaves `Paused` either way; an error only goes to the log.
+    if let Err(error) = resume_process(pid) {
+        log::warn!("resource_guard: resuming pid {pid} for tab {tab_id} failed: {error}");
+    } else {
+        log::info!("resource_guard: tab {tab_id} resumed pid {pid}");
+    }
 
     entry.kind = StageKind::Cooldown;
     entry.paused_pid = None;
     entry.cooldown_deadline = Some(Instant::now() + ESCALATION_WINDOW);
     entry.strikes = 0;
+    drop(map);
+
+    // Without this event, the frontend would stay on the last known `paused`
+    // state for up to `ESCALATION_WINDOW` (120s) — `step()`'s `Cooldown` arm
+    // deliberately stays silent below the hard threshold until the window
+    // expires (see `cooldown_waiting_without_retrip_stays_silent`). Clicking
+    // "Resume" must have an immediately visible effect, not one minutes later.
+    let _ = app.emit(
+        EVENT_STATUS,
+        &TabResourceStatusPayload { tab_id, status: TabStatus::Normal, percent: 0.0 },
+    );
     Ok(())
 }
 
@@ -720,6 +780,37 @@ mod tests {
         assert_eq!(pid, None);
         assert_eq!(strikes, 0);
         assert!(actions.is_empty(), "only an explicit resume may leave Paused");
+    }
+
+    /// Reproduces the exact bug found live: `step()`'s `Paused` arm always
+    /// returns `next_pid = None` on every tick after the first (proven by
+    /// `paused_stage_never_reclassifies_on_its_own` above) — a tick-by-tick
+    /// commit of that `None` into `entry.paused_pid` must NOT be read as "no
+    /// pid is paused anymore". Without `commit_paused_pid`'s `.or(current)`,
+    /// this test fails on the second call (the pid silently disappears one
+    /// tick — 5s — after pausing), matching the reported symptom exactly:
+    /// `resource_guard_resume` needs `paused_pid` and errors out permanently
+    /// once it is gone, so the "Fortsetzen" button does nothing forever.
+    #[test]
+    fn paused_pid_survives_every_tick_that_stays_paused() {
+        let after_first_tick = commit_paused_pid(None, StageKind::Paused, Some(4242));
+        assert_eq!(after_first_tick, Some(4242), "first tick must remember the newly-paused pid");
+
+        let after_second_tick = commit_paused_pid(after_first_tick, StageKind::Paused, None);
+        assert_eq!(
+            after_second_tick,
+            Some(4242),
+            "a later tick that stays in Paused (next_pid=None, as step() always returns) must not forget the pid"
+        );
+
+        let after_many_ticks = commit_paused_pid(after_second_tick, StageKind::Paused, None);
+        assert_eq!(after_many_ticks, Some(4242), "must keep surviving as long as the tab stays Paused");
+    }
+
+    #[test]
+    fn paused_pid_clears_once_a_tick_leaves_paused() {
+        let resumed = commit_paused_pid(Some(4242), StageKind::Cooldown, None);
+        assert_eq!(resumed, None, "leaving Paused for any other stage must drop the remembered pid");
     }
 
     #[test]
