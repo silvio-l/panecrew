@@ -11,6 +11,13 @@ import { usePtyTerminal } from "./usePtyTerminal";
 // `.panecrew/snippets/` lives at the project root and a mid-session `cd` into
 // an unrelated subdirectory must not make the project's own snippets vanish
 // from the popup.
+//
+// The typed `://reload-snippets` input below is simulated as a real
+// `InputEvent("input", { inputType: "insertText" })`, matching how
+// @xterm/xterm's `CoreBrowserTerminal._inputEvent` actually listens (not
+// `keydown`/`keypress`, which it uses only for control keys) — a future
+// xterm major bump changing that contract would break this test in a way
+// that looks like a product regression, not a test bug.
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
