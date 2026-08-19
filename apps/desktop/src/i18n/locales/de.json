@@ -283,6 +283,9 @@
   "systemCommands": {
     "init": {
       "description": "Legt .panecrew/ mit Beispiel-Snippets an"
+    },
+    "reloadSnippets": {
+      "description": "Liest Projekt- und User-Snippets neu ein"
     }
   },
   "settings": {

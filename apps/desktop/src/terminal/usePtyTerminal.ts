@@ -450,15 +450,6 @@ export function usePtyTerminal(
     const subdirectories = createSubdirectoryIndex(() => {
       refreshSuggestion();
     });
-    const runSnippetCommand = (trigger: string) => {
-      if (trigger !== "init") return;
-      void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
-        if (disposed) return;
-        terminal.write(
-          `\r\n\x1b[31mInit fehlgeschlagen: ${String(error)}\x1b[0m\r\n`,
-        );
-      });
-    };
     // Ticket 02 (snippet-trigger-system): real project/user snippets, read
     // once at mount — spec: "read all snippet files once at app startup", no
     // filesystem watching. `://reload-snippets` (Ticket 03) re-runs this same
@@ -467,15 +458,31 @@ export function usePtyTerminal(
     // ticket — not worth a visible error for a feature that's still usable
     // without it.
     let loadedSnippets: readonly SnippetCandidate[] = [];
-    void snippetList(cwd)
-      .then((loaded) => {
-        if (disposed) return;
-        loadedSnippets = loaded;
-        refreshSuggestion();
-      })
-      .catch(() => {
-        /* popup falls back to System-Befehle only */
-      });
+    const loadSnippets = () =>
+      snippetList(cwd)
+        .then((loaded) => {
+          if (disposed) return;
+          loadedSnippets = loaded;
+          refreshSuggestion();
+        })
+        .catch(() => {
+          /* popup falls back to System-Befehle only */
+        });
+    void loadSnippets();
+    const runSnippetCommand = (trigger: string) => {
+      if (trigger === "init") {
+        void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
+          if (disposed) return;
+          terminal.write(
+            `\r\n\x1b[31mInit fehlgeschlagen: ${String(error)}\x1b[0m\r\n`,
+          );
+        });
+        return;
+      }
+      if (trigger === "reload-snippets") {
+        void loadSnippets();
+      }
+    };
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,

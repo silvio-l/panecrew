@@ -18,5 +18,10 @@ export function systemCommands(): readonly SnippetCandidate[] {
       description: i18next.t("systemCommands.init.description"),
       kind: "command",
     },
+    {
+      trigger: "reload-snippets",
+      description: i18next.t("systemCommands.reloadSnippets.description"),
+      kind: "command",
+    },
   ];
 }

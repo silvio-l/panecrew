@@ -283,6 +283,9 @@
   "systemCommands": {
     "init": {
       "description": "Scaffolds .panecrew/ with example snippets"
+    },
+    "reloadSnippets": {
+      "description": "Reloads project and user snippets"
     }
   },
   "settings": {
