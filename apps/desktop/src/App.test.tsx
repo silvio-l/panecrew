@@ -827,7 +827,11 @@ describe("App", () => {
         return Promise.resolve([{ name: "App.tsx", is_dir: false }]);
       }
       if (cmd === "explorer_git_status") {
-        return Promise.resolve([{ path: "App.tsx", status: "modified" }]);
+        return Promise.resolve({
+          files: [{ path: "App.tsx", states: ["unstaged"] }],
+          branch: { name: "main", detached: false, ahead: null, behind: null },
+          worktree: null,
+        });
       }
       return Promise.resolve();
     });
@@ -839,6 +843,46 @@ describe("App", () => {
     expect(
       await screen.findByRole("button", { name: /App\.tsx,\s*geändert/ }),
     ).toBeInTheDocument();
+  });
+
+  // Ticket 02's own live-refresh criterion: same `explorer:changed` reload
+  // path as the tree decoration above already exercises, but asserting the
+  // dirty-count badge specifically, since it's fed from the same call
+  // (`loadProject.ts`) and not proven live anywhere else.
+  it("aktualisiert die Git-Zusammenfassung live nach explorer:changed", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    let dirtyCount = 1;
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({
+          files: Array.from({ length: dirtyCount }, (_, i) => ({
+            path: `file-${String(i)}.txt`,
+            states: ["unstaged"],
+          })),
+          branch: { name: "main", detached: false, ahead: null, behind: null },
+          worktree: null,
+        });
+      }
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    // Both GridStatusRail and the Explorer header render the same summary,
+    // hence two matches by design (see ticket 02's "Q15 = a+c" scope).
+    expect(await screen.findAllByText("1 geänderte Datei")).toHaveLength(2);
+
+    dirtyCount = 3;
+    const call = listenMock.mock.calls.find(
+      (candidate) => candidate[0] === "explorer:changed",
+    );
+    act(() => {
+      call?.[1]({ payload: undefined } as never);
+    });
+
+    expect(await screen.findAllByText("3 geänderte Dateien")).toHaveLength(2);
   });
 
   it("lädt nach der Ordnerauswahl den echten Dateibaum und zeigt ihn im Explorer", async () => {
@@ -4176,11 +4220,13 @@ describe("Terminal-Renderer (WebGL)", () => {
     // Lade-Pfad in seine eigene Fehlerbehandlung samt console.error laufen —
     // in genau den Tests, die hier console.warn beobachten wollen, wäre das
     // vermeidbares Rauschen.
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_dir" || cmd === "explorer_git_status"
-        ? Promise.resolve([])
-        : Promise.resolve(),
-    );
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
+      return Promise.resolve();
+    });
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
   });
 
