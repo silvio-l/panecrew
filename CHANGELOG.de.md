@@ -44,6 +44,41 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.14] - 2026-08-19
+### Hinzugefügt
+- Tippt man am Zeilenanfang (oder nach einem Leerzeichen) in einem
+  Terminal `://`, öffnet sich jetzt ein durchsuchbares Befehls-Popup:
+  eingebaute Befehle wie das Anlegen des Snippet-Ordners eines Projekts,
+  plus die eigenen wiederverwendbaren Text-Snippets aus Projekt- und
+  Nutzer-Snippet-Dateien, eingefügt anstelle des getippten Texts.
+- Jeder Terminal-Tab kann jetzt mit einem bestimmten CLI-Tool-Adapter
+  starten statt immer mit der Standard-Shell — wählbar über ein Dropdown
+  neben dem "Neuer Tab"-Button.
+- Öffnet man ein Bild (PNG, JPEG, GIF, SVG, WebP) oder Video (MP4, WebM)
+  in einem Datei-Tab, wird jetzt eine Vorschau statt Rohtext oder
+  Binär-Datenmüll angezeigt.
+- Der Code-Editor im Datei-Tab hat jetzt Syntax-Highlighting und
+  Zeilennummern für TypeScript/JavaScript, Rust, JSON, CSS und Markdown.
+- Explorer-Kopfzeile und Pane-Statusleiste zeigen jetzt den git-Branch,
+  die Anzahl geänderter Dateien, Ahead/Behind-Status und Worktree-Infos
+  des aktuellen Projekts.
+
+### Geändert
+- Die "fertig, wartet auf dich"-Tab-Markierung ist jetzt eine Karte, die
+  sichtbar aus der Tab-Zeile herauswächst, statt eine leicht zu
+  übersehende Hervorhebung.
+
+### Behoben
+- Terminal-Tabs werden nicht mehr stillschweigend am rechten Pane-Rand
+  abgeschnitten, sobald zu viele offen sind — die Tab-Zeile scrollt jetzt
+  horizontal (auch per Mausrad), und der aktive oder neu geöffnete Tab
+  scrollt automatisch ins Bild.
+- Textauswahl per Maus-Drag kopiert jetzt auch dann korrekt in die
+  Zwischenablage, wenn der Drag außerhalb der Pane endet.
+- Das Hovern über eine Zeile im "Zuletzt verwendet"-Bereich der
+  Projektauswahl öffnet keinen Tooltip mehr, der den Mausweg zu den
+  darunterliegenden Zeilen blockierte.
+
 ## [0.1.0-nightly.13] - 2026-08-17
 ### Geändert
 - Terminal-Tabs bleiben jetzt während der gesamten Denk-/Arbeitsphase eines

@@ -42,6 +42,38 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.14] - 2026-08-19
+### Added
+- Typing `://` at the start of a terminal line (or after a space) now opens
+  a searchable command popup: built-in commands like scaffolding a
+  project's snippet folder, plus your own reusable text snippets from
+  project and user snippet files, inserted in place of what you typed.
+- Each terminal tab can now launch with a specific CLI tool adapter
+  instead of always using your default shell, chosen from a dropdown next
+  to the "new tab" button.
+- Opening an image (PNG, JPEG, GIF, SVG, WebP) or video (MP4, WebM) file
+  in a file tab now shows a preview instead of raw text or binary
+  garbage.
+- The file-tab code editor now has syntax highlighting and line numbers
+  for TypeScript/JavaScript, Rust, JSON, CSS, and Markdown.
+- The explorer header and the pane status rail now show the current
+  project's git branch, dirty-file count, ahead/behind status, and
+  worktree info.
+
+### Changed
+- The "finished, waiting for you" tab marker is now a card that visibly
+  lifts out of the tab row, instead of an easy-to-miss highlight.
+
+### Fixed
+- Terminal tabs no longer get silently clipped off the right edge of a
+  pane once too many are open — the tab row now scrolls horizontally
+  (mouse wheel included), and the active or newly opened tab scrolls
+  into view automatically.
+- Selecting text by dragging the mouse now copies to the clipboard
+  correctly even when the drag ends outside the pane's bounds.
+- Hovering a recent-project row in the project picker no longer opens a
+  tooltip that blocked the mouse path to the rows below it.
+
 ## [0.1.0-nightly.13] - 2026-08-17
 ### Changed
 - Terminal tabs now stay marked "active" through a tool's whole
