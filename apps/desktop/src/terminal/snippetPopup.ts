@@ -90,11 +90,19 @@ export function attachSnippetPopup(
   const acceptSelected = (): boolean => {
     const candidate = matches[selected];
     if (!span || !candidate) return false;
-    // Over the same write path as a real keystroke: the shell echoes back
-    // whatever this produces, the same way an accepted `cd` segment does.
+    // Erase over the same write path as a real keystroke: the shell echoes
+    // back whatever this produces, the same way an accepted `cd` segment
+    // does.
     write(snippetErase(span));
     if (candidate.kind === "snippet") {
-      if (candidate.body) write(candidate.body);
+      // terminal.paste(), not write(): same reasoning as usePtyTerminal.ts's
+      // pasteInto() — a body is static text to insert, not keystrokes to
+      // replay, and a body containing "\n" (any multi-line snippet) would
+      // otherwise submit the shell's current line early instead of staying
+      // on it. xterm wraps this in DECSET-2004 bracketed-paste escapes when
+      // the shell has requested that mode, so embedded newlines land as
+      // literal text in the line editor instead of Enter keystrokes.
+      if (candidate.body) terminal.paste(candidate.body);
     } else {
       runCommand(candidate.trigger);
     }

@@ -138,7 +138,8 @@
     "clear": "Terminal leeren",
     "dropHint": "Pfad einfügen",
     "enterFocusMode": "Fokus-Modus",
-    "exitFocusMode": "Fokus-Modus verlassen"
+    "exitFocusMode": "Fokus-Modus verlassen",
+    "initFailed": "Init fehlgeschlagen: {{error}}"
   },
   "resourceGuard": {
     "warnTabSuffix": "Hoher Speicherverbrauch",

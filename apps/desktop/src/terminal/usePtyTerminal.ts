@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
+import i18next from "../i18n";
 import { isMacPlatform } from "../shortcuts/platform";
 import {
   CLEAR_TERMINAL_SHORTCUT_ID,
@@ -458,8 +459,13 @@ export function usePtyTerminal(
     // ticket — not worth a visible error for a feature that's still usable
     // without it.
     let loadedSnippets: readonly SnippetCandidate[] = [];
+    // liveCwd ?? cwd, same fallback as runSnippetCommand's "init" branch
+    // below — a mount-time load (liveCwd still null) reads the tab's fixed
+    // start directory, but a `://reload-snippets` re-run after the user has
+    // `cd`ed must read the same directory `://init` would scaffold, not the
+    // stale one from mount.
     const loadSnippets = () =>
-      snippetList(cwd)
+      snippetList(liveCwd ?? cwd)
         .then((loaded) => {
           if (disposed) return;
           loadedSnippets = loaded;
@@ -473,9 +479,10 @@ export function usePtyTerminal(
       if (trigger === "init") {
         void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
           if (disposed) return;
-          terminal.write(
-            `\r\n\x1b[31mInit fehlgeschlagen: ${String(error)}\x1b[0m\r\n`,
-          );
+          const message = i18next.t("terminalPane.initFailed", {
+            error: String(error),
+          });
+          terminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`);
         });
         return;
       }

@@ -138,7 +138,8 @@
     "clear": "Clear terminal",
     "dropHint": "Insert path",
     "enterFocusMode": "Focus mode",
-    "exitFocusMode": "Exit focus mode"
+    "exitFocusMode": "Exit focus mode",
+    "initFailed": "Init failed: {{error}}"
   },
   "resourceGuard": {
     "warnTabSuffix": "High memory usage",
