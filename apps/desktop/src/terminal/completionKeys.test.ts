@@ -21,13 +21,25 @@ function completion({
   visible = false,
   accepts = true,
   ghost = false,
-}: { visible?: boolean; accepts?: boolean; ghost?: boolean } = {}) {
+  snippetsVisible = false,
+}: {
+  visible?: boolean;
+  accepts?: boolean;
+  ghost?: boolean;
+  snippetsVisible?: boolean;
+} = {}) {
   return {
     accept: vi.fn(() => ghost),
     directories: {
       visible: () => visible,
       move: vi.fn(),
       accept: vi.fn(() => accepts),
+      dismiss: vi.fn(),
+    },
+    snippets: {
+      visible: () => snippetsVisible,
+      move: vi.fn(),
+      accept: vi.fn(() => true),
       dismiss: vi.fn(),
     },
   };
@@ -87,6 +99,48 @@ describe("routeCompletionKey bei sichtbarem Popup", () => {
       routeCompletionKey(key({ key: "ArrowUp", altKey: true }), suggestion),
     ).toBe(false);
     expect(suggestion.directories.accept).not.toHaveBeenCalled();
+  });
+});
+
+describe("routeCompletionKey bei sichtbarem Snippet-Popup", () => {
+  it("bewegt die Auswahl mit den Pfeiltasten", () => {
+    const suggestion = completion({ snippetsVisible: true });
+
+    expect(routeCompletionKey(key({ key: "ArrowDown" }), suggestion)).toBe(true);
+    expect(routeCompletionKey(key({ key: "ArrowUp" }), suggestion)).toBe(true);
+    expect(suggestion.snippets.move.mock.calls).toEqual([[1], [-1]]);
+  });
+
+  it("übernimmt mit Enter — die eine bewusste Ausnahme von der Enter-Regel oben", () => {
+    const suggestion = completion({ snippetsVisible: true });
+
+    expect(routeCompletionKey(key({ key: "Enter" }), suggestion)).toBe(true);
+    expect(suggestion.snippets.accept).toHaveBeenCalled();
+  });
+
+  it("schluckt Escape", () => {
+    const suggestion = completion({ snippetsVisible: true });
+
+    expect(routeCompletionKey(key({ key: "Escape" }), suggestion)).toBe(true);
+    expect(suggestion.snippets.dismiss).toHaveBeenCalled();
+  });
+
+  it("lässt alles mit Modifikator in Ruhe, Enter eingeschlossen", () => {
+    const suggestion = completion({ snippetsVisible: true });
+
+    expect(
+      routeCompletionKey(key({ key: "Enter", shiftKey: true }), suggestion),
+    ).toBe(false);
+    expect(suggestion.snippets.accept).not.toHaveBeenCalled();
+  });
+});
+
+describe("routeCompletionKey ohne sichtbares Snippet-Popup", () => {
+  it("lässt Enter unangetastet durch — dieselbe Regel wie beim Verzeichnis-Popup", () => {
+    const suggestion = completion();
+
+    expect(routeCompletionKey(key({ key: "Enter" }), suggestion)).toBe(false);
+    expect(suggestion.snippets.accept).not.toHaveBeenCalled();
   });
 });
 

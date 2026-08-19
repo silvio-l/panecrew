@@ -25,6 +25,7 @@ pub mod settings_store;
 pub mod settings_window;
 pub mod shell_history;
 pub mod shell_integration;
+pub mod snippet_fs;
 pub mod splash;
 pub mod tool_detect;
 pub mod updater;
@@ -270,6 +271,7 @@ pub fn run() {
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
             launch::get_launch_project,
+            snippet_fs::snippet_init,
             session_store::session_load,
             session_store::session_save,
             session_store::session_save_window,

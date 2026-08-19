@@ -1001,3 +1001,106 @@ body {
 .pc-cdpopup__count {
   margin-left: auto;
 }
+
+/*
+ * The `://` snippet/System-Befehl popup (snippetPopup.ts) — same glass panel
+ * as .pc-cdpopup above, but clickable: unlike the directory popup, this one
+ * is meant to be operated with the mouse too (spec: "select via arrow keys +
+ * Enter, or via mouse"), so it stays `pointer-events: auto` where that one is
+ * deliberately `none`. The JS side still sets the DECORATION wrapper itself
+ * to `none` (directoryPopup.ts's own convention) — `auto` here on the actual
+ * list re-enables it for exactly this child, standard CSS pointer-events
+ * behavior, not a conflict between the two.
+ */
+.pc-snippetpopup {
+  position: absolute;
+  left: 0;
+  z-index: 1;
+  min-width: 14ch;
+  max-width: 56ch;
+  padding: 0.125rem 0 0;
+  border: 1px solid var(--pc-glass-border);
+  border-radius: 0.625rem;
+  overflow: hidden;
+  background-color: color-mix(
+    in srgb,
+    var(--pc-glass-background) 55%,
+    var(--pc-widget-background)
+  );
+  background-image: var(--pc-glass-faceLight);
+  box-shadow: var(--pc-glass-elevation);
+  backdrop-filter: var(--pc-glass-blur);
+  color: var(--pc-foreground);
+  pointer-events: auto;
+}
+
+.pc-snippetpopup__item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0 0.5rem;
+  overflow: hidden;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.pc-snippetpopup__item--selected {
+  background: var(--pc-list-activeSelectionBackground);
+  color: var(--pc-list-activeSelectionForeground);
+}
+
+.pc-snippetpopup__trigger {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-snippetpopup__description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pc-descriptionForeground);
+  font-family: var(--pc-chrome-fontFamily);
+  font-size: var(--pc-chrome-fontSizeSmall);
+}
+
+.pc-snippetpopup__item--selected .pc-snippetpopup__description {
+  color: inherit;
+}
+
+.pc-snippetpopup__footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.0625rem 0.5rem;
+  border-top: 1px solid var(--pc-widget-border);
+  background-color: color-mix(
+    in srgb,
+    var(--pc-widget-background) 88%,
+    transparent
+  );
+  color: var(--pc-descriptionForeground);
+  font-family: var(--pc-chrome-fontFamily);
+  font-size: var(--pc-chrome-fontSizeSmall);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.pc-snippetpopup__hint {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3125rem;
+}
+
+.pc-snippetpopup__hint kbd {
+  padding: 0 0.25rem;
+  border: 1px solid var(--pc-widget-border);
+  border-radius: 0.1875rem;
+  color: var(--pc-foreground);
+  font-family: inherit;
+  font-size: 1em;
+}
+
+.pc-snippetpopup__count {
+  margin-left: auto;
+}

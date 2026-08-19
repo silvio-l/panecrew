@@ -277,6 +277,14 @@
     "tabHint": "übernehmen",
     "enterHint": "abschicken"
   },
+  "snippetPopup": {
+    "enterHint": "übernehmen"
+  },
+  "systemCommands": {
+    "init": {
+      "description": "Legt .panecrew/ mit Beispiel-Snippets an"
+    }
+  },
   "settings": {
     "windowTitle": "Einstellungen",
     "searchPlaceholder": "Einstellungen durchsuchen",

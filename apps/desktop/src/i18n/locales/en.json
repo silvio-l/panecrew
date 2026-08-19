@@ -277,6 +277,14 @@
     "tabHint": "accept",
     "enterHint": "submit"
   },
+  "snippetPopup": {
+    "enterHint": "accept"
+  },
+  "systemCommands": {
+    "init": {
+      "description": "Scaffolds .panecrew/ with example snippets"
+    }
+  },
   "settings": {
     "windowTitle": "Settings",
     "searchPlaceholder": "Search settings",

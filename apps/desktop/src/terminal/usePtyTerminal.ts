@@ -31,6 +31,8 @@ import {
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import { launchLineFor, resolveAdapter } from "./adapters";
+import { snippetInit } from "./snippetCommands";
+import { systemCommands } from "./systemCommands";
 import {
   createDirectoryProbe,
   createSubdirectoryIndex,
@@ -447,12 +449,26 @@ export function usePtyTerminal(
     const subdirectories = createSubdirectoryIndex(() => {
       refreshSuggestion();
     });
+    // Ticket 01 (snippet-trigger-system): nur die feste `SYSTEM_COMMANDS`-
+    // Liste — echte Projekt-/User-Snippets aus `.panecrew/snippets/` bzw.
+    // `app_data_dir()/snippets/` kommen erst mit Ticket 02 dazu.
+    const runSnippetCommand = (trigger: string) => {
+      if (trigger !== "init") return;
+      void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
+        if (disposed) return;
+        terminal.write(
+          `\r\n\x1b[31mInit fehlgeschlagen: ${String(error)}\x1b[0m\r\n`,
+        );
+      });
+    };
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,
       cwd: () => liveCwd,
       isDirectory: directories.isDirectory,
       listSubdirectories: subdirectories.list,
+      listSnippetCandidates: systemCommands,
+      runSnippetCommand,
       font: terminalOptions,
     });
     refreshSuggestion = suggestion.refresh;
