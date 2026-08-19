@@ -6,6 +6,7 @@
 //! `DirEntryNode` — that's a presentational concern the frontend derives from
 //! the filename (see `types/project.ts`), not something Rust needs to know.
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::io;
 use std::path::Path;
 
@@ -192,6 +193,41 @@ pub fn explorer_read_file(path: String) -> Result<FileContents, String> {
     let text = if crlf { raw.replace("\r\n", "\n") } else { raw };
     let stamp = file_stamp(&metadata)?;
     Ok(FileContents { text, crlf, stamp })
+}
+
+/// Larger than `MAX_EDITABLE_FILE_BYTES`: previews commonly include short
+/// video clips, not just text-sized assets. Still bounded -- the whole file
+/// is base64-encoded and sent as one IPC message, not streamed.
+const MAX_PREVIEWABLE_MEDIA_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Reads a file's raw bytes for the image/video preview render mode (Ticket
+/// 38), base64-encoded for transport as a single IPC/JSON string. Mirrors
+/// `explorer_read_file`'s is-dir/size-ceiling checks; unlike that command,
+/// there is no UTF-8 requirement -- the whole point here is displaying
+/// binary content the text editor refuses to open. Mime-type/extension
+/// routing stays entirely on the frontend (`mediaKind.ts`), which is also
+/// what decides whether to call this command at all instead of
+/// `explorer_read_file` -- this command itself trusts that choice and just
+/// moves bytes.
+// `async`: same reasoning as `explorer_read_file` -- a full-file read plus
+// base64 encoding must not run on the thread that dispatches IPC.
+#[tauri::command(async)]
+pub fn explorer_read_media(path: String) -> Result<String, String> {
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    if metadata.is_dir() {
+        return Err("Ordner können nicht als Vorschau geöffnet werden".to_string());
+    }
+    if metadata.len() > MAX_PREVIEWABLE_MEDIA_BYTES {
+        return Err(format!(
+            "Datei ist zu groß für die Vorschau ({} Bytes, Grenze {MAX_PREVIEWABLE_MEDIA_BYTES} Bytes)",
+            metadata.len()
+        ));
+    }
+
+    let bytes = std::fs::read(&path)
+        .map_err(|error| format!("Datei konnte nicht gelesen werden: {error}"))?;
+    Ok(BASE64_STANDARD.encode(bytes))
 }
 
 /// Removes its temp file on drop — a `?` on any step between creating the
@@ -1217,6 +1253,57 @@ mod tests {
             .expect("fixture write");
 
         let result = explorer_read_file(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn reads_and_base64_encodes_a_media_files_raw_bytes() {
+        let fixture = Fixture::new("read-media", &[]);
+        let path = fixture.0.join("pixel.png");
+        let bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0x00];
+        std::fs::write(&path, bytes).expect("fixture write");
+
+        let encoded =
+            explorer_read_media(path.to_string_lossy().into_owned()).expect("should read");
+
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("valid base64");
+        assert_eq!(decoded, bytes);
+    }
+
+    #[test]
+    fn refuses_to_read_a_directory_as_media() {
+        let fixture = Fixture::new("read-media-directory", &["subdir/"]);
+        let path = fixture.0.join("subdir");
+
+        let result = explorer_read_media(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn refuses_a_media_file_above_the_preview_size_ceiling() {
+        let fixture = Fixture::new("read-media-too-large", &[]);
+        let path = fixture.0.join("huge.mp4");
+        std::fs::write(
+            &path,
+            vec![b'a'; (MAX_PREVIEWABLE_MEDIA_BYTES + 1) as usize],
+        )
+        .expect("fixture write");
+
+        let result = explorer_read_media(path.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn errors_reading_a_missing_media_file_instead_of_panicking() {
+        let fixture = Fixture::new("read-media-missing", &[]);
+        let path = fixture.0.join("nope.png");
+
+        let result = explorer_read_media(path.to_string_lossy().into_owned());
 
         assert!(result.is_err());
     }

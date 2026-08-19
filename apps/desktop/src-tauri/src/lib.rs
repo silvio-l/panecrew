@@ -256,6 +256,7 @@ pub fn run() {
             explorer_fs::explorer_search_names,
             explorer_fs::explorer_search_contents,
             explorer_fs::explorer_read_file,
+            explorer_fs::explorer_read_media,
             explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
             explorer_fs::explorer_create_directory,

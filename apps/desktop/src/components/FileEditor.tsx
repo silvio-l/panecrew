@@ -181,9 +181,13 @@ export function FileEditor({
   // Solange nur geladen wird oder das Laden gescheitert ist, gibt es gar
   // keinen Puffer — dann fehlt der Knopf ganz, statt ausgegraut einen Text zu
   // behaupten, den es nicht gibt. Ausgegraut heißt hier „im Moment nichts zu
-  // schreiben", nicht „nichts vorhanden".
+  // schreiben", nicht „nichts vorhanden". Als Positivliste statt Negativliste
+  // (Ticket 38): "media" ist ein reiner Lesemodus ohne Puffer, ein
+  // Ausschlusslistenzweig hätte den Knopf dafür fälschlich weiter gezeigt.
   const hasBuffer =
-    state.status !== "loading" && state.status !== "load-error";
+    state.status === "ready" ||
+    state.status === "saving" ||
+    state.status === "save-error";
 
   // Cmd/Strg+S über dieselbe Registry wie jedes andere Kürzel — kein zweiter
   // Key-Handling-Pfad. Der Handler hängt an DIESER Fläche statt am `window`:
@@ -232,7 +236,11 @@ export function FileEditor({
       // TerminalPane.tsx' Kopf) — der Schließen-Knopf dieser Fläche bleibt
       // bewusst dauerhaft sichtbar (Begründung dort), reagiert also NICHT auf
       // diese Gruppe.
-      className={`group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
+      // `pc-pane-clip` statt `overflow-hidden`: Begründung 1:1 wie in
+      // TerminalPane.tsx (der herausgezogene Tab-Chip braucht Luft über der
+      // Kopfzeile) — beide Flächen tragen dieselbe Tab-Leiste, also muss auch
+      // dieser Zuschnitt an beiden gleich sein.
+      className={`group/pane pc-pane-clip relative flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
@@ -247,7 +255,10 @@ export function FileEditor({
         <span
           key={paneFlashKey}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out]"
+          // `rounded-t-[7px]`: gleiche Nachrüstung wie in TerminalPane.tsx —
+          // der neue `clip-path` rundet die oberen Ecken nicht mehr für
+          // absolut positionierte Kinder mit.
+          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out] rounded-t-[7px]"
         />
       )}
       {/* Header-Hairline im gedimmten Amber bei Fokus — Schaltung und
@@ -339,6 +350,8 @@ export function FileEditor({
         <LoadingNotice />
       ) : state.status === "load-error" ? (
         <LoadErrorNotice path={state.path} message={state.message} />
+      ) : state.status === "media" ? (
+        <MediaPreview kind={state.kind} mime={state.mime} base64={state.base64} name={name} />
       ) : (
         <>
           {/* ÜBER der Textarea, nicht an ihrer Stelle: anders als beim
@@ -804,6 +817,37 @@ function LoadErrorNotice({
           {t("fileEditor.openExternally")}
         </button>
       </div>
+    </div>
+  );
+}
+
+// Image/video render mode (Ticket 38) — a mode of the existing file tab, not
+// a separate tab kind (CONTEXT.md's browser-tab _Avoid_ note), so this only
+// replaces the content area below the header; open/close/tab chip stay
+// exactly as they are for a text file. The base64 payload comes straight
+// from usePaneFileEditors.ts's explorer_read_media call and is rendered as a
+// data: URL — no asset: protocol scope exists in
+// src-tauri/capabilities/default.json (unlike `openPath` above, which needed
+// one), and a data: URL needs none, so this stays self-contained.
+function MediaPreview({
+  kind,
+  mime,
+  base64,
+  name,
+}: {
+  kind: "image" | "video";
+  mime: string;
+  base64: string;
+  name: string;
+}) {
+  const src = `data:${mime};base64,${base64}`;
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+      {kind === "image" ? (
+        <img src={src} alt={name} className="max-h-full max-w-full object-contain" />
+      ) : (
+        <video src={src} controls className="max-h-full max-w-full" />
+      )}
     </div>
   );
 }

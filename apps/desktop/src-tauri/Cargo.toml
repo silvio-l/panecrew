@@ -57,6 +57,11 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 # tooling -- never switch to system libgit2 via pkg-config, see
 # docs/adr/0011-git2-vendored-over-gix.md.
 git2 = { version = "0.20", features = ["vendored-libgit2"] }
+# explorer_fs.rs::explorer_read_media (Ticket 38, image/video preview):
+# base64-encodes a file's raw bytes for transport as one IPC/JSON message --
+# already a transitive dependency via tauri itself (see Cargo.lock), so this
+# is the same already-resolved version, not a second copy.
+base64 = "0.22"
 
 # pty_manager.rs::PtyHandle::kill(): killing just the shell's own pid leaves
 # a foreground child it started (dev server, CLI agent, ...) reparented and

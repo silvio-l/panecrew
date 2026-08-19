@@ -43,6 +43,15 @@ function readyState(path: string, content: string): FileEditorState {
   };
 }
 
+function mediaState(
+  path: string,
+  kind: "image" | "video",
+  mime: string,
+  base64: string,
+): FileEditorState {
+  return { status: "media", path, kind, mime, base64 };
+}
+
 function renderEditor(state: FileEditorState) {
   return render(
     <Tooltip.Provider>
@@ -107,5 +116,30 @@ describe("FileEditor — Syntax-Highlighting (Ticket 39)", () => {
 
     const plain = screen.getByText("einfacher Text", { selector: "span" });
     expect(plain.className).toContain("--pc-foreground");
+  });
+});
+
+describe("FileEditor — Bild-/Video-Vorschau (Ticket 38)", () => {
+  it("zeigt eine Bildvorschau statt Rohtext für eine Bilddatei", () => {
+    renderEditor(mediaState("logo.png", "image", "image/png", "QUJD"));
+
+    const image = screen.getByRole("img", { name: "logo.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,QUJD");
+  });
+
+  it("zeigt einen abspielbaren Vorschau-Player für eine Videodatei", () => {
+    const { container } = renderEditor(mediaState("clip.mp4", "video", "video/mp4", "QUJD"));
+
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("src", "data:video/mp4;base64,QUJD");
+    expect(video).toHaveAttribute("controls");
+  });
+
+  it("zeigt für eine Mediendatei weder Zeilennummern noch den Speichern-Knopf", () => {
+    renderEditor(mediaState("logo.png", "image", "image/png", "QUJD"));
+
+    expect(screen.queryByText("1", { selector: "div.pr-2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /speichern/i })).not.toBeInTheDocument();
   });
 });

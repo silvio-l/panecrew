@@ -7,6 +7,7 @@ import {
   edit,
   loadFailed,
   loadSucceeded,
+  mediaLoadSucceeded,
   renamePath as renamePathTransition,
   saveFailed,
   saveSucceeded,
@@ -16,6 +17,7 @@ import {
   type FileEditorState,
   type FileStamp,
 } from "./fileEditorState";
+import { mediaInfoForPath } from "./mediaKind";
 
 interface RawFileContents {
   text: string;
@@ -136,6 +138,28 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
   const open = (paneId: string, path: string, line?: number) => {
     updateState(paneId, () => startLoading(path));
     setJumpLines((current) => ({ ...current, [paneId]: line ?? null }));
+
+    // Ticket 38: a recognized image/video extension goes through
+    // explorer_read_media (raw base64 bytes, no UTF-8 requirement) instead
+    // of explorer_read_file — everything else keeps the existing text path
+    // below, including its own UTF-8 rejection as the fallback for
+    // unsupported binary formats.
+    const media = mediaInfoForPath(path);
+    if (media) {
+      void invoke<string>("explorer_read_media", { path })
+        .then((base64) =>
+          updateState(paneId, (current) =>
+            mediaLoadSucceeded(current, path, { ...media, base64 }),
+          ),
+        )
+        .catch((error: unknown) => {
+          updateState(paneId, (current) =>
+            loadFailed(current, path, String(error)),
+          );
+        });
+      return;
+    }
+
     void invoke<RawFileContents>("explorer_read_file", { path })
       .then((raw) =>
         updateState(paneId, (current) => loadSucceeded(current, path, raw)),

@@ -4,6 +4,8 @@
 // `shortcuts/zoom.ts`. Der eigentliche Hook (`useFileEditor.ts`) hält den
 // State per `useState` und ruft ausschließlich diese Funktionen auf.
 
+import type { MediaKind } from "./mediaKind";
+
 /** Deckt sich bewusst 1:1 mit dem Rust-`FileStamp` aus `explorer_fs.rs` (kein
  * `serde(rename_all)` dort, also keine Umbenennung nötig). */
 export interface FileStamp {
@@ -15,6 +17,18 @@ export type FileEditorState =
   | { status: "idle" }
   | { status: "loading"; path: string }
   | { status: "load-error"; path: string; message: string }
+  // Ticket 38 (image/video preview): a read-only render mode alongside
+  // "ready" — no `dirty`/`stamp`, since there is no buffer to save and thus
+  // nothing that could go stale. Populated via explorer_read_media instead
+  // of explorer_read_file (see usePaneFileEditors.ts's `open`), routed by
+  // extension through mediaKind.ts's `mediaInfoForPath`.
+  | {
+      status: "media";
+      path: string;
+      kind: MediaKind;
+      mime: string;
+      base64: string;
+    }
   | {
       status: "ready";
       path: string;
@@ -72,6 +86,23 @@ export function loadSucceeded(
     crlf: loaded.crlf,
     stamp: loaded.stamp,
     dirty: false,
+  };
+}
+
+/** Same stale-response guard as `loadSucceeded` above, for the media
+ * preview's own IPC call (explorer_read_media, see usePaneFileEditors.ts). */
+export function mediaLoadSucceeded(
+  state: FileEditorState,
+  path: string,
+  media: { kind: MediaKind; mime: string; base64: string },
+): FileEditorState {
+  if (state.status !== "loading" || state.path !== path) return state;
+  return {
+    status: "media",
+    path,
+    kind: media.kind,
+    mime: media.mime,
+    base64: media.base64,
   };
 }
 

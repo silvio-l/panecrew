@@ -981,6 +981,38 @@ describe("App", () => {
     expect(await screen.findByLabelText("Datei main.rs")).toBeInTheDocument();
   });
 
+  // Ticket 38 (Bild-/Video-Vorschau als File-Tab-Rendermodus): eine erkannte
+  // Bild-Extension geht über explorer_read_media statt explorer_read_file —
+  // dieselbe Baum-Klick-Verdrahtung wie oben, nur mit dem anderen Backend-
+  // Aufruf und einer <img> statt der Textarea als Ergebnis.
+  it("öffnet eine angeklickte Bilddatei über explorer_read_media und zeigt eine Bildvorschau", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "logo.png", is_dir: false }]);
+      }
+      if (cmd === "explorer_read_media") return Promise.resolve("QUJD");
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    fireEvent.click(await screen.findByRole("button", { name: "logo.png" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_media", {
+        path: "/Users/dev/projects/storefront/logo.png",
+      });
+    });
+    const image = await screen.findByRole("img", { name: "logo.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,QUJD");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_read_file",
+      expect.anything(),
+    );
+  });
+
   it("blendet die Terminal-Pane nur aus, statt sie zu schließen", async () => {
     await openTreeFile();
     await editorTextbox();
