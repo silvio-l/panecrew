@@ -34,7 +34,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import { useTranslation } from "react-i18next";
 import {
-  ChromeTooltip,
   CHROME_FOCUS_RING,
   CHROME_MENU_CONTENT_CLASS,
   CHROME_MENU_ITEM_CLASS,
@@ -360,15 +359,24 @@ function BrowseOtherRow({
 // literally true for the focused row. Hover choreography lives in App.css
 // (.pc-recent-row*).
 //
-// The full path moved from the native `title` tooltip into ChromeTooltip —
-// the chrome's own tooltip surface, and unlike `title` it also serves
-// keyboard focus. `aria-label` pins the accessible name to the bare project
-// name: without it, index + parent path would leak into the name (the two
-// Ticket-22 tests in App.test.tsx address rows by exactly this name).
-// Composition order matters: Tooltip.Trigger(asChild) wraps
-// ContextMenu.Trigger(asChild) wraps the button — both Radix primitives
-// forward props through, so hover, right-click, and click all land on the
-// one <button>.
+// No hover tooltip for the full path (removed 2026-08-19 — was ChromeTooltip,
+// side="bottom"): the panel's visibility is driven by CSS `:hover` on
+// `.pc-empty-slot`, but Tooltip.Content renders through a Portal outside that
+// DOM subtree. A tooltip opening below a row sat directly in the mouse's path
+// toward the next row, so the moment the pointer crossed onto the portaled
+// tooltip, `.pc-empty-slot:hover` went false and the whole recent-shelf
+// collapsed out from under the cursor — the rows underneath became
+// unreachable while hovering. This is the same failure mode the
+// `:has(.pc-recent-row[data-state="open"])` clause below already works around
+// for the context menu's own Portal (see App.css) — the tooltip just never
+// got the same treatment. Reproducing that fix for the tooltip would mean
+// scoping its Portal container to stay inside `.pc-empty-slot`, which needs
+// threading a ref down from the slot card. Simpler and just as informative in
+// practice: drop the tooltip, since the dimmed parent-path segment in the row
+// already disambiguates same-named projects. `aria-label` pins the accessible
+// name to the bare project name: without it, index + parent path would leak
+// into the name (the two Ticket-22 tests in App.test.tsx address rows by
+// exactly this name).
 function RecentProjectRow({
   path,
   index,
@@ -387,32 +395,30 @@ function RecentProjectRow({
   const parentPath = projectParentPath(path);
   return (
     <ContextMenu.Root>
-      <ChromeTooltip label={path} side="bottom" align="start">
-        <ContextMenu.Trigger asChild>
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={name}
-            className={`pc-recent-row flex min-w-0 shrink-0 items-center gap-2 rounded px-2 py-1 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
-          >
-            <span className="pc-recent-row__index shrink-0 text-[10px] tracking-[0.15em] tabular-nums">
-              {String(index + 1).padStart(2, "0")}
+      <ContextMenu.Trigger asChild>
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={name}
+          className={`pc-recent-row flex min-w-0 shrink-0 items-center gap-2 rounded px-2 py-1 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+        >
+          <span className="pc-recent-row__index shrink-0 text-[10px] tracking-[0.15em] tabular-nums">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <span className="truncate">{name}</span>
+          {parentPath !== "" && (
+            // shrink-[4]: when space runs out, the parent path gives way
+            // four times faster than the project name — the name is the
+            // answer, the parent only its qualifier.
+            <span className="pc-recent-row__dir min-w-0 shrink-[4] truncate text-[10px]">
+              {parentPath}
             </span>
-            <span className="truncate">{name}</span>
-            {parentPath !== "" && (
-              // shrink-[4]: when space runs out, the parent path gives way
-              // four times faster than the project name — the name is the
-              // answer, the parent only its qualifier.
-              <span className="pc-recent-row__dir min-w-0 shrink-[4] truncate text-[10px]">
-                {parentPath}
-              </span>
-            )}
-            <span aria-hidden="true" className="pc-recent-row__go ml-auto shrink-0 pl-1">
-              {"↵"}
-            </span>
-          </button>
-        </ContextMenu.Trigger>
-      </ChromeTooltip>
+          )}
+          <span aria-hidden="true" className="pc-recent-row__go ml-auto shrink-0 pl-1">
+            {"↵"}
+          </span>
+        </button>
+      </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className={CHROME_MENU_CONTENT_CLASS}>
           <ContextMenu.Item className={CHROME_MENU_ITEM_CLASS} onSelect={onRemove}>
