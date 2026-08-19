@@ -316,8 +316,8 @@ mod tests {
 
     impl GitFixture {
         fn new(name: &str) -> Self {
+            // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
             let root = std::env::temp_dir()
-                // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
                 .join(format!("panecrew-git-status-{}-{name}", std::process::id()));
             std::fs::remove_dir_all(&root).ok();
             std::fs::create_dir_all(&root).expect("test fixture dir should be creatable");
@@ -556,6 +556,7 @@ mod tests {
     fn reports_ahead_and_behind_against_the_configured_upstream() {
         // A bare "remote" plus a clone gives us a real upstream-tracking
         // branch without any network access.
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let remote_root = std::env::temp_dir().join(format!(
             "panecrew-git-status-{}-ahead-behind-remote",
             std::process::id()
@@ -573,6 +574,7 @@ mod tests {
         origin.commit_all();
         run(origin.path(), &["push", "-q", "-u", "origin", "main"]);
 
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let clone_root = std::env::temp_dir().join(format!(
             "panecrew-git-status-{}-ahead-behind-clone",
             std::process::id()
@@ -631,6 +633,7 @@ mod tests {
         let fixture = GitFixture::new("worktree-main");
         fixture.write("f.txt", "x\n");
         fixture.commit_all();
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- test fixture scratch dir, not a security operation.
         let worktree_path = std::env::temp_dir().join(format!(
             "panecrew-git-status-{}-worktree-linked",
             std::process::id()
