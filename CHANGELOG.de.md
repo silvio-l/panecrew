@@ -33,6 +33,21 @@ muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
   die **erste** `## [...]`-Versionsüberschrift der Datei und schlägt dafür
   in `release-state.json` die passende Coverage/Hash-Aufzeichnung nach.
 
+**Nightly-Versionsnummern (2026-08-20, ersetzt das frühere von Hand
+hochgezählte `0.1.0-nightly.N`-Schema):** die Überschrift muss die Version
+tragen, die der Build tatsächlich bekommt — `0.1.<Commit-Anzahl>`, ohne
+`-nightly`-Suffix, mit ` (Nightly)` nach dem Datum außerhalb der eckigen
+Klammern, z. B. `## [0.1.394] - 2026-08-20 (Nightly)`. Das ist dieselbe
+`MAJOR.MINOR.<git rev-list --count HEAD>`-Zahl, die der Release-Workflow für
+`CFBundleShortVersionString`/den Über-Dialog berechnet (s.
+`release-nightly.yml` → "Nightly-Pseudoversion setzen") — vorher trug das
+Changelog eine eigene, davon unabhängige von Hand gezählte Nummer, die nie
+zu dem passte, was die App selbst anzeigte. Da der Changelog-Commit laut
+Konvention immer der letzte Commit vor dem Tag-Push ist, ist die Zahl
+`git rev-list --count HEAD` *vor* diesem Commit, plus 1. Stable-Überschriften
+sind davon nicht betroffen — `app-v{X.Y.Z}`-Tags sind schon die echte
+Version.
+
 **Nur App-Inhalte (2026-08-16)**: Dieses Changelog wird mit der Desktop-App
 ausgeliefert (der Updater verlinkt auf den GitHub-Release, der wiederum
 hierher zeigt) und wird gelesen als "was hat sich in der App geändert, die

@@ -33,6 +33,20 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+**Nightly version numbers (2026-08-20, replaces the earlier hand-counted
+`0.1.0-nightly.N` scheme):** the heading must be the exact version the build
+will actually carry — `0.1.<commit count>`, no `-nightly` suffix, with
+` (Nightly)` appended after the date outside the brackets, e.g.
+`## [0.1.394] - 2026-08-20 (Nightly)`. This is the same
+`MAJOR.MINOR.<git rev-list --count HEAD>` the release workflow computes for
+`CFBundleShortVersionString`/the in-app About dialog (see
+`release-nightly.yml` → "Nightly-Pseudoversion setzen") — before this,
+the changelog carried its own, unrelated hand-counted number that never
+matched what the app itself reported. Since the changelog commit is always
+the last commit before the tag push (existing convention), the number is
+`git rev-list --count HEAD` *before* that commit, plus 1. Stable headings
+are unaffected — `app-v{X.Y.Z}` tags already are the real version.
+
 **App-only prose (2026-08-16)**: this changelog ships inside the desktop app
 (the updater points users at the GitHub release, which links here) and is
 read as "what changed in the app I'm about to install" — it is not a
