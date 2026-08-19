@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { ContextMenu, DropdownMenu } from "radix-ui";
@@ -930,6 +931,7 @@ function TerminalTabChip({
           <TerminalTabRenameField
             number={number}
             initialValue={label ?? ""}
+            anchorRef={cardRef}
             onCommit={onCommitRename}
             onDiscard={onDiscardRename}
           />
@@ -1233,33 +1235,89 @@ function TerminalTabChip({
   );
 }
 
-// Ersetzt die Nummer durch ein `absolute` positioniertes Eingabefeld
-// unterhalb des Chips (Widget-Material wie `ConfirmDialog.tsx` — dieselben
-// `--pc-widget-*`-Töne) — nimmt bewusst NICHT am Flex-Layout der Tab-Gruppe
-// teil (Begründung: Kopfkommentar dieser Datei). Enter committet, Escape UND
-// Blur verwerfen (kein `RenameField`-artiges Commit-on-Blur: ein Klick weg
-// vom Feld ist hier eher ein "ich hab's mir anders überlegt" als ein
-// "fertig", anders als bei ExplorerPanel.tsx' Dateiumbenennung). Leeres oder
-// unverändertes Feld committet als "kein Name" (`label: null`) — so lässt
-// sich ein vergebener Name über dasselbe Feld auch wieder löschen.
+// Ersetzt die Nummer durch ein Eingabefeld (Widget-Material wie
+// `ConfirmDialog.tsx` — dieselben `--pc-widget-*`-Töne) — nimmt bewusst NICHT
+// am Flex-Layout der Tab-Gruppe teil (Begründung: Kopfkommentar dieser
+// Datei). Enter committet, Escape UND Blur verwerfen (kein `RenameField`-
+// artiges Commit-on-Blur: ein Klick weg vom Feld ist hier eher ein "ich hab's
+// mir anders überlegt" als ein "fertig", anders als bei ExplorerPanel.tsx'
+// Dateiumbenennung). Leeres oder unverändertes Feld committet als "kein Name"
+// (`label: null`) — so lässt sich ein vergebener Name über dasselbe Feld auch
+// wieder löschen.
+//
+// Fix 2026-08-20 (Bugreport: Umbenennen ließ den ganzen Tab-Chip aus der Pane
+// verschwinden, kein Eingabefeld sichtbar): dieses Feld saß vorher `absolute`
+// INNERHALB von `.pc-tabstrip-scroll` — genau der Container, dessen
+// `overflow-x: auto` seit dem horizontal-scroll-Fix (Kopfkommentar dieser
+// Datei, "Fix 2026-08-19") per CSS-Spec-Kopplung auch `overflow-y` auf `auto`
+// erzwingt. Der 12px-Padding/Margin-Trick an `.pc-tabstrip-scroll` (App.css)
+// gibt genau so viel Raum, wie der `--pc-lift-elevation`-Schatten der
+// herausgezogenen Attention-Karte braucht — bei weitem nicht genug für dieses
+// ~40px hohe Feld unterhalb der Zeile. Es wurde also vom Container
+// weggeclippt, und `input.focus()` löste den Browser-Standard aus, den
+// fokussierten (aber unsichtbaren) Bereich in seinen nächsten scrollbaren
+// Vorfahren zu scrollen — genau dieser Container. Das schob die eigentlich
+// sichtbare Chip-Zeile aus dem schmalen, nur 12px hohen Fenster, das
+// `.pc-pane-clip` oberhalb des Headers öffnet, also optisch "aus der Pane
+// heraus". Statt den Trick zu vergrößern (würde denselben Fehler nur nach
+// oben statt nach unten verschieben, sobald das Feld selbst größer wird),
+// rendert das Feld jetzt per `createPortal` direkt unter `document.body` —
+// dasselbe Ziel wie Radix' eigene Portale in dieser Datei (Kontextmenü,
+// Tooltip) — mit `position: fixed` auf Basis der Chip-Bounding-Box
+// (`anchorRef`). Damit ist es kein Nachfahre von `.pc-tabstrip-scroll` mehr
+// und weder dessen Clip noch dessen automatischem Scroll-in-View unterworfen.
+// Einmalige Messung beim Mount reicht: das Grid scrollt/resized während des
+// Umbenennens nicht, und jede Interaktion außerhalb des Felds verwirft es
+// ohnehin per Blur.
 function TerminalTabRenameField({
   number,
   initialValue,
+  anchorRef,
   onCommit,
   onDiscard,
 }: {
   number: number;
   initialValue: string;
+  anchorRef: RefObject<HTMLElement | null>;
   onCommit: (label: string | null) => void;
   onDiscard: () => void;
 }) {
   const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
+  // Plain `useEffect`, NOT `useLayoutEffect`: this field mounts as part of
+  // the SAME commit that (re-)attaches the anchor span's own ref — the
+  // trigger swaps between a `ChromeTooltip`-wrapped and a bare
+  // `ContextMenu.Trigger` subtree when renaming starts/stops (Kopfkommentar,
+  // "Während des Umbenennens bewusst OHNE `ChromeTooltip`-Hülle"), so React
+  // treats it as a fresh mount of the whole trigger subtree, span included.
+  // React's commit walk fires child layout effects BEFORE it (re-)attaches
+  // an ancestor host ref in that same commit (post-order: children finish
+  // before their parent's own ref-attach step runs) — a `useLayoutEffect`
+  // here reliably read `anchorRef.current` as still `null`. A passive effect
+  // runs in its own later pass, after the whole layout phase (all refs
+  // included) has already completed, so it sees the attached ref. Same
+  // reasoning `cardRef`'s own `scrollIntoView` effect above already relies
+  // on (plain `useEffect`, not layout).
   useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setPosition({ left: rect.left, top: rect.bottom });
+  }, [anchorRef]);
+
+  // Callback ref, not a `useEffect`: focusing has to happen exactly once, the
+  // moment the `<input>` actually attaches (which only happens once
+  // `position` flips from `null` to a real rect, see above). An effect keyed
+  // on `[position]` would look equivalent today, but re-fires on ANY later
+  // `setPosition` call — e.g. a future reposition-on-resize handler — which
+  // would steal focus and reselect the text mid-edit. A ref callback only
+  // ever runs on attach/detach, so it stays correct if that's added later.
+  const focusedOnAttach = useRef(false);
+  const inputRef = useCallback((input: HTMLInputElement | null) => {
+    if (!input || focusedOnAttach.current) return;
+    focusedOnAttach.current = true;
     input.focus();
     input.select();
   }, []);
@@ -1269,8 +1327,13 @@ function TerminalTabRenameField({
     onCommit(trimmed === "" ? null : trimmed);
   };
 
-  return (
-    <div className="absolute left-0 top-full z-20 mt-1 w-36 rounded-md border border-(--pc-widget-border) bg-(--pc-widget-background) p-1 shadow-lg">
+  if (!position) return null;
+
+  return createPortal(
+    <div
+      style={{ left: position.left, top: position.top }}
+      className="fixed z-20 mt-1 w-36 rounded-md border border-(--pc-widget-border) bg-(--pc-widget-background) p-1 shadow-lg"
+    >
       <input
         ref={inputRef}
         type="text"
@@ -1290,7 +1353,8 @@ function TerminalTabRenameField({
         onBlur={onDiscard}
         className={`w-full rounded bg-transparent px-1.5 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) outline-none ${CHROME_FOCUS_RING}`}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
 
