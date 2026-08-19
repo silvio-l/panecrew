@@ -47,14 +47,14 @@ describe("buildWindowState", () => {
 
     expect(state.slots[2]).toEqual({
       project_path: "/repo/storefront",
-      terminal_tabs: [{ title: null }],
-      active_tab: { kind: "terminal", index: 0 },
-      file_tab: null,
+      terminal_tabs: [{ id: "tab-1", title: null }],
+      active_tab: { kind: "terminal", id: "tab-1" },
+      file_tabs: [],
       adapter_id: null,
     });
   });
 
-  it("trägt mehrere Terminal-Tabs samt dem Index des aktiven ein", () => {
+  it("trägt mehrere Terminal-Tabs samt der id des aktiven ein", () => {
     const withTwoTabs = openTerminalTab(
       assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/storefront", "pane-1", "tab-1"),
       "pane-1",
@@ -66,9 +66,12 @@ describe("buildWindowState", () => {
 
     expect(state.slots[0]).toEqual({
       project_path: "/repo/storefront",
-      terminal_tabs: [{ title: null }, { title: null }],
-      active_tab: { kind: "terminal", index: 0 },
-      file_tab: null,
+      terminal_tabs: [
+        { id: "tab-1", title: null },
+        { id: "tab-2", title: null },
+      ],
+      active_tab: { kind: "terminal", id: "tab-1" },
+      file_tabs: [],
       adapter_id: null,
     });
   });
@@ -83,8 +86,8 @@ describe("buildWindowState", () => {
 
     expect(state.slots[0]).toMatchObject({
       project_path: "/repo/storefront",
-      active_tab: { kind: "file" },
-      file_tab: { path: "src/App.tsx" },
+      active_tab: { kind: "file", id: "pane-1-file" },
+      file_tabs: [{ id: "pane-1-file", path: "src/App.tsx" }],
     });
   });
 
@@ -104,8 +107,8 @@ describe("buildWindowState", () => {
     const state = buildWindowState(LABEL, grid, { "pane-1": "src/App.tsx" });
 
     expect(state.slots[0]).toMatchObject({
-      active_tab: { kind: "terminal", index: 0 },
-      file_tab: { path: "src/App.tsx" },
+      active_tab: { kind: "terminal", id: "tab-1" },
+      file_tabs: [{ id: "pane-1-file", path: "src/App.tsx" }],
     });
   });
 
@@ -186,8 +189,8 @@ describe("restoredSlots", () => {
           slots: [
             {
               project_path: "/repo/storefront",
-              terminal_tabs: [{}],
-              active_tab: { kind: "terminal", index: 0 },
+              terminal_tabs: [{ id: "tab-1" }],
+              active_tab: { kind: "terminal", id: "tab-1" },
             },
           ],
         },

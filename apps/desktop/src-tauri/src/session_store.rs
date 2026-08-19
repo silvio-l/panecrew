@@ -1,16 +1,21 @@
-//! Whole-session persistence (Ticket 06, v2 schema per Ticket 17): windows,
+//! Whole-session persistence (Ticket 06, v3 schema per Ticket 33): windows,
 //! each with a grid template, slot→project assignments, per-pane terminal
-//! tabs/file tab, and each slot's last-opened explorer file, written to
+//! tabs/file tabs, and each slot's last-opened explorer file, written to
 //! `session.json` in the app-data dir. The PTY process itself is never
 //! persisted — restoring a pane only respawns fresh shells for its terminal
 //! tabs in the right `cwd` (the frontend's job), this module only
 //! round-trips the JSON.
 //!
-//! v2 is a hard cutover (Ticket 17): no v1 migration/compat code. A v1 file
-//! (top-level `template`/`slots` instead of `windows`) simply fails to
-//! deserialize into this shape and `read_session` returns `None`, exactly
-//! like a missing or corrupt file — the app starts at the picker instead of
-//! failing to launch.
+//! v3 is a hard cutover (Ticket 33, same stance as the v1→v2 cutover of
+//! Ticket 17): no migration/compat code for an older shape. `id` on
+//! `PersistedTerminalTab`/`PersistedFileTab` and the switch of `ActiveTab`
+//! from an index/no-payload pair to an id reference are both new mandatory
+//! fields — a v2 file's tabs simply fail to deserialize into this shape and
+//! `read_session` returns `None`, exactly like a missing or corrupt file.
+//! The stable id is what lets a tab survive free reordering across tab kinds
+//! (Ticket 34) without "which tab is active" going ambiguous the way a plain
+//! index/position would the moment the array it counted into changes shape
+//! independently of the other.
 //!
 //! `read_session` also validates every `project_path` against the real
 //! filesystem: a folder that no longer exists must fall back to an empty
@@ -47,32 +52,45 @@ pub struct SessionWriteLock(pub Mutex<()>);
 /// ever wrote without holding the lock.
 static TEMP_FILE_NONCE: AtomicU64 = AtomicU64::new(0);
 
-/// One PTY-backed terminal tab within a pane. `title` is a user-set rename;
-/// number and colour are index-derived UI state (Spec 2026-08-12: "konkretes
-/// Farbschema ist Implementierungsdetail"), not persisted.
+/// One PTY-backed terminal tab within a pane. `id` is a stable identity
+/// (Ticket 33) the frontend's own live `tabId` — round-tripped so
+/// `ActiveTab::Terminal` can reference a specific tab across a restore
+/// instead of a position. `title` is a user-set rename; number and colour
+/// are index-derived UI state (Spec 2026-08-12: "konkretes Farbschema ist
+/// Implementierungsdetail"), not persisted.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PersistedTerminalTab {
+    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 }
 
-/// The at-most-one file tab of a pane (Spec: "höchstens einen File-Tab pro
-/// Pane"), always ordered after every terminal tab in the live tab strip.
+/// A file tab of a pane. `id` (Ticket 33) is what `ActiveTab::File`
+/// references; runtime behavior still only ever produces at most one entry
+/// per pane (Spec: "höchstens einen File-Tab pro Pane", always ordered after
+/// every terminal tab in the live tab strip) — a list rather than an
+/// `Option` only because the wire schema itself no longer bakes in that
+/// limit (Ticket 34 lifts it in the live app).
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PersistedFileTab {
+    pub id: String,
     /// Project-relative path, same convention as the pre-v2
     /// `last_selected_file` field it replaces.
     pub path: String,
 }
 
-/// Which of a pane's tabs is active. A plain index would silently misparse
-/// after either array changed shape independently; the explicit `kind` tag
-/// makes "which tab" unambiguous regardless of how many terminal tabs exist.
+/// Which of a pane's tabs is active, referenced by the stable `id` of a
+/// `PersistedTerminalTab`/`PersistedFileTab` (Ticket 33) rather than a
+/// position — a plain index/no-payload pair silently misparsed once
+/// `terminal_tabs` and `file_tabs` could change shape independently of each
+/// other (Ticket 34's free cross-kind reorder). The explicit `kind` tag
+/// still makes "which list" unambiguous even though both variants now carry
+/// the same kind of payload.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ActiveTab {
-    Terminal { index: usize },
-    File,
+    Terminal { id: String },
+    File { id: String },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -80,8 +98,8 @@ pub struct PersistedPane {
     pub project_path: String,
     pub terminal_tabs: Vec<PersistedTerminalTab>,
     pub active_tab: ActiveTab,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_tab: Option<PersistedFileTab>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_tabs: Vec<PersistedFileTab>,
     /// Chosen CLI-tool adapter (Ticket 17 cross-cutting note: identified as a
     /// missing field in round-1 research, added here). References the
     /// adapter manifest from Ticket 12; `None` means a bare shell.
@@ -434,9 +452,14 @@ mod tests {
     fn terminal_only_pane(project_path: &str) -> Option<PersistedPane> {
         Some(PersistedPane {
             project_path: project_path.to_string(),
-            terminal_tabs: vec![PersistedTerminalTab { title: None }],
-            active_tab: ActiveTab::Terminal { index: 0 },
-            file_tab: None,
+            terminal_tabs: vec![PersistedTerminalTab {
+                id: "tab-1".to_string(),
+                title: None,
+            }],
+            active_tab: ActiveTab::Terminal {
+                id: "tab-1".to_string(),
+            },
+            file_tabs: Vec::new(),
             adapter_id: None,
         })
     }
@@ -473,8 +496,28 @@ mod tests {
         assert_eq!(read_session(&fixture.0), None);
     }
 
+    /// The v2→v3 cutover (Ticket 33): a v2 file's tabs use the old
+    /// index/no-payload `active_tab` shape and lack the new mandatory `id`
+    /// on each tab — both fail to deserialize into the v3 shape, same
+    /// "start at the picker" fallback as the v1 cutover above.
     #[test]
-    fn round_trips_the_full_v2_state_through_write_and_read() {
+    fn a_v2_shaped_session_file_fails_to_parse_and_reads_as_none() {
+        let fixture = Fixture::new("v2-cutover");
+        std::fs::write(
+            session_path(&fixture.0),
+            br#"{"windows":[{"label":"main","template":"single","slots":[
+                {"project_path":"/some/project",
+                 "terminal_tabs":[{"title":null}],
+                 "active_tab":{"kind":"terminal","index":0}}
+            ]}]}"#,
+        )
+        .expect("fixture write");
+
+        assert_eq!(read_session(&fixture.0), None);
+    }
+
+    #[test]
+    fn round_trips_the_full_v3_state_through_write_and_read() {
         let fixture = Fixture::new("roundtrip");
         // The two project paths must actually exist on disk — `read_session`
         // validates every slot against the real filesystem.
@@ -494,14 +537,21 @@ mod tests {
                             project_path: project_a.clone(),
                             terminal_tabs: vec![
                                 PersistedTerminalTab {
+                                    id: "tab-1".to_string(),
                                     title: Some("build".to_string()),
                                 },
-                                PersistedTerminalTab { title: None },
+                                PersistedTerminalTab {
+                                    id: "tab-2".to_string(),
+                                    title: None,
+                                },
                             ],
-                            active_tab: ActiveTab::Terminal { index: 1 },
-                            file_tab: Some(PersistedFileTab {
+                            active_tab: ActiveTab::Terminal {
+                                id: "tab-2".to_string(),
+                            },
+                            file_tabs: vec![PersistedFileTab {
+                                id: "file-1".to_string(),
                                 path: "src/App.tsx".to_string(),
-                            }),
+                            }],
                             adapter_id: Some("demo-agent".to_string()),
                         }),
                         terminal_only_pane(&project_b),

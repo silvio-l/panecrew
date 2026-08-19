@@ -627,8 +627,8 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
-      terminalTabs: readonly { title?: string | null }[],
-      activeTab: { kind: "terminal"; index: number } | { kind: "file" },
+      terminalTabs: readonly { id: string; title?: string | null }[],
+      activeTab: { kind: "terminal"; id: string } | { kind: "file"; id: string },
       lastSelectedFile: string | null,
     ) => {
       const project = await loadProject(projectPath);
@@ -651,15 +651,23 @@ function App() {
         tabIds.push(openTerminalTab(paneId));
       }
       // Umbenennungen zurückspielen (Kontextmenü, `PaneTabs.tsx`) — je
-      // Position, nicht je `tabId`: das persistierte Schema kennt keine
-      // `tabId` (s. `PersistedActiveTab`-Kommentar in `sessionState.ts`),
-      // dieselbe Positions-Zuordnung wie `activeTab.index` unten.
+      // Position: die frisch erzeugten `tabIds` sind ohnehin neu (Ticket 33s
+      // persistierte `id` überlebt einen Neustart nicht, nur die
+      // Zuordnung "welcher Tab war aktiv" unten braucht sie).
       tabIds.forEach((restoredTabId, i) => {
         const title = terminalTabs[i]?.title;
         if (title) renameTerminalTab(paneId, restoredTabId, title);
       });
       if (activeTab.kind === "terminal") {
-        switchToTerminalTab(paneId, tabIds[activeTab.index] ?? firstTabId);
+        // Ticket 33: die gespeicherte `id` referenziert einen Eintrag in
+        // `terminalTabs`, nicht direkt einen frischen `tabId` — über die
+        // Position in `terminalTabs` auf den passenden neu erzeugten
+        // `tabIds`-Eintrag gemappt.
+        const persistedIndex = terminalTabs.findIndex((tab) => tab.id === activeTab.id);
+        switchToTerminalTab(
+          paneId,
+          (persistedIndex >= 0 ? tabIds[persistedIndex] : undefined) ?? firstTabId,
+        );
       }
 
       if (!lastSelectedFile) return;
@@ -721,7 +729,7 @@ function App() {
                   slot.project_path,
                   slot.terminal_tabs,
                   slot.active_tab,
-                  slot.file_tab?.path ?? null,
+                  slot.file_tabs?.[0]?.path ?? null,
                 ),
           ),
         );

@@ -2973,13 +2973,13 @@ describe("Onboarding", () => {
                 slots: [
                   {
                     project_path: "/Users/dev/projects/one",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   {
                     project_path: "/Users/dev/projects/two",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   null,
                   null,
@@ -3024,13 +3024,13 @@ describe("Onboarding", () => {
                 slots: [
                   {
                     project_path: "/Users/dev/projects/one",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   {
                     project_path: "/Users/dev/projects/two",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   null,
                   null,
@@ -3077,13 +3077,13 @@ describe("Onboarding", () => {
                 slots: [
                   {
                     project_path: "/Users/dev/projects/one",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   {
                     project_path: "/Users/dev/projects/two",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                 ],
               },
@@ -3234,8 +3234,8 @@ describe("Onboarding", () => {
                 slots: [
                   {
                     project_path: "/Users/dev/projects/one",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   null,
                   null,
@@ -3334,8 +3334,8 @@ describe("Onboarding", () => {
                 slots: [
                   {
                     project_path: "/Users/dev/projects/one",
-                    terminal_tabs: [{}],
-                    active_tab: { kind: "terminal", index: 0 },
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
                   },
                   null,
                   null,
@@ -3653,8 +3653,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3699,8 +3699,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3750,8 +3750,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3805,18 +3805,18 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/wide",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 {
                   project_path: "/Users/dev/projects/left",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 {
                   project_path: "/Users/dev/projects/right",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -3863,15 +3863,15 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     expect(wideCell.style.gridArea).toBe("");
   });
 
-  it("stellt mehrere Terminal-Tabs samt aktivem Index wieder her, ohne einen davon zu killen", async () => {
-    // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{}]` ab (genau
-    // ein Tab) — die interessante Schleife in `restoreSlot` (App.tsx), die
-    // für einen dritten Parameter `terminalTabCount > 1` weitere Tabs via
-    // `openTerminalTab` nachlegt und danach mit `switchToTerminalTab` auf den
-    // gespeicherten `active_tab.index` zurückschaltet, war ungetestet.
+  it("stellt mehrere Terminal-Tabs samt aktiver id wieder her, ohne einen davon zu killen", async () => {
+    // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{ id: "tab-1" }]`
+    // ab (genau ein Tab) — die interessante Schleife in `restoreSlot`
+    // (App.tsx), die für mehrere persistierte Tabs weitere via
+    // `openTerminalTab` nachlegt und danach mit `switchToTerminalTab` auf die
+    // gespeicherte `active_tab.id` zurückschaltet, war ungetestet.
     // `openTerminalTab` aktiviert dabei immer den zuletzt geöffneten Tab —
     // nach der Schleife stünde Tab 3 aktiv, ohne die abschließende Korrektur.
-    // `index: 0` prüft genau diese Korrektur, nicht den ohnehin trivialen
+    // `id: "tab-1"` prüft genau diese Korrektur, nicht den ohnehin trivialen
     // Fall "letzter geöffneter Tab bleibt aktiv".
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {
@@ -3883,8 +3883,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}, {}, {}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }, { id: "tab-2" }, { id: "tab-3" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -3941,9 +3941,9 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "file" },
-                  file_tab: { path: "src/App.tsx" },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "file", id: "file-1" },
+                  file_tabs: [{ id: "file-1", path: "src/App.tsx" }],
                 },
                 null,
                 null,
@@ -3980,11 +3980,11 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     ).toHaveValue(FILE_CONTENTS.text);
   });
 
-  it("ein Slot ohne `file_tab`-Feld öffnet keine Datei namens \"undefined\"", async () => {
+  it("ein Slot ohne `file_tabs`-Feld öffnet keine Datei namens \"undefined\"", async () => {
     // `session_store.rs` überspringt das Feld beim Schreiben ganz, wenn
-    // nichts ausgewählt war (`skip_serializing_if`) — über die IPC-Brücke
-    // kommt so ein Slot-Objekt ohne dieses Feld an, `file_tab` ist dann
-    // `undefined`, nicht `null`. Ein zu strenger `=== null`-Check ließ das
+    // keine Datei-Tabs vorhanden waren (`skip_serializing_if`) — über die
+    // IPC-Brücke kommt so ein Slot-Objekt ohne dieses Feld an, `file_tabs`
+    // ist dann `undefined`, nicht `[]`. Ein zu strenger Zugriff ließ das
     // früher durch und öffnete buchstäblich eine Datei "undefined"
     // (2026-08-12, Nutzerbeobachtung: alle Panes zeigen beim Start denselben
     // Lesefehler).
@@ -3998,8 +3998,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -4040,8 +4040,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
                 null,
@@ -4094,14 +4094,32 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
       const window = (
-        payload as { window?: { slots: unknown[] } } | undefined
+        payload as
+          | {
+              window?: {
+                slots: {
+                  terminal_tabs: { id: string; title: string | null }[];
+                  active_tab: { kind: string; id: string };
+                }[];
+              };
+            }
+          | undefined
       )?.window;
-      expect(window?.slots[0]).toEqual({
+      const slot = window?.slots[0];
+      // `id` ist ein zur Laufzeit erzeugter `crypto.randomUUID()` (Ticket
+      // 33) — hier auf reine Anwesenheit geprüft, statt einen festen Wert zu
+      // erwarten; die eigentliche Aussage ist, dass `active_tab` auf
+      // GENAU diese id verweist.
+      expect(slot).toEqual({
         project_path: "/Users/dev/projects/storefront",
-        terminal_tabs: [{ title: null }],
-        active_tab: { kind: "terminal", index: 0 },
-        file_tab: null,
+        terminal_tabs: [{ id: expect.any(String) as string, title: null }],
+        active_tab: { kind: "terminal", id: expect.any(String) as string },
+        file_tabs: [],
         adapter_id: null,
+      });
+      expect(slot?.active_tab).toEqual({
+        kind: "terminal",
+        id: slot?.terminal_tabs[0]?.id,
       });
     });
   });
