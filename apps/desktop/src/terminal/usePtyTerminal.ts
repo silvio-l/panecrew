@@ -459,13 +459,15 @@ export function usePtyTerminal(
     // ticket — not worth a visible error for a feature that's still usable
     // without it.
     let loadedSnippets: readonly SnippetCandidate[] = [];
-    // liveCwd ?? cwd, same fallback as runSnippetCommand's "init" branch
-    // below — a mount-time load (liveCwd still null) reads the tab's fixed
-    // start directory, but a `://reload-snippets` re-run after the user has
-    // `cd`ed must read the same directory `://init` would scaffold, not the
-    // stale one from mount.
+    // Fixed `cwd`, deliberately NOT `liveCwd ?? cwd` like `://init` below:
+    // `.panecrew/snippets/` lives at the project root, and a `cd` into some
+    // unrelated subdirectory during the session must not make the project's
+    // own snippets vanish from the popup on the next `://reload-snippets`.
+    // `://init` reads the live directory because it scaffolds wherever the
+    // user is currently standing — a deliberately different question from
+    // "where does this tab's project live".
     const loadSnippets = () =>
-      snippetList(liveCwd ?? cwd)
+      snippetList(cwd)
         .then((loaded) => {
           if (disposed) return;
           loadedSnippets = loaded;

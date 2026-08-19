@@ -177,7 +177,14 @@ pub fn list_snippet_dir(dir: &Path) -> Vec<ParsedSnippet> {
 pub fn merge_snippets(project: Vec<ParsedSnippet>, user: Vec<ParsedSnippet>) -> Vec<ParsedSnippet> {
     let mut by_trigger: HashMap<String, ParsedSnippet> = HashMap::new();
     for snippet in project.into_iter().chain(user) {
-        if RESERVED_TRIGGERS.contains(&snippet.trigger.as_str()) {
+        // Case-insensitive: the popup's own filter (snippetTrigger.ts's
+        // filterSnippetCandidates) matches case-insensitively too, so
+        // "Init" would still shadow the built-in "init" in the UI even
+        // though the two strings differ byte-for-byte.
+        if RESERVED_TRIGGERS
+            .iter()
+            .any(|reserved| reserved.eq_ignore_ascii_case(&snippet.trigger))
+        {
             log::warn!(
                 "skipping snippet using reserved trigger name \"{}\"",
                 snippet.trigger
@@ -426,6 +433,23 @@ mod tests {
     fn merge_excludes_a_snippet_using_a_reserved_system_trigger_name() {
         let project = vec![ParsedSnippet {
             trigger: "init".to_string(),
+            description: "shadow attempt".to_string(),
+            body: "".to_string(),
+        }];
+
+        let merged = merge_snippets(project, Vec::new());
+
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn merge_excludes_a_reserved_trigger_name_regardless_of_case() {
+        // The popup's own filter (`filterSnippetCandidates` in
+        // snippetTrigger.ts) matches case-insensitively, so "Init" would
+        // still shadow the built-in "init" System-Befehl in the UI even
+        // though the two strings differ here.
+        let project = vec![ParsedSnippet {
+            trigger: "Init".to_string(),
             description: "shadow attempt".to_string(),
             body: "".to_string(),
         }];
