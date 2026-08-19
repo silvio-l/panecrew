@@ -51,6 +51,12 @@ trash = "5.2.6"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 notify-debouncer-full = "0.7.0"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+# git_status.rs: vendored feature bundles and compiles libgit2 itself via
+# `cc`, the same way `ring` (transitively pulled in via rustls/the updater)
+# already does on both macos-latest and windows-latest with no extra CI
+# tooling -- never switch to system libgit2 via pkg-config, see
+# docs/adr/0011-git2-vendored-over-gix.md.
+git2 = { version = "0.20", features = ["vendored-libgit2"] }
 
 # pty_manager.rs::PtyHandle::kill(): killing just the shell's own pid leaves
 # a foreground child it started (dev server, CLI agent, ...) reparented and
