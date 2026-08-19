@@ -293,7 +293,16 @@ export function TerminalPane({
       // wechselt — und weil ihn jede Pane trägt, nur eben in zwei Tönen,
       // springt die Breite beim Fokuswechsel nicht (ein Rahmen, der nur bei
       // Fokus da ist, verschöbe das Terminal darin um 1px).
-      className={`group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
+      // `pc-pane-clip` (App.css) statt `overflow-hidden` (2026-08-19): ein
+      // `clip-path` mit NEGATIVEM oberem Inset, das dem herausgezogenen
+      // Tab-Chip (PaneTabs.tsx) 8px Luft über der Kopfzeile lässt und an den
+      // übrigen drei Seiten — inklusive der gerundeten unteren Ecken —
+      // unverändert an der Rahmenkante schneidet. `overflow-hidden` hatte den
+      // Kopf bündig an der Oberkante gekappt, der Auszug war damit auf 1-2px
+      // beschnitten. Warum kein `overflow-clip-margin`: von WebKit nie
+      // ausgeliefert, wäre also ausgerechnet im macOS-WKWebView wirkungslos
+      // geblieben.
+      className={`group/pane pc-pane-clip relative flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
@@ -310,7 +319,12 @@ export function TerminalPane({
         <span
           key={paneFlashKey}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out]"
+          // `rounded-t-[7px]`: seit `pc-pane-clip` (oben) rundet der Clip die
+          // oberen Ecken nicht mehr für absolut positionierte Kinder mit — ohne
+          // eigene Rundung stünde diese Fläche dort quadratisch über der
+          // gerundeten Pane-Ecke. 7px = 8px Außenradius minus 1px Rahmen, also
+          // exakt der Innenradius, an dem sie anliegt.
+          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out] rounded-t-[7px]"
         />
       )}
       {/* Zweites Fokussignal: der Projektname der aktiven Pane steht im

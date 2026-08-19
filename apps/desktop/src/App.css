@@ -146,6 +146,27 @@ body,
   }
 }
 
+/*
+ * The slow breath of the "waiting for you" dot on a pulled tab card
+ * (PaneTabs.tsx, 2026-08-19; the dot was red until the card gained its amber
+ * face later the same day and every mark on it flipped to the card's ink — see
+ * `.pc-tabcard--pulled` below). Deliberately NOT pc-clock-blink: that one runs
+ * to opacity 0 — correct for a clock colon, which is *supposed* to be gone
+ * half the time, but wrong for a status marker, because the one pixel-sized
+ * thing that says "this session needs you" must never be absent when the eye
+ * happens to land on it. This curve only breathes down to 0.4 and back, so the
+ * dot is always readable and the movement is what draws the eye, not the
+ * presence. Slow on purpose (2.4s, ease-in-out): the state can persist for
+ * minutes, and anything faster turns from "alive" into "alarm". Only ever
+ * applied inside the reduced-motion gate below — the dot itself is the
+ * unconditional signal, the breath is decoration on top of it.
+ */
+@keyframes pc-attention-breathe {
+  50% {
+    opacity: 0.4;
+  }
+}
+
 body {
   overflow: hidden;
   background: var(--pc-app-background);
@@ -261,13 +282,27 @@ body {
  * (Ticket 19, `components/PaneGrid.tsx`) — die liegt absolut über diesem
  * Container, s. Kommentar dort für die Begründung, warum `grid-area`-Spannung
  * dafür NICHT funktioniert.
+ *
+ * Correction 2026-08-19 — the gutter is 12px now, no longer 8px, and it is no
+ * longer tied to the window margin. The paragraph above is still the reason it
+ * EXISTS, but the gutter has since gained a second job: the awaiting-attention
+ * tab card grows 6px out of its pane's top edge into it (`.pc-tabcard--pulled`
+ * below). At 8px that left ~2px of air between the raised card and the pane
+ * above it — technically not clipped, but visually cramped ("the gap reads as
+ * too tight", user on the running build). 12px gives the card its 6px and keeps
+ * 6px of clearance, i.e. as much air above the card as the card itself takes.
+ * The window margin around the grid stays 8px on purpose: nothing pokes into
+ * it, so it does not need the extra room, and matching it would only cost grid
+ * area. Nothing hardcodes this value — `GridSplitters.tsx` measures the
+ * computed `columnGap` at runtime and `splitRatios.ts` takes it as a parameter,
+ * so the splitter geometry follows on its own.
  */
 .pc-workspace {
   display: grid;
   position: relative;
   flex: 1 1 0%;
   min-height: 0;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 /*
@@ -1103,4 +1138,194 @@ body {
 
 .pc-snippetpopup__count {
   margin-left: auto;
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * The pulled index card: a terminal tab that is waiting for you
+ * (PaneTabs.tsx, `isAwaitingAttention`) — 2026-08-19.
+ * ---------------------------------------------------------------------------
+ *
+ * The metaphor is a card sticking out of a card file: the pane header's bottom
+ * hairline is the rim of the box, the chips are the cards standing in it, and a
+ * session that wants you pulls its card up out of the row. That only reads as
+ * "pulled" if the card actually gets BIGGER — the previous `-translate-y-[3px]`
+ * moved a card of unchanged size and read as a wobble. So the card grows
+ * upward: its height gains `--pc-tab-pull`, and because the pane header's own
+ * flex row is bottom-aligned (`items-end`, PaneTabs.tsx) all of that growth
+ * goes up. The bottom edge does not move by a single pixel — it stays welded to
+ * the header hairline, which is both the point of the metaphor (the card is
+ * still IN the box) and the fix for a pixel bug already paid for once (see the
+ * "die Linien liegen nicht ganz sauber" correction in PaneTabs.tsx).
+ *
+ * Three properties carry the state, in the order the eye picks them up:
+ *   1. the amber card face (`--pc-pane-activeBorder` as a flat, covering fill),
+ *   2. the height gain (geometry — the card is taller than its neighbours),
+ *   3. the shadow (`--pc-lift-elevation`, theme.css — it stands off the pane).
+ * The breathing dot is still there, but it is no longer the colour signal: on
+ * the amber face it is inked in `--pc-pane-background`, like every other mark
+ * on the card.
+ *
+ * Correction 2026-08-19 (same day, third pass, user on the running build: "I'd
+ * prefer the tab get the colour area-wide, the orange tone"). Point 1 used to
+ * say the opposite — the card face was the neutral `--pc-widget-background`
+ * card stock, and this comment stated flatly that NONE of the cues is amber,
+ * because the one app accent belongs to focus and to the active tab. That
+ * reasoning was right on its own terms; the product owner overrode it knowingly
+ * for this one state. Recorded rather than overwritten, so the trade-off stays
+ * visible: the accent now carries two meanings, and they are kept apart by
+ * SHAPE — exactly the separation the direction contract's own "Akzent auf Tabs
+ * erlaubt" correction already demanded for pane focus vs. active tab:
+ *   - active tab, not waiting: amber as a KEYLINE plus a /14 wash — an outlined
+ *     chip, at the row's resting height;
+ *   - waiting: amber as a SOLID FACE on a card 6px taller than the row, casting
+ *     a shadow — filled, not outlined, and the only chip in the row that grows;
+ *   - waiting AND active (a background pane's selected tab can be both): the
+ *     solid face PLUS the selection keyline it always had, re-inked to
+ *     `--pc-pane-background` so it reads on amber.
+ * Filled = wants you, outlined = selected, both = both. No hue does that work,
+ * so nothing collapses when the two states stack on one chip.
+ *
+ * The consequence everywhere else on the card is one rule with no exceptions:
+ * everything drawn ON the amber face flips to `--pc-pane-background` as its ink
+ * — label, attention dot, resource-warn dot, the selection keyline, and a
+ * hairline around the tool badge, whose brand fills are warm enough to smear
+ * into the accent. That ink measures 7.82:1 dark (`#121314` on `#e59656`) and
+ * 5.49:1 light (`#ffffff` on `#a05605`); it cannot be wrong in either theme,
+ * because it is the very ground the accent was tuned against — the two hues
+ * that would have been wrong on the face are the ones it replaces
+ * (`--pc-icon-red` light: 1.04:1, `--pc-status-warn` dark: 1.10:1, i.e. gone,
+ * not merely dim). One accepted loss: waiting + resource-warn now
+ * shows two identical ink dots instead of a red and an amber one. That pair is
+ * rare and the tooltip names both states — better than inventing a shape.
+ *
+ * Deliberately still NOT a second red mark. An earlier version drew a 2px
+ * `--pc-icon-red` rail along the card's top edge as an extra attention cue and
+ * was removed the same day (user: "honestly, I don't find this visually
+ * pretty"): on a chip this small, two marks in one colour a few pixels apart
+ * stop reading as two markers and start reading as a red chip, i.e. as an
+ * error. That lesson survives the switch to amber unchanged — it was never
+ * about saturation, it was about how much AREA one colour owns — and it is
+ * precisely why the dot is inked instead of left red on the new face.
+ *
+ * `height` and `translate` are the moving parts and are therefore reduced-
+ * motion-gated; the RESTING look — taller card, risen label, amber face, ink,
+ * shadow — is unconditional, so the state stays fully legible with motion off.
+ */
+.pc-tabcard {
+  --pc-tab-pull: 0px;
+  /* 1.5rem is the chips' resting height (`h-6` everywhere else in the row);
+     this class owns it now, because it is the value the pull adds to. */
+  height: calc(1.5rem + var(--pc-tab-pull));
+  transition-property: background-color;
+  transition-duration: 240ms;
+  /* The same ease-out-quint the chip's own colour transition uses: fast out of
+     the row, settling softly — a drawer pull, not a spring. */
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pc-tabcard--pulled {
+  /* 6px on a 24px chip: a quarter of its own height, enough to read as pulled
+     across the whole grid, and exactly half the 12px workspace gutter above the
+     pane — the card keeps as much air above it as it takes for itself. */
+  --pc-tab-pull: 6px;
+  /* The card face. The part of the card that has left the pane hangs over the
+     gutter between panes, so it needs its own opaque ground — without it the
+     app background would shine through and the "card" would look like a hole.
+     Solid, not a wash: "area-wide" was the ask, and a wash would not even be
+     ONE colour along the card's height, since it spans two different grounds
+     (pane header below, app background above the pane edge).
+     On the wrapper, NOT on the button: the button's own background still has to
+     paint on top of it (the hover fill), and its -z-10 flash/settle washes have
+     to land between the two. Those washes are themselves amber at 34% and are
+     near-invisible on this face now — no loss, because the face turning amber
+     IS the arrival cue they were there to give.
+     Deliberate consequence, do not "fix" it: on a waiting card that is NOT the
+     selected tab, the chip's keyline (including its doubled bottom edge, the
+     one every other chip in the row shows) is amber on amber and therefore
+     disappears into the face. That is the filled-vs-outlined distinction doing
+     its job. On a card that is ALSO selected, the same keyline comes back in
+     the card's ink — the edge is the selection signal here, not decoration. */
+  background-color: var(--pc-pane-activeBorder);
+}
+
+/*
+ * The card's contents ride the pull as one rigid body. The box grows upward
+ * around a vertically centred label, which lifts the label by only half the
+ * pull on its own; this adds the missing half, so number, dot and tool badge
+ * travel the full 6px with the card's top edge. Without it the label would
+ * appear to sink INTO a growing card instead of coming out of the box with it.
+ * `translate` (not `transform`) on purpose: it composes with nothing else here
+ * and leaves the chip's own transform property free.
+ */
+.pc-tabcard--pulled .pc-tabcard__label {
+  translate: 0 calc(var(--pc-tab-pull) / -2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pc-tabcard {
+    /*
+     * `height` here is deliberate and stays. The design linter flags animating
+     * a layout property and points at transform/opacity or grid-template-rows
+     * — the right advice in general, wrong for this element, so don't "fix" it
+     * back on the strength of the warning alone:
+     *
+     * - Nothing can reflow around it. The tab row above has an explicit `h-6`
+     *   and every one of its children is `shrink-0` with a fixed width, so the
+     *   chip growing past 24px OVERFLOWS the row rather than resizing it. The
+     *   reflow is contained to this one ~24x30px subtree; header, spacer and
+     *   siblings cannot move.
+     * - It runs on a state change (a session goes idle, or you look at it),
+     *   not continuously, and at most a handful of chips ever hold the state.
+     * - The alternatives are worse HERE. `scaleY()` would stretch the chip's
+     *   1px border and its shadow along with it — the border is pixel-tuned
+     *   against the header hairline (see PaneTabs.tsx' alignment corrections),
+     *   and a distorted shadow reads as a smear, not as depth; the label would
+     *   need counter-scaling on top. `grid-template-rows` only swaps one
+     *   layout property for another between two known values.
+     */
+    transition-property: height, background-color;
+  }
+
+  .pc-tabcard__label {
+    transition: translate 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .pc-tabcard__dot {
+    animation: pc-attention-breathe 2400ms ease-in-out infinite;
+  }
+}
+
+/*
+ * Lets the pulled card escape its pane. The pane `<section>` is a rounded,
+ * clipped box whose header sits flush against its top edge — with
+ * `overflow: hidden` the card had literally zero headroom and any lift was
+ * shaved off at 1-2px, which is why the previous 3px translate looked like
+ * nothing at all.
+ *
+ * NOT `overflow: clip` + `overflow-clip-margin`, the textbook answer: WebKit
+ * has never shipped `overflow-clip-margin` (Safari, all versions to date — brandlint-ok: functional browser-engine compatibility fact, not marketing), and
+ * this app runs in WKWebView on macOS, its primary platform — the fix would
+ * have been a silent no-op exactly where it matters most. A `clip-path` with a
+ * NEGATIVE top inset does the same job with universal support (the same
+ * mechanism as the familiar `inset(0 -100vmax)` shadow trick). The other three
+ * sides keep clipping at the border box, and the bottom corners keep the
+ * `rounded-lg` radius, so terminal content is contained exactly as before; only
+ * the top gains a window.
+ *
+ * The window is exactly the workspace gutter (12px, `.pc-workspace` above), and
+ * that is the rule to keep: the clip may open as far as the empty space the
+ * layout actually provides, never further, or a pulled card would draw ON the
+ * pane in the row above instead of in the air between them. It was 8px while
+ * the gutter was 8px ("one pull's worth plus a pixel of slack"), which was
+ * enough to not clip but not enough to look uncramped — the gutter grew, and
+ * this grew with it.
+ *
+ * Side effect worth knowing: unlike `overflow: hidden`, `clip-path` does not
+ * round the top corners for absolutely positioned children any more, so the
+ * pane-wide flash overlay in TerminalPane.tsx/FileEditor.tsx carries its own
+ * `rounded-t-*`.
+ */
+.pc-pane-clip {
+  clip-path: inset(-0.75rem 0 0 0 round 0 0 0.5rem 0.5rem);
 }

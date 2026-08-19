@@ -492,6 +492,87 @@ describe("PaneTabs", () => {
         screen.getByRole("button", { name: "Terminal 2: Wartet auf dich" }),
       ).toBeInTheDocument();
     });
+
+    // Karteikarten-Umbau 2026-08-19 (Kopfkommentar PaneTabs.tsx): der Marker
+    // ist nicht mehr nur der rote Punkt, sondern ein herausgezogener Chip —
+    // Hülle mit `pc-tabcard--pulled` (Höhenwachstum + Kartenfläche) und
+    // Erhebung am Knopf. Die Optik selbst kann jsdom nicht messen (kein CSS),
+    // aber genau diese Verdrahtung ist das, was beim letzten Anlauf still
+    // verloren ging — deshalb je eine Zusicherung auf den Haken, an dem der
+    // App.css-Block hängt. Seit der Amber-Korrektur (2026-08-19, dritter
+    // Durchgang) kommt die Kartentinte dazu: alles auf der Amber-Fläche steht
+    // in `--pc-pane-background`, der Punkt also auch — sein früheres
+    // `--pc-icon-red` wäre im Light-Theme auf Amber unsichtbar.
+    it("zieht den wartenden Chip als Karte heraus (Hülle, Erhebung, Punkt)", () => {
+      const { container } = renderTabs(
+        baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }),
+      );
+      const chip = container.querySelector('[data-terminal-tab-chip="tab-1"]');
+      const card = chip?.parentElement;
+      expect(card).not.toBeNull();
+
+      expect(card?.classList.contains("pc-tabcard")).toBe(true);
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).not.toContain("--pc-lift-elevation");
+      expect(chip?.querySelector("[data-attention-dot]")).toBeNull();
+
+      act(() => {
+        reportOutput("tab-1", 1); // free pass (boot prompt)
+        reportOutput("tab-1", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(true);
+      expect(chip?.className).toContain("shadow-[var(--pc-lift-elevation)]");
+      const dot = chip?.querySelector("[data-attention-dot]");
+      expect(dot).not.toBeNull();
+      // Kartentinte statt Attention-Rot, und die Karte ist RANDLOS: ihr Rand
+      // liegt in derselben Amber-Fläche, die sie füllt.
+      expect(dot?.className).toContain("bg-(--pc-pane-background)");
+      expect(chip?.className).toContain("text-(--pc-pane-background)");
+      expect(chip?.className).toContain("border-(--pc-pane-activeBorder)");
+
+      // Zurück in den Ruhezustand: die Karte sinkt wieder ein, samt Erhebung.
+      act(() => {
+        reportOutput("tab-1", 1);
+      });
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).not.toContain("--pc-lift-elevation");
+    });
+
+    // Der Überlagerungsfall, den die Amber-Korrektur lösen musste: der
+    // ausgewählte Tab einer NICHT fokussierten Pane kann gleichzeitig wartend
+    // sein (`markTabViewed` läuft nur bei Auswahl UND Pane-Fokus). Beide
+    // Zustände sprechen jetzt Amber — auseinander hält sie die Form: gefüllt
+    // heißt "wartet", umrandet heißt "ausgewählt". Genau das prüft dieser Test,
+    // denn er ist die einzige Stelle, an der ein stiller Rückfall auf einen
+    // gemeinsamen Farbzweig überhaupt auffallen würde.
+    it("hält Auswahl und Wartezustand auf demselben Chip auseinander", () => {
+      const { container } = renderTabs(
+        baseProps({ activeTerminalTabId: "tab-1", paneFocused: false }),
+      );
+      const chip = container.querySelector('[data-terminal-tab-chip="tab-1"]');
+      const card = chip?.parentElement;
+
+      // Nur ausgewählt: umrandeter Chip mit Akzent-Wasch, keine Karte.
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).toContain("bg-(--pc-pane-activeBorder)/14");
+
+      act(() => {
+        reportOutput("tab-1", 1); // free pass (boot prompt)
+        reportOutput("tab-1", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+
+      // Ausgewählt UND wartend: die volle Karte (Auszug, Erhebung, Punkt) plus
+      // die Auswahl-Randlinie in der Kartentinte. Der /14-Wasch des reinen
+      // Auswahlzustands ist ERSETZT, nicht überlagert — sonst stünden zwei
+      // Hintergrund-Utilities in derselben Klassenliste.
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(true);
+      expect(chip?.className).toContain("border-(--pc-pane-background)");
+      expect(chip?.className).toContain("font-semibold");
+      expect(chip?.className).not.toContain("bg-(--pc-pane-activeBorder)/14");
+    });
   });
 
   describe("Leiterbahn-Anbindung (Stub + Dämpfung)", () => {
