@@ -32,8 +32,8 @@ import {
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
 import { launchLineFor, resolveAdapter } from "./adapters";
-import { snippetInit, snippetList } from "./snippetCommands";
-import type { SnippetCandidate } from "./snippetTrigger";
+import { snippetInit } from "./snippetCommands";
+import { reloadSnippets, snippetsFor, subscribeSnippets } from "./snippetStore";
 import { systemCommands } from "./systemCommands";
 import {
   createDirectoryProbe,
@@ -457,26 +457,21 @@ export function usePtyTerminal(
     // fetch on demand instead. A failed load (e.g. malformed IPC response)
     // just leaves the popup showing System-Befehle only, same as before this
     // ticket — not worth a visible error for a feature that's still usable
-    // without it.
-    let loadedSnippets: readonly SnippetCandidate[] = [];
-    // Fixed `cwd`, deliberately NOT `liveCwd ?? cwd` like `://init` below:
-    // `.panecrew/snippets/` lives at the project root, and a `cd` into some
-    // unrelated subdirectory during the session must not make the project's
-    // own snippets vanish from the popup on the next `://reload-snippets`.
-    // `://init` reads the live directory because it scaffolds wherever the
-    // user is currently standing — a deliberately different question from
-    // "where does this tab's project live".
-    const loadSnippets = () =>
-      snippetList(cwd)
-        .then((loaded) => {
-          if (disposed) return;
-          loadedSnippets = loaded;
-          refreshSuggestion();
-        })
-        .catch(() => {
-          /* popup falls back to System-Befehle only */
-        });
-    void loadSnippets();
+    // without it. Shared across every tab of this project via
+    // `snippetStore.ts` (fixed `cwd`, the project path — deliberately NOT
+    // `liveCwd ?? cwd` like `://init` below: `.panecrew/snippets/` lives at
+    // the project root, and a `cd` into some unrelated subdirectory during
+    // the session must not make the project's own snippets vanish from the
+    // popup on the next `://reload-snippets`. `://init` reads the live
+    // directory because it scaffolds wherever the user is currently
+    // standing — a deliberately different question from "where does this
+    // tab's project live"), so a reload triggered in one tab is visible in
+    // every other open tab of the same project too, not just the one that
+    // ran it.
+    void reloadSnippets(cwd);
+    const unsubscribeSnippets = subscribeSnippets(cwd, () => {
+      if (!disposed) refreshSuggestion();
+    });
     const runSnippetCommand = (trigger: string) => {
       if (trigger === "init") {
         void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
@@ -489,7 +484,7 @@ export function usePtyTerminal(
         return;
       }
       if (trigger === "reload-snippets") {
-        void loadSnippets();
+        void reloadSnippets(cwd);
       }
     };
     const suggestion = attachInlineSuggestion(terminal, {
@@ -498,7 +493,7 @@ export function usePtyTerminal(
       cwd: () => liveCwd,
       isDirectory: directories.isDirectory,
       listSubdirectories: subdirectories.list,
-      listSnippetCandidates: () => [...systemCommands(), ...loadedSnippets],
+      listSnippetCandidates: () => [...systemCommands(), ...snippetsFor(cwd)],
       runSnippetCommand,
       font: terminalOptions,
     });
@@ -753,6 +748,7 @@ export function usePtyTerminal(
       directories.dispose();
       subdirectories.dispose();
       suggestion.dispose();
+      unsubscribeSnippets();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;
       // `terminal.dispose()` gleich darunter räumt ein noch geladenes Addon
