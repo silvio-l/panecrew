@@ -3382,10 +3382,19 @@ describe("Onboarding", () => {
 // selbst verhindern müsste. Genau das macht einen EINZIGEN `<Profiler>` um
 // die ganze `<App/>` zur richtigen Sonde: sein `onRender` feuert bei JEDEM
 // Commit des Baums, unabhängig davon, welche einzelne Komponente den Update
-// ausgelöst hat — "kein weiterer Commit" beweist hier also gleichzeitig
-// "keine Nachbar-Pane, kein Tab-Chip, kein Explorer-Baum hat erneut
-// gerendert", ohne dass der Test eine dieser Komponenten selbst instrumentieren
-// müsste (wären ohnehin Dateien außerhalb des Tickets).
+// ausgelöst hat.
+//
+// Nachtrag Ticket 39 (Syntax-Highlighting + Zeilennummern): `EditorBuffer`
+// hält seither eigenen lokalen React-State (Scroll-Position, gemessene
+// Zeilenhöhe, das gefensterte Tokenisierungs-Ergebnis), der bei jedem
+// Tastendruck committet — React propagiert Re-Renders aber strikt abwärts
+// vom State-Halter aus, nie seitwärts zu Geschwister-Panes oder aufwärts zum
+// Explorer-Baum, unabhängig von Memoisierung. "Kein weiterer Commit des
+// GANZEN Baums" ist damit kein gültiger Beweis mehr — wohl aber "die
+// Nachbar-Pane und der Explorer-Baum sind nach dem Tippen noch dieselben
+// DOM-Knoten wie vorher" (Referenzgleichheit beweist "nicht neu erzeugt/neu
+// gerendert" direkter als eine reine Commit-Zählung es könnte) zusammen mit
+// "genau ein Commit pro Tastendruck, keine zusätzlichen/kaskadierten".
 describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -3401,6 +3410,9 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
         return Promise.resolve([{ name: "README.md", is_dir: false }]);
       }
       if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
       return Promise.resolve();
     });
 
@@ -3435,6 +3447,8 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
     });
 
     onRender.mockClear();
+    const storefrontBefore = screen.getByLabelText("Terminal storefront");
+    const explorerRootBefore = explorerTreeButton(/README\.md/);
 
     // Fortgesetztes Tippen — jeder weitere Tastendruck bleibt seit Ticket 05
     // rein lokal in der (seit diesem Ticket unkontrollierten) Textarea, s.
@@ -3449,16 +3463,17 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
     fireEvent.change(textbox, { target: { value: "geände" } });
     fireEvent.change(textbox, { target: { value: "geändert" } });
 
-    // Kein einziger weiterer Commit des ganzen App-Baums — weder die
-    // Nachbar-Pane (storefront) noch ihre Tab-Chips noch der Explorer-Baum
-    // haben also erneut gerendert, unabhängig davon, wie viele Tastendrücke
-    // seit dem "dirty"-Übergang oben folgten.
-    expect(onRender).not.toHaveBeenCalled();
+    // Genau ein Commit pro Tastendruck (sechs `change`-Events oben), keine
+    // zusätzlichen/kaskadierten Commits — und die Nachbar-Pane sowie der
+    // Explorer-Baum sind noch dieselben DOM-Knoten wie vor dem Tippen, also
+    // nachweislich nicht neu erzeugt/neu gerendert worden.
+    expect(onRender).toHaveBeenCalledTimes(6);
+    expect(screen.getByLabelText("Terminal storefront")).toBe(storefrontBefore);
+    expect(explorerTreeButton(/README\.md/)).toBe(explorerRootBefore);
     // Der Puffer selbst führt den vollen getippten Stand trotzdem korrekt —
     // die Isolation kostet keine Korrektheit, s. `bufferRef` in
     // FileEditor.tsx.
     expect(textbox).toHaveValue("geändert");
-    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
   });
 
   it("aktualisiert die geteilte Ungespeichert-Markierung nur beim ersten Tastendruck einer Sitzung, nicht bei jedem weiteren", async () => {

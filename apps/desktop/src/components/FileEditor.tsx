@@ -1,14 +1,16 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
+  UIEvent as ReactUIEvent,
 } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { CHROME_FOCUS_RING, ChromeTooltip } from "./ChromeTooltip";
 import { FocusModeButton } from "./FocusModeButton";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
+import { languageForPath, tokenizeLines, type LanguageId, type Token, type TokenKind } from "./syntaxHighlight";
 import type { FileEditorState } from "../explorer/fileEditorState";
 import { fileNameFromPath } from "../explorer/filePath";
 import { isMacPlatform } from "../shortcuts/platform";
@@ -358,11 +360,143 @@ export function FileEditor({
             ariaLabel={t("fileEditor.contentAria", { name })}
             initialContent={state.content}
             saving={saving}
+            language={languageForPath(state.path)}
             onEdit={onEdit}
           />
         </>
       )}
     </section>
+  );
+}
+
+/** Wie viele zusätzliche Zeilen ober-/unterhalb des sichtbaren Ausschnitts
+ * mitgerendert werden — reine Sicherheitsmarge gegen einen sichtbaren
+ * Leerstreifen für den einen Frame zwischen Scroll-Event und Re-Render. */
+const OVERSCAN_LINES = 8;
+
+/**
+ * Sichtbarer Zeilenbereich aus Scroll-Position + Zeilenhöhe (Ticket 39) —
+ * dieselbe Grundannahme wie beim Sprung-Effekt oben: `wrap="off"` macht eine
+ * Bildschirmzeile IMMER zu genau einer logischen Zeile, deshalb reicht reine
+ * Arithmetik statt einer DOM-Messung pro Zeile. Das ist der Grund, warum
+ * Gutter und Highlight-Overlay unten trotz voller Datei-Tokenisierung pro
+ * Tastendruck (s. `tokenizeLines`-Kommentar) nicht bei jeder großen Datei
+ * einfrieren: React reconciled nur diese paar Dutzend Zeilen zu Elementen,
+ * nie die ganze Datei.
+ */
+function visibleLineRange(
+  scrollTop: number,
+  clientHeight: number,
+  lineHeight: number,
+  totalLines: number,
+): { start: number; end: number } {
+  if (lineHeight <= 0 || totalLines === 0) return { start: 0, end: totalLines };
+  const first = Math.floor(scrollTop / lineHeight);
+  const visibleCount = Math.ceil(clientHeight / lineHeight) + 1;
+  return {
+    start: Math.max(0, first - OVERSCAN_LINES),
+    end: Math.min(totalLines, first + visibleCount + OVERSCAN_LINES),
+  };
+}
+
+/** S. Kopfkommentar `syntaxHighlight.ts` zur Kontrast-Herleitung dieser vier
+ * Zuordnungen — jede Farbe ist ein existierendes, bereits als Fließtext
+ * geprüftes Token, keine hier neu erfundene. */
+const TOKEN_CLASS: Record<TokenKind, string> = {
+  plain: "text-(--pc-foreground)",
+  comment: "text-(--pc-descriptionForeground)",
+  string: "text-(--pc-gitDecoration-untrackedResourceForeground)",
+  keyword: "text-(--pc-gitDecoration-modifiedResourceForeground)",
+};
+
+/** Zeilennummern-Spalte, IMMER sichtbar (auch bei nicht erkannter Extension
+ * — Akzeptanzkriterium des Tickets), als Geschwister der Textarea statt in
+ * ihrer eigenen Scroll-Box (s. Kopfkommentar `EditorBuffer`): so bleibt
+ * `textarea.clientHeight` unverändert und der Sprung-Effekt oben braucht
+ * keine Anpassung. Folgt der Textarea-Scrollposition rein per `transform`
+ * statt eigenem Scrollen — dieselbe gefensterte Technik wie im
+ * Highlight-Overlay, aus demselben Grund (Kosten skalieren mit dem
+ * sichtbaren statt dem gesamten Puffer). */
+function LineGutter({
+  totalLines,
+  start,
+  end,
+  lineHeight,
+  scrollTop,
+}: {
+  totalLines: number;
+  start: number;
+  end: number;
+  lineHeight: number;
+  scrollTop: number;
+}) {
+  const digits = Math.max(2, String(totalLines).length);
+  const numbers: number[] = [];
+  for (let i = start; i < end; i++) numbers.push(i + 1);
+
+  return (
+    <div
+      aria-hidden="true"
+      className="shrink-0 select-none overflow-hidden border-r border-(--pc-paneHeader-border) bg-transparent py-2 text-right font-(family-name:--pc-terminal-fontFamily) text-(--pc-descriptionForeground)"
+      style={{ width: `calc(${digits}ch + 1rem)`, fontSize: "var(--pc-terminal-fontSize)" }}
+    >
+      <div style={{ transform: `translateY(${start * lineHeight - scrollTop}px)` }}>
+        {numbers.map((n) => (
+          <div key={n} className="pr-2" style={{ height: lineHeight, lineHeight: `${lineHeight}px` }}>
+            {n}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Farbige Syntax-Fläche HINTER der (transparent gestellten) Textarea —
+ * dieselbe, seit react-simple-code-editor/CodeMirror <6 etablierte
+ * Overlay-Technik: die Textarea führt weiter Eingabe/Cursor/Auswahl/
+ * Scrollen exakt wie zuvor, dieses `<pre>` malt nur die Farbe darunter.
+ * `pointer-events-none`, da jede Interaktion weiter der Textarea gehört. */
+function HighlightOverlay({
+  tokenLines,
+  start,
+  end,
+  lineHeight,
+  scrollTop,
+  scrollLeft,
+}: {
+  tokenLines: readonly (readonly Token[])[];
+  start: number;
+  end: number;
+  lineHeight: number;
+  scrollTop: number;
+  scrollLeft: number;
+}) {
+  const visible = tokenLines.slice(start, end);
+
+  return (
+    <pre
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-0 m-0 overflow-hidden whitespace-pre px-3 py-2 font-(family-name:--pc-terminal-fontFamily)"
+      style={{
+        fontSize: "var(--pc-terminal-fontSize)",
+        lineHeight: "var(--pc-terminal-lineHeight)",
+        tabSize: 4,
+      }}
+    >
+      <div style={{ transform: `translate(${-scrollLeft}px, ${start * lineHeight - scrollTop}px)` }}>
+        {visible.map((tokens, idx) => (
+          <div key={start + idx} style={{ height: lineHeight, lineHeight: `${lineHeight}px` }}>
+            {tokens.length === 0
+              ? " "
+              : tokens.map((token, tokenIdx) => (
+                  <span key={tokenIdx} className={TOKEN_CLASS[token.kind]}>
+                    {token.text}
+                  </span>
+                ))}
+          </div>
+        ))}
+      </div>
+    </pre>
   );
 }
 
@@ -391,6 +525,31 @@ export function FileEditor({
  * Strg+S) — die DOM-`value` einer Textarea ist dafür ohnehin die einzig
  * verlässliche Quelle, sobald nicht mehr jeder Tastendruck den
  * React-Zustand nachführt.
+ *
+ * SYNTAX-HIGHLIGHTING + ZEILENNUMMERN (Ticket 39): eine ZWEITE, rein lokale
+ * `content`-Kopie kommt hier trotzdem hinzu — anders als `state.content`
+ * oben treibt sie NICHTS außerhalb dieser Komponente an (kein `onEdit`-Ersatz,
+ * kein Zustand in `usePaneFileEditors.ts`), sie steuert nur das eigene
+ * Gutter/Overlay unten. `useState(initialContent)` wertet den Startwert nur
+ * beim Mounten aus — exakt dieselbe Lebensdauer-Klammer wie `defaultValue`
+ * an der Textarea (s. Absatz oben), ein Re-Sync-Effekt aus `state.content`
+ * wäre also nicht nur unnötig, sondern GEFÄHRLICH: `state.content` bleibt ab
+ * dem zweiten Tastendruck bewusst veraltet stehen und würde frisch getippten
+ * Text überschreiben. Ein `useState` hier kostet nichts Neues an
+ * Re-Render-Reichweite (React-Grundsatz: State-Änderung rendert den
+ * State-Besitzer und dessen Kinder — das war und bleibt allein diese
+ * Komponente), nur DAS war an Ticket 05 teuer, dass `onEdit` den State EINE
+ * Ebene höher hielt und damit das GANZE Grid mitriss.
+ *
+ * Volle Datei-Tokenisierung SYNCHRON bei jedem Tastendruck (kein Debounce):
+ * mit transparent gestellter Textarea-Schrift (s. `HighlightOverlay`) ist
+ * das Overlay die einzige sichtbar gemalte Kopie des Texts — ein Debounce
+ * ließe frisch getippte Zeichen für die Debounce-Dauer unsichtbar werden,
+ * genau das Einfrieren, das Ticket 39 ausschließt. Der teure Teil ist ohnehin
+ * nicht das Tokenisieren selbst (reines Scannen, keine DOM-Arbeit, s.
+ * `syntaxHighlight.ts`), sondern das Rendern — deshalb rendern Gutter und
+ * Overlay unten nur den sichtbaren Zeilenausschnitt (`visibleLineRange`),
+ * nicht die gesamte `tokenLines`-Liste.
  */
 const EditorBuffer = forwardRef<
   HTMLTextAreaElement,
@@ -398,50 +557,123 @@ const EditorBuffer = forwardRef<
     ariaLabel: string;
     initialContent: string;
     saving: boolean;
+    language: LanguageId | null;
     onEdit: (content: string) => void;
   }
->(function EditorBuffer({ ariaLabel, initialContent, saving, onEdit }, ref) {
+>(function EditorBuffer({ ariaLabel, initialContent, saving, language, onEdit }, forwardedRef) {
+  const [content, setContent] = useState(initialContent);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [viewport, setViewport] = useState({ clientHeight: 0, lineHeight: 16 });
+  const localRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const setRefs = (node: HTMLTextAreaElement | null) => {
+    localRef.current = node;
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  };
+
+  // Misst Zeilenhöhe (kann sich mit der Terminal-Zoomstufe ändern,
+  // usePtyTerminal.ts' `zoomAction`) und Viewport-Höhe (Pane-Resize per
+  // Schnittkanten-Zug) — ein ResizeObserver deckt beides ab, ohne einen
+  // eigenen `window.resize`-Listener zu brauchen.
+  useEffect(() => {
+    const node = localRef.current;
+    if (!node) return;
+    const measure = () => {
+      const lineHeight = parseFloat(getComputedStyle(node).lineHeight);
+      setViewport({
+        clientHeight: node.clientHeight,
+        lineHeight: Number.isNaN(lineHeight) ? 16 : lineHeight,
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const tokenLines = useMemo(() => tokenizeLines(content, language), [content, language]);
+  const totalLines = tokenLines.length;
+  const { start, end } = visibleLineRange(scrollTop, viewport.clientHeight, viewport.lineHeight, totalLines);
+
+  const handleScroll = (event: ReactUIEvent<HTMLTextAreaElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+    setScrollLeft(event.currentTarget.scrollLeft);
+  };
+
   return (
-    <textarea
-      ref={ref}
-      // Nur während des Schreibens gesperrt, und zwar nicht aus Vorsicht:
-      // `edit()` in fileEditorState.ts nimmt aus „saving" heraus keine
-      // Änderung an (der Puffer ist in dem Moment gerade unterwegs zur
-      // Platte). Ohne dieses readOnly schluckte das Feld die Tastendrücke
-      // dieser einen Zwischenzeit stillschweigend.
-      readOnly={saving}
-      defaultValue={initialContent}
-      onChange={(event) => onEdit(event.target.value)}
-      // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen, und
-      // ein umgebrochener Block verschiebt jede Zeilennummer, die man im
-      // Terminal daneben gerade liest. Umgebrochen wird also nicht,
-      // gescrollt wird waagerecht.
-      wrap="off"
-      // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext reines
-      // Rauschen.
-      spellCheck={false}
-      aria-label={ariaLabel}
-      // Die Schrift des Terminals, nicht die des Chromes: der Text steht
-      // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
-      // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
-      // (px-3 py-2), damit die erste Spalte beim Umschalten nicht springt.
-      // tabSize 4 statt der Browser-Vorgabe 8, die Quelltext auseinanderreißt.
-      style={{
-        fontFamily: "var(--pc-terminal-fontFamily)",
-        fontSize: "var(--pc-terminal-fontSize)",
-        lineHeight: "var(--pc-terminal-lineHeight)",
-        tabSize: 4,
-      }}
-      // select-text/cursor-text gegen die App-weiten `user-select: none` und
-      // `cursor: default` aus App.css: hier ist Text zum Lesen, Kopieren und
-      // Ändern da. Kein eigener Fokusring — das Feld ist fokussierbar und
-      // zeigt dann seinen Cursor, wie jede Editorfläche; ein Ring um die
-      // halbe Pane wäre der lautere und zugleich unschärfere Hinweis. caret
-      // im Terminal-Cursor-Ton: dieselbe „hier schreibst du"-Aussage wie der
-      // Amber-Block im Terminal nebenan (theme.css, Akzent-Investition
-      // 2026-08-13).
-      className="min-h-0 flex-1 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-(--pc-foreground) caret-(--pc-terminal-cursor) outline-none"
-    />
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <LineGutter
+        totalLines={totalLines}
+        start={start}
+        end={end}
+        lineHeight={viewport.lineHeight}
+        scrollTop={scrollTop}
+      />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <HighlightOverlay
+          tokenLines={tokenLines}
+          start={start}
+          end={end}
+          lineHeight={viewport.lineHeight}
+          scrollTop={scrollTop}
+          scrollLeft={scrollLeft}
+        />
+        <textarea
+          ref={setRefs}
+          // Nur während des Schreibens gesperrt, und zwar nicht aus Vorsicht:
+          // `edit()` in fileEditorState.ts nimmt aus „saving" heraus keine
+          // Änderung an (der Puffer ist in dem Moment gerade unterwegs zur
+          // Platte). Ohne dieses readOnly schluckte das Feld die Tastendrücke
+          // dieser einen Zwischenzeit stillschweigend.
+          readOnly={saving}
+          defaultValue={initialContent}
+          onChange={(event) => {
+            setContent(event.target.value);
+            onEdit(event.target.value);
+          }}
+          onScroll={handleScroll}
+          // wrap="off" statt weichem Umbruch: Quelltext hat eigene Zeilen, und
+          // ein umgebrochener Block verschiebt jede Zeilennummer, die man im
+          // Terminal daneben gerade liest. Umgebrochen wird also nicht,
+          // gescrollt wird waagerecht.
+          wrap="off"
+          // Rote Schlangenlinien unter jedem Bezeichner wären in Quelltext reines
+          // Rauschen.
+          spellCheck={false}
+          aria-label={ariaLabel}
+          // Die Schrift des Terminals, nicht die des Chromes: der Text steht
+          // exakt dort, wo eine Sekunde vorher Terminalausgabe stand, und in
+          // derselben Zeilenbox. Padding ebenfalls das der Terminalfläche
+          // (px-3 py-2), damit die erste Spalte beim Umschalten nicht springt.
+          // tabSize 4 statt der Browser-Vorgabe 8, die Quelltext auseinanderreißt.
+          style={{
+            fontFamily: "var(--pc-terminal-fontFamily)",
+            fontSize: "var(--pc-terminal-fontSize)",
+            lineHeight: "var(--pc-terminal-lineHeight)",
+            tabSize: 4,
+          }}
+          // select-text/cursor-text gegen die App-weiten `user-select: none`
+          // und `cursor: default` aus App.css: hier ist Text zum Lesen,
+          // Kopieren und Ändern da. Kein eigener Fokusring — das Feld ist
+          // fokussierbar und zeigt dann seinen Cursor, wie jede Editorfläche;
+          // ein Ring um die halbe Pane wäre der lautere und zugleich
+          // unschärfere Hinweis. caret im Terminal-Cursor-Ton: dieselbe „hier
+          // schreibst du"-Aussage wie der Amber-Block im Terminal nebenan
+          // (theme.css, Akzent-Investition 2026-08-13).
+          //
+          // `text-transparent` statt `text-(--pc-foreground)` (Ticket 39):
+          // die sichtbare Farbe kommt jetzt vom `HighlightOverlay` dahinter,
+          // diese Textarea bleibt nur noch für Eingabe/Cursor/Auswahl/
+          // Scrollen zuständig. `absolute inset-0` deckungsgleich mit dem
+          // Overlay im selben `relative`-Elternelement statt eigener
+          // Flex-Breite — beide MÜSSEN exakt dieselbe Größe haben, das ist
+          // robuster als zwei getrennte Flex-Rechnungen synchron zu halten.
+          className="absolute inset-0 z-10 cursor-text resize-none select-text overflow-auto whitespace-pre bg-transparent px-3 py-2 text-transparent caret-(--pc-terminal-cursor) outline-none"
+        />
+      </div>
+    </div>
   );
 });
 
