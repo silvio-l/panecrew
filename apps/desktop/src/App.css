@@ -1270,11 +1270,15 @@ body {
      * — the right advice in general, wrong for this element, so don't "fix" it
      * back on the strength of the warning alone:
      *
-     * - Nothing can reflow around it. The tab row above has an explicit `h-6`
-     *   and every one of its children is `shrink-0` with a fixed width, so the
-     *   chip growing past 24px OVERFLOWS the row rather than resizing it. The
-     *   reflow is contained to this one ~24x30px subtree; header, spacer and
-     *   siblings cannot move.
+     * - Nothing can reflow around it. Each chip is `shrink-0` with a fixed
+     *   width, so one growing past 24px cannot borrow space from a neighbour
+     *   — it only grows into its own column. The `h-6` that pins the row's
+     *   overall height lives two levels up now, on the outer group in
+     *   PaneTabs.tsx (2026-08-19, horizontal-scroll fix): this chip's direct
+     *   parent, `.pc-tabstrip-scroll` (below), is deliberately height:auto
+     *   instead, so the extra 6px still just grows that container rather
+     *   than getting clipped by it. The reflow is contained to this one
+     *   ~24x30px subtree; header, spacer and siblings cannot move.
      * - It runs on a state change (a session goes idle, or you look at it),
      *   not continuously, and at most a handful of chips ever hold the state.
      * - The alternatives are worse HERE. `scaleY()` would stretch the chip's
@@ -1294,6 +1298,54 @@ body {
   .pc-tabcard__dot {
     animation: pc-attention-breathe 2400ms ease-in-out infinite;
   }
+}
+
+/*
+ * The horizontal scroll viewport for the terminal-tab strip (PaneTabs.tsx),
+ * added 2026-08-19 after a bug report: with enough terminal tabs open, the
+ * ones that didn't fit were silently clipped at the pane's right edge with no
+ * way to reach them. The row now scrolls instead of clipping — this class
+ * only suppresses the scrollbar chrome, the scrolling itself is plain
+ * `overflow-x: auto` set inline in PaneTabs.tsx.
+ *
+ * Hidden rather than styled like the app-wide `::-webkit-scrollbar` above:
+ * that one reserves a permanent 8px, more than a third of this row's own 24px
+ * resting height, and would sit right where the pulled attention card (this
+ * file, "The pulled index card") needs its headroom. Trackpad/wheel scrolling
+ * still works with no visible bar — the same trade the tab strip already
+ * makes elsewhere in this file for the sake of staying a thin HUD chrome, not
+ * a webview default — and PaneTabs.tsx' `cardRef` effect scrolls the active
+ * tab into view on selection, plus its `onWheel` handler maps a plain
+ * vertical wheel onto `scrollLeft`, so reaching an off-screen tab does not
+ * depend on first discovering that this row scrolls at all, or owning a
+ * trackpad.
+ *
+ * `padding-bottom` + matching negative `margin-bottom`: `overflow-x: auto`
+ * forces this box to clip on Y too (see the height comment on `.pc-tabcard`
+ * above), and that clip lands at the padding edge — right where the pulled
+ * card's own `--pc-lift-elevation` shadow (theme.css) paints, since its
+ * downward-offset layers extend up to 4px offset + 10px blur - 2px spread =
+ * 12px below the card's border box, and the card's bottom edge sits exactly
+ * on this container's own bottom edge (`items-end`, both here and on the
+ * outer group). Plain `padding-bottom: 12px` would push the CONTENT up by
+ * 12px and un-weld the card from the header hairline — the one invariant the
+ * whole pulled-card metaphor depends on (see "The pulled index card" above).
+ * The negative `margin-bottom` cancels that: `items-end` aligns this flex
+ * item's MARGIN box to the outer group's bottom line, and a margin box whose
+ * bottom edge sits 12px above its own border-box bottom (that's what a -12px
+ * margin means) pushes the border box 12px further down to compensate —
+ * landing the content's bottom edge back exactly on the header line, with
+ * 12px of unpainted, non-clipping padding now sitting below it for the
+ * shadow to paint into.
+ */
+.pc-tabstrip-scroll {
+  scrollbar-width: none;
+  padding-bottom: 12px;
+  margin-bottom: -12px;
+}
+
+.pc-tabstrip-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /*

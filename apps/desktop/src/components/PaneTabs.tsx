@@ -523,6 +523,20 @@ export function PaneTabs({
   // in `App.tsx`/`gridState.ts`: rein transiente UI-Absicht, kein
   // persistierter Zustand.
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  // Fix 2026-08-19 (horizontal-scroll bugfix, second pass after review): a
+  // plain vertical mouse wheel over an `overflow-x: auto` box does not
+  // reliably become `scrollLeft` movement in WebKit — there is nothing for
+  // the wheel to scroll vertically (see the height comment below), so
+  // without this the wheel event would just do nothing, and a mouse user
+  // (no trackpad, no visible scrollbar — see `.pc-tabstrip-scroll` in
+  // App.css) would have no way at all to reach an off-screen tab. Only
+  // redirects a vertical-only delta (plain wheel); leaves a genuine
+  // horizontal delta (Shift+wheel, trackpad two-finger swipe) alone since
+  // the browser already applies that to `scrollLeft` natively.
+  const handleTabStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY === 0 || event.deltaX !== 0) return;
+    event.currentTarget.scrollLeft += event.deltaY;
+  };
   return (
     <div
       role="group"
@@ -561,59 +575,90 @@ export function PaneTabs({
       // ohne feste Höhe wüchse die Gruppe mit dem Chip mit und säße als
       // 30px-Block wieder mittig im 24px-Header — derselbe Fehler, nur an
       // einer Ebene höher.
-      className="flex h-6 min-w-0 shrink-0 items-end gap-px"
+      //
+      // Fix 2026-08-19 (Bugreport: with many terminal tabs open, the chips
+      // that don't fit were silently clipped at the pane's right edge — no
+      // way to reach them). The outer group itself now shrinks (dropped
+      // `shrink-0`, kept only on the button/dropdown/file-tab siblings below)
+      // so the header's flex layout can actually take width away from it;
+      // that width loss is absorbed entirely by `.pc-tabstrip-scroll` below,
+      // which turns it into a horizontal scroll instead of a hard clip. The
+      // "+"/adapter-dropdown/file-tab stay outside that inner scroller, at
+      // their old shrink-0 size, so they never scroll out of reach — only the
+      // terminal-tab strip itself does.
+      className="flex h-6 min-w-0 shrink items-end gap-px"
     >
-      {/* Der Platzhalter des schwebenden Tab-Zugs steht AN seinem Einfüge-
-          Slot zwischen den Chips (flatMap statt map), nicht mehr fix am Ende
-          — die Leiste zeigt exakt die Reihenfolge, die ein Loslassen jetzt
-          ergäbe. Sein fester Key hält ihn beim Wandern zwischen den Slots
-          als dasselbe Element (kein Neumount pro Position). */}
-      {terminalTabs.flatMap((tab, i) => [
-        ...(incomingTab !== null && incomingTab.index === i
-          ? [<IncomingTabSlot key="incoming-tab" number={incomingTab.number} />]
-          : []),
-        <TerminalTabChip
-          key={tab.tabId}
-          tabId={tab.tabId}
-          number={tab.number}
-          label={tab.label}
-          active={!showingFile && tab.tabId === activeTerminalTabId}
-          paneFocused={paneFocused}
-          // Der letzte verbleibende Terminal-Tab lässt sich nicht schließen
-          // (gridState.ts' closeTerminalTab ist an dieser Stelle ohnehin ein
-          // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
-          // anklickbar zu bleiben.
-          closable={terminalTabs.length > 1}
-          otherTabsCount={terminalTabs.length - 1}
-          tabsToRightCount={terminalTabs.length - 1 - i}
-          draggable={tabDrag.draggable}
-          dragging={tabDrag.draggingTabId === tab.tabId}
-          renaming={tab.tabId === renamingTabId}
-          onAttentionFlash={
-            onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
-          }
-          settleNonce={dropSettle?.tabId === tab.tabId ? dropSettle.nonce : null}
-          onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
-          onSelect={() => {
-            // Der Abschlussklick eines Zugs darf den Quell-Tab nicht
-            // nebenbei auswählen (s. `PaneTabDrag.consumeClick`).
-            if (tabDrag.consumeClick()) return;
-            onSelectTerminalTab(tab.tabId);
-          }}
-          onClose={() => onCloseTerminalTab(tab.tabId)}
-          onCloseOthers={() => onCloseOtherTerminalTabs(tab.tabId)}
-          onCloseTabsToRight={() => onCloseTerminalTabsToRight(tab.tabId)}
-          onStartRename={() => setRenamingTabId(tab.tabId)}
-          onCommitRename={(label) => {
-            onRenameTerminalTab(tab.tabId, label);
-            setRenamingTabId(null);
-          }}
-          onDiscardRename={() => setRenamingTabId(null)}
-        />,
-      ])}
-      {incomingTab !== null && incomingTab.index >= terminalTabs.length && (
-        <IncomingTabSlot key="incoming-tab" number={incomingTab.number} />
-      )}
+      {/* Nur die Terminal-Tab-Chips selbst (plus der schwebende Einfüge-
+          Platzhalter) sitzen in diesem inneren Scroll-Container — nicht der
+          Datei-Tab und nicht die Bedienelemente rechts davon, die bleiben
+          fest sichtbar (s. Kommentar an der Elterngruppe oben). Höhe bewusst
+          NICHT gesetzt: eine `overflow-x`-Achse zwingt CSS dazu, auch
+          `overflow-y` implizit auf `auto` zu setzen — mit fester Höhe würde
+          das den nach oben herausgezogenen Attention-Chip (Kopfkommentar
+          dieser Datei, Karteikarten-Umbau) am oberen Rand dieses Containers
+          kappen. Ohne feste Höhe wächst der Container stattdessen selbst mit
+          dem höchsten Kind mit (bis 30px), sodass es nichts zu kappen gibt —
+          `.pc-tabstrip-scroll` (App.css) blendet die Laufleiste aus und gibt
+          dem `--pc-lift-elevation`-Schatten der gezogenen Karteikarte per
+          Padding-Trick Raum, damit dieser Container ihn nicht mit abschneidet.
+          `onWheel` unten übersetzt vertikales Mausrad in horizontales Scrollen
+          (WebKit macht das nicht von selbst). */}
+      <div
+        className="pc-tabstrip-scroll flex min-w-0 shrink items-end gap-px overflow-x-auto"
+        onWheel={handleTabStripWheel}
+      >
+        {/* Der Platzhalter des schwebenden Tab-Zugs steht AN seinem Einfüge-
+            Slot zwischen den Chips (flatMap statt map), nicht mehr fix am
+            Ende — die Leiste zeigt exakt die Reihenfolge, die ein Loslassen
+            jetzt ergäbe. Sein fester Key hält ihn beim Wandern zwischen den
+            Slots als dasselbe Element (kein Neumount pro Position). */}
+        {terminalTabs.flatMap((tab, i) => [
+          ...(incomingTab !== null && incomingTab.index === i
+            ? [<IncomingTabSlot key="incoming-tab" number={incomingTab.number} />]
+            : []),
+          <TerminalTabChip
+            key={tab.tabId}
+            tabId={tab.tabId}
+            number={tab.number}
+            label={tab.label}
+            active={!showingFile && tab.tabId === activeTerminalTabId}
+            paneFocused={paneFocused}
+            // Der letzte verbleibende Terminal-Tab lässt sich nicht schließen
+            // (gridState.ts' closeTerminalTab ist an dieser Stelle ohnehin ein
+            // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
+            // anklickbar zu bleiben.
+            closable={terminalTabs.length > 1}
+            otherTabsCount={terminalTabs.length - 1}
+            tabsToRightCount={terminalTabs.length - 1 - i}
+            draggable={tabDrag.draggable}
+            dragging={tabDrag.draggingTabId === tab.tabId}
+            renaming={tab.tabId === renamingTabId}
+            onAttentionFlash={
+              onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
+            }
+            settleNonce={dropSettle?.tabId === tab.tabId ? dropSettle.nonce : null}
+            onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
+            onSelect={() => {
+              // Der Abschlussklick eines Zugs darf den Quell-Tab nicht
+              // nebenbei auswählen (s. `PaneTabDrag.consumeClick`).
+              if (tabDrag.consumeClick()) return;
+              onSelectTerminalTab(tab.tabId);
+            }}
+            onClose={() => onCloseTerminalTab(tab.tabId)}
+            onCloseOthers={() => onCloseOtherTerminalTabs(tab.tabId)}
+            onCloseTabsToRight={() => onCloseTerminalTabsToRight(tab.tabId)}
+            onStartRename={() => setRenamingTabId(tab.tabId)}
+            onCommitRename={(label) => {
+              onRenameTerminalTab(tab.tabId, label);
+              setRenamingTabId(null);
+            }}
+            onDiscardRename={() => setRenamingTabId(null)}
+          />,
+        ])}
+        {incomingTab !== null && incomingTab.index >= terminalTabs.length && (
+          <IncomingTabSlot key="incoming-tab" number={incomingTab.number} />
+        )}
+      </div>
       <ChromeTooltip label={t("paneTabs.openTerminalTab")}>
         <button
           type="button"
@@ -766,6 +811,25 @@ function TerminalTabChip({
   useEffect(() => {
     if (isViewed) markTabViewed(tabId);
   }, [isViewed, tabId]);
+  // Fix 2026-08-19 (horizontal-scroll bugfix, s. Kommentar an `.pc-tabstrip-
+  // scroll` in PaneTabs): a newly opened or selected tab lands as `active`
+  // outside the visible scroll window whenever earlier tabs pushed it off —
+  // opening tab #12 must not require the user to then manually scroll to
+  // find it. `"nearest"` on both axes keeps this confined to the tab strip's
+  // own scroll container instead of also nudging any outer page scroll.
+  const cardRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    // Explicit `typeof` feature check, not just optional chaining on the ref:
+    // jsdom (this file's own test environment) doesn't implement
+    // `scrollIntoView` at all, but the DOM lib types claim it always exists,
+    // so `cardRef.current?.scrollIntoView?.(...)` trips the type-aware
+    // "unnecessary optional chain" lint rule while still crashing at runtime
+    // under jsdom — the types and the actual environment disagree here.
+    const card = cardRef.current;
+    if (active && typeof card?.scrollIntoView === "function") {
+      card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [active]);
   // Fires the one-shot flash effect (App.css' `pc-attention-flash`) exactly
   // on the false→true transition of `isAwaitingAttention`, not on every
   // re-render while it's already true — a `key` remount per transition
@@ -857,6 +921,7 @@ function TerminalTabChip({
           Knopfs nur das absolut positionierte Eingabefeld, die Hülle bliebe als
           leere, 30px hohe Kartenfläche im Kopf stehen. */}
       <span
+        ref={cardRef}
         className={`group/tab pc-tabcard relative flex shrink-0 items-stretch rounded-t-(--pc-paneControl-radius) ${
           isAwaitingAttention && !renaming ? "pc-tabcard--pulled" : ""
         }`}
