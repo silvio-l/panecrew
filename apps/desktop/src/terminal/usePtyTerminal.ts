@@ -21,6 +21,7 @@ import { copyTextToClipboard, dedentText } from "./clipboard";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { createResizeGate } from "./resizeGate";
+import { createSelectionDragTracker } from "./selectionDrag";
 import { attachTerminalLinkProvider } from "./terminalLinkProvider";
 import { loadShellHistory } from "./shellHistory";
 import {
@@ -230,16 +231,33 @@ export function usePtyTerminal(
 
     // "Select to Copy": eine fertige Mausauswahl landet ohne weiteres Zutun in
     // der Zwischenablage (Nutzer-Wunsch 2026-08-13) — dieselbe Konvention wie
-    // bei den gängigen macOS- und Linux-Terminal-Emulatoren. An `mouseup` gehängt,
-    // nicht an `terminal.onSelectionChange`: Letzteres feuert bei JEDER
-    // Zwischenposition während des Ziehens, ein Listener dort schriebe die
-    // Zwischenablage dutzende Male pro Sekunde. xterms eigene Auswahlgesten
-    // (Ziehen, Doppel-/Dreifachklick) enden alle in genau einem `mouseup` auf
-    // diesem Container — die Auswahl steht zu diesem Zeitpunkt bereits fest.
+    // bei den gängigen macOS- und Linux-Terminal-Emulatoren. An `mouseup`
+    // gehängt, nicht an `terminal.onSelectionChange`: Letzteres feuert bei
+    // JEDER Zwischenposition während des Ziehens, ein Listener dort schriebe
+    // die Zwischenablage dutzende Male pro Sekunde. xterms eigene
+    // Auswahlgesten (Ziehen, Doppel-/Dreifachklick) enden alle in genau einem
+    // `mouseup` — die Auswahl steht zu diesem Zeitpunkt bereits fest.
+    //
+    // Der Listener selbst hängt an `document`, nicht an `container` (Bugfix
+    // .scratch/panecrew-v0.1-spec/issues/31): ein Drag, der über den
+    // oberen/unteren Rand der Pane hinausgezogen wird, feuert `mouseup` am
+    // Element, über dem der Zeiger beim Loslassen steht — nicht an dem, auf
+    // dem der Drag begann. xterm.js selbst hält die Selektion in diesem Fall
+    // trotzdem korrekt fest (`hasSelection()`), nur ein reiner
+    // Container-Listener verpasste das Ereignis: kein Toast, keine Kopie,
+    // obwohl eine gültige Markierung dastand. `selectionDrag` filtert das
+    // dokumentweite Ereignis auf „diese Pane" zurück (Begründung dort) — sonst
+    // kopierte jede Pane mit noch stehender alter Selektion bei jedem
+    // beliebigen Klick irgendwo sonst in der App erneut.
+    const selectionDrag = createSelectionDragTracker();
+    const handleSelectionMouseDown = () => selectionDrag.onMouseDown();
     const handleSelectionMouseUp = () => {
-      if (copySelectionFrom(terminal)) onCopiedRef.current();
+      selectionDrag.onMouseUp(() => {
+        if (copySelectionFrom(terminal)) onCopiedRef.current();
+      });
     };
-    container.addEventListener("mouseup", handleSelectionMouseUp);
+    container.addEventListener("mousedown", handleSelectionMouseDown);
+    document.addEventListener("mouseup", handleSelectionMouseUp);
 
     // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `tabId`
     // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
@@ -667,7 +685,8 @@ export function usePtyTerminal(
       resizeGate.cancel();
       insertRef.current = null;
       terminal.textarea?.removeEventListener("copy", handleNativeCopy);
-      container.removeEventListener("mouseup", handleSelectionMouseUp);
+      container.removeEventListener("mousedown", handleSelectionMouseDown);
+      document.removeEventListener("mouseup", handleSelectionMouseUp);
       resizeObserver.disconnect();
       directories.dispose();
       subdirectories.dispose();
