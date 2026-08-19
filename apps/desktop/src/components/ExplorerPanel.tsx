@@ -18,6 +18,7 @@ import {
 } from "./ChromeTooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FileIcon, FolderIcon } from "./explorerIcons";
+import { GitRepoReadout } from "./GitRepoReadout";
 import { HudReadout } from "./HudReadout";
 import { isPathOrDescendant, remapRenamedPath } from "../explorer/filePath";
 import { searchProjectTree } from "../explorer/searchTree";
@@ -691,10 +692,18 @@ export function ExplorerPanel({
           sie rahmt den Baum wie die Pane-Header ihre Terminals — und hätte
           bei h-10 die optische Mitte der Zeile auf 19,5px gedrückt, aus der
           Flucht mit dem Projektnamen im Pane-Header (Mitte 20, s. o.). Sie
-          bleibt die einzige Trennlinie des gesamten (jetzt zweizeiligen)
-          Kopfbereichs — zwischen Werkzeugleiste und Namenszeile steht bewusst
-          keine zweite: beide bilden optisch einen Block. */}
-      <div className="flex h-[41px] shrink-0 items-center gap-1 border-b border-(--pc-explorer-border) pl-0.5 pr-1.5">
+          bleibt die einzige Trennlinie des gesamten (jetzt drei- statt
+          zweizeiligen) Kopfbereichs — zwischen Werkzeugleiste und
+          Namenszeile steht bewusst keine zweite: beide bilden optisch einen
+          Block. Seit Ticket 02/03 wandert die Hairline mit auf die Git-Zeile
+          darunter, wenn die erkannt wurde (`project.gitRepo !== null`) —
+          sonst blieben zwei gestapelte Trennlinien übrig, wenn beide Zeilen
+          stehen. */}
+      <div
+        className={`flex h-[41px] shrink-0 items-center gap-1 pl-0.5 pr-1.5 ${
+          project.gitRepo === null ? "border-b border-(--pc-explorer-border)" : ""
+        }`}
+      >
         {/* Die Kopfzeile ist zugleich der Wurzelknoten: ein Klick klappt den
             gesamten Baum weg. Der zugängliche Name des Knopfes ist der
             Projektname selbst, `aria-expanded` trägt den Zustand: das
@@ -722,6 +731,18 @@ export function ExplorerPanel({
           </span>
         </button>
       </div>
+      {/* Eigene Zeile, unabhängig vom Klapp-Zustand des Baums darunter
+          (Ticket 02/03): Branch/Dirty/Ahead-Behind/Worktree sind eine
+          Aussage über das PROJEKT, nicht über den Baum, und bleiben deshalb
+          sichtbar, auch wenn der Baum selbst gerade eingeklappt ist. Kein
+          Repo erkannt → die ganze Zeile entfällt, kein leerer Platzhalter. */}
+      {project.gitRepo !== null && (
+        // Trägt jetzt die Hairline, die sonst an der Namenszeile darüber
+        // sitzt (s. Kommentar dort) — sonst zwei gestapelte Trennlinien.
+        <div className="flex h-6 shrink-0 items-center border-b border-(--pc-explorer-border) px-3">
+          <GitRepoReadout summary={project.gitRepo} />
+        </div>
+      )}
       {!rootCollapsed && (
         <>
           {/* Über dem Baumbereich statt darin: das Feld ist eine Aussage über

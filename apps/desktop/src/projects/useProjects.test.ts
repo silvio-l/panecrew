@@ -12,7 +12,14 @@ vi.mock("./loadProject", () => ({
 const PATH = "/repo";
 
 function project(tree: TreeNode[]): Project {
-  return { path: PATH, name: "repo", tree, treeError: null, gitDecorations: new Map() };
+  return {
+    path: PATH,
+    name: "repo",
+    tree,
+    treeError: null,
+    gitDecorations: new Map(),
+    gitRepo: null,
+  };
 }
 
 describe("useProjects — Refresh und ein bereits aufgeklappter Unterordner", () => {

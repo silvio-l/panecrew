@@ -1694,7 +1694,10 @@ function App() {
                 wo er vor dem Readout schon stand, unabhängig davon, ob links
                 etwas steht. */}
             <div className="mb-2 flex shrink-0 items-center justify-end gap-2">
-              <GridStatusRail state={gridState} />
+              <GridStatusRail
+                state={gridState}
+                focusedGitRepo={project?.gitRepo ?? null}
+              />
               <TemplateSwitcher
                 state={gridState}
                 onSwitchTemplate={switchTemplate}

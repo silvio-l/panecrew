@@ -91,6 +91,16 @@
     "terminals_one": "{{count}} laufende Terminal-Sitzung insgesamt",
     "terminals_other": "{{count}} laufende Terminal-Sitzungen insgesamt"
   },
+  "gitRepo": {
+    "detachedBranch": "detached HEAD",
+    "worktreeBranch": "Worktree von {{repo}}, Branch {{branch}}",
+    "dirtyCount_one": "{{count}} geänderte Datei",
+    "dirtyCount_other": "{{count}} geänderte Dateien",
+    "ahead_one": "{{count}} Commit vor dem Upstream",
+    "ahead_other": "{{count}} Commits vor dem Upstream",
+    "behind_one": "{{count}} Commit hinter dem Upstream",
+    "behind_other": "{{count}} Commits hinter dem Upstream"
+  },
   "gridSplitters": {
     "columnAria": "Spaltenbreite zwischen Spalte {{left}} und {{right}} anpassen",
     "rowAria": "Zeilenhöhe zwischen Zeile {{top}} und {{bottom}} anpassen"

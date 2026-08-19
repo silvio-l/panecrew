@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { activePanes, type GridState } from "../grid/gridState";
+import type { GitRepoSummary } from "../types/gitStatus";
+import { GitRepoReadout } from "./GitRepoReadout";
 import { HudReadout } from "./HudReadout";
 
 // Die Zeile über dem Raster war bis auf den Template-Switcher an ihrem
@@ -20,10 +22,20 @@ import { HudReadout } from "./HudReadout";
 //   keine Prosa trägt (`HudReadout`), und der Switcher direkt daneben zeigt
 //   die aktive Geometrie ohnehin als Bild und benennt sie in seinem
 //   Tooltip — das wäre dieselbe Aussage ein drittes Mal.
-// - Der Git-Branch. Es gibt ihn im Frontend nicht: die Rust-Seite liefert nur
-//   Datei-Dekorationen (`explorer_git_status`), kein Branch-Feld. Er wäre
-//   also kein Anzeige-, sondern ein Backend-Ticket.
-export function GridStatusRail({ state }: { state: GridState }) {
+// - Der Git-Branch der fokussierten Pane. Seit Ticket 02 doch hier: links vom
+//   Slot-Zähler, über `GitRepoReadout` (geteilt mit der Explorer-Kopfzeile).
+//   Nur EINE Pane, nicht eine Zeile pro belegtem Slot — dieselbe Pane, deren
+//   Projekt der Explorer daneben schon zeigt, kein zweites Register für
+//   dieselbe Information.
+export function GridStatusRail({
+  state,
+  focusedGitRepo,
+}: {
+  state: GridState;
+  /** Git-Zusammenfassung der FOKUSSIERTEN Pane, `null` ohne Repo — dieselbe
+   * Quelle wie `ExplorerPanel`s Kopfzeile (`project.gitRepo`). */
+  focusedGitRepo: GitRepoSummary | null;
+}) {
   const { t } = useTranslation();
   const panes = activePanes(state);
   const slots = state.slots.length;
@@ -40,13 +52,27 @@ export function GridStatusRail({ state }: { state: GridState }) {
   if (panes.length === 0) return null;
 
   return (
-    // `min-w-0` plus `truncate`-fähige Kinder wären hier verfehlt: die Zeile
-    // trägt zwei sehr kurze Zahlenpaare und darf dem Switcher rechts niemals
-    // Platz nehmen — `shrink-0` an ihm, `overflow-hidden` hier. `mr-auto`
-    // schiebt den Switcher ans rechte Ende; die Elternzeile steht auf
-    // `justify-end`, damit er auch dort bleibt, wenn diese Zeile `null`
+    // Seit Ticket 02 steht links ein Branch-Name variabler Länge, deshalb
+    // jetzt doch `min-w-0` (die frühere Fassung dieses Kommentars nannte das
+    // "verfehlt", solange hier nur zwei kurze Zahlenpaare standen) — ohne
+    // `min-w-0` könnte diese Zeile den Flex-Container sprengen, statt selbst
+    // zu schrumpfen. Den Switcher rechts betrifft das nicht: `shrink-0` an
+    // ihm (`TemplateSwitcher.tsx`) hält ihn auf voller Breite, `overflow-
+    // hidden` hier verhindert, dass ein zu langer Branch-Name ihn verdrängt.
+    // `mr-auto` schiebt den Switcher ans rechte Ende; die Elternzeile steht
+    // auf `justify-end`, damit er auch dort bleibt, wenn diese Zeile `null`
     // liefert (Begründung an der Zeile in App.tsx).
-    <div className="mr-auto flex items-center gap-3 overflow-hidden">
+    <div className="mr-auto flex min-w-0 items-center gap-3 overflow-hidden">
+      {focusedGitRepo !== null && (
+        <>
+          <GitRepoReadout summary={focusedGitRepo} />
+          {/* --pc-widget-border, nicht --pc-explorer-border: diese Zeile
+              steht auf dem Grund von `<main>`, nicht auf dem Explorer-Panel
+              — genau der Fall, in dem Letzterer im Light-Theme fast
+              verschwindet (siehe TreeRowGuides in ExplorerPanel.tsx). */}
+          <span aria-hidden="true" className="h-3 w-px bg-(--pc-widget-border)" />
+        </>
+      )}
       {/* ❯ = die Eingabeaufforderung, also eine laufende Sitzung — dasselbe
           Zeichen und dieselbe Bedeutung wie im Chrome schon anderswo. ▣ ist
           neu: es gab bisher kein Zeichen für „belegte Rasterfläche", weil es
