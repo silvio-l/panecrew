@@ -15,6 +15,7 @@ jobs:
   lint-typecheck-test:
     name: Lint, typecheck, knip, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -50,6 +51,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # 2026-08-19 incident: a flaky Ubuntu apt mirror hung "apt-get update"
+    # for 5+ hours with no output, and without an explicit ceiling the job
+    # only stops at GitHub's 360-minute default -- bound it to something
+    # close to the ~7-minute historical runtime instead.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -87,3 +93,26 @@ jobs:
       - name: cargo test
         working-directory: apps/desktop/src-tauri
         run: cargo test --locked
+
+      # Regression guard for the 2026-08-19 nightly-crash incident: git2's
+      # vendored-libgit2 feature vendors libgit2 itself, but libgit2-sys and
+      # libssh2-sys still pull in openssl-sys for TLS/SSH crypto -- without
+      # `vendored-openssl` too, openssl-sys links dynamically against
+      # whatever OpenSSL pkg-config finds on the build machine (Homebrew's
+      # on macOS), baking an absolute /opt/homebrew path into the binary.
+      # Hardened-runtime library validation refuses to load that on any
+      # machine (Team ID mismatch), crashing the shipped app at launch --
+      # `cargo test` alone can't catch this since the check only bites a
+      # signed binary. Catch any future dependency regressing the same way
+      # here, before it ever reaches a signed nightly/stable build.
+      - name: Verify no dynamically-linked external libraries (macOS)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop/src-tauri
+        run: |
+          set -euo pipefail
+          external_libs=$(otool -L target/debug/desktop | tail -n +2 | grep -v -E '^\s*(/usr/lib/|/System/)' || true)
+          if [[ -n "$external_libs" ]]; then
+            echo "::error::desktop binary links against external dylib(s) outside /usr/lib and /System -- this will crash under hardened-runtime library validation on end-user machines:"
+            echo "$external_libs"
+            exit 1
+          fi
