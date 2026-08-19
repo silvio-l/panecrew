@@ -627,13 +627,27 @@ function App() {
     const restoreSlot = async (
       slotIndex: number,
       projectPath: string,
-      terminalTabs: readonly { id: string; title?: string | null }[],
+      terminalTabs: readonly {
+        id: string;
+        title?: string | null;
+        adapter_id?: string | null;
+      }[],
       activeTab: { kind: "terminal"; id: string } | { kind: "file"; id: string },
       lastSelectedFile: string | null,
     ) => {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
-      const { paneId, tabId: firstTabId } = assignProject(slotIndex, project.path);
+      // `adapter_id` (Ticket 35): explizit übergeben, nicht ausgelassen — ein
+      // wiederhergestellter Tab startet mit genau dem gespeicherten Tool
+      // (auch `null`/eingebaute Shell), nie mit dem AKTUELLEN
+      // `terminal.defaultAdapter`-Default (der könnte sich seit dem letzten
+      // Speichern geändert haben). `assignProject`/`openTerminalTab` würden
+      // ohne Angabe genau diesen Default auflösen, s. `useGrid.ts`.
+      const { paneId, tabId: firstTabId } = assignProject(
+        slotIndex,
+        project.path,
+        terminalTabs[0]?.adapter_id ?? null,
+      );
       setRestoringSlots((current) => {
         if (!current.has(slotIndex)) return current;
         const next = new Set(current);
@@ -648,7 +662,7 @@ function App() {
       // läuft dann einfach keinmal, es bleibt beim einen Default-Tab.
       const tabIds = [firstTabId];
       for (let i = 1; i < terminalTabs.length; i += 1) {
-        tabIds.push(openTerminalTab(paneId));
+        tabIds.push(openTerminalTab(paneId, terminalTabs[i]?.adapter_id ?? null));
       }
       // Umbenennungen zurückspielen (Kontextmenü, `PaneTabs.tsx`) — je
       // Position: die frisch erzeugten `tabIds` sind ohnehin neu (Ticket 33s

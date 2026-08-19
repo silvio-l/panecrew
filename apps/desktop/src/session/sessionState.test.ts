@@ -47,10 +47,26 @@ describe("buildWindowState", () => {
 
     expect(state.slots[2]).toEqual({
       project_path: "/repo/storefront",
-      terminal_tabs: [{ id: "tab-1", title: null }],
+      terminal_tabs: [{ id: "tab-1", title: null, adapter_id: null }],
       active_tab: { kind: "terminal", id: "tab-1" },
       file_tabs: [],
-      adapter_id: null,
+    });
+  });
+
+  it("trägt den gewählten Adapter eines Terminal-Tabs ein (Ticket 35)", () => {
+    const grid = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      2,
+      "/repo/storefront",
+      "pane-1",
+      "tab-1",
+      "claude", // brandlint-ok: canonical adapter id, functional
+    );
+
+    const state = buildWindowState(LABEL, grid, {});
+
+    expect(state.slots[2]).toMatchObject({
+      terminal_tabs: [{ id: "tab-1", adapter_id: "claude" }], // brandlint-ok: canonical adapter id, functional
     });
   });
 
@@ -67,12 +83,11 @@ describe("buildWindowState", () => {
     expect(state.slots[0]).toEqual({
       project_path: "/repo/storefront",
       terminal_tabs: [
-        { id: "tab-1", title: null },
-        { id: "tab-2", title: null },
+        { id: "tab-1", title: null, adapter_id: null },
+        { id: "tab-2", title: null, adapter_id: null },
       ],
       active_tab: { kind: "terminal", id: "tab-1" },
       file_tabs: [],
-      adapter_id: null,
     });
   });
 

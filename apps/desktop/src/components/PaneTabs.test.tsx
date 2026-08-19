@@ -78,6 +78,17 @@ const chipTrigger = (name: string) => {
   return el;
 };
 
+/** Öffnet Radix' `DropdownMenu` (Adapter-Picker, Ticket 35) — jsdom feuert
+ * kein reales Pointer-Gerät, ein bloßer `fireEvent.click` allein lässt
+ * Radix' Trigger deshalb geschlossen (kein `data-state="open"`); erst der
+ * vorgeschaltete `pointerdown` bringt denselben Zustand wie ein echter
+ * Maus-Klick. */
+const openAdapterDropdown = () => {
+  const trigger = screen.getByRole("button", { name: "Terminal-Tab mit Tool öffnen" });
+  fireEvent.pointerDown(trigger, { pointerId: 1, button: 0, isPrimary: true });
+  fireEvent.click(trigger);
+};
+
 describe("PaneTabs", () => {
   it("wählt den Tab per Klick auf die Zahl aus, ohne ihn zu schließen", () => {
     const props = baseProps();
@@ -87,6 +98,40 @@ describe("PaneTabs", () => {
 
     expect(props.onSelectTerminalTab).toHaveBeenCalledWith("tab-2");
     expect(props.onCloseTerminalTab).not.toHaveBeenCalled();
+  });
+
+  describe("Adapter-Picker (Ticket 35)", () => {
+    it("öffnet mit dem \"+\"-Knopf einen Terminal-Tab ohne explizite Adapter-Wahl", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }));
+
+      // `undefined`, nicht `null`: der Aufrufer (`useGrid.ts`) löst den
+      // `terminal.defaultAdapter`-Default nur bei ECHT fehlendem Argument
+      // auf, ein explizites `null` bliebe (fälschlich) die eingebaute Shell.
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith();
+    });
+
+    it("öffnet einen Terminal-Tab mit einem bestimmten Tool über das Dropdown daneben", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      openAdapterDropdown();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Codex CLI" })); // brandlint-ok: canonical adapter display label, functional
+
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith("codex"); // brandlint-ok: canonical adapter id, functional
+    });
+
+    it("öffnet über \"Shell\" im Dropdown explizit ohne Adapter statt den Default zu übernehmen", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      openAdapterDropdown();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Shell" }));
+
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith(null);
+    });
   });
 
   it("schließt den Tab nur über das Kontextmenü, ohne ihn auszuwählen", async () => {

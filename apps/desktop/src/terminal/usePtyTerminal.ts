@@ -30,6 +30,7 @@ import {
   reportOutput,
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
+import { launchLineFor, resolveAdapter } from "./adapters";
 import {
   createDirectoryProbe,
   createSubdirectoryIndex,
@@ -101,6 +102,12 @@ export interface PtyTerminal {
 export function usePtyTerminal(
   tabId: string,
   cwd: string,
+  // Ticket 35: welcher CLI-Adapter dieser Tab beim Spawn starten soll, `null`
+  // für die eingebaute Login-Shell. Wie `cwd` nur beim allerersten Spawn
+  // relevant (der Nutzer wechselt das Tool danach nicht mehr innerhalb
+  // desselben Tabs) und deshalb genauso Teil der Effekt-Deps unten statt
+  // hinter einem Ref versteckt.
+  adapterId: string | null,
   // Cmd/Strg+1..9 wählen einen Terminal-Tab der Pane an (Ticket 18-Nachtrag)
   // — die Tab-Liste selbst lebt im Grid-Store, nicht hier. Als Ref statt
   // Effekt-Abhängigkeit gehalten (s. `selectTabRef` unten): der Haupteffekt
@@ -389,6 +396,14 @@ export function usePtyTerminal(
             backend.kill(tabId);
             return;
           }
+          // Tippt den gewählten Adapter-Befehl in die frisch gestartete
+          // Login-Shell, als hätte der Nutzer ihn selbst eingetippt und
+          // Enter gedrückt (adapters.ts' Kopfkommentar: PATH-Auflösung über
+          // die Shell-rc-Dateien statt eigenem exec). `null`/eine veraltete,
+          // nicht mehr in ADAPTERS geführte Id resolven beide gleich zur
+          // eingebauten Shell — dann bleibt dieser Aufruf ein No-Op.
+          const adapter = resolveAdapter(adapterId);
+          if (adapter) writeText(launchLineFor(adapter));
           // Zwischen fit() und dem Auflösen des Spawns kann sich der
           // Container schon wieder verändert haben — einmal nachziehen.
           syncSize();
@@ -704,7 +719,7 @@ export function usePtyTerminal(
       // der then-Zweig oben das Aufräumen (cancelled === true).
       if (sessionReady) backend.kill(tabId);
     };
-  }, [tabId, cwd, backend]);
+  }, [tabId, cwd, adapterId, backend]);
 
   // Hält höchstens einen lebenden WebGL-Kontext pro PANE statt einen pro
   // jemals geöffnetem TAB: `PaneGrid.tsx` mountet jeden Terminal-Tab dauerhaft

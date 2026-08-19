@@ -10,7 +10,7 @@ import {
 
 function pane(overrides: Partial<Pane> & Pick<Pane, "paneId" | "projectPath">): Pane {
   return {
-    terminalTabs: [{ tabId: `${overrides.paneId}-tab-1`, label: null }],
+    terminalTabs: [{ tabId: `${overrides.paneId}-tab-1`, label: null, adapterId: null }],
     activeTerminalTabId: `${overrides.paneId}-tab-1`,
     showingFile: false,
     ...overrides,
@@ -24,8 +24,8 @@ describe("groupTabUsageByPane", () => {
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
         terminalTabs: [
-          { tabId: "tab-1", label: null },
-          { tabId: "tab-2", label: "Build" },
+          { tabId: "tab-1", label: null, adapterId: null },
+          { tabId: "tab-2", label: "Build", adapterId: null },
         ],
       }),
     ];
@@ -49,8 +49,8 @@ describe("groupTabUsageByPane", () => {
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
         terminalTabs: [
-          { tabId: "tab-1", label: null },
-          { tabId: "tab-2", label: null },
+          { tabId: "tab-1", label: null, adapterId: null },
+          { tabId: "tab-2", label: null, adapterId: null },
         ],
       }),
     ];
@@ -72,9 +72,9 @@ describe("groupTabUsageByPane", () => {
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
         terminalTabs: [
-          { tabId: "cool", label: null },
-          { tabId: "ram-heavy", label: null },
-          { tabId: "cpu-heavy", label: null },
+          { tabId: "cool", label: null, adapterId: null },
+          { tabId: "ram-heavy", label: null, adapterId: null },
+          { tabId: "cpu-heavy", label: null, adapterId: null },
         ],
       }),
     ];
@@ -105,7 +105,7 @@ describe("groupTabUsageByWindow", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [{ tabId: "tab-1", label: null }],
+        terminalTabs: [{ tabId: "tab-1", label: null, adapterId: null }],
       }),
     ];
     const groups = groupTabUsageByWindow(
@@ -126,7 +126,7 @@ describe("groupTabUsageByWindow", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [{ tabId: "own-tab", label: null }],
+        terminalTabs: [{ tabId: "own-tab", label: null, adapterId: null }],
       }),
     ];
     const groups = groupTabUsageByWindow(
@@ -266,8 +266,8 @@ describe("paneStructuresFromPanes", () => {
         paneId: "pane-a",
         projectPath: "/tmp/mein-projekt",
         terminalTabs: [
-          { tabId: "tab-1", label: null },
-          { tabId: "tab-2", label: "Build" },
+          { tabId: "tab-1", label: null, adapterId: null },
+          { tabId: "tab-2", label: "Build", adapterId: null },
         ],
       }),
     ];

@@ -1,4 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { defaultAdapterIdFromSetting } from "../terminal/adapters";
+import { useSettings } from "../settings/useSettings";
 import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
@@ -31,9 +33,15 @@ export interface Grid {
    * neue). Gibt beide synchron zurück (sie entstehen hier, nicht erst im
    * nächsten Render) — die Sitzungs-Wiederherstellung (Ticket 06, seit
    * Ticket 18 auch für weitere Terminal-Tabs) braucht sie sofort. */
+  /** `adapterId` (Ticket 35): omitted (`undefined`) resolves the
+   * `terminal.defaultAdapter` setting for the pane's first tab — pass an
+   * explicit value (a specific adapter id, or `null` for the built-in
+   * shell) to override it, the restore path (`App.tsx`s `restoreSlot`) uses
+   * this for a persisted tab's saved choice. */
   assignProject: (
     slotIndex: number,
     projectPath: string,
+    adapterId?: string | null,
   ) => { paneId: string; tabId: string };
   closePane: (paneId: string) => void;
   /** Tauscht die Slot-Positionen zweier belegter Panes (Ticket 20). Bewusst
@@ -55,8 +63,10 @@ export interface Grid {
   switchTemplate: (target: TemplateId) => void;
   /** Öffnet einen weiteren Terminal-Tab in der Pane und erzeugt dafür eine
    * frische `tabId` — dieselbe Erzeugungs-Verantwortung wie `assignProject`
-   * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
-  openTerminalTab: (paneId: string) => string;
+   * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund.
+   * `adapterId` (Ticket 35): dieselbe omitted-vs-explizit-Semantik wie
+   * `assignProject` oben. */
+  openTerminalTab: (paneId: string, adapterId?: string | null) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
   /** Verschiebt einen Terminal-Tab an eine Position (`insertIndex`,
    * Einfüge-Slot vor dem Herauslösen gezählt; ohne Angabe: ans Ende) einer
@@ -113,18 +123,37 @@ export interface Grid {
 export function useGrid(): Grid {
   const [state, setState] = useState<GridState>(INITIAL_GRID_STATE);
 
+  // Ticket 35: der `terminal.defaultAdapter`-Wert lebt in einem Ref statt
+  // einer `useCallback`-Abhängigkeit, aus genau dem Grund, den der
+  // Kopfkommentar unten für `assignProject`/`closePane` nennt — die
+  // Callbacks sollen referenzstabil bleiben, nicht bei jeder
+  // Einstellungsänderung neu entstehen. Der Effekt liest trotzdem immer den
+  // aktuellen Wert beim nächsten Aufruf, nicht den vom Mount-Zeitpunkt.
+  const { values: settingsValues } = useSettings();
+  const defaultAdapterIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    defaultAdapterIdRef.current = defaultAdapterIdFromSetting(
+      settingsValues["terminal.defaultAdapter"],
+    );
+  }, [settingsValues]);
+
   // Referenzstabil (leere Dep-Arrays, beide schließen nur über `setState`s
   // Updater-Form): sonst müsste jeder `useEffect`, der `assignProject`/
   // `closePane` aufruft (der CLI-Start in App.tsx), sie in sein Dep-Array
   // aufnehmen und bei jedem Grid-Update erneut feuern.
-  const assignProject = useCallback((slotIndex: number, projectPath: string) => {
-    const paneId = crypto.randomUUID();
-    const tabId = crypto.randomUUID();
-    setState((current) =>
-      assignProjectToSlot(current, slotIndex, projectPath, paneId, tabId),
-    );
-    return { paneId, tabId };
-  }, []);
+  const assignProject = useCallback(
+    (slotIndex: number, projectPath: string, adapterId?: string | null) => {
+      const paneId = crypto.randomUUID();
+      const tabId = crypto.randomUUID();
+      const resolvedAdapterId =
+        adapterId === undefined ? defaultAdapterIdRef.current : adapterId;
+      setState((current) =>
+        assignProjectToSlot(current, slotIndex, projectPath, paneId, tabId, resolvedAdapterId),
+      );
+      return { paneId, tabId };
+    },
+    [],
+  );
 
   const closePane = useCallback((paneId: string) => {
     setState((current) => closePaneInState(current, paneId));
@@ -148,9 +177,10 @@ export function useGrid(): Grid {
     setState((current) => focusPaneInState(current, paneId));
   }, []);
 
-  const openTerminalTab = useCallback((paneId: string) => {
+  const openTerminalTab = useCallback((paneId: string, adapterId?: string | null) => {
     const tabId = crypto.randomUUID();
-    setState((current) => openTerminalTabInState(current, paneId, tabId));
+    const resolvedAdapterId = adapterId === undefined ? defaultAdapterIdRef.current : adapterId;
+    setState((current) => openTerminalTabInState(current, paneId, tabId, resolvedAdapterId));
     return tabId;
   }, []);
 

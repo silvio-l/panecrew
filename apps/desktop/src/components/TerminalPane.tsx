@@ -37,6 +37,7 @@ export function TerminalPane({
   paneId,
   slotIndex,
   tabId,
+  adapterId,
   projectPath,
   projectName,
   focused,
@@ -64,6 +65,10 @@ export function TerminalPane({
    * (eine Pane kann mehrere `TerminalPane`-Mounts gleichzeitig haben, je
    * einen pro Terminal-Tab). Geht 1:1 in `usePtyTerminal`. */
   tabId: string;
+  /** Ticket 35: welcher CLI-Adapter dieser Tab beim Spawn starten soll, `null`
+   * für die eingebaute Login-Shell — kommt 1:1 aus `Pane.terminalTabs[].adapterId`
+   * (`PaneGrid.tsx`'s `TerminalTabSurface`), geht 1:1 in `usePtyTerminal`. */
+  adapterId: string | null;
   projectPath: string;
   projectName: string;
   /** Genau eine Pane im ganzen Grid ist das (`state.focusedPaneId`). Trägt
@@ -171,6 +176,7 @@ export function TerminalPane({
   } = usePtyTerminal(
     tabId,
     projectPath,
+    adapterId,
     selectTerminalTabByNumber,
     closeActiveTerminalTab,
     tabs.onOpenTerminalTab,

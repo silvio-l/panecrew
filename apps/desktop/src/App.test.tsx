@@ -4021,6 +4021,56 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     ).toHaveLength(0);
   });
 
+  it("startet einen wiederhergestellten Terminal-Tab wieder mit seinem gespeicherten Adapter (Ticket 35)", async () => {
+    // Der Restore-Pfad (`App.tsx`s `restoreSlot`) reicht `terminal_tabs[i].
+    // adapter_id` explizit an `assignProject`/`openTerminalTab` durch, statt
+    // sie auszulassen — sonst würde `useGrid.ts` den AKTUELLEN
+    // `terminal.defaultAdapter`-Default auflösen statt des gespeicherten
+    // Tools. Zweiter Tab bleibt ohne `adapter_id` (eingebaute Shell), um
+    // beide Zweige in einem Test abzudecken.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [
+                    { id: "tab-1", adapter_id: "codex" }, // brandlint-ok: canonical adapter id, functional
+                    { id: "tab-2" },
+                  ],
+                  active_tab: { kind: "terminal", id: "tab-1" },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findAllByLabelText("Terminal storefront")).toHaveLength(2);
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_write"),
+      ).toHaveLength(1);
+    });
+    expect(invokeMock).toHaveBeenCalledWith(
+      "pty_write",
+      // `ptyBackend.ts`s echter `write()` reicht `Array.from(data)` an
+      // `invoke` durch (IPC-Payloads sind JSON, kein `Uint8Array`) — der
+      // Vergleich hier spiegelt genau das, nicht das rohe `Uint8Array`, das
+      // `launchLineFor`/`TextEncoder` erzeugen.
+      expect.objectContaining({ data: Array.from(new TextEncoder().encode("codex\r")) }), // brandlint-ok: canonical adapter id, functional
+    );
+  });
+
   it("öffnet die zuletzt ausgewählte Datei der wiederhergestellten Pane erneut", async () => {
     invokeMock.mockImplementation((cmd, args) => {
       if (cmd === "session_load") {
@@ -4189,7 +4239,11 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
           | {
               window?: {
                 slots: {
-                  terminal_tabs: { id: string; title: string | null }[];
+                  terminal_tabs: {
+                    id: string;
+                    title: string | null;
+                    adapter_id: string | null;
+                  }[];
                   active_tab: { kind: string; id: string };
                 }[];
               };
@@ -4203,10 +4257,11 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
       // GENAU diese id verweist.
       expect(slot).toEqual({
         project_path: "/Users/dev/projects/storefront",
-        terminal_tabs: [{ id: expect.any(String) as string, title: null }],
+        terminal_tabs: [
+          { id: expect.any(String) as string, title: null, adapter_id: null },
+        ],
         active_tab: { kind: "terminal", id: expect.any(String) as string },
         file_tabs: [],
-        adapter_id: null,
       });
       expect(slot?.active_tab).toEqual({
         kind: "terminal",

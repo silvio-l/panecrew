@@ -62,11 +62,25 @@ describe("gridState", () => {
       {
         paneId: "pane-1",
         projectPath: "/repo/storefront",
-        terminalTabs: [{ tabId: "tab-1", label: null }],
+        terminalTabs: [{ tabId: "tab-1", label: null, adapterId: null }],
         activeTerminalTabId: "tab-1",
         showingFile: false,
       },
       null,
+    ]);
+  });
+
+  it("übernimmt eine übergebene adapterId für den ersten Tab einer neu zugewiesenen Pane (Ticket 35)", () => {
+    const next = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      2,
+      "/repo/storefront",
+      "pane-1",
+      "tab-1",
+      "codex", // brandlint-ok: canonical adapter id, functional
+    );
+    expect((next.slots[2] as Pane).terminalTabs).toEqual([
+      { tabId: "tab-1", label: null, adapterId: "codex" }, // brandlint-ok: canonical adapter id, functional
     ]);
   });
 
@@ -389,10 +403,26 @@ describe("gridState", () => {
       const next = openTerminalTab(withOne, "pane-0", "tab-1");
       const pane = next.slots[0] as Pane;
       expect(pane.terminalTabs).toEqual([
-        { tabId: "tab-0", label: null },
-        { tabId: "tab-1", label: null },
+        { tabId: "tab-0", label: null, adapterId: null },
+        { tabId: "tab-1", label: null, adapterId: null },
       ]);
       expect(pane.activeTerminalTabId).toBe("tab-1");
+    });
+
+    it("übernimmt eine übergebene adapterId für den neuen Tab, ohne den bestehenden zu verändern (Ticket 35)", () => {
+      const withOne = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/a",
+        "pane-0",
+        "tab-0",
+      );
+      const next = openTerminalTab(withOne, "pane-0", "tab-1", "claude"); // brandlint-ok: canonical adapter id, functional
+      const pane = next.slots[0] as Pane;
+      expect(pane.terminalTabs).toEqual([
+        { tabId: "tab-0", label: null, adapterId: null },
+        { tabId: "tab-1", label: null, adapterId: "claude" }, // brandlint-ok: canonical adapter id, functional
+      ]);
     });
 
     it("verlässt dabei einen gerade sichtbaren File-Tab", () => {
@@ -427,7 +457,9 @@ describe("gridState", () => {
     it("entfernt einen Terminal-Tab, ohne die anderen anzutasten", () => {
       const withTwo = twoTabPane();
       const next = closeTerminalTab(withTwo, "pane-0", "tab-0");
-      expect((next.slots[0] as Pane).terminalTabs).toEqual([{ tabId: "tab-1", label: null }]);
+      expect((next.slots[0] as Pane).terminalTabs).toEqual([
+        { tabId: "tab-1", label: null, adapterId: null },
+      ]);
     });
 
     it("übernimmt der Vorgänger, wenn der aktive Tab geschlossen wird", () => {

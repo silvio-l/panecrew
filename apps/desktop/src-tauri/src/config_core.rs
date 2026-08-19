@@ -62,6 +62,24 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Number,
         serde_json::json!(1),
     ))?;
+    // Ticket 35: which adapter a freshly opened terminal tab starts with
+    // when the user doesn't pick one explicitly from the picker's dropdown.
+    // "shell" is the built-in login shell, same as an absent per-tab
+    // `adapter_id` in the session schema — kept as an explicit enum member
+    // rather than reusing `null`/absent here so this setting round-trips
+    // through the generic Enum settings control like every other one.
+    registry.register(entry(
+        "terminal.defaultAdapter",
+        SettingType::Enum(vec![
+            "shell".into(),
+            "claude".into(),  // brandlint-ok: canonical adapter id, functional
+            "codex".into(),   // brandlint-ok: canonical adapter id, functional
+            "gemini".into(),  // brandlint-ok: canonical adapter id, functional
+            "copilot".into(), // brandlint-ok: canonical adapter id, functional
+            "opencode".into(),
+        ]),
+        serde_json::json!("shell"),
+    ))?;
 
     // Explorer
     registry.register(entry(
@@ -137,10 +155,39 @@ mod tests {
         assert!(keys.contains(&"terminal.fontSize"));
         assert!(keys.contains(&"terminal.activityIdleMs"));
         assert!(keys.contains(&"terminal.activityLineThreshold"));
+        assert!(keys.contains(&"terminal.defaultAdapter"));
         assert!(keys.contains(&"explorer.confirmBeforeDelete"));
         assert!(keys.contains(&"appearance.theme"));
         assert!(keys.contains(&"appearance.language"));
         assert!(keys.contains(&"grid.defaultTemplate"));
+    }
+
+    /// Ticket 35: the fixed adapter list ("shell" plus a handful of
+    /// in-code-known CLI tools) is duplicated here as the enum's own
+    /// options, same reasoning as `grid_default_template_covers_all...`
+    /// below — the frontend's `terminal/adapters.ts` is the live source of
+    /// truth, this test just keeps the two from silently drifting apart.
+    #[test]
+    fn terminal_default_adapter_defaults_to_shell_with_the_fixed_tool_list() {
+        let mut registry = ConfigRegistry::new();
+        register_core_settings(&mut registry).unwrap();
+
+        let entry = registry
+            .find("terminal.defaultAdapter")
+            .expect("should be registered");
+
+        assert_eq!(entry.default, serde_json::json!("shell"));
+        assert_eq!(
+            entry.setting_type,
+            SettingType::Enum(vec![
+                "shell".into(),
+                "claude".into(),  // brandlint-ok: canonical adapter id, functional
+                "codex".into(),   // brandlint-ok: canonical adapter id, functional
+                "gemini".into(),  // brandlint-ok: canonical adapter id, functional
+                "copilot".into(), // brandlint-ok: canonical adapter id, functional
+                "opencode".into(),
+            ])
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { ContextMenu } from "radix-ui";
+import { ContextMenu, DropdownMenu } from "radix-ui";
 import {
   CHROME_FOCUS_RING,
   CHROME_MENU_CONTENT_CLASS,
@@ -16,6 +16,18 @@ import { useDetectedToolId } from "../terminal/useDetectedTool";
 import { markTabViewed, useTerminalAwaitingAttention } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
+import { ADAPTERS } from "../terminal/adapters";
+
+// Ticket 35: die Optionen des Adapter-Dropdowns neben dem "+"-Knopf —
+// eingebaute Shell (`id: null`) plus die feste `ADAPTERS`-Liste aus
+// `adapters.ts`. `labelKey` zeigt auf dieselben `paneTabs.tool.*`-Strings,
+// die auch die Tool-Badges der Chips selbst nutzen (Kopfkommentar dieser
+// Datei) — keine zweite Übersetzung für dieselben Namen. Modulweit statt je
+// Render neu gebaut, da rein statisch.
+const ADAPTER_PICKER_OPTIONS: readonly { id: string | null; labelKey: string }[] = [
+  { id: null, labelKey: "paneTabs.tool.shell" },
+  ...ADAPTERS.map((adapter) => ({ id: adapter.id, labelKey: `paneTabs.tool.${adapter.id}` })),
+];
 
 // Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
 // durchnummeriert) plus höchstens ein File-Tab, immer hinter allen
@@ -326,7 +338,11 @@ export interface PaneTabsProps {
   fileName: string | null;
   fileDirty: boolean;
   onSelectTerminalTab: (tabId: string) => void;
-  onOpenTerminalTab: () => void;
+  /** `adapterId` (Ticket 35): omitted für den einfachen "+"-Klick (löst den
+   * `terminal.defaultAdapter`-Default auf, s. `useGrid.ts`), explizit
+   * gesetzt vom Adapter-Dropdown daneben — `null` für die eingebaute Shell,
+   * sonst eine feste `adapters.ts`-Id. */
+  onOpenTerminalTab: (adapterId?: string | null) => void;
   onCloseTerminalTab: (tabId: string) => void;
   /** Browser-übliches "Andere Tabs schließen" (Kontextmenü) — schließt alle
    * Terminal-Tabs AUSSER `tabId` in einem Zug, EIN gemeinsamer Guard statt
@@ -475,12 +491,44 @@ export function PaneTabs({
         <button
           type="button"
           aria-label={t("paneTabs.openTerminalTab")}
-          onClick={onOpenTerminalTab}
+          onClick={() => onOpenTerminalTab()}
           className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
           <PlusIcon />
         </button>
       </ChromeTooltip>
+      {/* Ticket 35: Dropdown neben dem "+"-Knopf — der Klick selbst startet
+          immer schon den `terminal.defaultAdapter`-Default (Knopf oben),
+          dieses Menü bietet die Alternativen dazu an, genau wie im Ticket
+          gefordert ("ein Dropdown daneben"). Eigener Trigger statt eines
+          Untermenüs am "+"-Knopf: der bleibt so ein einfacher, sofortiger
+          Klick ohne Menü-Umweg für den häufigen Fall. */}
+      <DropdownMenu.Root>
+        <ChromeTooltip label={t("paneTabs.chooseAdapter")}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label={t("paneTabs.chooseAdapter")}
+              className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            >
+              <ChevronDownIcon />
+            </button>
+          </DropdownMenu.Trigger>
+        </ChromeTooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className={`min-w-40 ${CHROME_MENU_CONTENT_CLASS}`}>
+            {ADAPTER_PICKER_OPTIONS.map((option) => (
+              <DropdownMenu.Item
+                key={option.id ?? "shell"}
+                onSelect={() => onOpenTerminalTab(option.id)}
+                className={CHROME_MENU_ITEM_CLASS}
+              >
+                {t(option.labelKey)}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
       {fileName !== null && (
         <PaneTab
           label={fileName}
@@ -1118,6 +1166,24 @@ function PlusIcon() {
       aria-hidden="true"
     >
       <path d="M6 2v8M2 6h8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 4.5 6 8l3-3.5" />
     </svg>
   );
 }

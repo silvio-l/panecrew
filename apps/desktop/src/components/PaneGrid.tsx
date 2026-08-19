@@ -163,7 +163,9 @@ export function PaneGrid({
    * drin (`usePaneDrag`), nach außen geht nur ihr Ergebnis. */
   onSwapPanes: (sourcePaneId: string, targetPaneId: string) => void;
   onFocusPane: (paneId: string) => void;
-  onOpenTerminalTab: (paneId: string) => void;
+  /** `adapterId` (Ticket 35): dieselbe omitted-vs-explizit-Semantik wie
+   * `useGrid.ts`s `Grid.openTerminalTab`, das hier drunter sitzt. */
+  onOpenTerminalTab: (paneId: string, adapterId?: string | null) => void;
   onCloseTerminalTab: (paneId: string, tabId: string) => void;
   /** Kontextmenü-Aktion "Andere Tabs schließen" (`PaneTabs.tsx`). */
   onCloseOtherTerminalTabs: (paneId: string, tabId: string) => void;
@@ -463,7 +465,8 @@ export function PaneGrid({
         dropSettle,
         onSelectTerminalTab: (tabId) =>
           onSwitchToTerminalTab(pane.paneId, tabId),
-        onOpenTerminalTab: () => onOpenTerminalTab(pane.paneId),
+        onOpenTerminalTab: (adapterId?: string | null) =>
+          onOpenTerminalTab(pane.paneId, adapterId),
         onCloseTerminalTab: (tabId) => onCloseTerminalTab(pane.paneId, tabId),
         onCloseOtherTerminalTabs: (tabId) =>
           onCloseOtherTerminalTabs(pane.paneId, tabId),
@@ -843,6 +846,10 @@ function TerminalTabSurface({
         paneId={view.pane.paneId}
         slotIndex={view.slotIndex}
         tabId={tabId}
+        adapterId={
+          view.pane.terminalTabs.find((tab) => tab.tabId === tabId)?.adapterId ??
+          null
+        }
         projectPath={view.pane.projectPath}
         projectName={projectNameFromPath(view.pane.projectPath)}
         focused={view.focused}

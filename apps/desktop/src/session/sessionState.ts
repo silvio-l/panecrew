@@ -32,6 +32,12 @@ interface PersistedTerminalTab {
   /** Nutzer-Umbenennung eines Tabs. Nummer/Farbe sind index-abgeleiteter
    * Anzeigezustand (siehe `session_store.rs`), nicht persistiert. */
   title?: string | null;
+  /** Gewählter CLI-Tool-Adapter dieses Tabs (Ticket 35) — pro Terminal-Tab,
+   * nicht mehr pro Pane, seit eine Pane mehrere unabhängig gestartete
+   * Terminal-Tabs haben kann (Ticket 18); dieselbe Verschiebung wie
+   * `session_store.rs`s `PersistedTerminalTab.adapter_id`. `null`/fehlend
+   * heißt eingebaute Login-Shell. */
+  adapter_id?: string | null;
 }
 
 interface PersistedFileTab {
@@ -65,9 +71,6 @@ interface PersistedPane {
    * Verhalten bleibt trotzdem "höchstens ein Eintrag", dieses Modul baut nie
    * mehr als einen (Ticket 34 hebt die Grenze im Live-Zustand auf). */
   file_tabs?: PersistedFileTab[];
-  /** Gewählter CLI-Tool-Adapter (Ticket 12s Adapter-Manifest); `null`/fehlend
-   * heißt nackte Shell. */
-  adapter_id?: string | null;
 }
 
 export interface PersistedWindow {
@@ -175,13 +178,13 @@ export function buildWindowState(
         terminal_tabs: slot.terminalTabs.map((tab) => ({
           id: tab.tabId,
           title: tab.label,
+          adapter_id: tab.adapterId,
         })),
         active_tab: showingFile
           ? { kind: "file", id: fileTabId }
           : { kind: "terminal", id: slot.activeTerminalTabId },
         file_tabs:
           lastSelectedFile === null ? [] : [{ id: fileTabId, path: lastSelectedFile }],
-        adapter_id: null,
       };
     }),
     split_ratios: [...grid.splitRatios],
@@ -213,8 +216,8 @@ export function restoredTemplate(session: SessionState, label: string): Template
 }
 
 /** Die Slots dieses Fensters — Restore-Code (`App.tsx`) liest
- * `slot.project_path`, `slot.terminal_tabs`, `slot.active_tab` und
- * `slot.file_tabs`; `adapter_id` bleibt noch unverdrahtet (Ticket 35). */
+ * `slot.project_path`, `slot.terminal_tabs` (samt je Tab dessen
+ * `adapter_id`, Ticket 35), `slot.active_tab` und `slot.file_tabs`. */
 export function restoredSlots(session: SessionState, label: string): (PersistedPane | null)[] {
   return restoredWindow(session, label)?.slots ?? [];
 }

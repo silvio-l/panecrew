@@ -24,6 +24,7 @@ vi.mock("../terminal/usePtyTerminal", () => ({
   usePtyTerminal: (
     _tabId: string,
     _cwd: string,
+    _adapterId: string | null,
     _onSelectTerminalTabByNumber: (number: number) => void,
     _onCloseTerminalTab: () => void,
     _onOpenTerminalTab: () => void,
@@ -71,6 +72,7 @@ const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
       paneId="pane-1"
       slotIndex={0}
       tabId="tab-1"
+      adapterId={null}
       projectPath="/tmp/projekt"
       projectName="projekt"
       focused={focused}
@@ -207,6 +209,7 @@ describe("TerminalPane", () => {
           paneId={paneId}
           slotIndex={0}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused
@@ -249,6 +252,7 @@ describe("TerminalPane", () => {
           paneId={paneId}
           slotIndex={0}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused
@@ -291,6 +295,7 @@ describe("TerminalPane", () => {
           paneId="pane-1"
           slotIndex={slotIndex}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused

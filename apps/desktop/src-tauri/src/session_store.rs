@@ -63,6 +63,17 @@ pub struct PersistedTerminalTab {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Chosen CLI-tool adapter for this specific terminal tab (Ticket 35:
+    /// moved here from `PersistedPane` — a pane can hold several
+    /// independently-started terminal tabs since Ticket 18, so one
+    /// pane-level choice no longer made sense). One of the fixed,
+    /// in-code adapter ids (`terminal/adapters.ts`); `None` means the
+    /// built-in login shell. An id absent from that fixed list (adapter
+    /// removed from the code) is a stale reference the frontend resolves
+    /// back to the login shell at spawn time, not a load error — see
+    /// `resolveAdapter` in `terminal/adapters.ts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_id: Option<String>,
 }
 
 /// A file tab of a pane. `id` (Ticket 33) is what `ActiveTab::File`
@@ -100,11 +111,6 @@ pub struct PersistedPane {
     pub active_tab: ActiveTab,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_tabs: Vec<PersistedFileTab>,
-    /// Chosen CLI-tool adapter (Ticket 17 cross-cutting note: identified as a
-    /// missing field in round-1 research, added here). References the
-    /// adapter manifest from Ticket 12; `None` means a bare shell.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub adapter_id: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -455,12 +461,12 @@ mod tests {
             terminal_tabs: vec![PersistedTerminalTab {
                 id: "tab-1".to_string(),
                 title: None,
+                adapter_id: None,
             }],
             active_tab: ActiveTab::Terminal {
                 id: "tab-1".to_string(),
             },
             file_tabs: Vec::new(),
-            adapter_id: None,
         })
     }
 
@@ -516,6 +522,39 @@ mod tests {
         assert_eq!(read_session(&fixture.0), None);
     }
 
+    /// Ticket 35 moved `adapter_id` from `PersistedPane` to
+    /// `PersistedTerminalTab` — unlike the v1→v2 and v2→v3 cutovers above,
+    /// this is not a hard break: a pre-Ticket-35 file's pane-level
+    /// `adapter_id` is just an unknown field to serde, silently ignored
+    /// rather than a parse failure, so a restart after upgrading loses the
+    /// old per-pane choice (falls back to the built-in shell on every tab)
+    /// instead of refusing to load the whole session.
+    #[test]
+    fn a_pre_ticket_35_pane_level_adapter_id_is_ignored_rather_than_a_parse_error() {
+        let fixture = Fixture::new("pane-level-adapter-id");
+        let project = fixture.0.join("project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let project = project.to_string_lossy().into_owned();
+        std::fs::write(
+            session_path(&fixture.0),
+            format!(
+                r#"{{"windows":[{{"label":"main","template":"single","slots":[
+                    {{"project_path":{project:?},
+                     "terminal_tabs":[{{"id":"tab-1"}}],
+                     "active_tab":{{"kind":"terminal","id":"tab-1"}},
+                     "adapter_id":"demo-agent"}}
+                ]}}]}}"#
+            ),
+        )
+        .expect("fixture write");
+
+        let state = read_session(&fixture.0).expect("should still parse despite the stray field");
+        let pane = state.windows[0].slots[0]
+            .as_ref()
+            .expect("slot should be present");
+        assert_eq!(pane.terminal_tabs[0].adapter_id, None);
+    }
+
     #[test]
     fn round_trips_the_full_v3_state_through_write_and_read() {
         let fixture = Fixture::new("roundtrip");
@@ -539,10 +578,12 @@ mod tests {
                                 PersistedTerminalTab {
                                     id: "tab-1".to_string(),
                                     title: Some("build".to_string()),
+                                    adapter_id: Some("claude".to_string()), // brandlint-ok: canonical adapter id, functional round-trip test
                                 },
                                 PersistedTerminalTab {
                                     id: "tab-2".to_string(),
                                     title: None,
+                                    adapter_id: None,
                                 },
                             ],
                             active_tab: ActiveTab::Terminal {
@@ -552,7 +593,6 @@ mod tests {
                                 id: "file-1".to_string(),
                                 path: "src/App.tsx".to_string(),
                             }],
-                            adapter_id: Some("demo-agent".to_string()),
                         }),
                         terminal_only_pane(&project_b),
                     ],

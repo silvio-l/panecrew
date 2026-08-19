@@ -166,6 +166,7 @@
     "selectView": "Ansicht wählen",
     "terminalTab": "Terminal {{number}}",
     "openTerminalTab": "Weiteren Terminal-Tab öffnen",
+    "chooseAdapter": "Terminal-Tab mit Tool öffnen",
     "closeTerminalTab": "Terminal {{number}} schließen",
     "closeOtherTerminalTabs_one": "1 anderen Tab schließen",
     "closeOtherTerminalTabs_other": "{{count}} andere Tabs schließen",
@@ -337,6 +338,18 @@
         "activityLineThreshold": {
           "label": "Aktivitäts-Schwelle (Zeilen)",
           "description": "Mindestzahl neuer Zeilen, die ein Terminal-Tab produzieren muss, um überhaupt als \"hat etwas getan\" zu gelten — ein frisch geöffneter, noch leerer Shell-Tab wird dadurch nicht sofort als \"wartet auf dich\" markiert."
+        },
+        "defaultAdapter": {
+          "label": "Standard-Tool für neue Terminal-Tabs",
+          "description": "Womit ein neu geöffneter Terminal-Tab direkt startet, ohne dass du es im Dropdown auswählen musst. Ein Klick auf das Dropdown bietet weiterhin jede Alternative an.",
+          "options": {
+            "shell": "Shell",
+            "claude": "Claude Code",
+            "codex": "Codex",
+            "gemini": "Gemini CLI",
+            "copilot": "GitHub Copilot CLI",
+            "opencode": "opencode"
+          }
         }
       },
       "explorer": {

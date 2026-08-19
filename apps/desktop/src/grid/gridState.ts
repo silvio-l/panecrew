@@ -63,6 +63,14 @@ export const DEFAULT_TEMPLATE: TemplateId = "quad";
 interface TerminalTab {
   tabId: string;
   label: string | null;
+  /** Which fixed CLI-tool adapter this tab launches with (Ticket 35),
+   * `null` meaning the built-in login shell — same convention as the
+   * persisted `PersistedTerminalTab.adapter_id` this mirrors
+   * (`session_store.rs`). Like `tabId`, this module never picks a value
+   * itself (header comment): the caller resolves it (picker selection or
+   * the `terminal.defaultAdapter` setting) before `assignProjectToSlot`/
+   * `openTerminalTab` is called. */
+  adapterId: string | null;
 }
 
 export interface Pane {
@@ -270,13 +278,17 @@ export function assignProjectToSlot(
   projectPath: string,
   paneId: string,
   tabId: string,
+  // Ticket 35: caller-resolved (picker selection or the
+  // `terminal.defaultAdapter` setting), optional so every pre-Ticket-35
+  // call site keeps compiling unchanged. `null` = built-in login shell.
+  adapterId: string | null = null,
 ): GridState {
   if (slotIndex < 0 || slotIndex >= state.slots.length) return state;
   const nextSlots = state.slots.slice();
   nextSlots[slotIndex] = {
     paneId,
     projectPath,
-    terminalTabs: [{ tabId, label: null }],
+    terminalTabs: [{ tabId, label: null, adapterId }],
     activeTerminalTabId: tabId,
     showingFile: false,
   };
@@ -326,6 +338,8 @@ export function openTerminalTab(
   state: GridState,
   paneId: string,
   tabId: string,
+  // Ticket 35, same reasoning as `assignProjectToSlot`'s own `adapterId`.
+  adapterId: string | null = null,
 ): GridState {
   const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
   if (index === -1) return state;
@@ -334,7 +348,7 @@ export function openTerminalTab(
   const nextSlots = state.slots.slice();
   nextSlots[index] = {
     ...pane,
-    terminalTabs: [...pane.terminalTabs, { tabId, label: null }],
+    terminalTabs: [...pane.terminalTabs, { tabId, label: null, adapterId }],
     activeTerminalTabId: tabId,
     showingFile: false,
   };

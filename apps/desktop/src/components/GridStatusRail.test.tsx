@@ -10,6 +10,7 @@ const pane = (paneId: string, tabs: number): Pane => ({
   terminalTabs: Array.from({ length: tabs }, (_, i) => ({
     tabId: `${paneId}-tab-${String(i)}`,
     label: null,
+    adapterId: null,
   })),
   activeTerminalTabId: `${paneId}-tab-0`,
   showingFile: false,
