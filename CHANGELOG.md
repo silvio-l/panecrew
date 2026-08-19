@@ -42,6 +42,14 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.0-nightly.15] - 2026-08-20
+### Fixed
+- Fixed a bug where the app could crash immediately on launch — a
+  background dependency tried to load a library the operating system
+  blocked, aborting startup before any window opened.
+- Fixed the "Resume" button on a paused terminal tab doing nothing a
+  few seconds after pausing it.
+
 ## [0.1.0-nightly.14] - 2026-08-19
 ### Added
 - Typing `://` at the start of a terminal line (or after a space) now opens

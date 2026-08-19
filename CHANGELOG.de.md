@@ -44,6 +44,15 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.0-nightly.15] - 2026-08-20
+### Behoben
+- Einen Fehler behoben, bei dem die App direkt beim Start abstürzen
+  konnte — eine Hintergrund-Abhängigkeit versuchte, eine Bibliothek zu
+  laden, die das Betriebssystem blockierte, wodurch der Start abbrach,
+  bevor sich ein Fenster öffnete.
+- Den "Fortsetzen"-Button an einem pausierten Terminal-Tab behoben, der
+  wenige Sekunden nach dem Pausieren wirkungslos wurde.
+
 ## [0.1.0-nightly.14] - 2026-08-19
 ### Hinzugefügt
 - Tippt man am Zeilenanfang (oder nach einem Leerzeichen) in einem
