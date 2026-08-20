@@ -56,6 +56,12 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
+## [0.1.397] - 2026-08-20 (Nightly)
+### Fixed
+- Fixed a bug where a coding-agent CLI session started inside a pane could
+  inherit PaneCrew's own environment markers and wrongly conclude it was a
+  managed sub-session, silently disabling its own conversation history.
+
 ## [0.1.0-nightly.15] - 2026-08-20
 ### Fixed
 - Fixed a bug where the app could crash immediately on launch — a

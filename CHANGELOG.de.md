@@ -59,6 +59,13 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.397] - 2026-08-20 (Nightly)
+### Behoben
+- Einen Fehler behoben, bei dem eine in einem Pane gestartete
+  Coding-Agent-CLI-Sitzung PaneCrews eigene Umgebungsmarker erben und sich
+  fälschlich für eine verwaltete Kindsitzung halten konnte, wodurch sie
+  ihren eigenen Gesprächsverlauf stillschweigend nicht mehr speicherte.
+
 ## [0.1.0-nightly.15] - 2026-08-20
 ### Behoben
 - Einen Fehler behoben, bei dem die App direkt beim Start abstürzen
