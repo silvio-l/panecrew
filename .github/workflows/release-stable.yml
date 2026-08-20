@@ -34,6 +34,10 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
+    # See release-nightly.yml's identical timeout comment (2026-08-20
+    # incident: `codesign --timestamp` hung indefinitely against Apple's
+    # timestamp authority) -- same hang risk, same steps, same fix.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
@@ -77,6 +81,7 @@ jobs:
       # library validation), which only shows up once the artifact runs.
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'macos-latest'
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}
@@ -122,6 +127,7 @@ jobs:
 
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'macos-latest'
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}
@@ -143,6 +149,7 @@ jobs:
       # Windows: no build/smoke/republish split, see release-nightly.yml.
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'windows-latest'
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.STABLE_TAURI_SIGNING_PRIVATE_KEY }}

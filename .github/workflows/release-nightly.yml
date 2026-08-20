@@ -50,6 +50,13 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
+    # Backstop against a hung step running to GitHub's 360-minute default job
+    # timeout on a paid macOS runner (2026-08-20 incident: `codesign
+    # --timestamp` hung indefinitely reaching out to Apple's timestamp
+    # authority, silent with no further log output — caught manually after
+    # ~18 minutes instead of running for hours). Real end-to-end job time is
+    # ~8-10 minutes on both platforms; this leaves generous headroom.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -149,6 +156,11 @@ jobs:
       # for why Windows keeps the original single-step build+publish below.
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'macos-latest'
+        # Real baseline ~5-6 minutes (build + sign + notarize); see the job-
+        # level timeout comment above for why this needs its own bound too --
+        # a step timeout fails fast on exactly this step instead of waiting
+        # for the whole-job backstop.
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
@@ -212,6 +224,10 @@ jobs:
       # kompromittierter Nightly-Key darf Stable nicht mitgefährden.
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'macos-latest'
+        # Near-no-op rebuild (compile output already cached) + sign/notarize/
+        # upload -- baseline ~2 minutes, same hang risk as the first
+        # tauri-action call above.
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
@@ -245,6 +261,8 @@ jobs:
       # before.
       - uses: tauri-apps/tauri-action@v1
         if: matrix.platform == 'windows-latest'
+        # Build+publish combined, baseline ~7-8 minutes.
+        timeout-minutes: 15
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
