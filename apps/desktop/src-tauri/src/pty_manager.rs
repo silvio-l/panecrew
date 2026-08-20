@@ -203,6 +203,26 @@ where
     })?;
 
     let mut cmd = CommandBuilder::new(opts.cmd);
+    // `CommandBuilder::new` seeds itself from this process's own full
+    // environment (`get_base_env()` in portable-pty's cmdbuilder.rs, plain
+    // `std::env::vars_os()`). If PaneCrew itself was launched as a child of a
+    // hosted coding-agent CLI's own session (e.g. a dev run started from
+    // that CLI's own shell-command tool, or the built app opened from a
+    // shell with an active session — CLAUDECODE / CLAUDE_CODE_* for the
+    // Claude Code CLI specifically, checked below), that inherited env // brandlint-ok: functional — bug is Claude Code's own env-var mechanism colliding with a hosted pane, not orientation
+    // carries the CLI's own child-session markers straight into every pane.
+    // A same-named CLI the user then starts inside a pane would read its own
+    // "child session" marker back and wrongly conclude it's a harness-
+    // managed child of another instance, silently disabling its own
+    // transcript storage. Hosting CLI agents equally is this app's whole
+    // purpose, so a fresh pane must never carry its host's own orchestration
+    // state into them.
+    for key in std::env::vars_os().map(|(k, _)| k).filter(|k| {
+        k.to_str()
+            .is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_"))
+    }) {
+        cmd.env_remove(key);
+    }
     cmd.args(opts.args);
     cmd.cwd(opts.cwd);
     // portable-pty sets no TERM of its own — without one, curses/Ink-based
@@ -565,6 +585,43 @@ mod tests {
         assert!(
             saw_term,
             "expected the child to get a color-capable TERM/COLORTERM even without one in the parent process"
+        );
+    }
+
+    // Reproduces PaneCrew itself running as a child of a coding-agent CLI's // brandlint-ok: functional — reproduces a real interop bug against a specific hosted tool's own env-var mechanism
+    // own session (a dev run started from that CLI's own shell-command tool,
+    // or the built app opened from a shell with an active session) by
+    // setting the same two markers — CLAUDECODE / CLAUDE_CODE_CHILD_SESSION,
+    // the Claude Code CLI's own naming — in *this* process before spawning. // brandlint-ok: functional, same as above
+    // Without the strip in `spawn`, `CommandBuilder::new`'s base-env
+    // inheritance (`get_base_env()`, plain `std::env::vars_os()`) would
+    // carry them straight into the child pty — and that same CLI run inside
+    // a real pane would read its own child-session marker back and wrongly
+    // conclude it's a harness-managed child of another instance, silently
+    // disabling its own transcript storage.
+    #[test]
+    fn spawn_strips_claude_code_orchestration_env_from_the_child() {
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- test-only env mutation, see the safety comment on spawn_sets_a_color_capable_term_for_the_child above.
+        unsafe {
+            std::env::set_var("CLAUDECODE", "1");
+            std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
+        }
+
+        let (handle, output) = spawn_sh(Some(
+            "echo \"code=[$CLAUDECODE] child=[$CLAUDE_CODE_CHILD_SESSION]\"",
+        ));
+
+        let saw_stripped = saw(&output, "code=[] child=[]");
+
+        handle.kill().expect("kill should succeed");
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- test-only env mutation, see the safety comment on spawn_sets_a_color_capable_term_for_the_child above.
+        unsafe {
+            std::env::remove_var("CLAUDECODE");
+            std::env::remove_var("CLAUDE_CODE_CHILD_SESSION");
+        }
+        assert!(
+            saw_stripped,
+            "expected a hosted CLI's own orchestration env not to leak into a spawned pane"
         );
     }
 
