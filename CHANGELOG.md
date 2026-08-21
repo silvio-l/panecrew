@@ -56,7 +56,7 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
-## [0.1.405] - 2026-08-21 (Nightly)
+## [0.1.407] - 2026-08-21 (Nightly)
 ### Added
 - Hovering a terminal or file tab now shows a compact overview with its
   project, path, repository, state, and available shortcut.

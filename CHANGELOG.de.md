@@ -59,7 +59,7 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
-## [0.1.405] - 2026-08-21 (Nightly)
+## [0.1.407] - 2026-08-21 (Nightly)
 ### Hinzugefügt
 - Beim Überfahren eines Terminal- oder Datei-Tabs erscheint jetzt eine
   kompakte Übersicht mit Projekt, Pfad, Repository, Status und verfügbarem
