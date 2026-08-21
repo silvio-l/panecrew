@@ -53,10 +53,10 @@ jobs:
     # Backstop against a hung step running to GitHub's 360-minute default job
     # timeout on a paid macOS runner (2026-08-20 incident: `codesign` hung
     # after replacing the executable signature, silent with no further log
-    # output). Tauri 2.11.4 does not pass `--timestamp` to this invocation;
-    # the hang happened inside the local keychain/signing path, before
-    # notarization. Real end-to-end job time is ~8-10 minutes on both
-    # platforms; this leaves generous headroom.
+    # output). The signing keychain had auto-locked while the release binary
+    # compiled, so headless codesign waited for an impossible password prompt.
+    # Real end-to-end job time is ~8-10 minutes on both platforms; this leaves
+    # generous headroom.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -121,6 +121,11 @@ jobs:
         run: |
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          # GitHub's documented CI setup keeps the temporary keychain unlocked
+          # for six hours. A fresh release build can take longer than the
+          # keychain's default timeout; once locked, headless codesign waits
+          # indefinitely for a password prompt that can never be answered.
+          security set-keychain-settings -lut 21600 build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
