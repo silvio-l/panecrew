@@ -51,11 +51,12 @@ jobs:
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
     # Backstop against a hung step running to GitHub's 360-minute default job
-    # timeout on a paid macOS runner (2026-08-20 incident: `codesign
-    # --timestamp` hung indefinitely reaching out to Apple's timestamp
-    # authority, silent with no further log output — caught manually after
-    # ~18 minutes instead of running for hours). Real end-to-end job time is
-    # ~8-10 minutes on both platforms; this leaves generous headroom.
+    # timeout on a paid macOS runner (2026-08-20 incident: `codesign` hung
+    # after replacing the executable signature, silent with no further log
+    # output). Tauri 2.11.4 does not pass `--timestamp` to this invocation;
+    # the hang happened inside the local keychain/signing path, before
+    # notarization. Real end-to-end job time is ~8-10 minutes on both
+    # platforms; this leaves generous headroom.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -125,7 +126,17 @@ jobs:
           echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
           security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security list-keychains -d user -s build.keychain
           rm /tmp/cert.p12
+
+      # The certificate is deliberately NOT forwarded to either macOS
+      # tauri-action step below. This explicit import owns the one signing
+      # keychain for the whole job. If APPLE_CERTIFICATE were still present,
+      # Tauri 2.11.4 would ignore build.keychain, create another random
+      # keychain, import the same certificate again, and pass that second
+      # keychain directly to codesign. The 2026-08-20 release hung in exactly
+      # that duplicate-keychain path. APPLE_SIGNING_IDENTITY is sufficient:
+      # Tauri then signs through the already-unlocked default build.keychain.
 
       # Notarisierung über den App-Store-Connect-API-Key statt Apple-ID +
       # App-spezifischem Passwort: Letzteres bräuchte einen interaktiven
@@ -165,8 +176,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -232,8 +241,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.NIGHTLY_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
