@@ -11,21 +11,26 @@ import type { FileEditorState } from "../explorer/fileEditorState";
 // `PaneTabsProps` etabliert), diese Fläche hatte bisher keine eigene
 // Testdatei.
 const paneTabs: PaneTabsProps = {
-  terminalTabs: [{ tabId: "tab-1", number: 1, label: null }],
-  activeTerminalTabId: "tab-1",
+  tabs: [
+    { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+    {
+      kind: "file",
+      tabId: "file-1",
+      label: "example.ts",
+      path: "/tmp/projekt/example.ts",
+      dirty: false,
+    },
+  ],
+  activeTabId: "file-1",
   paneFocused: true,
-  showingFile: true,
-  fileName: "example.ts",
-  filePath: "/tmp/projekt/example.ts",
-  fileDirty: false,
   project: { name: "projekt", path: "/tmp/projekt", gitRepo: null },
-  onSelectTerminalTab: vi.fn(),
+  onSelectTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
   onCloseOtherTerminalTabs: vi.fn(),
   onCloseTerminalTabsToRight: vi.fn(),
   onRenameTerminalTab: vi.fn(),
-  onSelectFile: vi.fn(),
+  onCloseFileTab: vi.fn(),
   tabDrag: {
     start: vi.fn(),
     consumeClick: () => false,

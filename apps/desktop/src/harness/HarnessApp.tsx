@@ -5,8 +5,14 @@ import { ExplorerPanel } from "../components/ExplorerPanel";
 import { FocusPinHeader } from "../components/FocusPinHeader";
 import { FocusTrace } from "../components/FocusTrace";
 import { PaneGrid } from "../components/PaneGrid";
-import { usePaneFileEditors } from "../explorer/usePaneFileEditors";
-import { activePanes, focusedProjectPath, nextPaneId } from "../grid/gridState";
+import { useFileTabEditors } from "../explorer/useFileTabEditors";
+import {
+  activePanes,
+  activeTab,
+  focusedProjectPath,
+  nextPaneId,
+  terminalTabs,
+} from "../grid/gridState";
 import { useFocusRotation } from "../grid/useFocusRotation";
 import { useGrid } from "../grid/useGrid";
 import { PtyBackendContext } from "../terminal/ptyBackend";
@@ -51,7 +57,7 @@ export function HarnessApp({
 }) {
   const [demoBackend] = useState(createDemoPtyBackend);
   const grid = useGrid();
-  const paneFileEditors = usePaneFileEditors(() => undefined);
+  const fileTabEditors = useFileTabEditors(() => undefined);
 
   const projects = useMemo(() => {
     const byPath: Record<string, ReturnType<typeof mockProject>> = {};
@@ -86,10 +92,13 @@ export function HarnessApp({
   );
   const focusRotation = useFocusRotation({
     maximizedPaneId: grid.state.maximizedPaneId,
-    activeTabId: harnessMaximizedPane?.activeTerminalTabId ?? null,
+    activeTabId:
+      harnessMaximizedPane && activeTab(harnessMaximizedPane).kind === "terminal"
+        ? activeTab(harnessMaximizedPane).tabId
+        : null,
     occupiedPanesInOrder: activePanes(grid.state).map((pane) => ({
       paneId: pane.paneId,
-      tabIds: pane.terminalTabs.map((tab) => tab.tabId),
+      tabIds: terminalTabs(pane).map((tab) => tab.tabId),
     })),
     onRotate: (next) => {
       grid.enterFocusMode(next.paneId);
@@ -170,8 +179,7 @@ export function HarnessApp({
               <PaneGrid
                 state={grid.state}
                 projects={projects}
-                paneFileEditors={paneFileEditors}
-                guardLeave={(_paneId, run) => run()}
+                fileTabEditors={fileTabEditors}
                 pickingSlot={null}
                 restoringSlots={new Set()}
                 dropTargets={INERT_DROP_TARGETS}
@@ -204,7 +212,7 @@ export function HarnessApp({
                     (slot) => slot?.paneId === paneId,
                   );
                   if (!pane) return;
-                  for (const tab of pane.terminalTabs) {
+                  for (const tab of terminalTabs(pane)) {
                     if (tab.tabId !== tabId) grid.closeTerminalTab(paneId, tab.tabId);
                   }
                 }}
@@ -212,15 +220,14 @@ export function HarnessApp({
                   const pane = grid.state.slots.find(
                     (slot) => slot?.paneId === paneId,
                   );
-                  const index = pane?.terminalTabs.findIndex(
-                    (tab) => tab.tabId === tabId,
-                  );
+                  const index = pane?.tabs.findIndex((tab) => tab.tabId === tabId);
                   if (!pane || index === undefined || index < 0) return;
-                  for (const tab of pane.terminalTabs.slice(index + 1)) {
-                    grid.closeTerminalTab(paneId, tab.tabId);
+                  for (const tab of pane.tabs.slice(index + 1)) {
+                    if (tab.kind === "terminal") grid.closeTerminalTab(paneId, tab.tabId);
                   }
                 }}
                 onRenameTerminalTab={grid.renameTerminalTab}
+                onMoveTab={grid.moveTab}
                 onMoveTerminalTab={(sourcePaneId, tabId, targetPaneId, insertIndex) =>
                   grid.moveTerminalTab(
                     sourcePaneId,
@@ -230,8 +237,11 @@ export function HarnessApp({
                   )
                 }
                 onMoveTerminalTabToEmptySlot={grid.moveTerminalTabToEmptySlot}
-                onSwitchToTerminalTab={grid.switchToTerminalTab}
-                onSwitchToFileTab={grid.switchToFileTab}
+                onSwitchToTab={grid.switchToTab}
+                onCloseFileTab={(paneId, tabId) => {
+                  grid.closeFileTab(paneId, tabId);
+                  fileTabEditors.forget(tabId);
+                }}
                 onEnterFocusMode={grid.enterFocusMode}
                 onExitFocusMode={grid.exitFocusMode}
                 onChangeSplitRatios={grid.setSplitRatios}

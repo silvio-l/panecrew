@@ -6,7 +6,12 @@
 // no shared process state is needed, and this module stays free of
 // React/`@tauri-apps` imports for the same reason `gridState.ts` is.
 
-import { type GridState, type Pane, withoutTerminalTab } from "./gridState";
+import {
+  type GridState,
+  type Pane,
+  type TerminalTab,
+  withoutTab,
+} from "./gridState";
 
 export interface CrossWindowMoveResult {
   source: GridState;
@@ -138,9 +143,11 @@ function moveTab(
   const sourceIndex = source.slots.findIndex((slot) => slot?.paneId === sourcePaneId);
   if (sourceIndex === -1) return noop;
   const sourcePane = source.slots[sourceIndex] as Pane;
-  const tabIndex = sourcePane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  const tabIndex = sourcePane.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.tabId === tabId,
+  );
   if (tabIndex === -1) return noop;
-  const movedTab = sourcePane.terminalTabs[tabIndex] as Pane["terminalTabs"][number];
+  const movedTab = sourcePane.tabs[tabIndex] as TerminalTab;
 
   const targetSlot = target.slots[targetSlotIndex];
   if (targetSlot && targetSlot.projectPath !== sourcePane.projectPath) return noop;
@@ -151,26 +158,24 @@ function moveTab(
     nextTargetPaneId = targetSlot.paneId;
     nextTargetSlots[targetSlotIndex] = {
       ...targetSlot,
-      terminalTabs: [...targetSlot.terminalTabs, movedTab],
-      activeTerminalTabId: movedTab.tabId,
-      showingFile: false,
+      tabs: [...targetSlot.tabs, movedTab],
+      activeTabId: movedTab.tabId,
     };
   } else {
     nextTargetPaneId = newPaneId;
     nextTargetSlots[targetSlotIndex] = {
       paneId: newPaneId,
       projectPath: sourcePane.projectPath,
-      terminalTabs: [movedTab],
-      activeTerminalTabId: movedTab.tabId,
-      showingFile: false,
+      tabs: [movedTab],
+      activeTabId: movedTab.tabId,
     };
   }
 
   const nextSourceSlots = source.slots.slice();
   nextSourceSlots[sourceIndex] =
-    sourcePane.terminalTabs.length <= 1
+    sourcePane.tabs.length <= 1
       ? null
-      : { ...sourcePane, ...withoutTerminalTab(sourcePane, tabIndex) };
+      : { ...sourcePane, ...withoutTab(sourcePane, tabIndex) };
 
   return {
     source: {

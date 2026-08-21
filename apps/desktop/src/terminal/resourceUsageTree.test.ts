@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Pane } from "../grid/gridState";
+import type { Pane, TerminalTab } from "../grid/gridState";
 import {
   formatMemoryBytes,
   groupTabUsageByPane,
@@ -8,12 +8,19 @@ import {
   type PaneStructure,
 } from "./resourceUsageTree";
 
-function pane(overrides: Partial<Pane> & Pick<Pane, "paneId" | "projectPath">): Pane {
+type PaneOverrides = Omit<Partial<Pane>, "tabs"> &
+  Pick<Pane, "paneId" | "projectPath"> & {
+    tabs?: Omit<TerminalTab, "kind">[];
+  };
+
+function pane(overrides: PaneOverrides): Pane {
+  const tabs = overrides.tabs ?? [
+    { tabId: `${overrides.paneId}-tab-1`, label: null, adapterId: null },
+  ];
   return {
-    terminalTabs: [{ tabId: `${overrides.paneId}-tab-1`, label: null, adapterId: null }],
-    activeTerminalTabId: `${overrides.paneId}-tab-1`,
-    showingFile: false,
     ...overrides,
+    tabs: tabs.map((tab) => ({ kind: "terminal", ...tab })),
+    activeTabId: `${overrides.paneId}-tab-1`,
   };
 }
 
@@ -23,7 +30,7 @@ describe("groupTabUsageByPane", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [
+        tabs: [
           { tabId: "tab-1", label: null, adapterId: null },
           { tabId: "tab-2", label: "Build", adapterId: null },
         ],
@@ -48,7 +55,7 @@ describe("groupTabUsageByPane", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [
+        tabs: [
           { tabId: "tab-1", label: null, adapterId: null },
           { tabId: "tab-2", label: null, adapterId: null },
         ],
@@ -71,7 +78,7 @@ describe("groupTabUsageByPane", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [
+        tabs: [
           { tabId: "cool", label: null, adapterId: null },
           { tabId: "ram-heavy", label: null, adapterId: null },
           { tabId: "cpu-heavy", label: null, adapterId: null },
@@ -105,7 +112,7 @@ describe("groupTabUsageByWindow", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [{ tabId: "tab-1", label: null, adapterId: null }],
+        tabs: [{ tabId: "tab-1", label: null, adapterId: null }],
       }),
     ];
     const groups = groupTabUsageByWindow(
@@ -126,7 +133,7 @@ describe("groupTabUsageByWindow", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/projekt-a",
-        terminalTabs: [{ tabId: "own-tab", label: null, adapterId: null }],
+        tabs: [{ tabId: "own-tab", label: null, adapterId: null }],
       }),
     ];
     const groups = groupTabUsageByWindow(
@@ -265,7 +272,7 @@ describe("paneStructuresFromPanes", () => {
       pane({
         paneId: "pane-a",
         projectPath: "/tmp/mein-projekt",
-        terminalTabs: [
+        tabs: [
           { tabId: "tab-1", label: null, adapterId: null },
           { tabId: "tab-2", label: "Build", adapterId: null },
         ],

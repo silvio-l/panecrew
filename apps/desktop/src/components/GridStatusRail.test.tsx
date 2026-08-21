@@ -7,13 +7,13 @@ import { GridStatusRail } from "./GridStatusRail";
 const pane = (paneId: string, tabs: number): Pane => ({
   paneId,
   projectPath: `/Users/dev/projects/${paneId}`,
-  terminalTabs: Array.from({ length: tabs }, (_, i) => ({
+  tabs: Array.from({ length: tabs }, (_, i) => ({
+    kind: "terminal" as const,
     tabId: `${paneId}-tab-${String(i)}`,
     label: null,
     adapterId: null,
   })),
-  activeTerminalTabId: `${paneId}-tab-0`,
-  showingFile: false,
+  activeTabId: `${paneId}-tab-0`,
 });
 
 const state = (slots: (Pane | null)[]): GridState => ({

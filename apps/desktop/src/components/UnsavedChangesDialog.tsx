@@ -14,13 +14,13 @@ import { ConfirmDialog } from "./ConfirmDialog";
 // window.confirm(), Knopfordnung, Material). Was hier bleibt, ist genau das,
 // was diese Rückfrage von den anderen unterscheidet: ihre Worte.
 export function UnsavedChangesDialog({
-  fileName,
+  fileNames,
   onConfirm,
   onClose,
 }: {
-  /** Nur der Dateiname, nicht der Pfad: der Satz benennt das, was verloren
-   * geht, und die Fläche dahinter trägt denselben Namen in ihrer Kopfzeile. */
-  fileName: string;
+  /** File names only, not paths: these are the exact dirty buffers that the
+   * confirmed action will discard. */
+  fileNames: readonly string[];
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -29,14 +29,13 @@ export function UnsavedChangesDialog({
     <ConfirmDialog
       title={t("unsavedDialog.title")}
       description={
-        // Der Dateiname im vollen Vordergrund: er ist das eine Wort im Satz,
-        // an dem hängt, ob die Rückfrage die erwartete Datei meint — `<bold>`
-        // bindet genau diesen Interpolations-Platzhalter an den Span,
-        // unabhängig davon, wo ihn die jeweilige Übersetzung im Satz
-        // platziert.
         <Trans
-          i18nKey="unsavedDialog.description"
-          values={{ fileName }}
+          i18nKey={
+            fileNames.length === 1
+              ? "unsavedDialog.description"
+              : "unsavedDialog.descriptionMultiple"
+          }
+          values={{ fileName: fileNames[0], fileNames: fileNames.join(", ") }}
           components={{
             bold: <span className="font-medium text-(--pc-foreground)" />,
           }}

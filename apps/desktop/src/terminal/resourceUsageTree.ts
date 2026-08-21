@@ -1,4 +1,4 @@
-import type { Pane } from "../grid/gridState";
+import { terminalTabs, type Pane } from "../grid/gridState";
 import { projectNameFromPath } from "../types/project";
 
 // Reine Gruppierungslogik für die Pane→Tab-Baumansicht im Titelleisten-
@@ -115,7 +115,7 @@ export function paneStructuresFromPanes(panes: readonly Pane[]): PaneStructure[]
   return panes.map((pane) => ({
     paneId: pane.paneId,
     projectName: projectNameFromPath(pane.projectPath),
-    tabs: pane.terminalTabs.map((tab) => ({ tabId: tab.tabId, label: tab.label })),
+    tabs: terminalTabs(pane).map((tab) => ({ tabId: tab.tabId, label: tab.label })),
   }));
 }
 

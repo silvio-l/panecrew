@@ -111,6 +111,11 @@ pub struct PersistedPane {
     pub active_tab: ActiveTab,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_tabs: Vec<PersistedFileTab>,
+    /// Stable tab IDs in their cross-kind display order. Sessions written
+    /// before Ticket 34 omit this field; the frontend then falls back to
+    /// terminal tabs followed by file tabs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tab_order: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -467,6 +472,7 @@ mod tests {
                 id: "tab-1".to_string(),
             },
             file_tabs: Vec::new(),
+            tab_order: vec!["tab-1".to_string()],
         })
     }
 
@@ -593,6 +599,11 @@ mod tests {
                                 id: "file-1".to_string(),
                                 path: "src/App.tsx".to_string(),
                             }],
+                            tab_order: vec![
+                                "file-1".to_string(),
+                                "tab-1".to_string(),
+                                "tab-2".to_string(),
+                            ],
                         }),
                         terminal_only_pane(&project_b),
                     ],

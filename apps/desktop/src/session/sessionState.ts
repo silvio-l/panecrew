@@ -1,8 +1,6 @@
-// Reine Übersetzung zwischen dem Live-App-Zustand (`GridState` +
-// `selectedFile`) und der Rust-Seite (`session_store.rs`), im selben Schnitt
-// wie `grid/gridState.ts`: kein React-, kein `@tauri-apps`-Import. Feldnamen
-// bleiben `snake_case` — `session_store.rs` hat kein `serde(rename_all)`,
-// dieselbe Konvention wie `FileStamp.modified_ms`.
+// Pure translation between live `GridState` and Rust's `session_store.rs`, at
+// the same boundary as `grid/gridState.ts`. It imports neither React nor
+// `@tauri-apps`; snake_case field names mirror the Rust schema directly.
 //
 // v2-Schema (Ticket 17): ein `windows`-Array statt eines einzelnen impliziten
 // Fensters, seit Ticket 27 (Multi-Window) tatsächlich mit mehr als einem
@@ -17,10 +15,18 @@
 // darüber statt über Art+Index. Grund: Art+Position identifiziert einen Tab
 // nicht mehr eindeutig, sobald sich mehrere File-Tabs und beliebig
 // umsortierte Terminal-Tabs unabhängig ändern können (Ticket 34). Rein
-// schematisch — das sichtbare Verhalten bleibt hier unverändert: weiterhin N
-// Terminal-Tabs + höchstens ein File-Tab, feste Reihenfolge.
+// Ticket 34 uses this schema fully: all tab kinds share one order and a pane
+// can contain multiple file tabs.
 
-import { DEFAULT_TEMPLATE, GRID_TEMPLATES, type GridState, type TemplateId } from "../grid/gridState";
+import {
+  DEFAULT_TEMPLATE,
+  GRID_TEMPLATES,
+  activeTab,
+  fileTabs,
+  terminalTabs,
+  type GridState,
+  type TemplateId,
+} from "../grid/gridState";
 
 // Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
 // braucht (nur seine Form, über `PersistedWindow.slots`) — dieselbe
@@ -41,12 +47,7 @@ interface PersistedTerminalTab {
 }
 
 interface PersistedFileTab {
-  /** Stabile Identität (Ticket 33) — solange dieses Modul höchstens einen
-   * File-Tab pro Pane baut, ein deterministischer, von `paneId` abgeleiteter
-   * Wert (`fileTabId` unten), kein frischer UUID pro Speichern: ein
-   * zufälliger Wert ließe `session_save_window`s No-Op-Erkennung (Vergleich
-   * gegen den zuletzt gespeicherten Stand) bei jedem Speichern fälschlich
-   * "geändert" melden. */
+  /** Stable live file-tab id used by ordering and active selection. */
   id: string;
   /** Projekt-relativer Pfad — dieselbe Semantik wie das frühere
    * `last_selected_file`, jetzt als eigener optionaler Tab statt als
@@ -67,10 +68,11 @@ interface PersistedPane {
   project_path: string;
   terminal_tabs: PersistedTerminalTab[];
   active_tab: PersistedActiveTab;
-  /** Rundlauf-Liste statt `Option`/Einzelfeld (Ticket 33) — das sichtbare
-   * Verhalten bleibt trotzdem "höchstens ein Eintrag", dieses Modul baut nie
-   * mehr als einen (Ticket 34 hebt die Grenze im Live-Zustand auf). */
+  /** Round-trip list replacing the former optional singleton. */
   file_tabs?: PersistedFileTab[];
+  /** Stable IDs in the pane's kind-crossing display order. Missing values
+   * from pre-ticket-34 sessions fall back to terminals followed by files. */
+  tab_order?: string[];
 }
 
 export interface PersistedWindow {
@@ -138,53 +140,30 @@ export function withoutRecentProject(
   return recentProjects.filter((existing) => existing !== path);
 }
 
-/** Baut den zu persistierenden Zustand EINES Fensters (Ticket 27) aus dem
- * laufenden Grid und der `paneId`-geschlüsselten Dateiauswahl im Explorer
- * (Ticket 06) — `expanded_folders`/`explorer_width` gehören nicht hierher,
- * die bleiben window-agnostische Globals und gehen separat an
- * `saveSessionWindow` (`session_store.rs`s eigener Kommentar). Jede Pane
- * trägt seit Ticket 18 ihre echten Terminal-Tabs (`Pane.terminalTabs`) ein,
- * `title` ist seit dem Kontextmenü-Umbenennen (`PaneTabs.tsx`)
- * `Pane.terminalTabs[i].label`. Aktiver Tab ist `Pane.activeTerminalTabId`,
- * seit Ticket 33 direkt als dessen `id` referenziert (die persistierten
- * Terminal-Tabs tragen dieselbe `tabId` 1:1 weiter, kein Index-Umweg mehr),
- * AUSSER eine Datei ist sowohl ausgewählt als auch als aktive Ansicht
- * gewählt — genau dieselbe "nur wenn wirklich offen"-Bedingung wie
- * `PaneGrid.tsx`s `showingFile`, hier unabhängig nachgebildet: dieses Modul
- * kennt keinen Editor-Zustand, nur die `selectedFile`-Map, die exakt genau
- * dann einen Eintrag für eine Pane trägt, wenn deren Datei tatsächlich offen
- * ist. `maximized_pane_id` (Ticket 19) kommt direkt aus
- * `grid.maximizedPaneId` — echt verdrahtet für den Save, das Zurückmappen
- * auf eine frisch erzeugte `paneId` beim Restore bleibt offen (Ticket 19,
- * Persistenz-Teilaufgabe). */
+/** Builds one persisted window from the live grid. Explorer globals remain
+ * outside this window-specific shape. Terminal metadata and file paths come
+ * from their respective tab variants; stable ids drive active selection and
+ * `tab_order` preserves their mixed sequence. */
 export function buildWindowState(
   label: string,
   grid: GridState,
-  selectedFile: Record<string, string>,
 ): PersistedWindow {
   return {
     label,
     template: grid.template,
     slots: grid.slots.map((slot): PersistedPane | null => {
       if (slot === null) return null;
-      const lastSelectedFile = selectedFile[slot.paneId] ?? null;
-      const showingFile = slot.showingFile && lastSelectedFile !== null;
-      // Deterministisch statt eines frischen UUIDs pro Speichern (s.
-      // `PersistedFileTab.id`-Kommentar) — stabil, solange dieselbe Pane
-      // ihre Datei zeigt.
-      const fileTabId = `${slot.paneId}-file`;
+      const currentTab = activeTab(slot);
       return {
         project_path: slot.projectPath,
-        terminal_tabs: slot.terminalTabs.map((tab) => ({
+        terminal_tabs: terminalTabs(slot).map((tab) => ({
           id: tab.tabId,
           title: tab.label,
           adapter_id: tab.adapterId,
         })),
-        active_tab: showingFile
-          ? { kind: "file", id: fileTabId }
-          : { kind: "terminal", id: slot.activeTerminalTabId },
-        file_tabs:
-          lastSelectedFile === null ? [] : [{ id: fileTabId, path: lastSelectedFile }],
+        active_tab: { kind: currentTab.kind, id: currentTab.tabId },
+        file_tabs: fileTabs(slot).map((tab) => ({ id: tab.tabId, path: tab.path })),
+        tab_order: slot.tabs.map((tab) => tab.tabId),
       };
     }),
     split_ratios: [...grid.splitRatios],

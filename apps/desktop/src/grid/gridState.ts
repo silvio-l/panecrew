@@ -60,7 +60,8 @@ export const DEFAULT_TEMPLATE: TemplateId = "quad";
  * (`PaneTabs.tsx`). Nicht exportiert (wie das modulinterne `Slot` unten) —
  * `sessionState.ts`/`App.tsx` lesen `label` strukturell über `Pane`, ohne den
  * Typnamen selbst zu brauchen. */
-interface TerminalTab {
+export interface TerminalTab {
+  kind: "terminal";
   tabId: string;
   label: string | null;
   /** Which fixed CLI-tool adapter this tab launches with (Ticket 35),
@@ -73,23 +74,37 @@ interface TerminalTab {
   adapterId: string | null;
 }
 
+export interface FileTab {
+  kind: "file";
+  tabId: string;
+  /** Project-relative path. The pane already owns the project root, so an
+   * absolute path here would duplicate state and make persistence/renames
+   * harder to keep coherent. */
+  path: string;
+}
+
+export type PaneTab = TerminalTab | FileTab;
+
 export interface Pane {
   paneId: string;
   projectPath: string;
-  /** Mindestens ein Eintrag, immer — ein Tab lässt sich nicht schließen,
-   * solange er der letzte ist (`closeTerminalTab` unten), eine Pane ohne
-   * Terminal-Tab wäre ein Zustand, den `activeTerminalTabId` nicht mehr
-   * auflösen könnte. */
-  terminalTabs: readonly TerminalTab[];
-  /** Welcher Terminal-Tab beim Zurückwechseln vom File-Tab aktiv wird —
-   * unabhängig davon, ob gerade `showingFile` gilt. Immer eine `tabId` aus
-   * `terminalTabs`. */
-  activeTerminalTabId: string;
-  /** Ob gerade der File-Tab sichtbar ist statt eines Terminal-Tabs. Ob es
-   * überhaupt einen File-Tab gibt, weiß dieses Modul nicht — das entscheidet
-   * der Aufrufer (`usePaneFileEditors`, außerhalb dieses Schnitts), hier wird
-   * nur die Sichtbarkeits-Absicht gehalten. */
-  showingFile: boolean;
+  /** One ordered list for every Tab kind (ADR 0008). A Pane always has at
+   * least one Tab; moving its final Tab away removes the Pane's Slot. */
+  tabs: readonly PaneTab[];
+  /** Stable identity of exactly one entry in `tabs`. */
+  activeTabId: string;
+}
+
+export function terminalTabs(pane: Pane): readonly TerminalTab[] {
+  return pane.tabs.filter((tab): tab is TerminalTab => tab.kind === "terminal");
+}
+
+export function fileTabs(pane: Pane): readonly FileTab[] {
+  return pane.tabs.filter((tab): tab is FileTab => tab.kind === "file");
+}
+
+export function activeTab(pane: Pane): PaneTab {
+  return pane.tabs.find((tab) => tab.tabId === pane.activeTabId) ?? pane.tabs[0] as PaneTab;
 }
 
 // Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
@@ -288,9 +303,8 @@ export function assignProjectToSlot(
   nextSlots[slotIndex] = {
     paneId,
     projectPath,
-    terminalTabs: [{ tabId, label: null, adapterId }],
-    activeTerminalTabId: tabId,
-    showingFile: false,
+    tabs: [{ kind: "terminal", tabId, label: null, adapterId }],
+    activeTabId: tabId,
   };
   return { ...state, slots: nextSlots, focusedPaneId: paneId };
 }
@@ -348,36 +362,84 @@ export function openTerminalTab(
   const nextSlots = state.slots.slice();
   nextSlots[index] = {
     ...pane,
-    terminalTabs: [...pane.terminalTabs, { tabId, label: null, adapterId }],
-    activeTerminalTabId: tabId,
-    showingFile: false,
+    tabs: [...pane.tabs, { kind: "terminal", tabId, label: null, adapterId }],
+    activeTabId: tabId,
   };
   return { ...state, slots: nextSlots };
 }
 
-/** Entfernt einen Terminal-Tab aus der Liste einer Pane und beantwortet die
- * Anschlussfrage gleich mit: welcher Tab ist danach aktiv? War der entfernte
- * nicht aktiv, ändert sich daran nichts; war er es, übernimmt sein Vorgänger
- * (an Position 0: sein Nachfolger).
- *
- * Geteilt von `closeTerminalTab` und `moveTerminalTab` — beide entfernen den
- * Tab an derselben Stelle aus derselben Liste und unterscheiden sich nur
- * darin, was DANACH mit ihm passiert (sterben bzw. in einer anderen Pane
- * weiterleben). Aufrufer garantieren `terminalTabs.length > 1` und einen
- * gültigen `tabIndex`; der Fallback-Zugriff unten ist deshalb nie leer. */
-export function withoutTerminalTab(
+/** Opens a File-Tab after the current final Tab and makes it active. A file
+ * already open in the Pane is activated in place instead of duplicated. */
+export function openFileTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+  path: string,
+): GridState {
+  const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (index === -1) return state;
+  const pane = state.slots[index] as Pane;
+  const existing = pane.tabs.find(
+    (tab): tab is FileTab => tab.kind === "file" && tab.path === path,
+  );
+  if (existing?.tabId === pane.activeTabId) return state;
+
+  const nextSlots = state.slots.slice();
+  nextSlots[index] = existing
+    ? { ...pane, activeTabId: existing.tabId }
+    : {
+        ...pane,
+        tabs: [...pane.tabs, { kind: "file", tabId, path }],
+        activeTabId: tabId,
+      };
+  return { ...state, slots: nextSlots };
+}
+
+/** Reorders any Tab kind inside one Pane. `insertIndex` is the destination
+ * position after removal (0 = first, `tabs.length - 1` = last). */
+export function moveTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+  insertIndex: number,
+): GridState {
+  const paneIndex = state.slots.findIndex((slot) => slot?.paneId === paneId);
+  if (paneIndex === -1) return state;
+  const pane = state.slots[paneIndex] as Pane;
+  const tabIndex = pane.tabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1 || insertIndex < 0 || insertIndex >= pane.tabs.length) {
+    return state;
+  }
+  if (tabIndex === insertIndex) return state;
+  const moved = pane.tabs[tabIndex] as PaneTab;
+  const remaining = pane.tabs.filter((tab) => tab.tabId !== tabId);
+  const tabs = [
+    ...remaining.slice(0, insertIndex),
+    moved,
+    ...remaining.slice(insertIndex),
+  ];
+  const nextSlots = state.slots.slice();
+  nextSlots[paneIndex] = { ...pane, tabs, activeTabId: tabId };
+  return { ...state, slots: nextSlots, focusedPaneId: paneId };
+}
+
+/** Removes any tab kind and resolves the pane's next active tab. An inactive
+ * removal preserves selection; removing the active tab selects its preceding
+ * sibling, or its successor at position zero. Callers guarantee a valid index
+ * and at least one remaining tab. */
+export function withoutTab(
   pane: Pane,
   tabIndex: number,
-): Pick<Pane, "terminalTabs" | "activeTerminalTabId"> {
-  const tabId = (pane.terminalTabs[tabIndex] as TerminalTab).tabId;
-  const nextTabs = pane.terminalTabs.filter((tab) => tab.tabId !== tabId);
+): Pick<Pane, "tabs" | "activeTabId"> {
+  const tabId = (pane.tabs[tabIndex] as PaneTab).tabId;
+  const nextTabs = pane.tabs.filter((tab) => tab.tabId !== tabId);
   const fallbackTab = nextTabs[Math.max(tabIndex - 1, 0)] ?? nextTabs[0];
   return {
-    terminalTabs: nextTabs,
-    activeTerminalTabId:
-      pane.activeTerminalTabId === tabId
-        ? (fallbackTab as TerminalTab).tabId
-        : pane.activeTerminalTabId,
+    tabs: nextTabs,
+    activeTabId:
+      pane.activeTabId === tabId
+        ? (fallbackTab as PaneTab).tabId
+        : pane.activeTabId,
   };
 }
 
@@ -394,13 +456,15 @@ export function closeTerminalTab(
   const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
   if (index === -1) return state;
   const pane = state.slots[index] as Pane;
-  if (pane.terminalTabs.length <= 1) return state;
+  if (pane.tabs.length <= 1) return state;
 
-  const tabIndex = pane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  const tabIndex = pane.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.tabId === tabId,
+  );
   if (tabIndex === -1) return state;
 
   const nextSlots = state.slots.slice();
-  nextSlots[index] = { ...pane, ...withoutTerminalTab(pane, tabIndex) };
+  nextSlots[index] = { ...pane, ...withoutTab(pane, tabIndex) };
   return { ...state, slots: nextSlots };
 }
 
@@ -466,12 +530,14 @@ export function moveTerminalTab(
   const target = state.slots[targetIndex] as Pane;
   if (source.projectPath !== target.projectPath) return state;
 
-  const tabIndex = source.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  const tabIndex = source.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.tabId === tabId,
+  );
   if (tabIndex === -1) return state;
-  const movedTab = source.terminalTabs[tabIndex] as TerminalTab;
+  const movedTab = source.tabs[tabIndex] as TerminalTab;
 
-  const slot = insertIndex ?? target.terminalTabs.length;
-  if (slot < 0 || slot > target.terminalTabs.length) return state;
+  const slot = insertIndex ?? target.tabs.length;
+  if (slot < 0 || slot > target.tabs.length) return state;
 
   if (sourcePaneId === targetPaneId) {
     // Umsortieren: Slot (vor dem Herauslösen gezählt) auf die End-Position
@@ -479,7 +545,7 @@ export function moveTerminalTab(
     // sobald der Tab herausgelöst ist.
     const finalIndex = slot > tabIndex ? slot - 1 : slot;
     if (finalIndex === tabIndex) return state;
-    const withoutMoved = source.terminalTabs.filter(
+    const withoutMoved = source.tabs.filter(
       (tab) => tab.tabId !== tabId,
     );
     const nextTabs = [
@@ -490,27 +556,25 @@ export function moveTerminalTab(
     const nextSlots = state.slots.slice();
     nextSlots[sourceIndex] = {
       ...source,
-      terminalTabs: nextTabs,
-      activeTerminalTabId: movedTab.tabId,
-      showingFile: false,
+      tabs: nextTabs,
+      activeTabId: movedTab.tabId,
     };
     return { ...state, slots: nextSlots, focusedPaneId: sourcePaneId };
   }
 
   const nextSlots = state.slots.slice();
   nextSlots[sourceIndex] =
-    source.terminalTabs.length <= 1
+    source.tabs.length <= 1
       ? null
-      : { ...source, ...withoutTerminalTab(source, tabIndex) };
+      : { ...source, ...withoutTab(source, tabIndex) };
   nextSlots[targetIndex] = {
     ...target,
-    terminalTabs: [
-      ...target.terminalTabs.slice(0, slot),
+    tabs: [
+      ...target.tabs.slice(0, slot),
       movedTab,
-      ...target.terminalTabs.slice(slot),
+      ...target.tabs.slice(slot),
     ],
-    activeTerminalTabId: movedTab.tabId,
-    showingFile: false,
+    activeTabId: movedTab.tabId,
   };
   return {
     ...state,
@@ -527,29 +591,11 @@ export function moveTerminalTab(
   };
 }
 
-/**
- * Verschiebt einen Terminal-Tab auf einen LEEREN Slot — dort entsteht dafür
- * eine neue Pane im Projekt der Quelle, mit genau diesem Tab als einzigem
- * (Nutzer-Wunsch: "wenn ich ein Tab auf einen leeren Slot ziehe, wird dort
- * ein neues Pane erstellt, das dann in dem Projekt des Tabs hängt").
- *
- * Bewusst ein EIGENER Übergang neben `moveTerminalTab` statt eines dritten
- * Zweigs darin: dessen Ziel ist eine existierende `paneId`, hier ist das Ziel
- * eine Slot-POSITION und die Pane entsteht erst — zwei verschiedene
- * Zieltypen in einer Signatur wären eine Falle für jeden Aufrufer. Die
- * Quell-Seite ist dagegen wörtlich dieselbe (inkl. "letzter Tab leert den
- * Slot" — der Zug wird dann praktisch ein Pane-Umzug), deshalb teilt sie
- * `withoutTerminalTab` und die `maximizedPaneId`-Nachsorge.
- *
- * `newPaneId` kommt fertig vom Aufrufer (`useGrid.ts`) — dieses Modul erzeugt
- * keine IDs (Kopfkommentar). No-Op (identische Referenz) bei: unbekannter
- * Quell-Pane, unbekanntem Tab, Index außerhalb des Templates und einem Slot,
- * der gar nicht (mehr) leer ist — Letzteres deckt auch den Wettlauf mit einer
- * parallel laufenden Zuweisung ab, statt eine fremde Pane zu überschreiben.
- *
- * Wie bei `moveTerminalTab`: der Tab ist in der neuen Pane aktiv, der Fokus
- * wandert dorthin.
- */
+/** Moves a terminal tab into a newly created pane in an empty slot. This is a
+ * separate transition from `moveTerminalTab` because its target is a slot
+ * position rather than an existing pane id. Source removal still shares the
+ * generic `withoutTab` transition and `maximizedPaneId` cleanup. Invalid
+ * source, tab, slot, or a no-longer-empty target is a no-op. */
 export function moveTerminalTabToEmptySlot(
   state: GridState,
   sourcePaneId: string,
@@ -565,21 +611,22 @@ export function moveTerminalTabToEmptySlot(
   if (state.slots[targetSlotIndex] !== null) return state;
 
   const source = state.slots[sourceIndex] as Pane;
-  const tabIndex = source.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  const tabIndex = source.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.tabId === tabId,
+  );
   if (tabIndex === -1) return state;
-  const movedTab = source.terminalTabs[tabIndex] as TerminalTab;
+  const movedTab = source.tabs[tabIndex] as TerminalTab;
 
   const nextSlots = state.slots.slice();
   nextSlots[sourceIndex] =
-    source.terminalTabs.length <= 1
+    source.tabs.length <= 1
       ? null
-      : { ...source, ...withoutTerminalTab(source, tabIndex) };
+      : { ...source, ...withoutTab(source, tabIndex) };
   nextSlots[targetSlotIndex] = {
     paneId: newPaneId,
     projectPath: source.projectPath,
-    terminalTabs: [movedTab],
-    activeTerminalTabId: movedTab.tabId,
-    showingFile: false,
+    tabs: [movedTab],
+    activeTabId: movedTab.tabId,
   };
   return {
     ...state,
@@ -650,22 +697,21 @@ export function renameTerminalTab(
   const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
   if (index === -1) return state;
   const pane = state.slots[index] as Pane;
-  const tabIndex = pane.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+  const tabIndex = pane.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.tabId === tabId,
+  );
   if (tabIndex === -1) return state;
 
-  const nextTabs = pane.terminalTabs.slice();
+  const nextTabs = pane.tabs.slice();
   nextTabs[tabIndex] = { ...(nextTabs[tabIndex] as TerminalTab), label };
 
   const nextSlots = state.slots.slice();
-  nextSlots[index] = { ...pane, terminalTabs: nextTabs };
+  nextSlots[index] = { ...pane, tabs: nextTabs };
   return { ...state, slots: nextSlots };
 }
 
-/** Wechselt zu einem Terminal-Tab derselben Pane (verlässt dabei den
- * File-Tab, falls gerade sichtbar). No-Op (identische Referenz) bei
- * unbekannter `paneId`/`tabId` oder wenn der Tab bereits aktiv ist und kein
- * File-Tab davor sichtbar war. */
-export function switchToTerminalTab(
+/** Activates any Tab kind in a Pane. */
+export function switchToTab(
   state: GridState,
   paneId: string,
   tabId: string,
@@ -673,28 +719,119 @@ export function switchToTerminalTab(
   const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
   if (index === -1) return state;
   const pane = state.slots[index] as Pane;
-  if (!pane.terminalTabs.some((tab) => tab.tabId === tabId)) return state;
-  if (pane.activeTerminalTabId === tabId && !pane.showingFile) return state;
+  if (!pane.tabs.some((tab) => tab.tabId === tabId)) return state;
+  if (pane.activeTabId === tabId) return state;
 
   const nextSlots = state.slots.slice();
-  nextSlots[index] = { ...pane, activeTerminalTabId: tabId, showingFile: false };
+  nextSlots[index] = { ...pane, activeTabId: tabId };
   return { ...state, slots: nextSlots };
 }
 
-/** Wechselt zum File-Tab derselben Pane, ohne den aktiven Terminal-Tab zu
- * verändern (der bleibt der Rückkehrpunkt). Ob es überhaupt einen File-Tab
- * gibt, entscheidet der Aufrufer — dieses Modul kennt nur die
- * Sichtbarkeits-Absicht (s. `Pane.showingFile`). No-Op bei unbekannter
- * `paneId` oder wenn der File-Tab bereits sichtbar ist. */
-export function switchToFileTab(state: GridState, paneId: string): GridState {
+export function switchToTerminalTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
+  const pane = state.slots.find((slot) => slot?.paneId === paneId);
+  if (!pane?.tabs.some((tab) => tab.kind === "terminal" && tab.tabId === tabId)) {
+    return state;
+  }
+  return switchToTab(state, paneId, tabId);
+}
+
+export function switchToFileTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
+  const pane = state.slots.find((slot) => slot?.paneId === paneId);
+  if (!pane?.tabs.some((tab) => tab.kind === "file" && tab.tabId === tabId)) {
+    return state;
+  }
+  return switchToTab(state, paneId, tabId);
+}
+
+/** Closes one File-Tab. A file-only Pane disappears with its final Tab. */
+export function closeFileTab(
+  state: GridState,
+  paneId: string,
+  tabId: string,
+): GridState {
   const index = state.slots.findIndex((slot) => slot?.paneId === paneId);
   if (index === -1) return state;
   const pane = state.slots[index] as Pane;
-  if (pane.showingFile) return state;
-
+  const tabIndex = pane.tabs.findIndex(
+    (tab) => tab.kind === "file" && tab.tabId === tabId,
+  );
+  if (tabIndex === -1) return state;
+  if (pane.tabs.length === 1) return closePane(state, paneId);
   const nextSlots = state.slots.slice();
-  nextSlots[index] = { ...pane, showingFile: true };
+  nextSlots[index] = { ...pane, ...withoutTab(pane, tabIndex) };
   return { ...state, slots: nextSlots };
+}
+
+/** Keeps open File-Tabs coherent with an Explorer rename. */
+export function renameFileTabs(
+  state: GridState,
+  projectPath: string,
+  oldPath: string,
+  newPath: string,
+): GridState {
+  const slots = state.slots.map((pane) => {
+    if (pane?.projectPath !== projectPath) return pane;
+    const tabs = pane.tabs.map((tab) => {
+      if (tab.kind !== "file") return tab;
+      if (tab.path !== oldPath && !tab.path.startsWith(`${oldPath}/`)) return tab;
+      return { ...tab, path: `${newPath}${tab.path.slice(oldPath.length)}` };
+    });
+    return tabs.every((tab, index) => tab === pane.tabs[index])
+      ? pane
+      : { ...pane, tabs };
+  });
+  return slots.every((pane, index) => pane === state.slots[index])
+    ? state
+    : { ...state, slots };
+}
+
+/** Removes File-Tabs whose paths disappeared after an Explorer delete. */
+export function closeFileTabsUnder(
+  state: GridState,
+  projectPath: string,
+  deletedPath: string,
+): GridState {
+  const slots = state.slots.map((pane) => {
+    if (pane?.projectPath !== projectPath) return pane;
+    const removed = pane.tabs.filter(
+      (tab) =>
+        tab.kind !== "file" ||
+        (tab.path !== deletedPath && !tab.path.startsWith(`${deletedPath}/`)),
+    );
+    if (removed.length === pane.tabs.length) return pane;
+    if (removed.length === 0) return null;
+    const activeStillExists = removed.some((tab) => tab.tabId === pane.activeTabId);
+    return {
+      ...pane,
+      tabs: removed,
+      activeTabId: activeStillExists
+        ? pane.activeTabId
+        : (removed[0] as PaneTab).tabId,
+    };
+  });
+  if (slots.every((pane, index) => pane === state.slots[index])) return state;
+  const focusedStillExists = slots.some(
+    (pane) => pane?.paneId === state.focusedPaneId,
+  );
+  const maximizedStillExists = slots.some(
+    (pane) => pane?.paneId === state.maximizedPaneId,
+  );
+  return {
+    ...state,
+    slots,
+    focusedPaneId: focusedStillExists
+      ? state.focusedPaneId
+      : (slots.find((pane): pane is Pane => pane !== null)?.paneId ?? null),
+    maximizedPaneId: maximizedStillExists ? state.maximizedPaneId : null,
+  };
 }
 
 /** Leert den Slot der übergebenen Pane. War sie fokussiert, fällt der Fokus

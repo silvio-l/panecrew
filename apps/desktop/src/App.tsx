@@ -70,10 +70,8 @@ import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { UpdateBanner } from "./updater/UpdateBanner";
 import {
   fileNameFromPath,
-  isPathOrDescendant,
-  remapRenamedPath,
 } from "./explorer/filePath";
-import { usePaneFileEditors } from "./explorer/usePaneFileEditors";
+import { useFileTabEditors } from "./explorer/useFileTabEditors";
 import {
   applyPausedEvent,
   applySingleKillEvent,
@@ -83,6 +81,8 @@ import {
 } from "./terminal/resourceGuard";
 import {
   activePanes,
+  activeTab,
+  fileTabs,
   firstEmptySlotIndex,
   focusedProjectPath,
   GRID_TEMPLATES,
@@ -90,6 +90,7 @@ import {
   nextPaneId,
   templateSwitchBlockReason,
   trackShape,
+  terminalTabs,
 } from "./grid/gridState";
 import { useFocusRotation } from "./grid/useFocusRotation";
 import { useGrid } from "./grid/useGrid";
@@ -166,12 +167,17 @@ function App() {
     switchTemplate,
     focusPane,
     openTerminalTab,
+    openFileTab,
     closeTerminalTab,
+    closeFileTab,
+    moveTab,
     moveTerminalTab,
     moveTerminalTabToEmptySlot,
     renameTerminalTab,
+    renameFileTabs,
+    closeFileTabsUnder,
     switchToTerminalTab,
-    switchToFileTab,
+    switchToTab,
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,
@@ -198,12 +204,14 @@ function App() {
   const maximizedPane = activePanes(gridState).find(
     (pane) => pane.paneId === gridState.maximizedPaneId,
   );
+  const maximizedActiveTab = maximizedPane ? activeTab(maximizedPane) : null;
   const focusRotation = useFocusRotation({
     maximizedPaneId: gridState.maximizedPaneId,
-    activeTabId: maximizedPane?.activeTerminalTabId ?? null,
+    activeTabId:
+      maximizedActiveTab?.kind === "terminal" ? maximizedActiveTab.tabId : null,
     occupiedPanesInOrder: activePanes(gridState).map((pane) => ({
       paneId: pane.paneId,
-      tabIds: pane.terminalTabs.map((tab) => tab.tabId),
+      tabIds: terminalTabs(pane).map((tab) => tab.tabId),
     })),
     onRotate: (next) => {
       enterFocusMode(next.paneId);
@@ -322,7 +330,6 @@ function App() {
   // Explorer bindet auf GENAU dieses Projekt.
   const project =
     focusedPath !== null ? (projectRecords[focusedPath] ?? null) : null;
-  const [selectedFile, setSelectedFile] = useState<Record<string, string>>({});
   // AUFgeklappte Ordner je Projektpfad (nicht je Pane) — dieselbe
   // Schlüsselung wie `session.json`s `expanded_folders` und wie der
   // Live-Zustand selbst: `ExplorerPanel` hängt an `project.path`
@@ -400,7 +407,7 @@ function App() {
   // neu, ohne die offene Dateiauswahl anzutasten (anders als ein
   // Projektwechsel).
   //
-  // Steht vor `usePaneFileEditors`, weil der Hook es als `onSaved` bekommt und
+  // Steht vor `useFileTabEditors`, weil der Hook es als `onSaved` bekommt und
   // ein späteres `const` hier in seiner temporalen Totzone läge.
   const refreshExplorer = () => {
     if (focusedPath === null) return;
@@ -410,7 +417,7 @@ function App() {
   // Nach jedem erfolgreichen Schreiben Baum und Git-Deko neu lesen — sonst
   // stünde die Deko der eben gespeicherten Datei veraltet da: aus einer
   // unveränderten versionierten Datei macht genau dieses Schreiben ein „M".
-  const paneFileEditors = usePaneFileEditors(refreshExplorer);
+  const fileTabEditors = useFileTabEditors(refreshExplorer);
 
   // `.scratch/explorer-live-refresh`: beobachtet das Projektverzeichnis der
   // fokussierten Pane und ruft bei Änderungen denselben `refreshExplorer`-
@@ -467,11 +474,12 @@ function App() {
     };
   }, []);
 
-  // Der Editor der fokussierten Pane — das Rechteck der Editorfläche zeigt
-  // immer nur sie. Ohne fokussierte Pane (leeres Grid) liest `editorFor("")`
-  // denselben `IDLE_STATE` wie jede unbenutzte `paneId` — kein Sonderfall
-  // nötig.
-  const fileEditor = paneFileEditors.editorFor(focusedPaneId ?? "");
+  const focusedPane = activePanes(gridState).find(
+    (pane) => pane.paneId === focusedPaneId,
+  );
+  const focusedTab = focusedPane ? activeTab(focusedPane) : null;
+  const focusedFileTab = focusedTab?.kind === "file" ? focusedTab : null;
+  const fileEditor = fileTabEditors.editorFor(focusedFileTab?.tabId ?? "");
   const zoom = useAppZoom();
   useNewWindowShortcut();
   // Cmd/Ctrl+Shift+F: klappt einen eingeklappten Explorer wieder auf und
@@ -633,7 +641,8 @@ function App() {
         adapter_id?: string | null;
       }[],
       activeTab: { kind: "terminal"; id: string } | { kind: "file"; id: string },
-      lastSelectedFile: string | null,
+      persistedFileTabs: readonly { id: string; path: string }[],
+      tabOrder: readonly string[],
     ) => {
       const project = await loadProject(projectPath);
       if (isCancelled()) return;
@@ -672,22 +681,28 @@ function App() {
         const title = terminalTabs[i]?.title;
         if (title) renameTerminalTab(paneId, restoredTabId, title);
       });
-      if (activeTab.kind === "terminal") {
-        // Ticket 33: die gespeicherte `id` referenziert einen Eintrag in
-        // `terminalTabs`, nicht direkt einen frischen `tabId` — über die
-        // Position in `terminalTabs` auf den passenden neu erzeugten
-        // `tabIds`-Eintrag gemappt.
-        const persistedIndex = terminalTabs.findIndex((tab) => tab.id === activeTab.id);
-        switchToTerminalTab(
-          paneId,
-          (persistedIndex >= 0 ? tabIds[persistedIndex] : undefined) ?? firstTabId,
-        );
+      const liveIdByPersistedId = new Map<string, string>();
+      terminalTabs.forEach((tab, index) => {
+        liveIdByPersistedId.set(tab.id, tabIds[index] ?? firstTabId);
+      });
+      for (const fileTab of persistedFileTabs) {
+        openFileTab(paneId, fileTab.path, fileTab.id);
+        fileTabEditors.editorFor(fileTab.id).open(`${project.path}/${fileTab.path}`);
+        liveIdByPersistedId.set(fileTab.id, fileTab.id);
       }
 
-      if (!lastSelectedFile) return;
-      setSelectedFile((current) => ({ ...current, [paneId]: lastSelectedFile }));
-      paneFileEditors.editorFor(paneId).open(`${project.path}/${lastSelectedFile}`);
-      if (activeTab.kind === "file") switchToFileTab(paneId);
+      const restoredOrder =
+        tabOrder.length > 0
+          ? tabOrder
+          : [...terminalTabs.map((tab) => tab.id), ...persistedFileTabs.map((tab) => tab.id)];
+      restoredOrder.forEach((persistedId, index) => {
+        const liveId = liveIdByPersistedId.get(persistedId);
+        if (liveId) moveTab(paneId, liveId, index);
+      });
+      switchToTab(
+        paneId,
+        liveIdByPersistedId.get(activeTab.id) ?? firstTabId,
+      );
     };
 
     const run = async () => {
@@ -743,7 +758,8 @@ function App() {
                   slot.project_path,
                   slot.terminal_tabs,
                   slot.active_tab,
-                  slot.file_tabs?.[0]?.path ?? null,
+                  slot.file_tabs ?? [],
+                  slot.tab_order ?? [],
                 ),
           ),
         );
@@ -803,27 +819,18 @@ function App() {
       cancelled = true;
     };
     // Absichtlich nur beim Mount: `assignProject`/`switchTemplate`/
-    // `loadProject` sind stabile Bindungen (s. o.), `paneFileEditors` bräuchte
+    // `loadProject` sind stabile Bindungen (s. o.), `fileTabEditors` bräuchte
     // für ein vollständiges Dep-Array eine eigene Memoisierung, die nur
     // dieser eine Einmal-Effekt fordern würde.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persistiert bei jeder relevanten Zustandsänderung automatisch (Ticket
-  // 06) — Template-Wechsel, Pane-Zuweisung/-Schließen, Explorer-Navigation
-  // lösen alle eine Änderung von `gridState` oder `selectedFile` aus, kein
-  // eigener Speichern-Schritt nötig. Gesperrt bis `hydrated`, damit der
-  // Leerzustand des allerersten Renders nicht die gerade geladene Sitzung
-  // überschreibt, bevor sie überhaupt angewendet ist.
-  // Ticket 27: pro Fenster statt als ganzes Sitzungs-Array — `expanded_
-  // folders`/`explorer_width` bleiben dabei window-agnostische Globals
-  // (`session_save_window`s eigener Kommentar), jedes Fenster schreibt seinen
-  // eigenen Stand mit. Bei mehreren gleichzeitig offenen Fenstern gewinnt so
-  // der zuletzt speichernde für diese zwei Felder — ein bewusst unaufgelöster
-  // Rand dieser ansonsten window-genauen Persistenz (Ticket 27s Kriterien
-  // decken nur Template/Panes/Fokus-Modus ab), keine Regression gegenüber
-  // dem Vor-Ticket-27-Verhalten, das dieselbe Zuletzt-gewinnt-Semantik schon
-  // hatte, nur eben nie mit einem zweiten Fenster.
+  // Persist every relevant state change after hydration. Template changes,
+  // pane assignment/close, and tab navigation all update `gridState`, so no
+  // separate trigger is needed. The hydration gate prevents the initial empty
+  // render from overwriting the session before restore applies it. Ticket 27
+  // persists each window independently; window-agnostic Explorer globals keep
+  // their established last-writer-wins behavior across windows.
   // Stable across renders (created once via useRef): a debounce gate would
   // reset its pending timer on every re-creation otherwise, which defeats
   // the point of debouncing rapid triggers together. See sessionSaveGate.ts
@@ -844,7 +851,7 @@ function App() {
   useEffect(() => {
     if (!hydrated) return;
     sessionSaveGateRef.current?.request([
-      buildWindowState(windowId.label, gridState, selectedFile),
+      buildWindowState(windowId.label, gridState),
       expandedFolders,
       persistedExplorerWidth,
       recentProjects,
@@ -865,7 +872,6 @@ function App() {
     gridState.template,
     gridState.splitRatios,
     gridState.maximizedPaneId,
-    selectedFile,
     expandedFolders,
     persistedExplorerWidth,
     recentProjects,
@@ -886,22 +892,12 @@ function App() {
     };
   }, []);
 
-  // Die eine wartende Handlung hinter der Rückfrage „ungespeicherte Änderungen
-  // verwerfen?" (Ticket 05). Bewusst ein schlichter lokaler Zustand und kein
-  // Zweig in `fileEditorState.ts`: „wartet auf Bestätigung" ist keine Aussage
-  // über die Datei — die liegt unverändert da, der Puffer ist unangetastet,
-  // und ein Neustart der App würde diese Frage nicht wiederherstellen wollen.
-  // Was die Zustandsmaschine dazu beiträgt, ist genau ein Boolean
-  // (`wouldLoseWork`), und das hat sie schon.
-  //
-  // Gespeichert wird die Handlung als Thunk in einem Objekt, zusammen mit der
-  // Pane, deren ungespeicherter Stand sie ausgelöst hat — der Dialog fragt
-  // nach GENAU dieser Datei, unabhängig davon, was inzwischen anderswo im
-  // Grid passiert. `useState` deutet eine direkt übergebene Funktion als
-  // Updater, das Objekt drumherum ist der kürzere Weg als `setState(() =>
-  // fn)`.
+  // The deferred action behind the unsaved-changes confirmation. This stays
+  // outside `fileEditorState.ts`: waiting for confirmation is transient UI
+  // intent, not file state. The immutable tab-id list also keeps a pane-wide
+  // close truthful when several buffers are dirty at once.
   const [pendingLeave, setPendingLeave] = useState<
-    { paneId: string; run: () => void } | null
+    { fileTabIds: readonly string[]; run: () => void } | null
   >(null);
 
   // Die Rückfrage vor dem Schließen (Pane oder Terminal-Tab) — der Schutz
@@ -919,7 +915,7 @@ function App() {
   // Nutzer angeklickt hat.
   const [pendingClose, setPendingClose] = useState<
     | { target: "pane"; projectName: string; run: () => void }
-    | { target: "terminalTab"; tabNumber: number; run: () => void }
+    | { target: "terminalTab"; run: () => void }
     // Ein gemeinsamer Batch-Zweig für BEIDE Mehrfach-Schließen-Wege ("Andere
     // Tabs schließen", "Tabs rechts schließen") — beide brauchen exakt
     // dieselbe Rückfrage-Form (nur eine Zahl, keine Richtung), ein eigener
@@ -980,12 +976,32 @@ function App() {
   // derselbe Dialog mehrfach direkt verdrahtet wären ebenso viele Stellen, an
   // denen er künftig auseinanderläuft. Pane-genau: nur der ungespeicherte
   // Stand DIESER Pane blockiert ihren eigenen Wechsel, nie den einer anderen.
-  const guardLeave = (paneId: string, run: () => void) => {
-    if (paneFileEditors.editorFor(paneId).wouldLoseWork) {
-      setPendingLeave({ paneId, run });
+  const guardLeave = (fileTabId: string, run: () => void) => {
+    if (fileTabEditors.editorFor(fileTabId).wouldLoseWork) {
+      setPendingLeave({ fileTabIds: [fileTabId], run });
       return;
     }
     run();
+  };
+
+  const guardPaneLeave = (paneId: string, run: () => void) => {
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    const dirtyTabIds = pane
+      ? fileTabs(pane)
+          .filter((tab) => fileTabEditors.editorFor(tab.tabId).wouldLoseWork)
+          .map((tab) => tab.tabId)
+      : [];
+    if (dirtyTabIds.length > 0) {
+      setPendingLeave({ fileTabIds: dirtyTabIds, run });
+      return;
+    }
+    run();
+  };
+
+  const forgetFileTabEditors = (paneId: string) => {
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    if (!pane) return;
+    for (const tab of fileTabs(pane)) fileTabEditors.forget(tab.tabId);
   };
 
   // Der Pfad der Datei, die die Editorfläche der fokussierten Pane gerade
@@ -1001,7 +1017,7 @@ function App() {
   // Invariante) — das ist einer der drei im Ticket benannten Verlassen-Wege
   // und wird deshalb genauso geguardet wie ein Dateiwechsel. `forget` räumt
   // den Editor-Zustand der verdrängten Pane auf; ohne das hielte der Record
-  // in `usePaneFileEditors` sie für immer als "ungespeichert", falls sie das
+  // in `useFileTabEditors` sie für immer als "ungespeichert", falls sie das
   // beim Verdrängen war.
   const assignProjectToSlot = (slotIndex: number) => {
     const outgoing = gridState.slots[slotIndex];
@@ -1016,7 +1032,7 @@ function App() {
         )
         .then((next) => {
           if (!next) return;
-          if (outgoing) paneFileEditors.forget(outgoing.paneId);
+          if (outgoing) forgetFileTabEditors(outgoing.paneId);
           assignProject(slotIndex, next.path);
           recordRecentProject(next.path);
         })
@@ -1025,7 +1041,7 @@ function App() {
         })
         .finally(() => setPickingSlot(null));
     };
-    if (outgoing) guardLeave(outgoing.paneId, proceed);
+    if (outgoing) guardPaneLeave(outgoing.paneId, proceed);
     else proceed();
   };
 
@@ -1043,13 +1059,13 @@ function App() {
       setPickingSlot(slotIndex);
       void loadProject(path)
         .then((next) => {
-          if (outgoing) paneFileEditors.forget(outgoing.paneId);
+          if (outgoing) forgetFileTabEditors(outgoing.paneId);
           assignProject(slotIndex, next.path);
           recordRecentProject(next.path);
         })
         .finally(() => setPickingSlot(null));
     };
-    if (outgoing) guardLeave(outgoing.paneId, proceed);
+    if (outgoing) guardPaneLeave(outgoing.paneId, proceed);
     else proceed();
   };
 
@@ -1289,14 +1305,18 @@ function App() {
   // reflexhaft weggeklickt und entwertete damit auch die erste.
   const closePaneGuarded = (paneId: string) => {
     const run = () => {
+      forgetFileTabEditors(paneId);
       closePane(paneId);
-      paneFileEditors.forget(paneId);
     };
-    if (paneFileEditors.editorFor(paneId).wouldLoseWork) {
-      guardLeave(paneId, run);
+    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
+    const hasDirtyFile =
+      pane?.tabs.some(
+        (tab) => tab.kind === "file" && fileTabEditors.editorFor(tab.tabId).wouldLoseWork,
+      ) ?? false;
+    if (hasDirtyFile) {
+      guardPaneLeave(paneId, run);
       return;
     }
-    const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
     // Ohne Pane keine Rückfrage: der Zustand ist nicht erreichbar (das Kreuz
     // hängt an genau dieser Pane), aber eine Rückfrage, die ihr Objekt nicht
     // benennen kann, wäre schlechter als gar keine.
@@ -1319,15 +1339,11 @@ function App() {
   const closeTerminalTabGuarded = (paneId: string, tabId: string) => {
     const run = () => closeTerminalTab(paneId, tabId);
     const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
-    const index = pane?.terminalTabs.findIndex((tab) => tab.tabId === tabId);
-    if (index === undefined || index < 0) {
+    if (!pane?.tabs.some((tab) => tab.kind === "terminal" && tab.tabId === tabId)) {
       run();
       return;
     }
-    // Dieselbe Zählung wie die Beschriftung des Chips selbst (`PaneTabs.tsx`
-    // nummeriert nach Position, nicht nach Id) — die Rückfrage nennt damit
-    // genau die Zahl, die auf dem angeklickten Tab steht.
-    setPendingClose({ target: "terminalTab", tabNumber: index + 1, run });
+    setPendingClose({ target: "terminalTab", run });
   };
 
   // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "Neu starten"
@@ -1366,68 +1382,22 @@ function App() {
     if (!pane) return;
     guardBatchClose(
       paneId,
-      pane.terminalTabs.filter((tab) => tab.tabId !== tabId).map((tab) => tab.tabId),
+      terminalTabs(pane).filter((tab) => tab.tabId !== tabId).map((tab) => tab.tabId),
     );
   };
 
   // Browser-übliches "Tabs rechts schließen" (`PaneTabs.tsx`s Kontextmenü).
   const closeTerminalTabsToRightGuarded = (paneId: string, tabId: string) => {
     const pane = gridState.slots.find((slot) => slot?.paneId === paneId);
-    const index = pane?.terminalTabs.findIndex((tab) => tab.tabId === tabId);
+    const index = pane?.tabs.findIndex((tab) => tab.tabId === tabId);
     if (!pane || index === undefined || index < 0) return;
     guardBatchClose(
       paneId,
-      pane.terminalTabs.slice(index + 1).map((tab) => tab.tabId),
+      pane.tabs
+        .slice(index + 1)
+        .filter((tab) => tab.kind === "terminal")
+        .map((tab) => tab.tabId),
     );
-  };
-
-  // Zieht der LETZTE Terminal-Tab einer Pane in eine andere (seit der
-  // Präzisions-Runde erlaubt, Nutzer-Entscheidung), leert sich der
-  // Quell-Slot (`gridState.ts`) — für den Editor-Zustand der Quelle ist das
-  // dasselbe Verlassen wie `closePaneGuarded`: ungespeicherter Stand fragt
-  // per `guardLeave` nach, danach räumt `forget` auf (sonst hielte
-  // `usePaneFileEditors` die verschwundene Pane für immer als
-  // "ungespeichert"). BEWUSST ohne die Sitzungs-Rückfrage (`pendingClose`)
-  // des Schließen-Wegs: hier stirbt keine PTY — der Tab lebt mitsamt seiner
-  // Sitzung in der Ziel-Pane weiter, das ist der ganze Sinn des Zugs. Jeder
-  // andere Zug (Quelle behält Tabs, oder Umsortieren innerhalb einer Pane)
-  // läuft ungefragt durch.
-  const moveTerminalTabGuarded = (
-    sourcePaneId: string,
-    tabId: string,
-    targetPaneId: string,
-    insertIndex: number | null,
-  ) => {
-    const source = gridState.slots.find((slot) => slot?.paneId === sourcePaneId);
-    const emptiesSource =
-      sourcePaneId !== targetPaneId && source?.terminalTabs.length === 1;
-    const run = () => {
-      moveTerminalTab(sourcePaneId, tabId, targetPaneId, insertIndex ?? undefined);
-      if (emptiesSource) paneFileEditors.forget(sourcePaneId);
-    };
-    if (emptiesSource) guardLeave(sourcePaneId, run);
-    else run();
-  };
-
-  // Der Zug auf einen LEEREN Slot (dort entsteht eine frische Pane im Projekt
-  // der Quelle, der Tab wandert hinein) — dieselbe Guard-Logik wie
-  // `moveTerminalTabGuarded` direkt darüber: leert der Zug die Quelle (ihr
-  // letzter Tab), fragt ungespeicherter Editor-Stand nach und `forget` räumt
-  // danach auf; auch hier bewusst ohne Sitzungs-Rückfrage, die PTY lebt in
-  // der neuen Pane weiter.
-  const moveTerminalTabToEmptySlotGuarded = (
-    sourcePaneId: string,
-    tabId: string,
-    slotIndex: number,
-  ) => {
-    const source = gridState.slots.find((slot) => slot?.paneId === sourcePaneId);
-    const emptiesSource = source?.terminalTabs.length === 1;
-    const run = () => {
-      moveTerminalTabToEmptySlot(sourcePaneId, tabId, slotIndex);
-      if (emptiesSource) paneFileEditors.forget(sourcePaneId);
-    };
-    if (emptiesSource) guardLeave(sourcePaneId, run);
-    else run();
   };
 
   // Ein Klick auf eine Datei im Baum tut ab jetzt zweierlei: er markiert die
@@ -1451,34 +1421,29 @@ function App() {
     // für einen echten Fall.
     if (focusedPaneId === null || project === null) return;
     const absolutePath = `${project.path}/${path}`;
+    const pane = gridState.slots.find((slot) => slot?.paneId === focusedPaneId);
+    const existing = pane ? fileTabs(pane).find((tab) => tab.path === path) : undefined;
+    if (existing) {
+      const editor = fileTabEditors.editorFor(existing.tabId);
+      switchToTab(focusedPaneId, existing.tabId);
+      if (!editor.wouldLoseWork) editor.open(absolutePath, line);
+      return;
+    }
 
-    // Ein Klick auf die bereits offene Datei ist kein Wechsel — die Fläche
-    // zeigt sie schon. Solange ungespeicherter Stand darin liegt, wäre ein
-    // erneutes `open()` sogar genau der stille Verlust, den dieses Ticket
-    // ausschließt: es läse die Datei frisch von der Platte und überschriebe
-    // den Puffer wortlos. Der Klick bleibt dann folgenlos, statt zu fragen —
-    // gefragt wird beim Verlassen, und hier verlässt niemand etwas.
-    //
-    // Ohne ungespeicherten Stand lädt derselbe Klick weiterhin neu; das ist
-    // der einzige Weg, einen gescheiterten Lesevorgang zu wiederholen.
-    if (absolutePath === openFilePath && fileEditor.wouldLoseWork) return;
+    const tabId = openFileTab(focusedPaneId, path);
+    fileTabEditors.editorFor(tabId).open(absolutePath, line);
+  };
 
-    // Auswahl-Markierung und Öffnen gehören in DIESELBE Handlung: bliebe das
-    // `setSelectedFile` außerhalb, hübe ein Abbruch die Zeile im Baum hervor,
-    // während die Fläche daneben unverändert die alte Datei zeigt.
-    guardLeave(focusedPaneId, () => {
-      setSelectedFile((current) => ({ ...current, [focusedPaneId]: path }));
-      fileEditor.open(absolutePath, line);
-      switchToFileTab(focusedPaneId);
+  const closeFileTabGuarded = (paneId: string, tabId: string) => {
+    guardLeave(tabId, () => {
+      closeFileTab(paneId, tabId);
+      fileTabEditors.forget(tabId);
     });
   };
 
-  // Der ungespeicherte Stand bekommt seine Marke an ZWEI Stellen: in der
-  // Kopfzeile der Editorfläche und in der Baumzeile der Datei. Die zweite
-  // braucht den Pfad in der Konvention des Baums (projekt-relativ, wie
-  // `selectedFile`) — der Editor führt ihn absolut, weil das Backend ihn so
-  // will. Zurückgerechnet wird deshalb genau hier, spiegelbildlich zur
-  // Zusammensetzung in `selectFile`.
+  // Dirty state appears in the editor header and Explorer row. The latter
+  // needs the project-relative `FileTab` path, while the backend-facing editor
+  // stores an absolute path, so the conversion lives at this boundary.
   const dirtyFile =
     fileEditor.wouldLoseWork &&
     openFilePath !== null &&
@@ -1489,62 +1454,31 @@ function App() {
 
   // Trägt eine Explorer-Umbenennung (Ticket 24) über jeden Ort, der einen
   // Pfad projekt-relativ hält, hinweg mit — spiegelbildlich zu
-  // `paneFileEditors.renamePath`, das dasselbe für die absoluten Pfade der
+  // `fileTabEditors.renamePath`, das dasselbe für die absoluten Pfade der
   // offenen Puffer erledigt. `oldRelPath`/`newRelPath` kommen unverändert aus
   // `ExplorerPanel`, in dessen eigener Konvention (projekt-relativ).
   //
-  // `selectedFile` ist EIN Record über ALLE Panes, nicht nur die des gerade
-  // umbenennenden Projekts — zwei Panes können unterschiedliche Projekte
-  // offen haben und dabei zufällig denselben projekt-relativen Pfad markiert
-  // haben (z. B. beide "src/index.ts"). Ein Remap ohne Projekt-Filter träfe
-  // dann auch die Pane des FREMDEN Projekts. Eingegrenzt wird deshalb auf die
-  // Panes, deren `projectPath` genau dieses Projekt ist — dieselbe Prüfung,
-  // die `paneFileEditors.renamePath`/`closeUnder` sich sparen können, weil sie
-  // mit bereits absoluten (und damit projekt-eindeutigen) Pfaden arbeiten.
+  // Different panes may carry the same project-relative path. Restrict the
+  // tab remap to this project; absolute editor-buffer paths are already
+  // project-unique.
   const onEntryRenamed = (oldRelPath: string, newRelPath: string) => {
     if (project === null) return;
-    paneFileEditors.renamePath(
+    fileTabEditors.renamePath(
       `${project.path}/${oldRelPath}`,
       `${project.path}/${newRelPath}`,
     );
-    const paneIdsInProject = new Set(
-      activePanes(gridState)
-        .filter((pane) => pane.projectPath === project.path)
-        .map((pane) => pane.paneId),
-    );
-    setSelectedFile((current) =>
-      Object.fromEntries(
-        Object.entries(current).map(([paneId, path]) => [
-          paneId,
-          paneIdsInProject.has(paneId)
-            ? remapRenamedPath(path, oldRelPath, newRelPath)
-            : path,
-        ]),
-      ),
-    );
+    renameFileTabs(project.path, oldRelPath, newRelPath);
   };
 
   // Schließt jeden offenen Puffer unter einer gelöschten Explorer-Datei/einem
-  // gelöschten Ordner (über `paneFileEditors.closeUnder`) UND nimmt die
+  // gelöschten Ordner (über `fileTabEditors.closeUnder`) UND nimmt die
   // Auswahl-Markierung jeder Pane DIESES Projekts mit, die genau dorthin
   // zeigte — sonst bliebe eine Baumzeile markiert, die es nicht mehr gibt.
   // Derselbe Projekt-Filter wie bei `onEntryRenamed`, aus demselben Grund.
   const onEntryDeleted = (relPath: string) => {
     if (project === null) return;
-    paneFileEditors.closeUnder(`${project.path}/${relPath}`);
-    const paneIdsInProject = new Set(
-      activePanes(gridState)
-        .filter((pane) => pane.projectPath === project.path)
-        .map((pane) => pane.paneId),
-    );
-    setSelectedFile((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(
-          ([paneId, path]) =>
-            !(paneIdsInProject.has(paneId) && isPathOrDescendant(path, relPath)),
-        ),
-      ),
-    );
+    fileTabEditors.closeUnder(`${project.path}/${relPath}`);
+    closeFileTabsUnder(project.path, relPath);
   };
 
   const nudgeExplorerWidth = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1635,7 +1569,7 @@ function App() {
                 project={project}
                 width={explorerWidth}
                 resizing={resizingExplorer}
-                selectedFile={selectedFile[focusedPaneId ?? ""] ?? ""}
+                selectedFile={focusedFileTab?.path ?? ""}
                 dirtyFile={dirtyFile}
                 initialExpanded={expandedFolders[project.path]}
                 onExpandedChange={(paths) =>
@@ -1725,8 +1659,7 @@ function App() {
             <PaneGrid
               state={gridState}
               projects={projectRecords}
-              paneFileEditors={paneFileEditors}
-              guardLeave={guardLeave}
+              fileTabEditors={fileTabEditors}
               pickingSlot={pickingSlot}
               restoringSlots={restoringSlots}
               dropTargets={dropTargets}
@@ -1753,10 +1686,13 @@ function App() {
               onCloseOtherTerminalTabs={closeOtherTerminalTabsGuarded}
               onCloseTerminalTabsToRight={closeTerminalTabsToRightGuarded}
               onRenameTerminalTab={renameTerminalTab}
-              onMoveTerminalTab={moveTerminalTabGuarded}
-              onMoveTerminalTabToEmptySlot={moveTerminalTabToEmptySlotGuarded}
-              onSwitchToTerminalTab={switchToTerminalTab}
-              onSwitchToFileTab={switchToFileTab}
+              onMoveTerminalTab={(sourcePaneId, tabId, targetPaneId, insertIndex) =>
+                moveTerminalTab(sourcePaneId, tabId, targetPaneId, insertIndex ?? undefined)
+              }
+              onMoveTab={moveTab}
+              onMoveTerminalTabToEmptySlot={moveTerminalTabToEmptySlot}
+              onSwitchToTab={switchToTab}
+              onCloseFileTab={closeFileTabGuarded}
               onEnterFocusMode={enterFocusMode}
               onExitFocusMode={exitFocusMode}
               onChangeSplitRatios={setSplitRatios}
@@ -1779,26 +1715,20 @@ function App() {
             />
           )}
         </div>
-        {/* Außerhalb des `project !== null`-Zweigs: die bestätigte Handlung
-            kann genau dieses Projekt schließen (`closeProject`), und ein
-            Dialog, der sich im selben Augenblick mit seiner Umgebung
-            aushängt, gibt den Fokus nicht mehr geordnet zurück.
-
-            Der Dateiname kommt bewusst aus der Pane, die `pendingLeave`
-            genannt hat — nicht aus der zufällig fokussierten. Mit mehreren
-            Panes (ab Schritt 5) kann das auseinanderfallen; heute sind sie
-            noch identisch. `pendingLeave` wird nur bei `wouldLoseWork`
-            gesetzt, und das bedingt einen Nicht-idle-Zustand — der Pfad ist
-            hier also immer da; die Prüfung steht für TypeScript, nicht für
-            den Fall. */}
+        {/* Kept outside the project branch because the confirmed action can
+            remove that branch. Names come from the exact dirty tabs captured
+            by the guard, never from whichever pane happens to be focused when
+            the user answers. */}
         {pendingLeave !== null &&
           (() => {
-            const state = paneFileEditors.editorFor(pendingLeave.paneId).state;
-            const path = state.status === "idle" ? null : state.path;
+            const fileNames = pendingLeave.fileTabIds.flatMap((fileTabId) => {
+              const state = fileTabEditors.editorFor(fileTabId).state;
+              return state.status === "idle" ? [] : [fileNameFromPath(state.path)];
+            });
             return (
-              path !== null && (
+              fileNames.length > 0 && (
                 <UnsavedChangesDialog
-                  fileName={fileNameFromPath(path)}
+                  fileNames={fileNames}
                   onConfirm={pendingLeave.run}
                   onClose={() => setPendingLeave(null)}
                 />
@@ -1841,7 +1771,6 @@ function App() {
               ) : pendingClose.target === "terminalTab" ? (
                 <Trans
                   i18nKey="closeDialog.terminalTabDescription"
-                  values={{ number: pendingClose.tabNumber }}
                   components={{
                     bold: (
                       <span className="font-medium text-(--pc-foreground)" />

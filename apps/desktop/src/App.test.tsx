@@ -1142,7 +1142,7 @@ describe("App", () => {
     expect(await editorTextbox()).toBeVisible();
     expect(screen.getByLabelText("Terminal storefront")).not.toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1: Shell" }));
 
     // Zurück im Terminal — und KEINE Rückfrage: anders als "Datei schließen"
     // verwirft ein bloßer Ansichtswechsel nichts.
@@ -1241,31 +1241,27 @@ describe("App", () => {
 
   const leaveDialog = () => screen.findByRole("alertdialog");
 
-  it("fragt vor dem Wechsel auf eine andere Datei nach, statt den Stand zu verwerfen", async () => {
+  it("öffnet eine zweite Datei in einem eigenen Tab, ohne den ungespeicherten ersten zu verwerfen", async () => {
     await dirtyEditorWithSecondFile();
 
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
 
-    // Die Rückfrage nennt die Datei, um die es geht — nicht die, auf die
-    // geklickt wurde.
-    expect(await leaveDialog()).toHaveTextContent("main.rs");
-    // Der eigentliche Punkt: der Wechsel hat noch NICHT stattgefunden. Ein
-    // Read der neuen Datei wäre bereits der Verlust, denn er setzt den
-    // Editorzustand um.
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "explorer_read_file",
-      expect.anything(),
-    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
+        path: "/Users/dev/projects/storefront/README.md",
+      });
+    });
+    expect(
+      screen
+        .getAllByRole("button", { name: /^main\.rs/ })
+        .some((button) => button.hasAttribute("data-pane-tab-chip")),
+    ).toBe(true);
   });
 
-  it("führt den Wechsel nach dem Bestätigen der Rückfrage doch aus", async () => {
+  it("wechselt sofort zum neuen File-Tab", async () => {
     await dirtyEditorWithSecondFile();
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
-    await leaveDialog();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Änderungen verwerfen" }),
-    );
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
@@ -1274,26 +1270,47 @@ describe("App", () => {
     });
   });
 
-  it("lässt beim Abbrechen den ungespeicherten Puffer unangetastet stehen", async () => {
+  it("behält den ungespeicherten Puffer beim Wechsel zwischen File-Tabs", async () => {
     await dirtyEditorWithSecondFile();
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
-    await leaveDialog();
-
-    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    const mainTab = await waitFor(() => {
+      const button = screen
+        .getAllByRole("button", { name: /^main\.rs/ })
+        .find((candidate) => candidate.hasAttribute("data-pane-tab-chip"));
+      expect(button).toBeDefined();
+      return button as HTMLButtonElement;
     });
+    fireEvent.click(mainTab);
     expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "explorer_read_file",
-      expect.anything(),
-    );
-    // Und die Baumzeile hebt weiter die Datei hervor, die auch wirklich offen
-    // ist — die Auswahl wandert nicht ohne den Editor mit.
     expect(
       explorerTreeButton(/main\.rs,\s*ungespeichert/),
     ).toBeInTheDocument();
+  });
+
+  it("warnt beim Schließen einer Pane gemeinsam vor allen ungespeicherten File-Tabs", async () => {
+    await dirtyEditorWithSecondFile();
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    const readmeEditor = await screen.findByRole("textbox", {
+      name: "Inhalt von README.md",
+    });
+    fireEvent.change(readmeEditor, { target: { value: "readme geändert" } });
+
+    const closePaneButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Pane schließen"]',
+    );
+    expect(closePaneButton).not.toBeNull();
+    fireEvent.click(closePaneButton as HTMLButtonElement);
+
+    const dialog = await leaveDialog();
+    expect(dialog).toHaveTextContent("main.rs");
+    expect(dialog).toHaveTextContent("README.md");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Änderungen verwerfen" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Datei README.md")).not.toBeInTheDocument();
+    });
   });
 
   it("fragt auch nach, wenn die Fläche über ihr Schließkreuz verlassen wird", async () => {
@@ -1731,7 +1748,7 @@ describe("Grid / Mehrfach-Pane", () => {
 
     // Zurück zu Tab 1: bloßes Umschalten darf nie killen/respawnen — sonst
     // stürbe die laufende Session des Nutzers lautlos beim Tab-Wechsel.
-    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1: Shell" }));
     expect(invokeMock).not.toHaveBeenCalledWith(
       "pty_kill",
       expect.anything(),
@@ -1743,12 +1760,12 @@ describe("Grid / Mehrfach-Pane", () => {
     // Tab 2 schließen: nur über das Kontextmenü erreichbar (PaneTabs.tsx),
     // killt NUR dessen eigene PTY, nicht Tab 1.
     const tab2Trigger = screen
-      .getByRole("button", { name: "Terminal 2" })
+      .getByRole("button", { name: "Terminal 2: Shell" })
       .closest("span");
     if (!tab2Trigger) throw new Error("Kontextmenü-Trigger für \"Terminal 2\" nicht gefunden");
     fireEvent.contextMenu(tab2Trigger);
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Terminal 2 schließen" }),
+      screen.getByRole("menuitem", { name: "Terminal-Tab schließen" }),
     );
     await confirmClose("Tab schließen");
 
@@ -1786,7 +1803,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    const chip = await screen.findByRole("button", { name: "Terminal 2" });
+    const chip = await screen.findByRole("button", { name: "Terminal 2: Shell" });
 
     // Echte Rechtsklick-Reihenfolge: erst `pointerdown` mit Sekundärtaste
     // auf dem Chip-Knopf selbst (dem Träger des Zieh-Handlers) …
@@ -1795,7 +1812,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.contextMenu(chip);
 
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Terminal 2 umbenennen" }),
+      await screen.findByRole("menuitem", { name: "Terminal-Tab umbenennen" }),
     );
 
     // `onCloseAutoFocus` (PaneTabs.tsx) mountet und fokussiert das Feld erst
@@ -1861,7 +1878,7 @@ describe("Grid / Mehrfach-Pane", () => {
         name: "Weiteren Terminal-Tab öffnen",
       }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Ab hier zählt nur noch, was DIE ZÜGE auslösen. Absolute Zahlen taugen
     // dafür unter StrictMode nicht: dessen Mount-Doppellauf spawnt jede
     // Sitzung einmal zusätzlich und killt sie sofort wieder (der `cancelled`/
@@ -1874,7 +1891,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // Der Chip des neuen, jetzt aktiven Tabs. Eindeutig ungescoped: die
     // Leiste des inaktiven Tabs liegt hinter `visibility: hidden` und fällt
     // aus Rollen-Queries heraus, die Ziel-Pane hat nur einen Tab.
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
       throw new Error("Fläche des gezogenen Tabs nicht gefunden");
@@ -1902,7 +1919,7 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(container.querySelector("[data-tab-drag-ghost]")).not.toBeNull();
     const incoming = targetSection.querySelector("[data-incoming-tab]");
     expect(incoming).not.toBeNull();
-    expect(incoming).toHaveTextContent("2");
+    expect(incoming).toBeEmptyDOMElement();
 
     fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
 
@@ -1934,7 +1951,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // React beim Umsortieren mit `Placement` markiert, hängt an der
     // Richtung — ein einzelner Zug kann ein unsichtbares Geschwister treffen
     // statt des gezogenen Tabs. Erst beide Richtungen decken beide Fälle ab.
-    const chipBack = screen.getByRole("button", { name: "Terminal 2" });
+    const chipBack = screen.getByRole("button", { name: "Terminal 2: Shell" });
     expect(chipBack.closest("[data-pane-id]")).toBe(movedSurface);
     const sourceRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
     const nowhere = { left: 0, top: 0, right: 0, bottom: 0 } as DOMRect;
@@ -2003,10 +2020,10 @@ describe("Grid / Mehrfach-Pane", () => {
         name: "Weiteren Terminal-Tab öffnen",
       }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     expect(webgl.addons.filter((a) => !a.disposed)).toHaveLength(2);
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     // Die konkrete Instanz des gezogenen Tabs — er ist vor UND nach dem Zug
     // der aktive Tab seiner (jeweils eigenen) Pane, behält also durchgehend
     // GENAU DIESEN Kontext, ohne zwischendurch einen neuen anzulegen.
@@ -2062,12 +2079,12 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Nullpunkt wie im Zug-Test darüber: das StrictMode-Mount-Rauschen gehört
     // zum Aufbau, nicht zum Zug.
     invokeMock.mockClear();
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
       throw new Error("Fläche des gezogenen Tabs nicht gefunden");
@@ -2116,13 +2133,9 @@ describe("Grid / Mehrfach-Pane", () => {
   }, 25_000);
 
   it("sortiert einen Terminal-Tab per Chip-Drag innerhalb der eigenen Pane um (Präzisions-Runde)", async () => {
-    // Nutzer-Befund: "auch das Re-Org von Tabs innerhalb eines Panes geht
-    // noch nicht". Eine Pane, zwei Tabs — die eigene Pane ist seit der
-    // Präzisions-Runde selbst Zug-Kandidat, der Einfüge-Slot kommt aus den
-    // Chip-Mitten (`terminalTabInsertionIndex`, PaneGrid.tsx). StrictMode wie
-    // im Zug-Test darüber: auch das Umsortieren darf unter dem Placement-
-    // Doppel-Effekt-Zyklus keine PTY anfassen (`terminalTabSurfaceOrder`
-    // hält die Portal-Liste unabhängig von der Chip-Reihenfolge).
+    // Chip midpoints drive `paneTabInsertionIndex`. StrictMode also proves
+    // that reordering does not touch the PTY lifecycle because
+    // `terminalTabSurfaceOrder` stays independent of chip order.
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
       cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
@@ -2136,7 +2149,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     invokeMock.mockClear();
 
     // jsdom hat kein Layout: Pane-Fläche und Chip-Mitten bekommen Rechtecke —
@@ -2149,16 +2162,16 @@ describe("Grid / Mehrfach-Pane", () => {
       section.getBoundingClientRect = () => surfaceRect;
     }
     for (const chipEl of container.querySelectorAll<HTMLElement>(
-      "[data-terminal-tab-chip]",
+      "[data-pane-tab-chip]",
     )) {
       const rect =
-        chipEl.getAttribute("aria-label") === "Terminal 1"
+        chipEl.getAttribute("aria-label") === "Terminal 1: Shell"
           ? ({ left: 40, top: 0, right: 60, bottom: 24, width: 20 } as DOMRect)
           : ({ left: 80, top: 0, right: 100, bottom: 24, width: 20 } as DOMRect);
       chipEl.getBoundingClientRect = () => rect;
     }
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     chip.setPointerCapture = vi.fn();
     chip.releasePointerCapture = vi.fn();
     chip.hasPointerCapture = vi.fn(() => true);
@@ -2171,10 +2184,10 @@ describe("Grid / Mehrfach-Pane", () => {
     // Chip löst sich aus der Zählung). Kein Ecken-HUD über der eigenen Pane.
     const incoming = container.querySelector("[data-incoming-tab]");
     expect(incoming).not.toBeNull();
-    expect(incoming).toHaveTextContent("1");
+    expect(incoming).toBeEmptyDOMElement();
     expect(
       incoming?.nextElementSibling?.querySelector(
-        '[aria-label="Terminal 1"]',
+        '[aria-label="Terminal 1: Shell"]',
       ),
     ).not.toBeNull();
     // (`--invite` gezielt und auf die ZELLE der eigenen Pane gescoped: die
@@ -2192,12 +2205,12 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.pointerUp(chip, { clientX: 10, clientY: 10 });
 
     // Nach dem Drop: der gezogene Tab steht vorn — er heißt jetzt
-    // "Terminal 1" (die Nummern sind Positionen, die Cmd/Strg+1..9-Kürzel
+    // "Terminal 1: Shell" (die Nummern sind Positionen, die Cmd/Strg+1..9-Kürzel
     // folgen mit, s. Ticket-Nachtrag) — und ist als aktiver Tab markiert.
     await waitFor(() => {
       expect(
         screen
-          .getByRole("button", { name: "Terminal 1" })
+          .getByRole("button", { name: "Terminal 1: Shell" })
           .getAttribute("aria-pressed"),
       ).toBe("true");
     });
@@ -2241,7 +2254,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // Der EINZIGE Tab der Quell-Pane ist der Griff — vor der Runde war er
     // gar nicht ziehbar.
     const chip = within(sourceSection).getByRole("button", {
-      name: "Terminal 1",
+      name: "Terminal 1: Shell",
     });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
@@ -2276,6 +2289,104 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
   }, 15_000);
+
+  it("sortiert File-Tabs weiter um, nachdem der letzte Terminal-Tab die Pane verlassen hat", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([
+          { name: "a.ts", is_dir: false },
+          { name: "b.ts", is_dir: false },
+        ]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    const { container } = render(<App />);
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+
+    const terminalSurfaces = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pane-id]"),
+    );
+    const [sourceSurface, targetSurface] = terminalSurfaces;
+    if (!sourceSurface || !targetSurface) throw new Error("Zwei Panes erwartet");
+    const sourcePaneId = sourceSurface.dataset.paneId;
+    const targetPaneId = targetSurface.dataset.paneId;
+    const sourceCell = sourceSurface.closest(".pc-workspace > *");
+    if (!(sourceCell instanceof HTMLElement)) {
+      throw new Error("Quell-Zelle nicht gefunden");
+    }
+    const terminalChip = within(sourceSurface).getByRole("button", {
+      name: "Terminal 1: Shell",
+    });
+
+    fireEvent.mouseDown(sourceSurface);
+    fireEvent.click(await screen.findByRole("button", { name: "a.ts" }));
+    await screen.findByRole("textbox", { name: "Inhalt von a.ts" });
+    fireEvent.click(screen.getByRole("button", { name: "b.ts" }));
+    await screen.findByRole("textbox", { name: "Inhalt von b.ts" });
+
+    targetSurface.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 200, bottom: 100 }) as DOMRect;
+    terminalChip.setPointerCapture = vi.fn();
+    terminalChip.releasePointerCapture = vi.fn();
+    terminalChip.hasPointerCapture = vi.fn(() => true);
+    fireEvent.pointerDown(terminalChip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(terminalChip, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(terminalChip, { clientX: 150, clientY: 50 });
+
+    await waitFor(() => {
+      expect(sourceCell.querySelector(`[data-pane-id="${sourcePaneId}"]`)).not.toBeNull();
+    });
+    expect(
+      container.querySelectorAll(`[data-pane-id="${targetPaneId}"]`),
+    ).toHaveLength(2);
+
+    const sourceAnchor = sourceCell.querySelector<HTMLElement>(
+      `[data-pane-id="${sourcePaneId}"]`,
+    );
+    if (!sourceAnchor) throw new Error("File-only-Pane-Anker nicht gefunden");
+    sourceAnchor.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 200, bottom: 100 }) as DOMRect;
+    for (const chip of sourceAnchor.querySelectorAll<HTMLElement>(
+      "[data-pane-tab-chip]",
+    )) {
+      chip.getBoundingClientRect = () =>
+        (chip.textContent?.includes("a.ts")
+          ? ({ left: 40, top: 0, right: 60, bottom: 24, width: 20 } as DOMRect)
+          : ({ left: 80, top: 0, right: 100, bottom: 24, width: 20 } as DOMRect));
+    }
+    const bChip = screen
+      .getAllByRole("button", { name: "b.ts" })
+      .find((button) => button.hasAttribute("data-pane-tab-chip"));
+    if (!(bChip instanceof HTMLButtonElement)) {
+      throw new Error("b.ts-Tab-Chip nicht gefunden");
+    }
+    bChip.setPointerCapture = vi.fn();
+    bChip.releasePointerCapture = vi.fn();
+    bChip.hasPointerCapture = vi.fn(() => true);
+    fireEvent.pointerDown(bChip, { button: 0, clientX: 90, clientY: 10 });
+    fireEvent.pointerMove(bChip, { clientX: 10, clientY: 10 });
+    expect(sourceAnchor.querySelector("[data-incoming-tab]")).not.toBeNull();
+    fireEvent.pointerUp(bChip, { clientX: 10, clientY: 10 });
+
+    await waitFor(() => {
+      const labels = Array.from(
+        screen
+          .getByLabelText("Datei b.ts")
+          .querySelectorAll<HTMLElement>("[data-pane-tab-chip]"),
+      ).map((chip) => chip.textContent);
+      expect(labels).toEqual(["b.ts", "a.ts"]);
+    });
+  });
 
   it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
     openMock
@@ -2379,7 +2490,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Nullpunkt wie in den Zug-Tests darüber: StrictMode-Mount-Rauschen
     // gehört zum Aufbau, nicht zum Zug.
     invokeMock.mockClear();
@@ -3513,7 +3624,7 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
 
     // Der ERSTE Tastendruck macht den Puffer erstmals "dirty" — das ist der
     // eine, gewollte Cross-Pane-Sync dieses Tickets (Baumzeile UND Tab-Chip
-    // zeigen "ungespeichert", s. `usePaneFileEditors.ts`s `editContent`). Die
+    // zeigen "ungespeichert", s. `useFileTabEditors.ts`s `editContent`). Die
     // eigentliche Prüfung beginnt erst NACH diesem einen, erwarteten Commit.
     fireEvent.change(textbox, { target: { value: "g" } });
     await waitFor(() => {
@@ -3528,7 +3639,7 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
 
     // Fortgesetztes Tippen — jeder weitere Tastendruck bleibt seit Ticket 05
     // rein lokal in der (seit diesem Ticket unkontrollierten) Textarea, s.
-    // `FileEditor.tsx`s `EditorBuffer` und `usePaneFileEditors.ts`s
+    // `FileEditor.tsx`s `EditorBuffer` und `useFileTabEditors.ts`s
     // `editContent`. Mehrere einzelne `change`-Events statt eines einzigen
     // mit dem Endtext, damit die Prüfung wirklich "pro Tastendruck" und nicht
     // nur "pro abgeschlossener Eingabe" gilt.
@@ -4011,7 +4122,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     // Ohne die abschließende `switchToTerminalTab`-Korrektur stünde hier Tab
     // 3 aktiv (der zuletzt von `openTerminalTab` angelegte) statt des
     // gespeicherten Index 0.
-    expect(screen.getByRole("button", { name: "Terminal 1" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Terminal 1: Shell" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -4119,6 +4230,72 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     expect(
       await screen.findByRole("textbox", { name: "Inhalt von App.tsx" }),
     ).toHaveValue(FILE_CONTENTS.text);
+  });
+
+  it("restores multiple File-Tabs in their persisted kind-crossing order", async () => {
+    invokeMock.mockImplementation((cmd, args) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{ id: "terminal-1" }, { id: "terminal-2" }],
+                  file_tabs: [
+                    { id: "file-app", path: "src/App.tsx" },
+                    { id: "file-main", path: "src/main.tsx" },
+                  ],
+                  tab_order: [
+                    "file-main",
+                    "terminal-1",
+                    "file-app",
+                    "terminal-2",
+                  ],
+                  active_tab: { kind: "file", id: "file-app" },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
+      if (cmd === "explorer_read_file") {
+        return Promise.resolve({
+          ...FILE_CONTENTS,
+          text: (args as { path: string }).path,
+        });
+      }
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+
+    await screen.findByRole("textbox", { name: "Inhalt von App.tsx" });
+    await waitFor(() => {
+      const chips = [
+        ...container.querySelectorAll<HTMLElement>("[data-pane-tab-chip]"),
+      ].filter(
+        (chip) => chip.closest<HTMLElement>('[style*="visibility: hidden"]') === null,
+      );
+      expect(chips).toHaveLength(4);
+      expect(chips.map((chip) => chip.dataset.paneTabChip)).toEqual([
+        "file-main",
+        expect.any(String),
+        "file-app",
+        expect.any(String),
+      ]);
+    });
+    expect(screen.getByRole("button", { name: "App.tsx" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("ein Slot ohne `file_tabs`-Feld öffnet keine Datei namens \"undefined\"", async () => {
@@ -4262,6 +4439,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
         ],
         active_tab: { kind: "terminal", id: expect.any(String) as string },
         file_tabs: [],
+        tab_order: [expect.any(String) as string],
       });
       expect(slot?.active_tab).toEqual({
         kind: "terminal",

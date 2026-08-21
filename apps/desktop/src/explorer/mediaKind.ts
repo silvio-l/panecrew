@@ -2,7 +2,7 @@
 // preview mode (Ticket 38) — same shape as ../components/syntaxHighlight.ts's
 // languageForPath: a plain extension table, no content sniffing. Kept as its
 // own module rather than folded into that one: this drives which IPC command
-// usePaneFileEditors.ts calls (explorer_read_media vs. explorer_read_file),
+// useFileTabEditors.ts calls (explorer_read_media vs. explorer_read_file),
 // not tokenization, and fileEditorState.ts (deliberately React/IPC-free)
 // needs the resulting MediaKind type without pulling in the tokenizer.
 

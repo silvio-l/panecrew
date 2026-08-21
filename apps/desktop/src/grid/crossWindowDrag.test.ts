@@ -122,15 +122,15 @@ describe("moveAcrossWindows", () => {
       );
 
       const targetPane = result.target.slots[2] as Pane;
-      expect(targetPane.terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(targetPane.tabs.map((tab) => tab.tabId)).toEqual([
         "tab-2",
         "tab-0b",
       ]);
-      expect(targetPane.activeTerminalTabId).toBe("tab-0b");
+      expect(targetPane.activeTabId).toBe("tab-0b");
       expect(result.target.focusedPaneId).toBe("pane-2");
 
       const sourcePane = result.source.slots[0] as Pane;
-      expect(sourcePane.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
+      expect(sourcePane.tabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
     });
 
     it("empties the source slot when its last tab moves out", () => {
@@ -161,8 +161,8 @@ describe("moveAcrossWindows", () => {
       expect(newPane).toMatchObject({
         paneId: "pane-new",
         projectPath: "/repo/a",
-        terminalTabs: [{ tabId: "tab-0b", label: null }],
-        activeTerminalTabId: "tab-0b",
+        tabs: [{ kind: "terminal", tabId: "tab-0b", label: null }],
+        activeTabId: "tab-0b",
       });
       expect(result.target.focusedPaneId).toBe("pane-new");
     });

@@ -65,9 +65,8 @@ export function TerminalPane({
    * (eine Pane kann mehrere `TerminalPane`-Mounts gleichzeitig haben, je
    * einen pro Terminal-Tab). Geht 1:1 in `usePtyTerminal`. */
   tabId: string;
-  /** Ticket 35: welcher CLI-Adapter dieser Tab beim Spawn starten soll, `null`
-   * für die eingebaute Login-Shell — kommt 1:1 aus `Pane.terminalTabs[].adapterId`
-   * (`PaneGrid.tsx`'s `TerminalTabSurface`), geht 1:1 in `usePtyTerminal`. */
+  /** Launch adapter stored on this `TerminalTab`; `null` selects the built-in
+   * login shell. Passed unchanged from `Pane.tabs` to `usePtyTerminal`. */
   adapterId: string | null;
   projectPath: string;
   projectName: string;
@@ -128,19 +127,22 @@ export function TerminalPane({
   onRestartTerminatedTab: (paneId: string, tabId: string) => void;
 }) {
   const { t } = useTranslation();
+  const terminalTabItems = tabs.tabs.filter((tab) => tab.kind === "terminal");
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
   const selectTerminalTabByNumber = (number: number) => {
-    const target = tabs.terminalTabs.find((tab) => tab.number === number);
-    if (target) tabs.onSelectTerminalTab(target.tabId);
+    const target = terminalTabItems.find(
+      (tab) => tab.shortcutPosition === number,
+    );
+    if (target) tabs.onSelectTab(target.tabId);
   };
   // Dieselbe Bedingung wie das Kontextmenü-Kreuz (PaneTabs.tsx' `closable`):
   // der letzte verbleibende Terminal-Tab lässt sich auch über das Kürzel
   // nicht schließen, statt eine Pane leer zurückzulassen.
   const closeActiveTerminalTab = () => {
-    if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+    if (tabs.tabs.length > 1) tabs.onCloseTerminalTab(tabId);
   };
   // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
   // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
@@ -505,7 +507,7 @@ export function TerminalPane({
           <TabResourceBanner
             tabId={tabId}
             onTerminate={() => {
-              if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+              if (tabs.tabs.length > 1) tabs.onCloseTerminalTab(tabId);
               else onClose();
             }}
             onRestart={() => onRestartTerminatedTab(paneId, tabId)}

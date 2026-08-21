@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { activePanes, type GridState } from "../grid/gridState";
+import { activePanes, terminalTabs, type GridState } from "../grid/gridState";
 import type { GitRepoSummary } from "../types/gitStatus";
 import { GitRepoReadout } from "./GitRepoReadout";
 import { HudReadout } from "./HudReadout";
@@ -40,7 +40,7 @@ export function GridStatusRail({
   const panes = activePanes(state);
   const slots = state.slots.length;
   const terminals = panes.reduce(
-    (sum, pane) => sum + pane.terminalTabs.length,
+    (sum, pane) => sum + terminalTabs(pane).length,
     0,
   );
 

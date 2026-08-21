@@ -90,7 +90,7 @@ export function FileEditor({
    * gelesen über `bufferRef` unten — seit derselbe Puffer unkontrolliert ist
    * (s. `EditorBuffer`), ist das die einzig verlässliche Quelle, nicht
    * `state.content` (das bleibt seit demselben Ticket ab dem zweiten
-   * Tastendruck einer Sitzung zurück, s. `usePaneFileEditors.ts`s
+   * Tastendruck einer Sitzung zurück, s. `useFileTabEditors.ts`s
    * `editContent`). */
   onSave: (options?: { force?: boolean; content?: string }) => void;
   onClose: () => void;
@@ -108,7 +108,7 @@ export function FileEditor({
    * Header wie dort. */
   focusModeHud: ReactNode;
   /** Ticket 26 (Inhaltssuche): eine noch nicht angewendete Sprungzeile aus
-   * `usePaneFileEditors.ts`s `open(path, line)`, `null` ohne offenen
+   * `useFileTabEditors.ts`s `open(path, line)`, `null` ohne offenen
    * Sprungwunsch. Angewendet wird sie erst, sobald `state.status` „ready"
    * ist — vorher existiert der Puffer noch nicht, an dem sich Zeile 1 als
    * Position festmachen ließe. */
@@ -127,7 +127,7 @@ export function FileEditor({
   // unkontrollierte) Textarea in `EditorBuffer` unten — der einzige Weg, den
   // GERADE getippten Stand für Speichern/Strg+S zu lesen, seit nicht mehr
   // jeder Tastendruck den React-Zustand nachführt (`state.content` kann
-  // hinter ihm zurückbleiben, s. `usePaneFileEditors.ts`s `editContent`).
+  // hinter ihm zurückbleiben, s. `useFileTabEditors.ts`s `editContent`).
   const bufferRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Ticket 26 (Inhaltssuche): wendet einen offenen Sprungwunsch an, sobald
@@ -221,10 +221,13 @@ export function FileEditor({
     }
     const tabNumber = terminalTabSelectNumber(shortcut);
     if (tabNumber === null) return;
-    const target = tabs.terminalTabs.find((tab) => tab.number === tabNumber);
+    const target = tabs.tabs.find(
+      (tab) =>
+        tab.kind === "terminal" && tab.shortcutPosition === tabNumber,
+    );
     if (!target) return;
     event.preventDefault();
-    tabs.onSelectTerminalTab(target.tabId);
+    tabs.onSelectTab(target.tabId);
   };
 
   return (
@@ -517,7 +520,7 @@ function HighlightOverlay({
  * Die eigentliche Eingabefläche (Ticket 05, Performance-Audit) —
  * UNCONTROLLED statt vorher `value={state.content}`: der Browser führt den
  * Text selbst, React schreibt ihn nur EINMAL beim Mounten hinein
- * (`defaultValue`). `onEdit` (= `usePaneFileEditors.ts`s `editContent`)
+ * (`defaultValue`). `onEdit` (= `useFileTabEditors.ts`s `editContent`)
  * bleibt zwar an jedem Tastendruck verdrahtet, tut dort aber ab dem ZWEITEN
  * Tastendruck einer bereits "dirty" Sitzung nichts mehr (Kommentar dort) —
  * vorher ersetzte JEDER Tastendruck den GESAMTEN Pane-übergreifenden
@@ -542,7 +545,7 @@ function HighlightOverlay({
  * SYNTAX-HIGHLIGHTING + ZEILENNUMMERN (Ticket 39): eine ZWEITE, rein lokale
  * `content`-Kopie kommt hier trotzdem hinzu — anders als `state.content`
  * oben treibt sie NICHTS außerhalb dieser Komponente an (kein `onEdit`-Ersatz,
- * kein Zustand in `usePaneFileEditors.ts`), sie steuert nur das eigene
+ * kein Zustand in `useFileTabEditors.ts`), sie steuert nur das eigene
  * Gutter/Overlay unten. `useState(initialContent)` wertet den Startwert nur
  * beim Mounten aus — exakt dieselbe Lebensdauer-Klammer wie `defaultValue`
  * an der Textarea (s. Absatz oben), ein Re-Sync-Effekt aus `state.content`
@@ -825,7 +828,7 @@ function LoadErrorNotice({
 // a separate tab kind (CONTEXT.md's browser-tab _Avoid_ note), so this only
 // replaces the content area below the header; open/close/tab chip stay
 // exactly as they are for a text file. The base64 payload comes straight
-// from usePaneFileEditors.ts's explorer_read_media call and is rendered as a
+// from useFileTabEditors.ts's explorer_read_media call and is rendered as a
 // data: URL — no asset: protocol scope exists in
 // src-tauri/capabilities/default.json (unlike `openPath` above, which needed
 // one), and a data: URL needs none, so this stays self-contained.

@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
+  moveTab,
+  openFileTab,
   openTerminalTab,
   setSplitRatios,
   switchTemplate,
-  switchToFileTab,
   switchToTerminalTab,
 } from "../grid/gridState";
 import {
@@ -23,7 +24,7 @@ const LABEL = "main";
 
 describe("buildWindowState", () => {
   it("baut leere Slots aus einem leeren Grid", () => {
-    const state = buildWindowState(LABEL, INITIAL_GRID_STATE, {});
+    const state = buildWindowState(LABEL, INITIAL_GRID_STATE);
 
     expect(state).toEqual({
       label: LABEL,
@@ -43,13 +44,14 @@ describe("buildWindowState", () => {
       "tab-1",
     );
 
-    const state = buildWindowState(LABEL, grid, {});
+    const state = buildWindowState(LABEL, grid);
 
     expect(state.slots[2]).toEqual({
       project_path: "/repo/storefront",
       terminal_tabs: [{ id: "tab-1", title: null, adapter_id: null }],
       active_tab: { kind: "terminal", id: "tab-1" },
       file_tabs: [],
+      tab_order: ["tab-1"],
     });
   });
 
@@ -63,7 +65,7 @@ describe("buildWindowState", () => {
       "claude", // brandlint-ok: canonical adapter id, functional
     );
 
-    const state = buildWindowState(LABEL, grid, {});
+    const state = buildWindowState(LABEL, grid);
 
     expect(state.slots[2]).toMatchObject({
       terminal_tabs: [{ id: "tab-1", adapter_id: "claude" }], // brandlint-ok: canonical adapter id, functional
@@ -78,7 +80,7 @@ describe("buildWindowState", () => {
     );
     const backToFirst = switchToTerminalTab(withTwoTabs, "pane-1", "tab-1");
 
-    const state = buildWindowState(LABEL, backToFirst, {});
+    const state = buildWindowState(LABEL, backToFirst);
 
     expect(state.slots[0]).toEqual({
       project_path: "/repo/storefront",
@@ -88,61 +90,70 @@ describe("buildWindowState", () => {
       ],
       active_tab: { kind: "terminal", id: "tab-1" },
       file_tabs: [],
+      tab_order: ["tab-1", "tab-2"],
     });
   });
 
-  it("trägt die letzte ausgewählte Datei der Pane als aktiven File-Tab ein, wenn der File-Tab auch aktiv ist", () => {
-    const grid = switchToFileTab(
-      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/storefront", "pane-1", "tab-1"),
+  it("persists multiple File-Tabs and their mixed order from the generic live model", () => {
+    const withFiles = openFileTab(
+      openFileTab(
+        assignProjectToSlot(
+          INITIAL_GRID_STATE,
+          0,
+          "/repo/storefront",
+          "pane-1",
+          "tab-1",
+        ),
+        "pane-1",
+        "file-1",
+        "src/App.tsx",
+      ),
       "pane-1",
+      "file-2",
+      "src/main.tsx",
     );
+    const grid = moveTab(withFiles, "pane-1", "file-2", 0);
 
-    const state = buildWindowState(LABEL, grid, { "pane-1": "src/App.tsx" });
+    const state = buildWindowState(LABEL, grid);
 
     expect(state.slots[0]).toMatchObject({
       project_path: "/repo/storefront",
-      active_tab: { kind: "file", id: "pane-1-file" },
-      file_tabs: [{ id: "pane-1-file", path: "src/App.tsx" }],
+      active_tab: { kind: "file", id: "file-2" },
+      file_tabs: [
+        { id: "file-2", path: "src/main.tsx" },
+        { id: "file-1", path: "src/App.tsx" },
+      ],
+      tab_order: ["file-2", "tab-1", "file-1"],
     });
   });
 
-  it("bleibt beim Terminal-Tab, wenn eine Datei ausgewählt, aber nicht als aktive Ansicht gewählt ist", () => {
-    // Nicht via switchToFileTab: die Pane zeigt gerade ihr Terminal, obwohl
-    // im Explorer bereits eine Datei markiert ist — genau der Zustand, den
-    // `PaneGrid.tsx`s eigener `showingFile`-Abgleich für den Editor-Zustand
-    // spiegelt (dort: "Datei tatsächlich offen", hier: "als Ansicht aktiv").
-    const grid = assignProjectToSlot(
-      INITIAL_GRID_STATE,
-      0,
-      "/repo/storefront",
+  it("keeps an inactive File-Tab persisted while a Terminal-Tab is active", () => {
+    const withFile = openFileTab(
+      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/storefront", "pane-1", "tab-1"),
       "pane-1",
-      "tab-1",
+      "file-1",
+      "src/App.tsx",
     );
+    const grid = switchToTerminalTab(withFile, "pane-1", "tab-1");
 
-    const state = buildWindowState(LABEL, grid, { "pane-1": "src/App.tsx" });
+    const state = buildWindowState(LABEL, grid);
 
     expect(state.slots[0]).toMatchObject({
+      project_path: "/repo/storefront",
       active_tab: { kind: "terminal", id: "tab-1" },
-      file_tabs: [{ id: "pane-1-file", path: "src/App.tsx" }],
+      file_tabs: [{ id: "file-1", path: "src/App.tsx" }],
+      tab_order: ["tab-1", "file-1"],
     });
-  });
-
-  it("ignoriert eine Auswahl, die zu keiner belegten Pane gehört", () => {
-    const state = buildWindowState(LABEL, INITIAL_GRID_STATE, {
-      "verwaiste-pane": "irgendwas.txt",
-    });
-
-    expect(state.slots).toEqual([null, null, null, null]);
   });
 
   it("spiegelt einen Template-Wechsel", () => {
     const grid = switchTemplate(INITIAL_GRID_STATE, "split");
 
-    expect(buildWindowState(LABEL, grid, {}).template).toBe("split");
+    expect(buildWindowState(LABEL, grid).template).toBe("split");
   });
 
   it("trägt das native Fensterlabel ein", () => {
-    const state = buildWindowState("main-2", INITIAL_GRID_STATE, {});
+    const state = buildWindowState("main-2", INITIAL_GRID_STATE);
 
     expect(state.label).toBe("main-2");
   });
@@ -150,13 +161,13 @@ describe("buildWindowState", () => {
   it("trägt die maximierte Pane ein (Fokus-Modus)", () => {
     const grid = { ...INITIAL_GRID_STATE, maximizedPaneId: "pane-1" };
 
-    expect(buildWindowState(LABEL, grid, {}).maximized_pane_id).toBe("pane-1");
+    expect(buildWindowState(LABEL, grid).maximized_pane_id).toBe("pane-1");
   });
 
   it("trägt verschobene Schnittkanten-Verhältnisse ein (Ticket 21)", () => {
     const grid = setSplitRatios(INITIAL_GRID_STATE, [0.3, 0.7, 0.5, 0.5]);
 
-    expect(buildWindowState(LABEL, grid, {}).split_ratios).toEqual([
+    expect(buildWindowState(LABEL, grid).split_ratios).toEqual([
       0.3, 0.7, 0.5, 0.5,
     ]);
   });

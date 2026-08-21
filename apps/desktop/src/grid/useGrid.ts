@@ -5,20 +5,25 @@ import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   closePane as closePaneInState,
+  closeFileTab as closeFileTabInState,
   closeTerminalTab as closeTerminalTabInState,
   enterFocusMode as enterFocusModeInState,
   exitFocusMode as exitFocusModeInState,
   focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
   moveTerminalTab as moveTerminalTabInState,
+  moveTab as moveTabInState,
   moveTerminalTabToEmptySlot as moveTerminalTabToEmptySlotInState,
   movePaneToEmptySlot as movePaneToEmptySlotInState,
   openTerminalTab as openTerminalTabInState,
+  openFileTab as openFileTabInState,
   renameTerminalTab as renameTerminalTabInState,
+  renameFileTabs as renameFileTabsInState,
+  closeFileTabsUnder as closeFileTabsUnderInState,
   setSplitRatios as setSplitRatiosInState,
   swapPanes as swapPanesInState,
   switchTemplate as switchTemplateInState,
-  switchToFileTab as switchToFileTabInState,
+  switchToTab as switchToTabInState,
   switchToTerminalTab as switchToTerminalTabInState,
   type GridState,
   type TemplateId,
@@ -68,6 +73,9 @@ export interface Grid {
    * `assignProject` oben. */
   openTerminalTab: (paneId: string, adapterId?: string | null) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
+  openFileTab: (paneId: string, path: string, tabId?: string) => string;
+  closeFileTab: (paneId: string, tabId: string) => void;
+  moveTab: (paneId: string, tabId: string, insertIndex: number) => void;
   /** Verschiebt einen Terminal-Tab an eine Position (`insertIndex`,
    * Einfüge-Slot vor dem Herauslösen gezählt; ohne Angabe: ans Ende) einer
    * Pane desselben Projekts — Ziel darf auch die Quelle selbst sein
@@ -97,8 +105,10 @@ export interface Grid {
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
   renameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
+  renameFileTabs: (projectPath: string, oldPath: string, newPath: string) => void;
+  closeFileTabsUnder: (projectPath: string, deletedPath: string) => void;
   switchToTerminalTab: (paneId: string, tabId: string) => void;
-  switchToFileTab: (paneId: string) => void;
+  switchToTab: (paneId: string, tabId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — sie nimmt das
    * gesamte Grid ein, die übrigen Panes laufen unsichtbar im Hintergrund
    * weiter. */
@@ -188,6 +198,20 @@ export function useGrid(): Grid {
     setState((current) => closeTerminalTabInState(current, paneId, tabId));
   }, []);
 
+  const openFileTab = useCallback((paneId: string, path: string, restoredTabId?: string) => {
+    const tabId = restoredTabId ?? crypto.randomUUID();
+    setState((current) => openFileTabInState(current, paneId, tabId, path));
+    return tabId;
+  }, []);
+
+  const closeFileTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => closeFileTabInState(current, paneId, tabId));
+  }, []);
+
+  const moveTab = useCallback((paneId: string, tabId: string, insertIndex: number) => {
+    setState((current) => moveTabInState(current, paneId, tabId, insertIndex));
+  }, []);
+
   const moveTerminalTab = useCallback(
     (
       sourcePaneId: string,
@@ -240,12 +264,23 @@ export function useGrid(): Grid {
     [],
   );
 
+  const renameFileTabs = useCallback(
+    (projectPath: string, oldPath: string, newPath: string) => {
+      setState((current) => renameFileTabsInState(current, projectPath, oldPath, newPath));
+    },
+    [],
+  );
+
+  const closeFileTabsUnder = useCallback((projectPath: string, deletedPath: string) => {
+    setState((current) => closeFileTabsUnderInState(current, projectPath, deletedPath));
+  }, []);
+
   const switchToTerminalTab = useCallback((paneId: string, tabId: string) => {
     setState((current) => switchToTerminalTabInState(current, paneId, tabId));
   }, []);
 
-  const switchToFileTab = useCallback((paneId: string) => {
-    setState((current) => switchToFileTabInState(current, paneId));
+  const switchToTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => switchToTabInState(current, paneId, tabId));
   }, []);
 
   const enterFocusMode = useCallback((paneId: string) => {
@@ -273,12 +308,17 @@ export function useGrid(): Grid {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    openFileTab,
+    closeFileTab,
+    moveTab,
     moveTerminalTab,
     moveTerminalTabToEmptySlot,
     movePaneToEmptySlot,
     renameTerminalTab,
+    renameFileTabs,
+    closeFileTabsUnder,
     switchToTerminalTab,
-    switchToFileTab,
+    switchToTab,
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,

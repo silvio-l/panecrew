@@ -20,7 +20,7 @@ export type FileEditorState =
   // Ticket 38 (image/video preview): a read-only render mode alongside
   // "ready" — no `dirty`/`stamp`, since there is no buffer to save and thus
   // nothing that could go stale. Populated via explorer_read_media instead
-  // of explorer_read_file (see usePaneFileEditors.ts's `open`), routed by
+  // of explorer_read_file (see useFileTabEditors.ts's `open`), routed by
   // extension through mediaKind.ts's `mediaInfoForPath`.
   | {
       status: "media";
@@ -90,7 +90,7 @@ export function loadSucceeded(
 }
 
 /** Same stale-response guard as `loadSucceeded` above, for the media
- * preview's own IPC call (explorer_read_media, see usePaneFileEditors.ts). */
+ * preview's own IPC call (explorer_read_media, see useFileTabEditors.ts). */
 export function mediaLoadSucceeded(
   state: FileEditorState,
   path: string,
