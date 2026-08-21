@@ -56,10 +56,10 @@ guides, layout) never get a bullet here, even though the gate still requires
 gate checks module coverage mechanically, not prose — the module still has
 to be accounted for, it's just never described in the human-facing text).
 
-## [0.1.400] - 2026-08-21 (Nightly)
+## [0.1.402] - 2026-08-21 (Nightly)
 ### Fixed
-- Fixed macOS release signing intermittently hanging because the signing
-  certificate was imported into two separate keychains during the same build.
+- Fixed macOS release signing hanging after long builds by keeping one
+  dedicated signing keychain unlocked for the entire CI job.
 
 ## [0.1.397] - 2026-08-20 (Nightly)
 ### Fixed

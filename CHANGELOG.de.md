@@ -59,10 +59,10 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
-## [0.1.400] - 2026-08-21 (Nightly)
+## [0.1.402] - 2026-08-21 (Nightly)
 ### Behoben
-- Behoben, dass das macOS-Release-Signing sporadisch hängen blieb, weil das
-  Signaturzertifikat im selben Build in zwei getrennte Keychains importiert wurde.
+- Behoben, dass das macOS-Release-Signing nach längeren Builds hängen blieb,
+  indem eine eigene Signing-Keychain für den gesamten CI-Job entsperrt bleibt.
 
 ## [0.1.397] - 2026-08-20 (Nightly)
 ### Behoben
