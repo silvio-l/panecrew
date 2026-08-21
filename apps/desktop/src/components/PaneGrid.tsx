@@ -50,7 +50,7 @@ import { usePaneDrag } from "../grid/usePaneDrag";
 import { useTerminalTabHosts, type TabOwnership } from "../grid/useTerminalTabHosts";
 import type { FocusRotation } from "../grid/useFocusRotation";
 import type { PaneDropRegistration } from "../terminal/useWebviewFileDrop";
-import { projectNameFromPath } from "../types/project";
+import { projectNameFromPath, type Project } from "../types/project";
 import type { PaneTabsProps } from "./PaneTabs";
 import { FileEditor } from "./FileEditor";
 import { FocusModeHud } from "./FocusModeHud";
@@ -92,6 +92,7 @@ interface PaneView {
 
 export function PaneGrid({
   state,
+  projects,
   paneFileEditors,
   guardLeave,
   pickingSlot,
@@ -124,6 +125,7 @@ export function PaneGrid({
   onboardingHint,
 }: {
   state: GridState;
+  projects: Readonly<Record<string, Project>>;
   paneFileEditors: PaneFileEditors;
   guardLeave: (paneId: string, run: () => void) => void;
   /** Welcher leere Slot gerade auf den Ordner-Dialog wartet — `null`, wenn
@@ -396,6 +398,7 @@ export function PaneGrid({
     // und kein Terminal-Tab wäre je sichtbar.
     const openPath = editor.state.status === "idle" ? null : editor.state.path;
     const showingFile = pane.showingFile && openPath !== null;
+    const cachedProject = projects[pane.projectPath];
 
     return {
       pane,
@@ -409,6 +412,7 @@ export function PaneGrid({
           tabId: tab.tabId,
           number: i + 1,
           label: tab.label,
+          adapterId: tab.adapterId,
         })),
         activeTerminalTabId: pane.activeTerminalTabId,
         // Grid-Fokus dieser Pane, nicht Tab-Auswahl innerhalb ihrer eigenen
@@ -416,7 +420,13 @@ export function PaneGrid({
         paneFocused: focused,
         showingFile,
         fileName: openPath === null ? null : fileNameFromPath(openPath),
+        filePath: openPath,
         fileDirty: editor.wouldLoseWork,
+        project: {
+          name: cachedProject?.name ?? projectNameFromPath(pane.projectPath),
+          path: pane.projectPath,
+          gitRepo: cachedProject?.gitRepo ?? null,
+        },
         tabDrag: {
           start: startTabDrag(pane),
           consumeClick: tabDrag.consumeDragClick,

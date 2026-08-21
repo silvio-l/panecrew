@@ -1724,6 +1724,7 @@ function App() {
                 Ticket 03 hier gab. */}
             <PaneGrid
               state={gridState}
+              projects={projectRecords}
               paneFileEditors={paneFileEditors}
               guardLeave={guardLeave}
               pickingSlot={pickingSlot}

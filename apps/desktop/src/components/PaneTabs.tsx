@@ -18,6 +18,7 @@ import { markTabViewed, useTerminalAwaitingAttention } from "../terminal/termina
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
 import { ADAPTERS } from "../terminal/adapters";
+import { TabOverviewCard, type TabOverviewProject } from "./TabOverviewCard";
 
 // Ticket 35: die Optionen des Adapter-Dropdowns neben dem "+"-Knopf —
 // eingebaute Shell (`id: null`) plus die feste `ADAPTERS`-Liste aus
@@ -54,10 +55,9 @@ const ADAPTER_PICKER_OPTIONS: readonly { id: string | null; labelKey: string }[]
 // inzwischen selbst wieder abgelöst (s. u., Nachtrag "Schließen per
 // Kontextmenü"), aus demselben Grund: die Trefferfläche eines 24px hohen
 // Chips bleibt für ein zusätzliches Schließkreuz grundsätzlich knapp.
-// Zusätzlich trägt der Tooltip jetzt den Akkord aus der Kürzel-Registry
-// (Cmd/Strg+1..9, `usePtyTerminal.ts`s Pane-Kürzel-Zweig) — der Weg von der
-// Maus zur Tastatur muss sich aus der UI selbst erschließen, nicht aus
-// docs/shortcuts.md.
+// The hover overview also shows the shortcut-registry chord (Cmd/Ctrl+1..9,
+// matching `usePtyTerminal.ts`'s pane-shortcut branch), so the UI itself
+// reveals the path from pointer use to keyboard use.
 //
 // Nachtrag 2026-08-13, später (Impeccable-Critique, zwei gemeldete Mängel:
 // Klickfläche weiterhin zu klein, Aktiv/Inaktiv kaum unterscheidbar):
@@ -277,16 +277,12 @@ const ADAPTER_PICKER_OPTIONS: readonly { id: string | null; labelKey: string }[]
 //    TerminalPane.tsx) — der aktive Tab bleibt als Auswahl lesbar, aber nur
 //    die fokussierte Pane spricht in voller Sättigung.
 //
-// Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
-// als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
-// selbst als bevorzugte von zwei genannten Optionen) — bewusst NICHT als
-// Chip, der beim Hover breiter wird: der Chip sitzt in einer `shrink-0`-
-// Gruppe (Kopfkommentar weiter oben, "soll nie unter Platzdruck geraten"),
-// ein einzelner wachsender Chip darin verschöbe seine Nachbarn im laufenden
-// Betrieb — genau der Sprung, den `shrink-0` an dieser Stelle verhindern
-// soll. Die Eingabe selbst (`TerminalTabRenameField` unten) ist ein
-// `absolute` positioniertes Feld unterhalb des Chips (Widget-Material wie
-// `ConfirmDialog.tsx`), nimmt also am Flex-Layout gar nicht erst teil.
+// A custom name from `renameTerminalTab` (`gridState.ts`) becomes the hover
+// overview's title. It deliberately does not widen the chip on hover: the
+// chip lives in a `shrink-0` group, where one growing child would shift its
+// neighbours during use. The editor itself (`TerminalTabRenameField` below)
+// is positioned absolutely beneath the chip and therefore never participates
+// in the flex layout.
 //
 // Rework 2026-08-19 — the waiting tab as a card pulled out of a card file
 // (user: "it should look like an index card being pulled part way out", and:
@@ -411,6 +407,10 @@ interface TerminalTabInfo {
   /** Nutzer-Umbenennung (`renameTerminalTab`) — `null` heißt "kein eigener
    * Name", der Chip zeigt dann nur seine Nummer. */
   label: string | null;
+  /** Launch adapter chosen for this tab. Tool detection can refine this once
+   * the process is running; the adapter keeps the overview truthful before
+   * that first asynchronous detection result arrives. */
+  adapterId?: string | null;
 }
 
 /** Props dieser Komponente, als eigener Typ — TerminalPane.tsx und
@@ -452,7 +452,12 @@ export interface PaneTabsProps {
   /** `null`, solange in dieser Pane keine Datei offen ist — dann gibt es
    * keinen File-Tab in der Leiste. */
   fileName: string | null;
+  /** Absolute path of the open File-Tab, kept separate from the compact chip
+   * label so the overview can show the exact location. */
+  filePath: string | null;
   fileDirty: boolean;
+  /** Shared, already-cached project context for every tab in this Pane. */
+  project: TabOverviewProject;
   onSelectTerminalTab: (tabId: string) => void;
   /** `adapterId` (Ticket 35): omitted für den einfachen "+"-Klick (löst den
    * `terminal.defaultAdapter`-Default auf, s. `useGrid.ts`), explizit
@@ -504,7 +509,9 @@ export function PaneTabs({
   paneFocused,
   showingFile,
   fileName,
+  filePath,
   fileDirty,
+  project,
   onSelectTerminalTab,
   onOpenTerminalTab,
   onCloseTerminalTab,
@@ -622,6 +629,8 @@ export function PaneTabs({
             tabId={tab.tabId}
             number={tab.number}
             label={tab.label}
+            adapterId={tab.adapterId}
+            project={project}
             active={!showingFile && tab.tabId === activeTerminalTabId}
             paneFocused={paneFocused}
             // Der letzte verbleibende Terminal-Tab lässt sich nicht schließen
@@ -712,9 +721,11 @@ export function PaneTabs({
       {fileName !== null && (
         <PaneTab
           label={fileName}
+          path={filePath ?? fileName}
           dirty={fileDirty}
           active={showingFile}
           paneFocused={paneFocused}
+          project={project}
           onClick={onSelectFile}
         />
       )}
@@ -731,6 +742,8 @@ function TerminalTabChip({
   tabId,
   number,
   label,
+  adapterId,
+  project,
   active,
   paneFocused,
   closable,
@@ -753,6 +766,8 @@ function TerminalTabChip({
   tabId: string;
   number: number;
   label: string | null;
+  adapterId?: string | null;
+  project: TabOverviewProject;
   active: boolean;
   paneFocused: boolean;
   closable: boolean;
@@ -792,7 +807,12 @@ function TerminalTabChip({
   const { t } = useTranslation();
   const baseLabel = t("paneTabs.terminalTab", { number });
   const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
-  const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
+  const adapterLabelKey = ADAPTER_PICKER_OPTIONS.find(
+    (option) => option.id === (adapterId ?? null),
+  )?.labelKey;
+  const toolLabel = toolIcon
+    ? t(toolIcon.labelKey)
+    : t(adapterLabelKey ?? "paneTabs.tool.shell");
   // Derived live from terminalActivity.ts' module state (this file's header
   // comment, Umbau 2026-08-17) — true once this tab has done real work and
   // then fallen silent, false again the instant new output arrives or the
@@ -851,38 +871,29 @@ function TerminalTabChip({
     ? t("paneTabs.awaitingAttentionLabel")
     : null;
   const resourceWarnLabel = isResourceWarn ? t("resourceGuard.warnTabSuffix") : null;
-  // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
-  // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
-  // schlicht keinen Akkord im Tooltip.
+  // Only positions 1-9 have a registry shortcut. Later tabs simply omit the
+  // shortcut hint from the overview.
   const shortcut = SHORTCUTS.find((def) => def.id === terminalTabSelectId(number));
-  const chordLabel = shortcut
-    ? `${baseLabel} (${formatChord(shortcut, isMacPlatform() ? "mac" : "other")})`
-    : baseLabel;
-  // Der eigene Name UND das erkannte Tool hängen sich als Anhang an den
-  // Tooltip, statt ihn zu ersetzen — die Nummer bleibt die verlässliche,
-  // immer gültige Kennung (Cmd/Strg+1..9 bleibt positionsbasiert), beides
-  // andere ist zusätzlicher Kontext. Siehe Kopfkommentar dieser Datei zur
-  // "am besten als Tooltip"-Entscheidung.
-  const suffixParts = [label, toolLabel, needsAttentionLabel, resourceWarnLabel].filter(
-    (part): part is string => part !== null,
-  );
-  // Der Mittelklick-Hinweis hängt sich NUR an den sichtbaren Tooltip, nicht
-  // an `ariaLabel` (Punkt c) der User-Anfrage, "Tabster"-Optimierung ohne
-  // Schließkreuz): die Geste existiert schon länger (`onAuxClick` oben), war
-  // aber nirgends kommuniziert. Für Screenreader-Nutzer ist ein
-  // Maus-only-Gesten-Hinweis dagegen reine Ablenkung, keine zusätzliche
-  // Information — sie haben mit dem Kontextmenü ohnehin den vollwertigen Weg.
-  // Nur wenn überhaupt schließbar (letzter verbleibender Tab, s. `closable`
-  // oben), sonst wäre der Hinweis für eine wirkungslose Geste irreführend.
-  const tooltipSuffixParts = closable
-    ? [...suffixParts, t("paneTabs.middleClickCloseHint")]
-    : suffixParts;
-  const tooltipLabel =
-    tooltipSuffixParts.length === 0
-      ? chordLabel
-      : `${chordLabel} — ${tooltipSuffixParts.join(" · ")}`;
+  const shortcutHint = shortcut
+    ? formatChord(shortcut, isMacPlatform() ? "mac" : "other")
+    : null;
+  // The accessible button name keeps the stable position-based terminal
+  // number and adds only meaningful state. Project/path/git and mouse-only
+  // gestures belong to the visible overview instead of bloating that name.
+  const suffixParts = [
+    label,
+    toolIcon ? toolLabel : null,
+    needsAttentionLabel,
+    resourceWarnLabel,
+  ].filter((part): part is string => part !== null);
   const ariaLabel =
     suffixParts.length === 0 ? baseLabel : `${baseLabel}: ${suffixParts.join(" · ")}`;
+  const overviewHint = [
+    shortcutHint,
+    closable ? t("paneTabs.middleClickCloseHint") : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
   // Radix' ContextMenu.Content hält seinen FocusScope-Trap bis zum Ende des
   // eigenen Schließvorgangs aktiv (in der echten App bis zum Ablauf der
   // `CHROME_MENU_CONTENT_CLASS`-Austrittsanimation) — ein Fokussieren des neu
@@ -905,10 +916,9 @@ function TerminalTabChip({
     "rename" | "close" | "closeOthers" | "closeToRight" | null
   >(null);
 
-  // Während des Umbenennens bewusst OHNE `ChromeTooltip`-Hülle: der Tooltip
-  // triggert auf Hover, und die Maus steht nach dem Menüpunkt-Klick fast
-  // immer noch genau über dem Chip — ohne diesen Zweig läge der Tooltip-Text
-  // sichtbar über dem frisch fokussierten Eingabefeld.
+  // Renaming intentionally omits `TabOverviewCard`: the pointer is usually
+  // still over the chip after choosing the context-menu item, and an overview
+  // would otherwise cover the freshly focused rename field.
   const trigger = (
     <ContextMenu.Trigger asChild>
       {/* `pc-tabcard` (App.css) besitzt die Höhe dieses Chips — 24px in Ruhe,
@@ -1141,7 +1151,27 @@ function TerminalTabChip({
 
   return (
     <ContextMenu.Root>
-      {renaming ? trigger : <ChromeTooltip label={tooltipLabel}>{trigger}</ChromeTooltip>}
+      {renaming ? (
+        trigger
+      ) : (
+        <TabOverviewCard
+          title={label ?? baseLabel}
+          kindLabel={t("paneTabs.terminalTabKind", { number })}
+          detailLabel={t("paneTabs.overviewTool")}
+          detail={toolLabel}
+          path={project.path}
+          project={project}
+          status={
+            needsAttentionLabel ??
+            resourceWarnLabel ??
+            (active ? t("paneTabs.activeTab") : undefined)
+          }
+          hint={overviewHint || undefined}
+          disabled={dragging}
+        >
+          {trigger}
+        </TabOverviewCard>
+      )}
       <ContextMenu.Portal>
         <ContextMenu.Content
           className={`min-w-40 ${CHROME_MENU_CONTENT_CLASS}`}
@@ -1288,10 +1318,10 @@ function TerminalTabRenameField({
 
   // Plain `useEffect`, NOT `useLayoutEffect`: this field mounts as part of
   // the SAME commit that (re-)attaches the anchor span's own ref — the
-  // trigger swaps between a `ChromeTooltip`-wrapped and a bare
-  // `ContextMenu.Trigger` subtree when renaming starts/stops (Kopfkommentar,
-  // "Während des Umbenennens bewusst OHNE `ChromeTooltip`-Hülle"), so React
-  // treats it as a fresh mount of the whole trigger subtree, span included.
+  // trigger swaps between a `TabOverviewCard`-wrapped and a bare
+  // `ContextMenu.Trigger` subtree when renaming starts/stops (see the
+  // renaming comment above), so React treats it as a fresh mount of the whole
+  // trigger subtree, span included.
   // React's commit walk fires child layout effects BEFORE it (re-)attaches
   // an ancestor host ref in that same commit (post-order: children finish
   // before their parent's own ref-attach step runs) — a `useLayoutEffect`
@@ -1360,44 +1390,59 @@ function TerminalTabRenameField({
 
 function PaneTab({
   label,
+  path,
   dirty,
   active,
   paneFocused,
+  project,
   onClick,
 }: {
   label: string;
+  path: string;
   dirty?: boolean;
   active: boolean;
   paneFocused: boolean;
+  project: TabOverviewProject;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      // Dieselbe Aktiv-Signalisierung wie TerminalTabChip (volle 1px-Box,
-      // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token,
-      // seit der Leiterbahn-Runde auch Stub + 45%-Dämpfung) — ein Bauteil,
-      // ein Idiom, s. Kopfkommentar dieser Datei. Kein
-      // ❯-Präfix (2026-08-13 mitentfernt, s. Kopfkommentar "Nachtrag …noch
-      // später") — dasselbe Idiom auf beiden Tab-Arten heißt auch: beide
-      // verlieren dasselbe Signal, nicht nur eine. Nur oben gerundet, aus
-      // demselben Grund wie dort (siehe Kommentar an TerminalTabChip).
-      className={`relative flex h-6 max-w-32 min-w-0 shrink items-center gap-1 rounded-t-(--pc-paneControl-radius) border border-b-2 px-1.5 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
-        active
-          ? `${
-              paneFocused
-                ? "border-(--pc-pane-activeBorder)"
-                : "border-(--pc-pane-activeBorder)/45"
-            } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
-          : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
-      } ${CHROME_FOCUS_RING}`}
+    <TabOverviewCard
+      title={label}
+      kindLabel={t("paneTabs.fileTab")}
+      detailLabel={t("paneTabs.overviewStatus")}
+      detail={t(dirty ? "paneTabs.unsavedChanges" : "paneTabs.saved")}
+      path={path}
+      project={project}
+      status={active ? t("paneTabs.activeTab") : undefined}
     >
-      {active && paneFocused && <TraceStub />}
-      <span className="min-w-0 truncate">{label}</span>
-      {dirty && <DirtyMark />}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        // Dieselbe Aktiv-Signalisierung wie TerminalTabChip (volle 1px-Box,
+        // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token,
+        // seit der Leiterbahn-Runde auch Stub + 45%-Dämpfung) — ein Bauteil,
+        // ein Idiom, s. Kopfkommentar dieser Datei. Kein
+        // ❯-Präfix (2026-08-13 mitentfernt, s. Kopfkommentar "Nachtrag …noch
+        // später") — dasselbe Idiom auf beiden Tab-Arten heißt auch: beide
+        // verlieren dasselbe Signal, nicht nur eine. Nur oben gerundet, aus
+        // demselben Grund wie dort (siehe Kommentar an TerminalTabChip).
+        className={`relative flex h-6 max-w-32 min-w-0 shrink items-center gap-1 rounded-t-(--pc-paneControl-radius) border border-b-2 px-1.5 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
+          active
+            ? `${
+                paneFocused
+                  ? "border-(--pc-pane-activeBorder)"
+                  : "border-(--pc-pane-activeBorder)/45"
+              } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
+            : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
+        } ${CHROME_FOCUS_RING}`}
+      >
+        {active && paneFocused && <TraceStub />}
+        <span className="min-w-0 truncate">{label}</span>
+        {dirty && <DirtyMark />}
+      </button>
+    </TabOverviewCard>
   );
 }
 

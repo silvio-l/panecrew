@@ -169,6 +169,7 @@ export function HarnessApp({
             <main className="flex min-w-0 flex-1 flex-col p-2">
               <PaneGrid
                 state={grid.state}
+                projects={projects}
                 paneFileEditors={paneFileEditors}
                 guardLeave={(_paneId, run) => run()}
                 pickingSlot={null}

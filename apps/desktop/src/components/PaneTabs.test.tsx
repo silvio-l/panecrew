@@ -25,7 +25,13 @@ const baseProps = (
   paneFocused: true,
   showingFile: false,
   fileName: null,
+  filePath: null,
   fileDirty: false,
+  project: {
+    name: "panecrew",
+    path: "/Users/dev/projects/panecrew",
+    gitRepo: null,
+  },
   onSelectTerminalTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
@@ -90,6 +96,150 @@ const openAdapterDropdown = () => {
 };
 
 describe("PaneTabs", () => {
+  it("zeigt nach kurzem Hover eine tabbezogene Terminal-Übersicht", () => {
+    vi.useFakeTimers();
+    try {
+      const props = baseProps({
+        terminalTabs: [
+          { tabId: "tab-1", number: 1, label: null },
+          { tabId: "tab-2", number: 2, label: "API-Agent", adapterId: "codex" }, // brandlint-ok: functional adapter ID
+        ],
+        project: {
+          name: "panecrew",
+          path: "/Users/dev/projects/panecrew",
+          gitRepo: {
+            branch: { name: "dev", detached: false, ahead: 3, behind: 1 },
+            dirtyCount: 4,
+            worktree: null,
+          },
+        },
+      });
+      renderTabs(props);
+
+      fireEvent.pointerEnter(chipTrigger("Terminal 2: API-Agent"));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      const overview = screen.getByRole("dialog", { name: "Übersicht für API-Agent" });
+      expect(overview).toHaveTextContent("Terminal-Tab 2");
+      expect(overview).toHaveTextContent("Codex CLI"); // brandlint-ok: canonical adapter display label
+      expect(overview).toHaveTextContent("panecrew");
+      expect(overview).toHaveTextContent("/Users/dev/projects/panecrew");
+      expect(overview).toHaveTextContent("dev");
+      expect(overview).toHaveTextContent("4 geänderte Dateien");
+      expect(overview).toHaveTextContent("3 Commits vor dem Upstream");
+      expect(overview).toHaveTextContent("1 Commit hinter dem Upstream");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("zeigt im File-Tab den exakten Pfad und ungespeicherte Änderungen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(
+        baseProps({
+          showingFile: true,
+          fileName: "PaneTabs.tsx",
+          filePath: "/Users/dev/projects/panecrew/apps/desktop/src/components/PaneTabs.tsx",
+          fileDirty: true,
+        }),
+      );
+
+      fireEvent.pointerEnter(
+        screen.getByRole("button", { name: /PaneTabs\.tsx/ }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      const overview = screen.getByRole("dialog", {
+        name: "Übersicht für PaneTabs.tsx",
+      });
+      expect(overview).toHaveTextContent("File-Tab");
+      expect(overview).toHaveTextContent("Ungespeicherte Änderungen");
+      expect(overview).toHaveTextContent(
+        "/Users/dev/projects/panecrew/apps/desktop/src/components/PaneTabs.tsx",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("öffnet während eines Tab-Zugs keine Übersicht über den Drop-Zielen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(
+        baseProps({
+          tabDrag: {
+            start: vi.fn(),
+            consumeClick: () => false,
+            draggingTabId: "tab-2",
+            draggable: true,
+          },
+        }),
+      );
+
+      fireEvent.pointerEnter(chipTrigger("Terminal 2"));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Terminal 2" }))
+        .not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("öffnet die Übersicht erst nach kurzem Verweilen und schließt sie nach dem Verlassen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(baseProps());
+      const trigger = chipTrigger("Terminal 2");
+
+      fireEvent.pointerEnter(trigger);
+      act(() => {
+        vi.advanceTimersByTime(349);
+      });
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Terminal 2" }))
+        .not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole("dialog", { name: "Übersicht für Terminal 2" }))
+        .toBeInTheDocument();
+
+      fireEvent.pointerLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Terminal 2" }))
+        .not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("macht dieselbe Übersicht per Tastaturfokus erreichbar", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(baseProps());
+
+      fireEvent.focus(screen.getByRole("button", { name: "Terminal 2" }));
+      act(() => {
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(screen.getByRole("dialog", { name: "Übersicht für Terminal 2" }))
+        .toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("wählt den Tab per Klick auf die Zahl aus, ohne ihn zu schließen", () => {
     const props = baseProps();
     renderTabs(props);
