@@ -34,8 +34,26 @@ permissions:
   contents: write
 
 jobs:
+  release-signing-guard:
+    name: Verify release signing invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Test release signing guard
+        run: node --test .github/scripts/check-release-signing.test.mjs
+
+      - name: Verify release signing workflows
+        run: node .github/scripts/check-release-signing.mjs
+
   build:
     name: Build & Release (${{ matrix.target }})
+    needs: release-signing-guard
     strategy:
       fail-fast: false
       matrix:
