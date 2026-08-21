@@ -59,6 +59,17 @@ nie einen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.405] - 2026-08-21 (Nightly)
+### Hinzugefügt
+- Beim Überfahren eines Terminal- oder Datei-Tabs erscheint jetzt eine
+  kompakte Übersicht mit Projekt, Pfad, Repository, Status und verfügbarem
+  Tastenkürzel.
+
+### Behoben
+- Eine automatische Schutzprüfung blockiert Nightly- und Stable-Builds, wenn
+  die langlebige macOS-Keychain-Konfiguration oder der einzelne
+  Zertifikatsimport künftig zurückgebaut wird.
+
 ## [0.1.402] - 2026-08-21 (Nightly)
 ### Behoben
 - Behoben, dass das macOS-Release-Signing nach längeren Builds hängen blieb,
