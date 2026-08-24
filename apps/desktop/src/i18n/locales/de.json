@@ -279,6 +279,7 @@
     "description": "Mehrere echte Terminal-Sitzungen nebeneinander statt hintereinander — ein Raster aus lebenden Panes, dazu ein Datei-Explorer, der immer der gerade fokussierten Pane folgt.",
     "checkForUpdates": "Nach Updates suchen",
     "githubRepo": "GitHub-Repository",
+    "xProfile": "X-Profil",
     "licenseText": "Lizenztext",
     "copyright": "© 2026 Silvio Lindstedt",
     "mitLicense": "MIT-Lizenz",

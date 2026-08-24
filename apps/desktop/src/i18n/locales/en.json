@@ -279,6 +279,7 @@
     "description": "Several real terminal sessions side by side instead of one after another — a grid of live panes, plus a file explorer that always follows the currently focused pane.",
     "checkForUpdates": "Check for updates",
     "githubRepo": "GitHub repository",
+    "xProfile": "X profile",
     "licenseText": "License text",
     "copyright": "© 2026 Silvio Lindstedt",
     "mitLicense": "MIT License",
