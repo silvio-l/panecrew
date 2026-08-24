@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetOnboardingStoreForTests } from "../onboarding/onboarding";
 import { resetSettingsStoreForTests } from "./settingsStore";
 import { SettingsWindow } from "./SettingsWindow";
 import type { SettingSchemaEntry } from "./useSettings";
@@ -9,8 +11,22 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
 }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(() => Promise.resolve()) }));
+// `hide`, nicht `close`: das Settings-Fenster ist ein vorgewärmtes
+// Singleton, das sich nur verstecken, nie zerstören darf
+// (settings_window.rs) — und `close` ist in seiner Capability bewusst
+// gar nicht freigegeben (src-tauri/capabilities/settings.json).
+const hideMock = vi.fn(() => Promise.resolve());
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ hide: hideMock }),
+}));
 
 const invokeMock = vi.mocked(invoke);
+const openUrlMock = vi.mocked(openUrl);
+
+function setUserAgent(value: string) {
+  Object.defineProperty(window.navigator, "userAgent", { value, configurable: true });
+}
 
 // "my-extension" registriert sich hier so, wie `config_manifest.rs`
 // (Ticket 08) einen Manifest-Beitrag in Registry-Einträge übersetzt — Ticket
@@ -35,17 +51,25 @@ const SCHEMA: SettingSchemaEntry[] = [
   },
 ];
 
+const ORIGINAL_USER_AGENT = window.navigator.userAgent;
+
 beforeEach(() => {
   invokeMock.mockReset();
+  openUrlMock.mockClear();
+  hideMock.mockClear();
   // Ticket 08: `useSettings` holt seine Werte jetzt über den geteilten
   // `settingsStore.ts` — dessen Zwischenstand ist modulweit und würde ohne
   // Reset unbemerkt aus einem Test in den nächsten durchsickern.
   resetSettingsStoreForTests();
+  // Derselbe Grund wie oben, für den geteilten Onboarding-Store.
+  resetOnboardingStoreForTests();
+  setUserAgent(ORIGINAL_USER_AGENT);
   invokeMock.mockImplementation((cmd) => {
     if (cmd === "settings_get_schema") return Promise.resolve(SCHEMA);
     if (cmd === "settings_get_values") {
       return Promise.resolve({ "terminal.shell": "/bin/zsh", "my-extension.retryCount": 3 });
     }
+    if (cmd === "onboarding_get_state") return Promise.resolve({ completed: true });
     return Promise.resolve(undefined);
   });
 });
@@ -110,7 +134,7 @@ describe("SettingsWindow — Extension-Settings (Ticket 09)", () => {
     expect(await screen.findByDisplayValue("3")).toBeInTheDocument();
   });
 
-  it("zeigt keine Trennlinie zur Extension-Sektion, wenn keine Extension Settings registriert hat", async () => {
+  it("zeigt genau eine Trennlinie (vor der Hilfe-Kategorie), wenn keine Extension Settings registriert hat", async () => {
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "settings_get_schema") return Promise.resolve([SCHEMA[0]]);
       if (cmd === "settings_get_values") return Promise.resolve({ "terminal.shell": "/bin/zsh" });
@@ -119,6 +143,44 @@ describe("SettingsWindow — Extension-Settings (Ticket 09)", () => {
     render(<SettingsWindow />);
 
     await waitFor(() => expect(screen.queryByText(/lade/i)).not.toBeInTheDocument());
-    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    // Keine Extension-Trennlinie (keine Extension registriert), aber die
+    // statische Trennlinie vor der immer vorhandenen Hilfe-Kategorie bleibt.
+    expect(screen.getAllByRole("separator")).toHaveLength(1);
+  });
+});
+
+describe("SettingsWindow — Hilfe-Kategorie (Onboarding-Neustart + macOS-Berechtigungen)", () => {
+  it("setzt den Onboarding-Stand über den Neustart-Button zurück und versteckt danach dieses Fenster", async () => {
+    render(<SettingsWindow />);
+    fireEvent.click(await screen.findByRole("button", { name: "Hilfe" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Einführung neu starten" }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("onboarding_restart"));
+    // Versteckt sich selbst statt nur eine "wechsle ins Hauptfenster"-
+    // Bestätigung anzuzeigen — sonst überdeckt das Settings-Fenster den
+    // Wizard, der im Hauptfenster erscheint (Nutzer-Bugreport 2026-08-17).
+    await waitFor(() => expect(hideMock).toHaveBeenCalled());
+  });
+
+  it("zeigt den macOS-Berechtigungsabschnitt nur auf macOS", async () => {
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    render(<SettingsWindow />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Hilfe" }));
+
+    expect(screen.queryByText("Berechtigungen (macOS)")).not.toBeInTheDocument();
+  });
+
+  it("öffnet auf macOS die Systemeinstellungen-URL für Vollzugriff über den Deep-Link-Button", async () => {
+    setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
+    render(<SettingsWindow />);
+    fireEvent.click(await screen.findByRole("button", { name: "Hilfe" }));
+    expect(await screen.findByText("Berechtigungen (macOS)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Vollständiger Festplattenzugriff/ }));
+    expect(openUrlMock).toHaveBeenCalledWith(
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+    );
   });
 });

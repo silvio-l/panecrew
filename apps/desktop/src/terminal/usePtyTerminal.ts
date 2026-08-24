@@ -3,6 +3,9 @@ import type { RefObject } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import i18next from "../i18n";
 import { isMacPlatform } from "../shortcuts/platform";
 import {
   CLEAR_TERMINAL_SHORTCUT_ID,
@@ -21,14 +24,19 @@ import { copyTextToClipboard, dedentText } from "./clipboard";
 import { createChunkDecoder, formatDroppedPaths } from "./ptyIo";
 import { usePtyBackend } from "./ptyBackend";
 import { createResizeGate } from "./resizeGate";
+import { createSelectionDragTracker } from "./selectionDrag";
 import { attachTerminalLinkProvider } from "./terminalLinkProvider";
 import { loadShellHistory } from "./shellHistory";
 import {
   committedLineCount,
   disposeTerminalActivity,
-  reportLineAdvance,
+  reportOutput,
 } from "./terminalActivity";
 import { readTerminalOptions, readTerminalTheme } from "./terminalTheme";
+import { launchLineFor, resolveAdapter } from "./adapters";
+import { snippetInit } from "./snippetCommands";
+import { reloadSnippets, snippetsFor, subscribeSnippets } from "./snippetStore";
+import { systemCommands } from "./systemCommands";
 import {
   createDirectoryProbe,
   createSubdirectoryIndex,
@@ -100,6 +108,12 @@ export interface PtyTerminal {
 export function usePtyTerminal(
   tabId: string,
   cwd: string,
+  // Ticket 35: welcher CLI-Adapter dieser Tab beim Spawn starten soll, `null`
+  // für die eingebaute Login-Shell. Wie `cwd` nur beim allerersten Spawn
+  // relevant (der Nutzer wechselt das Tool danach nicht mehr innerhalb
+  // desselben Tabs) und deshalb genauso Teil der Effekt-Deps unten statt
+  // hinter einem Ref versteckt.
+  adapterId: string | null,
   // Cmd/Strg+1..9 wählen einen Terminal-Tab der Pane an (Ticket 18-Nachtrag)
   // — die Tab-Liste selbst lebt im Grid-Store, nicht hier. Als Ref statt
   // Effekt-Abhängigkeit gehalten (s. `selectTabRef` unten): der Haupteffekt
@@ -230,16 +244,33 @@ export function usePtyTerminal(
 
     // "Select to Copy": eine fertige Mausauswahl landet ohne weiteres Zutun in
     // der Zwischenablage (Nutzer-Wunsch 2026-08-13) — dieselbe Konvention wie
-    // bei den gängigen macOS- und Linux-Terminal-Emulatoren. An `mouseup` gehängt,
-    // nicht an `terminal.onSelectionChange`: Letzteres feuert bei JEDER
-    // Zwischenposition während des Ziehens, ein Listener dort schriebe die
-    // Zwischenablage dutzende Male pro Sekunde. xterms eigene Auswahlgesten
-    // (Ziehen, Doppel-/Dreifachklick) enden alle in genau einem `mouseup` auf
-    // diesem Container — die Auswahl steht zu diesem Zeitpunkt bereits fest.
+    // bei den gängigen macOS- und Linux-Terminal-Emulatoren. An `mouseup`
+    // gehängt, nicht an `terminal.onSelectionChange`: Letzteres feuert bei
+    // JEDER Zwischenposition während des Ziehens, ein Listener dort schriebe
+    // die Zwischenablage dutzende Male pro Sekunde. xterms eigene
+    // Auswahlgesten (Ziehen, Doppel-/Dreifachklick) enden alle in genau einem
+    // `mouseup` — die Auswahl steht zu diesem Zeitpunkt bereits fest.
+    //
+    // Der Listener selbst hängt an `document`, nicht an `container` (Bugfix
+    // .scratch/panecrew-v0.1-spec/issues/31): ein Drag, der über den
+    // oberen/unteren Rand der Pane hinausgezogen wird, feuert `mouseup` am
+    // Element, über dem der Zeiger beim Loslassen steht — nicht an dem, auf
+    // dem der Drag begann. xterm.js selbst hält die Selektion in diesem Fall
+    // trotzdem korrekt fest (`hasSelection()`), nur ein reiner
+    // Container-Listener verpasste das Ereignis: kein Toast, keine Kopie,
+    // obwohl eine gültige Markierung dastand. `selectionDrag` filtert das
+    // dokumentweite Ereignis auf „diese Pane" zurück (Begründung dort) — sonst
+    // kopierte jede Pane mit noch stehender alter Selektion bei jedem
+    // beliebigen Klick irgendwo sonst in der App erneut.
+    const selectionDrag = createSelectionDragTracker();
+    const handleSelectionMouseDown = () => selectionDrag.onMouseDown();
     const handleSelectionMouseUp = () => {
-      if (copySelectionFrom(terminal)) onCopiedRef.current();
+      selectionDrag.onMouseUp(() => {
+        if (copySelectionFrom(terminal)) onCopiedRef.current();
+      });
     };
-    container.addEventListener("mouseup", handleSelectionMouseUp);
+    container.addEventListener("mousedown", handleSelectionMouseDown);
+    document.addEventListener("mouseup", handleSelectionMouseUp);
 
     // `cancelled` trägt seit Ticket 03 zwei Aufgaben statt einer: `tabId`
     // kommt jetzt stabil vom Grid-Store (Ticket 03/04), nicht mehr frisch pro
@@ -310,18 +341,25 @@ export function usePtyTerminal(
       if (disposed || !pendingOutput) return;
       const text = pendingOutput;
       pendingOutput = "";
-      // Zeilen-Delta für das Aktivitätssignal (terminalActivity.ts) — VOR dem
-      // eigentlichen write() gemessen, ausgewertet erst im Callback: xterm
-      // parst asynchron, der Puffer spiegelt den geschriebenen Text laut
-      // eigener Doku erst nach dessen Abschluss wider (@xterm/xterm.d.ts,
-      // `write()`-Kommentar).
+      // Line delta for the activity signal (terminalActivity.ts) — measured
+      // BEFORE the actual write(), evaluated only in the callback: xterm
+      // parses asynchronously, per its own docs the buffer only reflects the
+      // written text once write() completes (@xterm/xterm.d.ts, `write()`
+      // comment).
+      //
+      // reportOutput() is called unconditionally, even when nothing was
+      // committed (null/0 delta) — a flush that only redrew the spinner or
+      // status line still proves the process is alive, which the "awaiting
+      // attention" idle timer needs to know about (terminalActivity.ts
+      // header comment: gating liveness on line advances alone let that
+      // timer expire mid-turn during a pure "thinking" phase).
       const linesBefore = committedLineCount(terminal);
       terminal.write(text, () => {
         if (disposed) return;
         const linesAfter = committedLineCount(terminal);
-        if (linesBefore !== null && linesAfter !== null) {
-          reportLineAdvance(tabId, linesAfter - linesBefore);
-        }
+        const linesAdvanced =
+          linesBefore !== null && linesAfter !== null ? linesAfter - linesBefore : 0;
+        reportOutput(tabId, linesAdvanced);
       });
     };
     // Zwei parallele Fallbacks statt einem: requestAnimationFrame feuert
@@ -364,6 +402,14 @@ export function usePtyTerminal(
             backend.kill(tabId);
             return;
           }
+          // Tippt den gewählten Adapter-Befehl in die frisch gestartete
+          // Login-Shell, als hätte der Nutzer ihn selbst eingetippt und
+          // Enter gedrückt (adapters.ts' Kopfkommentar: PATH-Auflösung über
+          // die Shell-rc-Dateien statt eigenem exec). `null`/eine veraltete,
+          // nicht mehr in ADAPTERS geführte Id resolven beide gleich zur
+          // eingebauten Shell — dann bleibt dieser Aufruf ein No-Op.
+          const adapter = resolveAdapter(adapterId);
+          if (adapter) writeText(launchLineFor(adapter));
           // Zwischen fit() und dem Auflösen des Spawns kann sich der
           // Container schon wieder verändert haben — einmal nachziehen.
           syncSize();
@@ -407,12 +453,50 @@ export function usePtyTerminal(
     const subdirectories = createSubdirectoryIndex(() => {
       refreshSuggestion();
     });
+    // Ticket 02 (snippet-trigger-system): real project/user snippets, read
+    // once at mount — spec: "read all snippet files once at app startup", no
+    // filesystem watching. `://reload-snippets` (Ticket 03) re-runs this same
+    // fetch on demand instead. A failed load (e.g. malformed IPC response)
+    // just leaves the popup showing System-Befehle only, same as before this
+    // ticket — not worth a visible error for a feature that's still usable
+    // without it. Shared across every tab of this project via
+    // `snippetStore.ts` (fixed `cwd`, the project path — deliberately NOT
+    // `liveCwd ?? cwd` like `://init` below: `.panecrew/snippets/` lives at
+    // the project root, and a `cd` into some unrelated subdirectory during
+    // the session must not make the project's own snippets vanish from the
+    // popup on the next `://reload-snippets`. `://init` reads the live
+    // directory because it scaffolds wherever the user is currently
+    // standing — a deliberately different question from "where does this
+    // tab's project live"), so a reload triggered in one tab is visible in
+    // every other open tab of the same project too, not just the one that
+    // ran it.
+    void reloadSnippets(cwd);
+    const unsubscribeSnippets = subscribeSnippets(cwd, () => {
+      if (!disposed) refreshSuggestion();
+    });
+    const runSnippetCommand = (trigger: string) => {
+      if (trigger === "init") {
+        void snippetInit(liveCwd ?? cwd).catch((error: unknown) => {
+          if (disposed) return;
+          const message = i18next.t("terminalPane.initFailed", {
+            error: String(error),
+          });
+          terminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`);
+        });
+        return;
+      }
+      if (trigger === "reload-snippets") {
+        void reloadSnippets(cwd);
+      }
+    };
     const suggestion = attachInlineSuggestion(terminal, {
       write: writeText,
       baseHistory: () => shellHistory,
       cwd: () => liveCwd,
       isDirectory: directories.isDirectory,
       listSubdirectories: subdirectories.list,
+      listSnippetCandidates: () => [...systemCommands(), ...snippetsFor(cwd)],
+      runSnippetCommand,
       font: terminalOptions,
     });
     refreshSuggestion = suggestion.refresh;
@@ -660,11 +744,13 @@ export function usePtyTerminal(
       resizeGate.cancel();
       insertRef.current = null;
       terminal.textarea?.removeEventListener("copy", handleNativeCopy);
-      container.removeEventListener("mouseup", handleSelectionMouseUp);
+      container.removeEventListener("mousedown", handleSelectionMouseDown);
+      document.removeEventListener("mouseup", handleSelectionMouseUp);
       resizeObserver.disconnect();
       directories.dispose();
       subdirectories.dispose();
       suggestion.dispose();
+      unsubscribeSnippets();
       for (const disposable of disposables) disposable.dispose();
       terminalRef.current = null;
       // `terminal.dispose()` gleich darunter räumt ein noch geladenes Addon
@@ -678,7 +764,7 @@ export function usePtyTerminal(
       // der then-Zweig oben das Aufräumen (cancelled === true).
       if (sessionReady) backend.kill(tabId);
     };
-  }, [tabId, cwd, backend]);
+  }, [tabId, cwd, adapterId, backend]);
 
   // Hält höchstens einen lebenden WebGL-Kontext pro PANE statt einen pro
   // jemals geöffnetem TAB: `PaneGrid.tsx` mountet jeden Terminal-Tab dauerhaft
@@ -708,6 +794,41 @@ export function usePtyTerminal(
       webglRef.current = null;
     }
   }, [active]);
+
+  // Cross-Monitor-DPR-Wechsel: WKWebView liefert das Signal, auf das xterms
+  // eigene interne DPR-Erkennung (CoreBrowserService: matchMedia auf
+  // "resolution" + ein "resize"-Listener -> RenderService.handleDevicePixel-
+  // RatioChange()) angewiesen ist, beim reinen Ziehen eines Fensters zwischen
+  // zwei unterschiedlich skalierten Displays nicht zuverlässig (keine
+  // Fenstergrößenänderung, also auch kein ResizeObserver-Trigger oben).
+  // Sichtbares Bild: verzerrte/kaputte Glyphen, weil WebGL-Textur-Atlas und
+  // Canvas-Pixelmaße noch für die alte devicePixelRatio berechnet sind.
+  // Tauris natives ScaleFactorChanged-Fensterereignis (lib.rs) kommt direkt
+  // vom Fenster-Server statt über WebKits eigene Event-Zustellung und ist
+  // deshalb der zuverlässigere Trigger. Fix: den WebGL-Kontext einfach neu
+  // aufbauen statt xterms internes Selbstheilen zu reparieren zu versuchen —
+  // ein frisch konstruierter WebglRenderer liest devicePixelRatio bei seiner
+  // eigenen Konstruktion live neu ein (unabhängig davon, ob xterms eigenes
+  // onDprChange je feuert). Nur relevant, wenn gerade ein WebGL-Kontext lebt
+  // (inaktive Tabs haben keinen, s. Effekt oben) — deren nächster
+  // Aktiv-Wechsel lädt ohnehin frisch.
+  useEffect(() => {
+    const unlistenPromise = listen(
+      "window:scale-factor-changed",
+      () => {
+        const terminal = terminalRef.current;
+        if (!terminal || !webglRef.current) return;
+        webglRef.current.dispose();
+        webglRef.current = loadAcceleratedRenderer(terminal, () => {
+          webglRef.current = null;
+        });
+      },
+      { target: getCurrentWindow().label },
+    );
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   // Ticket 05 (Settings-System, Live-Reload): ein Theme- ODER
   // Schriftgrößen-Wechsel setzt nur CSS-Custom-Properties neu — eine bereits

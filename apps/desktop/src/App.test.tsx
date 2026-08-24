@@ -1,10 +1,12 @@
 import { Profiler, StrictMode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import App from "./App";
+import { resetOnboardingStoreForTests } from "./onboarding/onboarding";
 
 // Unter jsdom läuft weder eine Tauri-Runtime noch ein echtes xterm.js (das
 // misst Zellgrößen am realen Renderer). Gemockt wird deshalb genau die
@@ -17,6 +19,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn(() => Promise.resolve()),
+  // Permissions step of the Setup-Wizard (macOS only, `PermissionsSection.tsx`)
+  // deep-links to System Settings through this.
+  openUrl: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -253,6 +258,30 @@ vi.mock("@xterm/xterm", () => ({
 const openMock = vi.mocked(open);
 const openPathMock = vi.mocked(openPath);
 const invokeMock = vi.mocked(invoke);
+const listenMock = vi.mocked(listen);
+
+/** Der zuletzt via `listen("onboarding:changed", …)` registrierte Callback —
+ * simuliert einen Broadcast aus einem anderen Fenster (z. B. dem
+ * Settings-Neustart-Button), ohne den echten Tauri-Event-Bus. */
+function lastOnboardingChangedCallback():
+  | ((event: { payload: { completed: boolean; wizardCompleted: boolean } }) => void)
+  | undefined {
+  const call = listenMock.mock.calls.find((candidate) => candidate[0] === "onboarding:changed");
+  return call?.[1] as
+    | ((event: { payload: { completed: boolean; wizardCompleted: boolean } }) => void)
+    | undefined;
+}
+
+/** Mockt `onboarding_get_state` mit beiden Feldern — Kurzform für die
+ * Onboarding-Tests unten, die fast durchweg nur diesen einen Command
+ * gezielt beantworten müssen. */
+function mockOnboardingState(completed: boolean, wizardCompleted: boolean) {
+  invokeMock.mockImplementation((cmd) => {
+    if (cmd === "onboarding_get_state") return Promise.resolve({ completed, wizardCompleted });
+    if (cmd === "get_launch_project") return Promise.resolve(null);
+    return Promise.resolve();
+  });
+}
 
 // Quad zeigt seit Ticket 03 vier leere Slots statt der früheren einen
 // vollflächigen Picker — die allermeisten Bestandstests wollen weiterhin
@@ -798,7 +827,11 @@ describe("App", () => {
         return Promise.resolve([{ name: "App.tsx", is_dir: false }]);
       }
       if (cmd === "explorer_git_status") {
-        return Promise.resolve([{ path: "App.tsx", status: "modified" }]);
+        return Promise.resolve({
+          files: [{ path: "App.tsx", states: ["unstaged"] }],
+          branch: { name: "main", detached: false, ahead: null, behind: null },
+          worktree: null,
+        });
       }
       return Promise.resolve();
     });
@@ -810,6 +843,46 @@ describe("App", () => {
     expect(
       await screen.findByRole("button", { name: /App\.tsx,\s*geändert/ }),
     ).toBeInTheDocument();
+  });
+
+  // Ticket 02's own live-refresh criterion: same `explorer:changed` reload
+  // path as the tree decoration above already exercises, but asserting the
+  // dirty-count badge specifically, since it's fed from the same call
+  // (`loadProject.ts`) and not proven live anywhere else.
+  it("aktualisiert die Git-Zusammenfassung live nach explorer:changed", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    let dirtyCount = 1;
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({
+          files: Array.from({ length: dirtyCount }, (_, i) => ({
+            path: `file-${String(i)}.txt`,
+            states: ["unstaged"],
+          })),
+          branch: { name: "main", detached: false, ahead: null, behind: null },
+          worktree: null,
+        });
+      }
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    // Both GridStatusRail and the Explorer header render the same summary,
+    // hence two matches by design (see ticket 02's "Q15 = a+c" scope).
+    expect(await screen.findAllByText("1 geänderte Datei")).toHaveLength(2);
+
+    dirtyCount = 3;
+    const call = listenMock.mock.calls.find(
+      (candidate) => candidate[0] === "explorer:changed",
+    );
+    act(() => {
+      call?.[1]({ payload: undefined } as never);
+    });
+
+    expect(await screen.findAllByText("3 geänderte Dateien")).toHaveLength(2);
   });
 
   it("lädt nach der Ordnerauswahl den echten Dateibaum und zeigt ihn im Explorer", async () => {
@@ -906,6 +979,38 @@ describe("App", () => {
     });
     expect(await editorTextbox()).toHaveValue(FILE_CONTENTS.text);
     expect(await screen.findByLabelText("Datei main.rs")).toBeInTheDocument();
+  });
+
+  // Ticket 38 (Bild-/Video-Vorschau als File-Tab-Rendermodus): eine erkannte
+  // Bild-Extension geht über explorer_read_media statt explorer_read_file —
+  // dieselbe Baum-Klick-Verdrahtung wie oben, nur mit dem anderen Backend-
+  // Aufruf und einer <img> statt der Textarea als Ergebnis.
+  it("öffnet eine angeklickte Bilddatei über explorer_read_media und zeigt eine Bildvorschau", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([{ name: "logo.png", is_dir: false }]);
+      }
+      if (cmd === "explorer_read_media") return Promise.resolve("QUJD");
+      return Promise.resolve();
+    });
+    render(<App />);
+
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+    fireEvent.click(await screen.findByRole("button", { name: "logo.png" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_media", {
+        path: "/Users/dev/projects/storefront/logo.png",
+      });
+    });
+    const image = await screen.findByRole("img", { name: "logo.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,QUJD");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "explorer_read_file",
+      expect.anything(),
+    );
   });
 
   it("blendet die Terminal-Pane nur aus, statt sie zu schließen", async () => {
@@ -1037,7 +1142,7 @@ describe("App", () => {
     expect(await editorTextbox()).toBeVisible();
     expect(screen.getByLabelText("Terminal storefront")).not.toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1: Shell" }));
 
     // Zurück im Terminal — und KEINE Rückfrage: anders als "Datei schließen"
     // verwirft ein bloßer Ansichtswechsel nichts.
@@ -1136,31 +1241,27 @@ describe("App", () => {
 
   const leaveDialog = () => screen.findByRole("alertdialog");
 
-  it("fragt vor dem Wechsel auf eine andere Datei nach, statt den Stand zu verwerfen", async () => {
+  it("öffnet eine zweite Datei in einem eigenen Tab, ohne den ungespeicherten ersten zu verwerfen", async () => {
     await dirtyEditorWithSecondFile();
 
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
 
-    // Die Rückfrage nennt die Datei, um die es geht — nicht die, auf die
-    // geklickt wurde.
-    expect(await leaveDialog()).toHaveTextContent("main.rs");
-    // Der eigentliche Punkt: der Wechsel hat noch NICHT stattgefunden. Ein
-    // Read der neuen Datei wäre bereits der Verlust, denn er setzt den
-    // Editorzustand um.
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "explorer_read_file",
-      expect.anything(),
-    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
+        path: "/Users/dev/projects/storefront/README.md",
+      });
+    });
+    expect(
+      screen
+        .getAllByRole("button", { name: /^main\.rs/ })
+        .some((button) => button.hasAttribute("data-pane-tab-chip")),
+    ).toBe(true);
   });
 
-  it("führt den Wechsel nach dem Bestätigen der Rückfrage doch aus", async () => {
+  it("wechselt sofort zum neuen File-Tab", async () => {
     await dirtyEditorWithSecondFile();
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
-    await leaveDialog();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Änderungen verwerfen" }),
-    );
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("explorer_read_file", {
@@ -1169,26 +1270,47 @@ describe("App", () => {
     });
   });
 
-  it("lässt beim Abbrechen den ungespeicherten Puffer unangetastet stehen", async () => {
+  it("behält den ungespeicherten Puffer beim Wechsel zwischen File-Tabs", async () => {
     await dirtyEditorWithSecondFile();
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
-    await leaveDialog();
-
-    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    const mainTab = await waitFor(() => {
+      const button = screen
+        .getAllByRole("button", { name: /^main\.rs/ })
+        .find((candidate) => candidate.hasAttribute("data-pane-tab-chip"));
+      expect(button).toBeDefined();
+      return button as HTMLButtonElement;
     });
+    fireEvent.click(mainTab);
     expect(await editorTextbox()).toHaveValue(EDITED_TEXT);
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "explorer_read_file",
-      expect.anything(),
-    );
-    // Und die Baumzeile hebt weiter die Datei hervor, die auch wirklich offen
-    // ist — die Auswahl wandert nicht ohne den Editor mit.
     expect(
       explorerTreeButton(/main\.rs,\s*ungespeichert/),
     ).toBeInTheDocument();
+  });
+
+  it("warnt beim Schließen einer Pane gemeinsam vor allen ungespeicherten File-Tabs", async () => {
+    await dirtyEditorWithSecondFile();
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    const readmeEditor = await screen.findByRole("textbox", {
+      name: "Inhalt von README.md",
+    });
+    fireEvent.change(readmeEditor, { target: { value: "readme geändert" } });
+
+    const closePaneButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Pane schließen"]',
+    );
+    expect(closePaneButton).not.toBeNull();
+    fireEvent.click(closePaneButton as HTMLButtonElement);
+
+    const dialog = await leaveDialog();
+    expect(dialog).toHaveTextContent("main.rs");
+    expect(dialog).toHaveTextContent("README.md");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Änderungen verwerfen" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Datei README.md")).not.toBeInTheDocument();
+    });
   });
 
   it("fragt auch nach, wenn die Fläche über ihr Schließkreuz verlassen wird", async () => {
@@ -1377,6 +1499,41 @@ describe("App", () => {
     expect(
       screen.getAllByRole("button", { name: "Projekt wählen" }),
     ).toHaveLength(4);
+  });
+
+  // Regression test for the bug where closing one window with open panes
+  // showed the confirmation dialog in every window: `listen()` without a
+  // `target` option registers as `EventTarget::Any`, which Tauri's own
+  // `emit_to(window.label(), ...)` filter does not narrow down (see
+  // `windows.rs`'s `CLOSE_CONFIRM_EVENT` comment and `lib.rs`'s menu
+  // handlers). Every per-window event must scope its listener to this
+  // window's own label instead of the default `Any`.
+  it("scopes the window-close-confirmation and menu-action listeners to this window's own label, not every window", () => {
+    render(<App />);
+
+    for (const eventName of [
+      "pc://window-close-requested",
+      "menu:open-folder",
+      "menu:open-recent-project",
+      "menu:show-shortcuts",
+      "menu:show-command-palette",
+    ]) {
+      const call = listenMock.mock.calls.find((candidate) => candidate[0] === eventName);
+      expect(call?.[2]).toEqual({ target: "main" });
+    }
+  });
+
+  it("scopes the explorer:changed listener to this window's own label once a project is open", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) =>
+      cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
+    );
+    render(<App />);
+    clickPicker();
+    await screen.findByLabelText("Terminal storefront");
+
+    const call = listenMock.mock.calls.find((candidate) => candidate[0] === "explorer:changed");
+    expect(call?.[2]).toEqual({ target: "main" });
   });
 });
 
@@ -1591,7 +1748,7 @@ describe("Grid / Mehrfach-Pane", () => {
 
     // Zurück zu Tab 1: bloßes Umschalten darf nie killen/respawnen — sonst
     // stürbe die laufende Session des Nutzers lautlos beim Tab-Wechsel.
-    fireEvent.click(screen.getByRole("button", { name: "Terminal 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 1: Shell" }));
     expect(invokeMock).not.toHaveBeenCalledWith(
       "pty_kill",
       expect.anything(),
@@ -1603,12 +1760,12 @@ describe("Grid / Mehrfach-Pane", () => {
     // Tab 2 schließen: nur über das Kontextmenü erreichbar (PaneTabs.tsx),
     // killt NUR dessen eigene PTY, nicht Tab 1.
     const tab2Trigger = screen
-      .getByRole("button", { name: "Terminal 2" })
+      .getByRole("button", { name: "Terminal 2: Shell" })
       .closest("span");
     if (!tab2Trigger) throw new Error("Kontextmenü-Trigger für \"Terminal 2\" nicht gefunden");
     fireEvent.contextMenu(tab2Trigger);
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Terminal 2 schließen" }),
+      screen.getByRole("menuitem", { name: "Terminal-Tab schließen" }),
     );
     await confirmClose("Tab schließen");
 
@@ -1646,7 +1803,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    const chip = await screen.findByRole("button", { name: "Terminal 2" });
+    const chip = await screen.findByRole("button", { name: "Terminal 2: Shell" });
 
     // Echte Rechtsklick-Reihenfolge: erst `pointerdown` mit Sekundärtaste
     // auf dem Chip-Knopf selbst (dem Träger des Zieh-Handlers) …
@@ -1655,7 +1812,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.contextMenu(chip);
 
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Terminal 2 umbenennen" }),
+      await screen.findByRole("menuitem", { name: "Terminal-Tab umbenennen" }),
     );
 
     // `onCloseAutoFocus` (PaneTabs.tsx) mountet und fokussiert das Feld erst
@@ -1721,7 +1878,7 @@ describe("Grid / Mehrfach-Pane", () => {
         name: "Weiteren Terminal-Tab öffnen",
       }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Ab hier zählt nur noch, was DIE ZÜGE auslösen. Absolute Zahlen taugen
     // dafür unter StrictMode nicht: dessen Mount-Doppellauf spawnt jede
     // Sitzung einmal zusätzlich und killt sie sofort wieder (der `cancelled`/
@@ -1734,7 +1891,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // Der Chip des neuen, jetzt aktiven Tabs. Eindeutig ungescoped: die
     // Leiste des inaktiven Tabs liegt hinter `visibility: hidden` und fällt
     // aus Rollen-Queries heraus, die Ziel-Pane hat nur einen Tab.
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
       throw new Error("Fläche des gezogenen Tabs nicht gefunden");
@@ -1762,7 +1919,7 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(container.querySelector("[data-tab-drag-ghost]")).not.toBeNull();
     const incoming = targetSection.querySelector("[data-incoming-tab]");
     expect(incoming).not.toBeNull();
-    expect(incoming).toHaveTextContent("2");
+    expect(incoming).toBeEmptyDOMElement();
 
     fireEvent.pointerUp(chip, { clientX: 150, clientY: 50 });
 
@@ -1794,7 +1951,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // React beim Umsortieren mit `Placement` markiert, hängt an der
     // Richtung — ein einzelner Zug kann ein unsichtbares Geschwister treffen
     // statt des gezogenen Tabs. Erst beide Richtungen decken beide Fälle ab.
-    const chipBack = screen.getByRole("button", { name: "Terminal 2" });
+    const chipBack = screen.getByRole("button", { name: "Terminal 2: Shell" });
     expect(chipBack.closest("[data-pane-id]")).toBe(movedSurface);
     const sourceRect = { left: 100, top: 0, right: 200, bottom: 100 } as DOMRect;
     const nowhere = { left: 0, top: 0, right: 0, bottom: 0 } as DOMRect;
@@ -1863,10 +2020,10 @@ describe("Grid / Mehrfach-Pane", () => {
         name: "Weiteren Terminal-Tab öffnen",
       }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     expect(webgl.addons.filter((a) => !a.disposed)).toHaveLength(2);
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     // Die konkrete Instanz des gezogenen Tabs — er ist vor UND nach dem Zug
     // der aktive Tab seiner (jeweils eigenen) Pane, behält also durchgehend
     // GENAU DIESEN Kontext, ohne zwischendurch einen neuen anzulegen.
@@ -1922,12 +2079,12 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Nullpunkt wie im Zug-Test darüber: das StrictMode-Mount-Rauschen gehört
     // zum Aufbau, nicht zum Zug.
     invokeMock.mockClear();
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
       throw new Error("Fläche des gezogenen Tabs nicht gefunden");
@@ -1976,13 +2133,9 @@ describe("Grid / Mehrfach-Pane", () => {
   }, 25_000);
 
   it("sortiert einen Terminal-Tab per Chip-Drag innerhalb der eigenen Pane um (Präzisions-Runde)", async () => {
-    // Nutzer-Befund: "auch das Re-Org von Tabs innerhalb eines Panes geht
-    // noch nicht". Eine Pane, zwei Tabs — die eigene Pane ist seit der
-    // Präzisions-Runde selbst Zug-Kandidat, der Einfüge-Slot kommt aus den
-    // Chip-Mitten (`terminalTabInsertionIndex`, PaneGrid.tsx). StrictMode wie
-    // im Zug-Test darüber: auch das Umsortieren darf unter dem Placement-
-    // Doppel-Effekt-Zyklus keine PTY anfassen (`terminalTabSurfaceOrder`
-    // hält die Portal-Liste unabhängig von der Chip-Reihenfolge).
+    // Chip midpoints drive `paneTabInsertionIndex`. StrictMode also proves
+    // that reordering does not touch the PTY lifecycle because
+    // `terminalTabSurfaceOrder` stays independent of chip order.
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
     invokeMock.mockImplementation((cmd) =>
       cmd === "explorer_read_dir" ? Promise.resolve([]) : Promise.resolve(),
@@ -1996,7 +2149,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     invokeMock.mockClear();
 
     // jsdom hat kein Layout: Pane-Fläche und Chip-Mitten bekommen Rechtecke —
@@ -2009,16 +2162,16 @@ describe("Grid / Mehrfach-Pane", () => {
       section.getBoundingClientRect = () => surfaceRect;
     }
     for (const chipEl of container.querySelectorAll<HTMLElement>(
-      "[data-terminal-tab-chip]",
+      "[data-pane-tab-chip]",
     )) {
       const rect =
-        chipEl.getAttribute("aria-label") === "Terminal 1"
+        chipEl.getAttribute("aria-label") === "Terminal 1: Shell"
           ? ({ left: 40, top: 0, right: 60, bottom: 24, width: 20 } as DOMRect)
           : ({ left: 80, top: 0, right: 100, bottom: 24, width: 20 } as DOMRect);
       chipEl.getBoundingClientRect = () => rect;
     }
 
-    const chip = screen.getByRole("button", { name: "Terminal 2" });
+    const chip = screen.getByRole("button", { name: "Terminal 2: Shell" });
     chip.setPointerCapture = vi.fn();
     chip.releasePointerCapture = vi.fn();
     chip.hasPointerCapture = vi.fn(() => true);
@@ -2031,10 +2184,10 @@ describe("Grid / Mehrfach-Pane", () => {
     // Chip löst sich aus der Zählung). Kein Ecken-HUD über der eigenen Pane.
     const incoming = container.querySelector("[data-incoming-tab]");
     expect(incoming).not.toBeNull();
-    expect(incoming).toHaveTextContent("1");
+    expect(incoming).toBeEmptyDOMElement();
     expect(
       incoming?.nextElementSibling?.querySelector(
-        '[aria-label="Terminal 1"]',
+        '[aria-label="Terminal 1: Shell"]',
       ),
     ).not.toBeNull();
     // (`--invite` gezielt und auf die ZELLE der eigenen Pane gescoped: die
@@ -2052,12 +2205,12 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.pointerUp(chip, { clientX: 10, clientY: 10 });
 
     // Nach dem Drop: der gezogene Tab steht vorn — er heißt jetzt
-    // "Terminal 1" (die Nummern sind Positionen, die Cmd/Strg+1..9-Kürzel
+    // "Terminal 1: Shell" (die Nummern sind Positionen, die Cmd/Strg+1..9-Kürzel
     // folgen mit, s. Ticket-Nachtrag) — und ist als aktiver Tab markiert.
     await waitFor(() => {
       expect(
         screen
-          .getByRole("button", { name: "Terminal 1" })
+          .getByRole("button", { name: "Terminal 1: Shell" })
           .getAttribute("aria-pressed"),
       ).toBe("true");
     });
@@ -2101,7 +2254,7 @@ describe("Grid / Mehrfach-Pane", () => {
     // Der EINZIGE Tab der Quell-Pane ist der Griff — vor der Runde war er
     // gar nicht ziehbar.
     const chip = within(sourceSection).getByRole("button", {
-      name: "Terminal 1",
+      name: "Terminal 1: Shell",
     });
     const movedSurface = chip.closest("[data-pane-id]");
     if (!(movedSurface instanceof HTMLElement)) {
@@ -2136,6 +2289,104 @@ describe("Grid / Mehrfach-Pane", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("pty_kill", expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith("pty_spawn", expect.anything());
   }, 15_000);
+
+  it("sortiert File-Tabs weiter um, nachdem der letzte Terminal-Tab die Pane verlassen hat", async () => {
+    openMock.mockResolvedValue("/Users/dev/projects/storefront");
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") {
+        return Promise.resolve([
+          { name: "a.ts", is_dir: false },
+          { name: "b.ts", is_dir: false },
+        ]);
+      }
+      if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      return Promise.resolve();
+    });
+    const { container } = render(<App />);
+
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(1);
+    });
+    clickPicker();
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Terminal storefront")).toHaveLength(2);
+    });
+
+    const terminalSurfaces = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pane-id]"),
+    );
+    const [sourceSurface, targetSurface] = terminalSurfaces;
+    if (!sourceSurface || !targetSurface) throw new Error("Zwei Panes erwartet");
+    const sourcePaneId = sourceSurface.dataset.paneId;
+    const targetPaneId = targetSurface.dataset.paneId;
+    const sourceCell = sourceSurface.closest(".pc-workspace > *");
+    if (!(sourceCell instanceof HTMLElement)) {
+      throw new Error("Quell-Zelle nicht gefunden");
+    }
+    const terminalChip = within(sourceSurface).getByRole("button", {
+      name: "Terminal 1: Shell",
+    });
+
+    fireEvent.mouseDown(sourceSurface);
+    fireEvent.click(await screen.findByRole("button", { name: "a.ts" }));
+    await screen.findByRole("textbox", { name: "Inhalt von a.ts" });
+    fireEvent.click(screen.getByRole("button", { name: "b.ts" }));
+    await screen.findByRole("textbox", { name: "Inhalt von b.ts" });
+
+    targetSurface.getBoundingClientRect = () =>
+      ({ left: 100, top: 0, right: 200, bottom: 100 }) as DOMRect;
+    terminalChip.setPointerCapture = vi.fn();
+    terminalChip.releasePointerCapture = vi.fn();
+    terminalChip.hasPointerCapture = vi.fn(() => true);
+    fireEvent.pointerDown(terminalChip, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(terminalChip, { clientX: 150, clientY: 50 });
+    fireEvent.pointerUp(terminalChip, { clientX: 150, clientY: 50 });
+
+    await waitFor(() => {
+      expect(sourceCell.querySelector(`[data-pane-id="${sourcePaneId}"]`)).not.toBeNull();
+    });
+    expect(
+      container.querySelectorAll(`[data-pane-id="${targetPaneId}"]`),
+    ).toHaveLength(2);
+
+    const sourceAnchor = sourceCell.querySelector<HTMLElement>(
+      `[data-pane-id="${sourcePaneId}"]`,
+    );
+    if (!sourceAnchor) throw new Error("File-only-Pane-Anker nicht gefunden");
+    sourceAnchor.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 200, bottom: 100 }) as DOMRect;
+    for (const chip of sourceAnchor.querySelectorAll<HTMLElement>(
+      "[data-pane-tab-chip]",
+    )) {
+      chip.getBoundingClientRect = () =>
+        (chip.textContent?.includes("a.ts")
+          ? ({ left: 40, top: 0, right: 60, bottom: 24, width: 20 } as DOMRect)
+          : ({ left: 80, top: 0, right: 100, bottom: 24, width: 20 } as DOMRect));
+    }
+    const bChip = screen
+      .getAllByRole("button", { name: "b.ts" })
+      .find((button) => button.hasAttribute("data-pane-tab-chip"));
+    if (!(bChip instanceof HTMLButtonElement)) {
+      throw new Error("b.ts-Tab-Chip nicht gefunden");
+    }
+    bChip.setPointerCapture = vi.fn();
+    bChip.releasePointerCapture = vi.fn();
+    bChip.hasPointerCapture = vi.fn(() => true);
+    fireEvent.pointerDown(bChip, { button: 0, clientX: 90, clientY: 10 });
+    fireEvent.pointerMove(bChip, { clientX: 10, clientY: 10 });
+    expect(sourceAnchor.querySelector("[data-incoming-tab]")).not.toBeNull();
+    fireEvent.pointerUp(bChip, { clientX: 10, clientY: 10 });
+
+    await waitFor(() => {
+      const labels = Array.from(
+        screen
+          .getByLabelText("Datei b.ts")
+          .querySelectorAll<HTMLElement>("[data-pane-tab-chip]"),
+      ).map((chip) => chip.textContent);
+      expect(labels).toEqual(["b.ts", "a.ts"]);
+    });
+  });
 
   it("tauscht zwei Panes per Header-Drag die Slots, ohne eine PTY zu killen oder neu zu starten (Ticket 20)", async () => {
     openMock
@@ -2239,7 +2490,7 @@ describe("Grid / Mehrfach-Pane", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }),
     );
-    await screen.findByRole("button", { name: "Terminal 2" });
+    await screen.findByRole("button", { name: "Terminal 2: Shell" });
     // Nullpunkt wie in den Zug-Tests darüber: StrictMode-Mount-Rauschen
     // gehört zum Aufbau, nicht zum Zug.
     invokeMock.mockClear();
@@ -2761,6 +3012,554 @@ describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
       expect(last?.recentProjects).toEqual(["/Users/dev/projects/keep"]);
     });
   });
+
+  it("öffnet über den Shelf-Eintrag „Anderes Projekt wählen“ den Dateidialog statt eines Listeneintrags", async () => {
+    // The shelf's one non-recent entry (BrowseOtherRow, ProjectPicker.tsx)
+    // routes into the same dialog flow as the big slot button — its own
+    // accessible name (projectPicker.browseOther) must never collide with
+    // the main button's "Projekt wählen" (getAllByRole above relies on that
+    // name staying unambiguous).
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [{ label: "main", template: "single", slots: [null] }],
+          recent_projects: ["/Users/dev/projects/listed"],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+    openMock.mockResolvedValue("/Users/dev/projects/fresh");
+
+    render(<App />);
+
+    // Both the main button and the browse row resolve unambiguously by name.
+    await screen.findByRole("button", { name: "listed" });
+    expect(
+      screen.getByRole("button", { name: "Projekt wählen" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Anderes Projekt wählen …" }),
+    );
+
+    // The dialog path was taken (not a direct recent-open), and the chosen
+    // project landed in this slot.
+    expect(await screen.findByLabelText("Terminal fresh")).toBeInTheDocument();
+    expect(openMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "pty_spawn",
+        expect.objectContaining({ cwd: "/Users/dev/projects/fresh" }),
+      );
+    });
+  });
+
+  it("zeigt ohne Recent-Einträge keinen Shelf und keinen „Anderes Projekt“-Eintrag", () => {
+    // Without recents the only actionable shelf row would duplicate the big
+    // button's own action — the whole drawer stays unmounted
+    // (ProjectPicker.tsx, hasShelf).
+    render(<App />);
+
+    expect(
+      screen.getAllByRole("button", { name: "Projekt wählen" }),
+    ).toHaveLength(4);
+    expect(
+      screen.queryByRole("button", { name: "Anderes Projekt wählen …" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Onboarding", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue(undefined);
+    // `onboarding.ts`s Zwischenstand ist modulweit (wie `settingsStore.ts`s
+    // eigener) — ohne Reset würde er zwischen den Tests DIESES Blocks
+    // durchsickern, und mit ihm auch in die Blöcke davor/danach.
+    resetOnboardingStoreForTests();
+  });
+
+  afterEach(() => {
+    resetOnboardingStoreForTests();
+  });
+
+  // Phase 2, der kontextuelle Hinweis, mit `wizardCompleted: true` gemockt
+  // durchweg — diese Tests prüfen die Tour-Phase in Isolation, nicht das
+  // Zusammenspiel mit dem Wizard (der hat seinen eigenen Block unten).
+  describe("Phase 2: kontextueller Hinweis", () => {
+    it("zeigt den Erstlauf-Hinweis am ersten leeren Slot, wenn die Tour noch nicht abgeschlossen ist", async () => {
+      mockOnboardingState(false, true);
+
+      render(<App />);
+
+      expect(
+        await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).toBeInTheDocument();
+    });
+
+    it("zeigt keinen Hinweis, wenn Onboarding bereits abgeschlossen ist", async () => {
+      mockOnboardingState(true, true);
+
+      render(<App />);
+      await screen.findAllByRole("button", { name: "Projekt wählen" });
+
+      expect(
+        screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("schließt den Hinweis über das Dismiss-Kreuz und meldet die Vervollständigung ans Backend", async () => {
+      mockOnboardingState(false, true);
+
+      render(<App />);
+      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+
+      fireEvent.click(screen.getByRole("button", { name: "Hinweis schließen" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
+    });
+
+    it("vervollständigt automatisch, sobald eine zweite Pane gleichzeitig offen ist (Aha-Moment)", async () => {
+      mockOnboardingState(false, true);
+
+      render(<App />);
+      await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar");
+
+      openMock.mockResolvedValueOnce("/Users/dev/projects/one");
+      clickPicker();
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
+
+      openMock.mockResolvedValueOnce("/Users/dev/projects/two");
+      fireEvent.click(pickerButton(1));
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
+    });
+
+    it("vervollständigt eine wiederhergestellte Sitzung mit bereits zwei Panes sofort beim Start (Bestandsnutzer-Migration)", async () => {
+      // Ein Nutzer, dessen `session.json` schon zwei offene Panes führt —
+      // die Vervollständigung passiert hier still beim ersten Start, ohne
+      // dass je ein Hinweis aufblitzt. Anderer Fall als der
+      // Live-Neustart-Test unten: dort ist die App schon am Laufen, wenn
+      // `completed` auf `false` kippt.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: false, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_completed", { completed: true }),
+      );
+    });
+
+    it("vervollständigt NICHT sofort wieder, wenn ein Live-Neustart über die Settings eintrifft, während schon zwei Panes offen sind — und zeigt die ahaReached-Variante am freien Slot", async () => {
+      // Die eigentliche Regression, die ein reiner Pegelvergleich (>= 2
+      // aktive Panes, ohne Übergangs-Tracking) hätte: die App läuft bereits
+      // mit zwei offenen Panes und abgeschlossenem Onboarding; der
+      // Settings-Neustart-Button broadcastet `completed: false` in genau
+      // dieses laufende Fenster — der Hinweis muss stehen bleiben können,
+      // statt im selben Tick wieder als "abgeschlossen" zurückgemeldet zu
+      // werden. Die Textvariante ist hier bewusst "ahaReached" statt der
+      // alten "hasPanes"-Aufforderung ("öffne ein zweites Projekt") — die
+      // wäre für jemanden, der schon zwei offene Projekte hat, unsinnig.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+      invokeMock.mockClear();
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
+        });
+      });
+
+      expect(await screen.findByText("Genau so funktioniert das Raster")).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith("onboarding_set_completed", expect.anything());
+    });
+
+    it("zeigt die schwebende ahaReached-Variante, wenn ein Live-Neustart auf ein komplett volles Grid trifft (der ursprünglich gemeldete Bug)", async () => {
+      // Zwei-Slot-Template, BEIDE Slots belegt — kein freier Slot zum
+      // Verankern. Vor dem Wizard-Umbau zeigte "Einführung neu starten" in
+      // genau diesem Fall gar nichts (der User-Report, der diesen ganzen
+      // Umbau ausgelöst hat). Die schwebende Variante ist der Fix dafür.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "split",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  {
+                    project_path: "/Users/dev/projects/two",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal two")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
+        });
+      });
+
+      expect(await screen.findByText("Genau so funktioniert das Raster")).toBeInTheDocument();
+    });
+  });
+
+  // Phase 1, der Wizard — mit `wizardCompleted: false` gemockt, sonst
+  // rendert er per Konstruktion nie.
+  describe("Phase 1: Setup-Wizard", () => {
+    const ORIGINAL_USER_AGENT = window.navigator.userAgent;
+    afterEach(() => {
+      Object.defineProperty(window.navigator, "userAgent", {
+        value: ORIGINAL_USER_AGENT,
+        configurable: true,
+      });
+    });
+
+    it("zeigt den Wizard bei echtem Erstlauf, nicht den Phase-2-Hinweis", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+
+      expect(await screen.findByText("Welcome to PaneCrew")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).not.toBeInTheDocument();
+      // Step position must be perceivable without relying on the (aria-hidden)
+      // dot indicator's color alone — onboarding-prompt.md §10/§235.
+      expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    });
+
+    it("zeigt auf macOS einen zusätzlichen, überspringbaren Berechtigungs-Schritt vor 'Bereit zum Start'", async () => {
+      Object.defineProperty(window.navigator, "userAgent", {
+        value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        configurable: true,
+      });
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Welcome to PaneCrew");
+
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
+      await screen.findByText("Deine Einstellungen");
+      expect(screen.getByText("Schritt 2 von 4")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Terminal-Berechtigung")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 3 von 4")).toBeInTheDocument();
+      // Nichts zwingt zum Klick auf den Berechtigungs-Link — "Weiter" führt
+      // unabhängig davon weiter (der Skip liegt im normalen Weiterklicken,
+      // kein separater Skip-Link nötig).
+      expect(screen.getByRole("button", { name: "Vollständiger Festplattenzugriff →" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 4 von 4")).toBeInTheDocument();
+
+      // Zurück von "Bereit zum Start" landet wieder auf dem
+      // Berechtigungs-Schritt, nicht auf "Deine Einstellungen" — bestätigt,
+      // dass Zurück/Weiter relativ zur tatsächlichen (Mac-)Schrittfolge
+      // navigieren, nicht über hartkodierte Indizes.
+      fireEvent.click(screen.getByRole("button", { name: "Zurück" }));
+      expect(await screen.findByText("Terminal-Berechtigung")).toBeInTheDocument();
+    });
+
+    it("führt über Weiter zum Ready-Screen, dessen CTA das erste Projekt öffnet und den Wizard schließt", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Welcome to PaneCrew");
+
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
+      expect(await screen.findByText("Deine Einstellungen")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 2 von 3")).toBeInTheDocument();
+
+      // Each option persists immediately on click, not deferred to
+      // "Continue" — the user must see language/theme apply live, so the
+      // write can't wait for step-advance.
+      fireEvent.click(screen.getByRole("button", { name: "Deutsch" }));
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("settings_set_value", {
+          key: "appearance.language",
+          value: "de",
+        }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Hell" }));
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("settings_set_value", {
+          key: "appearance.theme",
+          value: "light",
+        }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(screen.getByText("Schritt 3 von 3")).toBeInTheDocument();
+
+      openMock.mockResolvedValueOnce("/Users/dev/projects/one");
+      fireEvent.click(screen.getByRole("button", { name: "Erstes Projekt öffnen" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+    });
+
+    it("zeigt am Ready-Screen 'Weiter' statt 'Erstes Projekt öffnen', wenn ein Neustart auf ein Grid mit bereits offenem Projekt trifft — und öffnet dabei keinen Ordner-Dialog", async () => {
+      // Reachable nur über den Live-Neustart, nicht über den Session-Restore
+      // (der wird von der Bestandsnutzer-Migration oben lautlos
+      // unterdrückt): die App läuft schon mit einem offenen Projekt in Slot
+      // 0, der Settings-Neustart broadcastet dann `wizardCompleted: false`
+      // in dieses laufende Fenster. `assignProjectToSlot(0)` würde diese
+      // Pane sonst kommentarlos ersetzen — der Ready-Screen muss das
+      // erkennen und einen nicht-destruktiven Ausstieg anbieten.
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: true, wizardCompleted: true });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  null,
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      await waitFor(() => expect(lastOnboardingChangedCallback()).toBeDefined());
+
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: false },
+        });
+      });
+
+      await screen.findByText("Welcome to PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
+      await screen.findByText("Deine Einstellungen");
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      expect(await screen.findByText("Bereit zum Start")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Erstes Projekt öffnen" }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(openMock).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Terminal one")).toBeInTheDocument();
+    });
+
+    it("überspringt über 'Ohne Projekt fortfahren', ohne ein Projekt zu öffnen, und zeigt danach den leeren Phase-2-Hinweis", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Welcome to PaneCrew");
+      fireEvent.click(screen.getByRole("button", { name: "Let's go" }));
+      await screen.findByText("Deine Einstellungen");
+      fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
+      await screen.findByText("Bereit zum Start");
+
+      fireEvent.click(screen.getByRole("button", { name: "Ohne Projekt fortfahren" }));
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Bereit zum Start")).not.toBeInTheDocument();
+      expect(openMock).not.toHaveBeenCalled();
+      expect(
+        await screen.findByText("Mehrere Projekte, gleichzeitig sichtbar"),
+      ).toBeInTheDocument();
+    });
+
+    it("schließt über Escape, gleichbedeutend mit Überspringen", async () => {
+      mockOnboardingState(false, false);
+
+      render(<App />);
+      await screen.findByText("Welcome to PaneCrew");
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      expect(screen.queryByText("Welcome to PaneCrew")).not.toBeInTheDocument();
+    });
+
+    it("unterdrückt den Wizard lautlos, wenn eine wiederhergestellte Sitzung bereits ein Projekt führt (Bestandsnutzer-Migration)", async () => {
+      invokeMock.mockImplementation((cmd) => {
+        if (cmd === "onboarding_get_state") {
+          return Promise.resolve({ completed: false, wizardCompleted: false });
+        }
+        if (cmd === "session_load") {
+          return Promise.resolve({
+            windows: [
+              {
+                label: "main",
+                template: "quad",
+                slots: [
+                  {
+                    project_path: "/Users/dev/projects/one",
+                    terminal_tabs: [{ id: "tab-1" }],
+                    active_tab: { kind: "terminal", id: "tab-1" },
+                  },
+                  null,
+                  null,
+                  null,
+                ],
+              },
+            ],
+          });
+        }
+        if (cmd === "get_launch_project") return Promise.resolve(null);
+        return Promise.resolve();
+      });
+
+      render(<App />);
+
+      expect(await screen.findByLabelText("Terminal one")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("onboarding_set_wizard_completed", {
+          completed: true,
+        }),
+      );
+      // Der Persist-Aufruf selbst ist fire-and-forget — sichtbar unterdrückt
+      // wird der Wizard erst, sobald der Broadcast (in Produktion: Rusts
+      // eigener `emit_changed`, das jedes Fenster inkl. Absender erreicht)
+      // den lokalen Zustand aktualisiert. Kein synchrones lokales `setState`
+      // im Effekt selbst (`react-hooks/set-state-in-effect` verbietet das) —
+      // ein kurzes Aufflackern des Wizards ist für diesen seltenen
+      // Migrationsfall (Vor-Wizard-Installation, echter Sitzungsinhalt, nie
+      // dismisster alter Hinweis) ein akzeptierter Kompromiss.
+      act(() => {
+        lastOnboardingChangedCallback()?.({
+          payload: { completed: false, wizardCompleted: true },
+        });
+      });
+      expect(screen.queryByText("Welcome to PaneCrew")).not.toBeInTheDocument();
+    });
+  });
 });
 
 // Render-Isolation im File-Editor (Ticket 05, Performance-Audit). Weder
@@ -2770,10 +3569,19 @@ describe("Zuletzt geöffnete Projekte (Ticket 22)", () => {
 // selbst verhindern müsste. Genau das macht einen EINZIGEN `<Profiler>` um
 // die ganze `<App/>` zur richtigen Sonde: sein `onRender` feuert bei JEDEM
 // Commit des Baums, unabhängig davon, welche einzelne Komponente den Update
-// ausgelöst hat — "kein weiterer Commit" beweist hier also gleichzeitig
-// "keine Nachbar-Pane, kein Tab-Chip, kein Explorer-Baum hat erneut
-// gerendert", ohne dass der Test eine dieser Komponenten selbst instrumentieren
-// müsste (wären ohnehin Dateien außerhalb des Tickets).
+// ausgelöst hat.
+//
+// Nachtrag Ticket 39 (Syntax-Highlighting + Zeilennummern): `EditorBuffer`
+// hält seither eigenen lokalen React-State (Scroll-Position, gemessene
+// Zeilenhöhe, das gefensterte Tokenisierungs-Ergebnis), der bei jedem
+// Tastendruck committet — React propagiert Re-Renders aber strikt abwärts
+// vom State-Halter aus, nie seitwärts zu Geschwister-Panes oder aufwärts zum
+// Explorer-Baum, unabhängig von Memoisierung. "Kein weiterer Commit des
+// GANZEN Baums" ist damit kein gültiger Beweis mehr — wohl aber "die
+// Nachbar-Pane und der Explorer-Baum sind nach dem Tippen noch dieselben
+// DOM-Knoten wie vorher" (Referenzgleichheit beweist "nicht neu erzeugt/neu
+// gerendert" direkter als eine reine Commit-Zählung es könnte) zusammen mit
+// "genau ein Commit pro Tastendruck, keine zusätzlichen/kaskadierten".
 describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2789,6 +3597,9 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
         return Promise.resolve([{ name: "README.md", is_dir: false }]);
       }
       if (cmd === "explorer_read_file") return Promise.resolve(FILE_CONTENTS);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
       return Promise.resolve();
     });
 
@@ -2813,7 +3624,7 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
 
     // Der ERSTE Tastendruck macht den Puffer erstmals "dirty" — das ist der
     // eine, gewollte Cross-Pane-Sync dieses Tickets (Baumzeile UND Tab-Chip
-    // zeigen "ungespeichert", s. `usePaneFileEditors.ts`s `editContent`). Die
+    // zeigen "ungespeichert", s. `useFileTabEditors.ts`s `editContent`). Die
     // eigentliche Prüfung beginnt erst NACH diesem einen, erwarteten Commit.
     fireEvent.change(textbox, { target: { value: "g" } });
     await waitFor(() => {
@@ -2823,10 +3634,12 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
     });
 
     onRender.mockClear();
+    const storefrontBefore = screen.getByLabelText("Terminal storefront");
+    const explorerRootBefore = explorerTreeButton(/README\.md/);
 
     // Fortgesetztes Tippen — jeder weitere Tastendruck bleibt seit Ticket 05
     // rein lokal in der (seit diesem Ticket unkontrollierten) Textarea, s.
-    // `FileEditor.tsx`s `EditorBuffer` und `usePaneFileEditors.ts`s
+    // `FileEditor.tsx`s `EditorBuffer` und `useFileTabEditors.ts`s
     // `editContent`. Mehrere einzelne `change`-Events statt eines einzigen
     // mit dem Endtext, damit die Prüfung wirklich "pro Tastendruck" und nicht
     // nur "pro abgeschlossener Eingabe" gilt.
@@ -2837,16 +3650,17 @@ describe("Datei-Editor: Render-Isolation (Ticket 05)", () => {
     fireEvent.change(textbox, { target: { value: "geände" } });
     fireEvent.change(textbox, { target: { value: "geändert" } });
 
-    // Kein einziger weiterer Commit des ganzen App-Baums — weder die
-    // Nachbar-Pane (storefront) noch ihre Tab-Chips noch der Explorer-Baum
-    // haben also erneut gerendert, unabhängig davon, wie viele Tastendrücke
-    // seit dem "dirty"-Übergang oben folgten.
-    expect(onRender).not.toHaveBeenCalled();
+    // Genau ein Commit pro Tastendruck (sechs `change`-Events oben), keine
+    // zusätzlichen/kaskadierten Commits — und die Nachbar-Pane sowie der
+    // Explorer-Baum sind noch dieselben DOM-Knoten wie vor dem Tippen, also
+    // nachweislich nicht neu erzeugt/neu gerendert worden.
+    expect(onRender).toHaveBeenCalledTimes(6);
+    expect(screen.getByLabelText("Terminal storefront")).toBe(storefrontBefore);
+    expect(explorerTreeButton(/README\.md/)).toBe(explorerRootBefore);
     // Der Puffer selbst führt den vollen getippten Stand trotzdem korrekt —
     // die Isolation kostet keine Korrektheit, s. `bufferRef` in
     // FileEditor.tsx.
     expect(textbox).toHaveValue("geändert");
-    expect(screen.getByLabelText("Terminal storefront")).toBeInTheDocument();
   });
 
   it("aktualisiert die geteilte Ungespeichert-Markierung nur beim ersten Tastendruck einer Sitzung, nicht bei jedem weiteren", async () => {
@@ -3041,8 +3855,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3087,8 +3901,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3138,8 +3952,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
               ],
@@ -3193,18 +4007,18 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/wide",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 {
                   project_path: "/Users/dev/projects/left",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 {
                   project_path: "/Users/dev/projects/right",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -3251,15 +4065,15 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     expect(wideCell.style.gridArea).toBe("");
   });
 
-  it("stellt mehrere Terminal-Tabs samt aktivem Index wieder her, ohne einen davon zu killen", async () => {
-    // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{}]` ab (genau
-    // ein Tab) — die interessante Schleife in `restoreSlot` (App.tsx), die
-    // für einen dritten Parameter `terminalTabCount > 1` weitere Tabs via
-    // `openTerminalTab` nachlegt und danach mit `switchToTerminalTab` auf den
-    // gespeicherten `active_tab.index` zurückschaltet, war ungetestet.
+  it("stellt mehrere Terminal-Tabs samt aktiver id wieder her, ohne einen davon zu killen", async () => {
+    // Bisher deckten alle Restore-Tests nur `terminal_tabs: [{ id: "tab-1" }]`
+    // ab (genau ein Tab) — die interessante Schleife in `restoreSlot`
+    // (App.tsx), die für mehrere persistierte Tabs weitere via
+    // `openTerminalTab` nachlegt und danach mit `switchToTerminalTab` auf die
+    // gespeicherte `active_tab.id` zurückschaltet, war ungetestet.
     // `openTerminalTab` aktiviert dabei immer den zuletzt geöffneten Tab —
     // nach der Schleife stünde Tab 3 aktiv, ohne die abschließende Korrektur.
-    // `index: 0` prüft genau diese Korrektur, nicht den ohnehin trivialen
+    // `id: "tab-1"` prüft genau diese Korrektur, nicht den ohnehin trivialen
     // Fall "letzter geöffneter Tab bleibt aktiv".
     invokeMock.mockImplementation((cmd) => {
       if (cmd === "session_load") {
@@ -3271,8 +4085,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}, {}, {}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }, { id: "tab-2" }, { id: "tab-3" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -3308,7 +4122,7 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     // Ohne die abschließende `switchToTerminalTab`-Korrektur stünde hier Tab
     // 3 aktiv (der zuletzt von `openTerminalTab` angelegte) statt des
     // gespeicherten Index 0.
-    expect(screen.getByRole("button", { name: "Terminal 1" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Terminal 1: Shell" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -3316,6 +4130,56 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     expect(
       invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_kill"),
     ).toHaveLength(0);
+  });
+
+  it("startet einen wiederhergestellten Terminal-Tab wieder mit seinem gespeicherten Adapter (Ticket 35)", async () => {
+    // Der Restore-Pfad (`App.tsx`s `restoreSlot`) reicht `terminal_tabs[i].
+    // adapter_id` explizit an `assignProject`/`openTerminalTab` durch, statt
+    // sie auszulassen — sonst würde `useGrid.ts` den AKTUELLEN
+    // `terminal.defaultAdapter`-Default auflösen statt des gespeicherten
+    // Tools. Zweiter Tab bleibt ohne `adapter_id` (eingebaute Shell), um
+    // beide Zweige in einem Test abzudecken.
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [
+                    { id: "tab-1", adapter_id: "codex" }, // brandlint-ok: canonical adapter id, functional
+                    { id: "tab-2" },
+                  ],
+                  active_tab: { kind: "terminal", id: "tab-1" },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+
+    render(<App />);
+
+    expect(await screen.findAllByLabelText("Terminal storefront")).toHaveLength(2);
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([cmd]) => cmd === "pty_write"),
+      ).toHaveLength(1);
+    });
+    expect(invokeMock).toHaveBeenCalledWith(
+      "pty_write",
+      // `ptyBackend.ts`s echter `write()` reicht `Array.from(data)` an
+      // `invoke` durch (IPC-Payloads sind JSON, kein `Uint8Array`) — der
+      // Vergleich hier spiegelt genau das, nicht das rohe `Uint8Array`, das
+      // `launchLineFor`/`TextEncoder` erzeugen.
+      expect.objectContaining({ data: Array.from(new TextEncoder().encode("codex\r")) }), // brandlint-ok: canonical adapter id, functional
+    );
   });
 
   it("öffnet die zuletzt ausgewählte Datei der wiederhergestellten Pane erneut", async () => {
@@ -3329,9 +4193,9 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "file" },
-                  file_tab: { path: "src/App.tsx" },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "file", id: "file-1" },
+                  file_tabs: [{ id: "file-1", path: "src/App.tsx" }],
                 },
                 null,
                 null,
@@ -3368,11 +4232,77 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     ).toHaveValue(FILE_CONTENTS.text);
   });
 
-  it("ein Slot ohne `file_tab`-Feld öffnet keine Datei namens \"undefined\"", async () => {
+  it("restores multiple File-Tabs in their persisted kind-crossing order", async () => {
+    invokeMock.mockImplementation((cmd, args) => {
+      if (cmd === "session_load") {
+        return Promise.resolve({
+          windows: [
+            {
+              label: "main",
+              template: "single",
+              slots: [
+                {
+                  project_path: "/Users/dev/projects/storefront",
+                  terminal_tabs: [{ id: "terminal-1" }, { id: "terminal-2" }],
+                  file_tabs: [
+                    { id: "file-app", path: "src/App.tsx" },
+                    { id: "file-main", path: "src/main.tsx" },
+                  ],
+                  tab_order: [
+                    "file-main",
+                    "terminal-1",
+                    "file-app",
+                    "terminal-2",
+                  ],
+                  active_tab: { kind: "file", id: "file-app" },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (cmd === "get_launch_project") return Promise.resolve(null);
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
+      if (cmd === "explorer_read_file") {
+        return Promise.resolve({
+          ...FILE_CONTENTS,
+          text: (args as { path: string }).path,
+        });
+      }
+      return Promise.resolve();
+    });
+
+    const { container } = render(<App />);
+
+    await screen.findByRole("textbox", { name: "Inhalt von App.tsx" });
+    await waitFor(() => {
+      const chips = [
+        ...container.querySelectorAll<HTMLElement>("[data-pane-tab-chip]"),
+      ].filter(
+        (chip) => chip.closest<HTMLElement>('[style*="visibility: hidden"]') === null,
+      );
+      expect(chips).toHaveLength(4);
+      expect(chips.map((chip) => chip.dataset.paneTabChip)).toEqual([
+        "file-main",
+        expect.any(String),
+        "file-app",
+        expect.any(String),
+      ]);
+    });
+    expect(screen.getByRole("button", { name: "App.tsx" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("ein Slot ohne `file_tabs`-Feld öffnet keine Datei namens \"undefined\"", async () => {
     // `session_store.rs` überspringt das Feld beim Schreiben ganz, wenn
-    // nichts ausgewählt war (`skip_serializing_if`) — über die IPC-Brücke
-    // kommt so ein Slot-Objekt ohne dieses Feld an, `file_tab` ist dann
-    // `undefined`, nicht `null`. Ein zu strenger `=== null`-Check ließ das
+    // keine Datei-Tabs vorhanden waren (`skip_serializing_if`) — über die
+    // IPC-Brücke kommt so ein Slot-Objekt ohne dieses Feld an, `file_tabs`
+    // ist dann `undefined`, nicht `[]`. Ein zu strenger Zugriff ließ das
     // früher durch und öffnete buchstäblich eine Datei "undefined"
     // (2026-08-12, Nutzerbeobachtung: alle Panes zeigen beim Start denselben
     // Lesefehler).
@@ -3386,8 +4316,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
               ],
             },
@@ -3428,8 +4358,8 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
               slots: [
                 {
                   project_path: "/Users/dev/projects/storefront",
-                  terminal_tabs: [{}],
-                  active_tab: { kind: "terminal", index: 0 },
+                  terminal_tabs: [{ id: "tab-1" }],
+                  active_tab: { kind: "terminal", id: "tab-1" },
                 },
                 null,
                 null,
@@ -3482,14 +4412,38 @@ describe("Sitzungspersistenz (Ticket 06)", () => {
     await waitFor(() => {
       const [, payload] = saveCalls().at(-1) ?? [];
       const window = (
-        payload as { window?: { slots: unknown[] } } | undefined
+        payload as
+          | {
+              window?: {
+                slots: {
+                  terminal_tabs: {
+                    id: string;
+                    title: string | null;
+                    adapter_id: string | null;
+                  }[];
+                  active_tab: { kind: string; id: string };
+                }[];
+              };
+            }
+          | undefined
       )?.window;
-      expect(window?.slots[0]).toEqual({
+      const slot = window?.slots[0];
+      // `id` ist ein zur Laufzeit erzeugter `crypto.randomUUID()` (Ticket
+      // 33) — hier auf reine Anwesenheit geprüft, statt einen festen Wert zu
+      // erwarten; die eigentliche Aussage ist, dass `active_tab` auf
+      // GENAU diese id verweist.
+      expect(slot).toEqual({
         project_path: "/Users/dev/projects/storefront",
-        terminal_tabs: [{ title: null }],
-        active_tab: { kind: "terminal", index: 0 },
-        file_tab: null,
-        adapter_id: null,
+        terminal_tabs: [
+          { id: expect.any(String) as string, title: null, adapter_id: null },
+        ],
+        active_tab: { kind: "terminal", id: expect.any(String) as string },
+        file_tabs: [],
+        tab_order: [expect.any(String) as string],
+      });
+      expect(slot?.active_tab).toEqual({
+        kind: "terminal",
+        id: slot?.terminal_tabs[0]?.id,
       });
     });
   });
@@ -3531,11 +4485,13 @@ describe("Terminal-Renderer (WebGL)", () => {
     // Lade-Pfad in seine eigene Fehlerbehandlung samt console.error laufen —
     // in genau den Tests, die hier console.warn beobachten wollen, wäre das
     // vermeidbares Rauschen.
-    invokeMock.mockImplementation((cmd) =>
-      cmd === "explorer_read_dir" || cmd === "explorer_git_status"
-        ? Promise.resolve([])
-        : Promise.resolve(),
-    );
+    invokeMock.mockImplementation((cmd) => {
+      if (cmd === "explorer_read_dir") return Promise.resolve([]);
+      if (cmd === "explorer_git_status") {
+        return Promise.resolve({ files: [], branch: null, worktree: null });
+      }
+      return Promise.resolve();
+    });
     openMock.mockResolvedValue("/Users/dev/projects/storefront");
   });
 

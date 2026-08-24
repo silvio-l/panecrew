@@ -7,6 +7,7 @@ import {
   edit,
   loadFailed,
   loadSucceeded,
+  mediaLoadSucceeded,
   renamePath as renamePathTransition,
   saveFailed,
   saveSucceeded,
@@ -16,6 +17,7 @@ import {
   type FileEditorState,
   type FileStamp,
 } from "./fileEditorState";
+import { mediaInfoForPath } from "./mediaKind";
 
 interface RawFileContents {
   text: string;
@@ -31,7 +33,7 @@ interface RawFileContents {
 const CONFLICT_MESSAGE = "Datei wurde außerhalb von PaneCrew geändert";
 
 // Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
-// braucht (nur seine Form, über `PaneFileEditors.editorFor`s Rückgabetyp) —
+// braucht (nur seine Form, über `FileTabEditors.editorFor`s Rückgabetyp) —
 // FileEditor.tsx destrukturiert seine Props direkt, ohne den Typ zu nennen.
 interface FileEditorHandle {
   state: FileEditorState;
@@ -78,49 +80,38 @@ interface FileEditorHandle {
   consumeJumpToLine: () => void;
 }
 
-export interface PaneFileEditors {
-  /** Die `FileEditorHandle` einer Pane — exakt dieselbe Form, die vorher
-   * `useFileEditor` als einzige Instanz lieferte, hier eine pro `paneId`
-   * (fehlender Key ⇒ `IDLE_STATE`). `FileEditor.tsx` bleibt dadurch
-   * unangetastet: es sieht weiterhin nur eine `FileEditorHandle`. */
-  editorFor: (paneId: string) => FileEditorHandle;
-  /** Entfernt den Zustand einer geschlossenen/neu zugewiesenen Pane, damit
-   * sie nicht für immer `wouldLoseWork === true` hält und der Record nicht
-   * unbegrenzt mit toten `paneId`s wächst. Eine `paneId` wird nie
-   * wiederverwendet (jede Neuzuweisung erzeugt eine frische), Vergessen ist
-   * also reine Aufräumarbeit, keine Korrektheitsfrage. */
-  forget: (paneId: string) => void;
-  /** Trägt jeden offenen Puffer (über ALLE Panes hinweg) über eine Explorer-
-   * Umbenennung (Ticket 24) hinweg mit — siehe `fileEditorState.ts`s
-   * `renamePath`. `oldPath`/`newPath` sind absolute Pfade. */
+export interface FileTabEditors {
+  /** Returns one editor handle per stable file-tab id. Missing ids start at
+   * `IDLE_STATE`. */
+  editorFor: (fileTabId: string) => FileEditorHandle;
+  /** Removes state for a closed file tab to avoid stale dirty flags and an
+   * unbounded record of dead ids. */
+  forget: (fileTabId: string) => void;
+  /** Applies an Explorer rename to every matching open buffer. Paths are
+   * absolute. */
   renamePath: (oldPath: string, newPath: string) => void;
-  /** Schließt jeden offenen Puffer (über ALLE Panes hinweg), der unter einem
-   * soeben gelöschten Explorer-Eintrag lag — siehe `fileEditorState.ts`s
-   * `closeIfUnder`. `deletedPath` ist ein absoluter Pfad. */
+  /** Closes every open buffer below a deleted Explorer entry. */
   closeUnder: (deletedPath: string) => void;
 }
 
 /**
- * Ersetzt `useFileEditor.ts`: derselbe Zustandsautomat aus
- * `fileEditorState.ts`, jetzt einmal pro Pane statt einmal pro App, weil mit
- * dem Grid (Ticket 03) jede Pane unabhängig eine Datei offen haben kann.
- * Bewusst selbst ungetestet (wie `usePtyTerminal.ts`/`useAppZoom.ts`) — die
- * Zustandsübergänge sind in `fileEditorState.test.ts` abgedeckt, die
- * IPC-Verdrahtung im App-Level-Wiring-Test.
+ * Runs the existing `fileEditorState.ts` state machine independently for each
+ * file tab. State transitions are covered by its unit tests and IPC wiring by
+ * the App integration tests.
  */
-export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
+export function useFileTabEditors(onSaved: () => void): FileTabEditors {
   const [states, setStates] = useState<Record<string, FileEditorState>>({});
 
-  const stateFor = (paneId: string): FileEditorState =>
-    states[paneId] ?? IDLE_STATE;
+  const stateFor = (fileTabId: string): FileEditorState =>
+    states[fileTabId] ?? IDLE_STATE;
 
   const updateState = (
-    paneId: string,
+    fileTabId: string,
     updater: (current: FileEditorState) => FileEditorState,
   ) => {
     setStates((current) => ({
       ...current,
-      [paneId]: updater(current[paneId] ?? IDLE_STATE),
+      [fileTabId]: updater(current[fileTabId] ?? IDLE_STATE),
     }));
   };
 
@@ -133,26 +124,48 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     {},
   );
 
-  const open = (paneId: string, path: string, line?: number) => {
-    updateState(paneId, () => startLoading(path));
-    setJumpLines((current) => ({ ...current, [paneId]: line ?? null }));
+  const open = (fileTabId: string, path: string, line?: number) => {
+    updateState(fileTabId, () => startLoading(path));
+    setJumpLines((current) => ({ ...current, [fileTabId]: line ?? null }));
+
+    // Ticket 38: a recognized image/video extension goes through
+    // explorer_read_media (raw base64 bytes, no UTF-8 requirement) instead
+    // of explorer_read_file — everything else keeps the existing text path
+    // below, including its own UTF-8 rejection as the fallback for
+    // unsupported binary formats.
+    const media = mediaInfoForPath(path);
+    if (media) {
+      void invoke<string>("explorer_read_media", { path })
+        .then((base64) =>
+          updateState(fileTabId, (current) =>
+            mediaLoadSucceeded(current, path, { ...media, base64 }),
+          ),
+        )
+        .catch((error: unknown) => {
+          updateState(fileTabId, (current) =>
+            loadFailed(current, path, String(error)),
+          );
+        });
+      return;
+    }
+
     void invoke<RawFileContents>("explorer_read_file", { path })
       .then((raw) =>
-        updateState(paneId, (current) => loadSucceeded(current, path, raw)),
+        updateState(fileTabId, (current) => loadSucceeded(current, path, raw)),
       )
       .catch((error: unknown) => {
-        updateState(paneId, (current) =>
+        updateState(fileTabId, (current) =>
           loadFailed(current, path, String(error)),
         );
       });
   };
 
-  const consumeJumpToLine = (paneId: string) => {
-    setJumpLines((current) => ({ ...current, [paneId]: null }));
+  const consumeJumpToLine = (fileTabId: string) => {
+    setJumpLines((current) => ({ ...current, [fileTabId]: null }));
   };
 
-  const save = (paneId: string, options?: { force?: boolean; content?: string }) => {
-    const state = stateFor(paneId);
+  const save = (fileTabId: string, options?: { force?: boolean; content?: string }) => {
+    const state = stateFor(fileTabId);
     if (state.status !== "ready" && state.status !== "save-error") return;
     if (state.status === "ready" && !state.dirty) return;
     const { path, crlf, stamp } = state;
@@ -172,14 +185,14 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
         expected,
       })
         .then((newStamp) => {
-          updateState(paneId, (current) =>
+          updateState(fileTabId, (current) =>
             saveSucceeded(current, path, newStamp),
           );
           onSaved();
         })
         .catch((error: unknown) => {
           const message = String(error);
-          updateState(paneId, (current) =>
+          updateState(fileTabId, (current) =>
             saveFailed(current, path, message, message.includes(CONFLICT_MESSAGE)),
           );
         });
@@ -188,7 +201,7 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
     // noch in den geteilten Zustand ein, bevor der in "saving" einfriert —
     // ohne das schriebe der spätere Fehlerzweig (`saveFailed`) einen
     // veralteten Puffer fest, der dann im "save-error"-Zustand stünde.
-    updateState(paneId, (current) => startSaving(edit(current, content)));
+    updateState(fileTabId, (current) => startSaving(edit(current, content)));
     if (options?.force) {
       // "Trotzdem überschreiben": den aktuellen Platten-Stamp frisch holen
       // und damit schreiben, statt den (bewusst veralteten) Stamp aus `state`
@@ -196,7 +209,7 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
       void invoke<RawFileContents>("explorer_read_file", { path })
         .then((raw) => writeWith(raw.stamp))
         .catch((error: unknown) => {
-          updateState(paneId, (current) =>
+          updateState(fileTabId, (current) =>
             saveFailed(current, path, String(error), false),
           );
         });
@@ -232,38 +245,38 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
    * `edit()`) — das bleibt deshalb weiterhin ein echtes, jedes Mal
    * neu prüfendes Update.
    */
-  const editContent = (paneId: string, content: string) => {
-    const current = stateFor(paneId);
+  const editContent = (fileTabId: string, content: string) => {
+    const current = stateFor(fileTabId);
     if (current.status === "ready" && current.dirty) return;
-    updateState(paneId, (state) => edit(state, content));
+    updateState(fileTabId, (state) => edit(state, content));
   };
 
-  const editorFor = (paneId: string): FileEditorHandle => {
-    const state = stateFor(paneId);
+  const editorFor = (fileTabId: string): FileEditorHandle => {
+    const state = stateFor(fileTabId);
     return {
       state,
-      open: (path: string, line?: number) => open(paneId, path, line),
-      close: () => updateState(paneId, () => closeFile()),
-      editContent: (content: string) => editContent(paneId, content),
+      open: (path: string, line?: number) => open(fileTabId, path, line),
+      close: () => updateState(fileTabId, () => closeFile()),
+      editContent: (content: string) => editContent(fileTabId, content),
       save: (options?: { force?: boolean; content?: string }) =>
-        save(paneId, options),
+        save(fileTabId, options),
       wouldLoseWork: wouldLoseWork(state),
-      jumpToLine: jumpLines[paneId] ?? null,
-      consumeJumpToLine: () => consumeJumpToLine(paneId),
+      jumpToLine: jumpLines[fileTabId] ?? null,
+      consumeJumpToLine: () => consumeJumpToLine(fileTabId),
     };
   };
 
-  const forget = (paneId: string) => {
+  const forget = (fileTabId: string) => {
     setStates((current) => {
-      if (!(paneId in current)) return current;
+      if (!(fileTabId in current)) return current;
       return Object.fromEntries(
-        Object.entries(current).filter(([key]) => key !== paneId),
+        Object.entries(current).filter(([key]) => key !== fileTabId),
       );
     });
     setJumpLines((current) => {
-      if (!(paneId in current)) return current;
+      if (!(fileTabId in current)) return current;
       return Object.fromEntries(
-        Object.entries(current).filter(([key]) => key !== paneId),
+        Object.entries(current).filter(([key]) => key !== fileTabId),
       );
     });
   };
@@ -271,8 +284,8 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
   const renamePath = (oldPath: string, newPath: string) => {
     setStates((current) =>
       Object.fromEntries(
-        Object.entries(current).map(([paneId, state]) => [
-          paneId,
+        Object.entries(current).map(([fileTabId, state]) => [
+          fileTabId,
           renamePathTransition(state, oldPath, newPath),
         ]),
       ),
@@ -282,8 +295,8 @@ export function usePaneFileEditors(onSaved: () => void): PaneFileEditors {
   const closeUnder = (deletedPath: string) => {
     setStates((current) =>
       Object.fromEntries(
-        Object.entries(current).map(([paneId, state]) => [
-          paneId,
+        Object.entries(current).map(([fileTabId, state]) => [
+          fileTabId,
           closeIfUnder(state, deletedPath),
         ]),
       ),

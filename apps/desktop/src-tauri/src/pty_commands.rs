@@ -34,9 +34,14 @@ impl PtyState {
     }
 }
 
-/// Where PaneCrew's shell wrappers were written at startup — `None` if that
-/// failed, in which case panes spawn unwrapped rather than not at all.
-pub struct ShellIntegrationDir(pub Option<PathBuf>);
+/// Where PaneCrew's shell wrappers were written at startup — `None` if
+/// materialization hasn't finished yet or failed, in which case panes spawn
+/// unwrapped rather than not at all. Managed with `None` synchronously
+/// during `.setup()` (so `pty_spawn` never sees "state accessed before
+/// `manage()`" on a fast cold start) and filled in by a background thread
+/// once `shell_integration::materialize` actually finishes (ticket 04, perf
+/// audit — that write must not block the event loop from starting).
+pub struct ShellIntegrationDir(pub Mutex<Option<PathBuf>>);
 
 /// Which `tab_id`s belong to which native window (Ticket 27, landmine 5):
 /// `PtyState` itself has no notion of windows, only tabs, so a window's
@@ -87,6 +92,53 @@ impl WindowPtyRegistry {
 
     pub fn forget_window(&self, window_label: &str) {
         self.0.lock().unwrap().remove(window_label);
+    }
+
+    /// Cross-window-drag ticket 01: re-associates `tab_id` from
+    /// `old_window_label` to `new_window_label` for an in-flight move.
+    /// Registers under the new label FIRST, only then removes the old
+    /// association — reversed, there would be an instant where `tab_id`
+    /// belongs to no window's set at all. `kill_all_for_window` below is
+    /// taught to treat a tab still listed under a second window as "in
+    /// transit, not abandoned", so the brief overlap this ordering produces
+    /// (registered under both, for the moment between these two steps) is
+    /// exactly the safe direction to err toward.
+    pub fn move_tab(&self, tab_id: &str, old_window_label: &str, new_window_label: &str) {
+        self.register(new_window_label, tab_id);
+        let mut map = self.0.lock().unwrap();
+        if let Some(tab_ids) = map.get_mut(old_window_label) {
+            tab_ids.remove(tab_id);
+        }
+        map.retain(|_, tab_ids| !tab_ids.is_empty());
+    }
+
+    /// Whether `tab_id` is currently registered under some window OTHER than
+    /// `excluding_window_label` — used by `kill_all_for_window` to recognize
+    /// a tab mid cross-window-move (ticket 01) as still reachable elsewhere,
+    /// rather than abandoned.
+    fn registered_under_another_window(&self, tab_id: &str, excluding_window_label: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(window_label, tab_ids)| {
+                window_label != excluding_window_label && tab_ids.contains(tab_id)
+            })
+    }
+
+    /// Reverse of the map this struct otherwise keeps (window -> tabs):
+    /// `tab_id` -> owning window's label, for `resource_monitor`'s per-tick
+    /// samples, which start from a flat tab list and need to attach each
+    /// one back to its window.
+    pub(crate) fn window_for_tab_snapshot(&self) -> HashMap<String, String> {
+        let map = self.0.lock().unwrap();
+        let mut reverse = HashMap::new();
+        for (window_label, tab_ids) in map.iter() {
+            for tab_id in tab_ids {
+                reverse.insert(tab_id.clone(), window_label.clone());
+            }
+        }
+        reverse
     }
 }
 
@@ -140,6 +192,8 @@ pub async fn pty_spawn<R: Runtime>(
     };
     let integration = integration_dir
         .0
+        .lock()
+        .expect("shell integration dir poisoned")
         .as_deref()
         .map(|root| shell_integration::for_shell(&shell, root))
         .unwrap_or_default();
@@ -160,6 +214,28 @@ pub async fn pty_spawn<R: Runtime>(
         },
     )
     .map_err(|e| e.to_string())?;
+
+    // The window can be destroyed while the disk read above (`app_data_dir`
+    // + `load_overrides`) was in flight — this command is `async`, so a
+    // `CloseRequested` racing that read sees an empty `WindowPtyRegistry`
+    // (this spawn hasn't registered yet), skips the active-session
+    // confirmation gate, and tears the window down with nothing to kill.
+    // Registering into that already-dead window's slot below would leave the
+    // handle above permanently unreachable (`kill_all_for_window` only ever
+    // runs once per window, already ran) — a real orphaned process, not just
+    // a UI freeze (2026-08-16 perf/leak audit finding). Narrows the race
+    // rather than closing it outright (a check-then-register gap remains,
+    // same best-effort posture as `kill_all_for_window`'s own "already-dead
+    // tab_id is a no-op" handling), which is proportionate to how small that
+    // remaining window is.
+    if window.app_handle().get_webview_window(window.label()).is_none() {
+        if let Err(error) = kill(&state, &tab_id) {
+            log::warn!("failed to kill pty {tab_id} spawned for an already-closed window: {error}");
+        }
+        log::info!("pty spawn for tab {tab_id} discarded: window {} closed during spawn", window.label());
+        return Ok(());
+    }
+
     registry.register(window.label(), &tab_id);
     log::info!("pty spawned: tab {tab_id} cwd {cwd}");
     Ok(())
@@ -174,6 +250,14 @@ pub async fn pty_spawn<R: Runtime>(
 /// child (mirrors `std::process::Child`'s own drop behavior). Since Ticket 18
 /// this key is a tab, not a pane — several `tab_id`s belonging to the same
 /// pane are independent entries and never displace each other.
+///
+/// Killing the displaced handle is best-effort (logged, not propagated): the
+/// NEW handle is already inserted into `state` by the time that kill runs, so
+/// a failure there used to `?`-propagate out of this function and skip
+/// `pty_spawn`'s subsequent `registry.register` call — leaving the new PTY
+/// live in `PtyState` but absent from `WindowPtyRegistry`, permanently
+/// unreachable by `kill_all_for_window` on window close (2026-08-16 perf/leak
+/// audit finding).
 fn spawn_and_register<F>(
     state: &PtyState,
     tab_id: String,
@@ -184,12 +268,29 @@ where
     F: Fn(&[u8]) + Send + 'static,
 {
     let handle = pty_manager::spawn(opts, on_output)?;
-    if let Some(previous) = state.0.lock().unwrap().insert(tab_id, handle) {
-        previous.kill()?;
+    let previous = {
+        let tab_id_for_log = tab_id.clone();
+        let previous = state.0.lock().unwrap().insert(tab_id, handle);
+        previous.map(|handle| (tab_id_for_log, handle))
+    };
+    if let Some((tab_id, previous)) = previous {
+        if let Err(error) = previous.kill() {
+            log::warn!("failed to kill pty displaced by a reused tab_id {tab_id}: {error}");
+        }
     }
     Ok(())
 }
 
+// Deliberately NOT `(async)` (2026-08-16 perf/leak audit): `pty_write` fires
+// once per keystroke (`usePtyTerminal.ts`'s `terminal.onData`) and those
+// calls are a byte stream, not idempotent/order-independent — marking this
+// `(async)` would let Tauri dispatch concurrent invocations onto different
+// threads with no ordering guarantee, corrupting typed input order. Staying
+// synchronous keeps every call's enqueue into `PtyHandle`'s writer channel in
+// exact IPC-arrival order; `PtyHandle::write` itself is what got fixed
+// instead (see its own comment in `pty_manager.rs`) — the actual OS write
+// that could previously block this thread indefinitely now happens on a
+// dedicated per-pty thread, off this one.
 #[tauri::command]
 pub fn pty_write(state: State<PtyState>, tab_id: String, data: Vec<u8>) -> Result<(), String> {
     with_handle(&state, &tab_id, |handle| handle.write(&data))
@@ -238,6 +339,13 @@ pub(crate) fn kill(state: &PtyState, tab_id: &str) -> Result<(), String> {
 /// here, just a no-op for that one entry.
 pub fn kill_all_for_window(state: &PtyState, registry: &WindowPtyRegistry, window_label: &str) {
     for tab_id in registry.tab_ids_for_window(window_label) {
+        // Cross-window-drag ticket 01: a tab still registered under another
+        // window at this instant is mid-move ("unterwegs"), not abandoned —
+        // only forget this window's own association, don't kill the PTY a
+        // sibling window is about to take ownership of.
+        if registry.registered_under_another_window(&tab_id, window_label) {
+            continue;
+        }
         let _ = kill(state, &tab_id);
     }
     registry.forget_window(window_label);
@@ -459,6 +567,78 @@ mod tests {
         registry.unregister("tab-1");
 
         assert_eq!(registry.tab_ids_for_window("win-a"), vec!["tab-2"]);
+    }
+
+    /// Cross-window-drag ticket 01: the move operation must register under
+    /// the destination window before removing the source registration — this
+    /// test proves that ordering by observing the state directly, without
+    /// relying on real thread interleaving.
+    #[test]
+    fn move_tab_between_windows_registers_new_before_removing_old() {
+        let registry = WindowPtyRegistry::default();
+        registry.register("win-a", "tab-1");
+
+        registry.move_tab("tab-1", "win-a", "win-b");
+
+        assert_eq!(
+            registry.tab_ids_for_window("win-b"),
+            vec!["tab-1"],
+            "tab should be registered under the destination window"
+        );
+        assert!(
+            registry.tab_ids_for_window("win-a").is_empty(),
+            "tab should no longer be registered under the source window"
+        );
+    }
+
+    /// Cross-window-drag ticket 01 (spec.md "Backend-Registrierungsreihenfolge"):
+    /// while a move is in flight, `tab_id` is briefly registered under BOTH
+    /// windows. A source-window close racing that instant must not kill the
+    /// PTY — it is "unterwegs" (in transit) to the destination window, not
+    /// abandoned. `kill_all_for_window`'s behavior for a tab registered under
+    /// only ONE window (the normal, non-move case) stays exactly as tested
+    /// above in `kill_all_for_window_kills_only_that_windows_tabs`.
+    #[test]
+    fn window_close_racing_a_cross_window_move_does_not_kill_the_in_flight_pty() {
+        let state = PtyState::default();
+        let registry = WindowPtyRegistry::default();
+
+        spawn_and_register(&state, "tab-1".into(), sh_opts("sleep 30"), |_| {})
+            .expect("spawn tab-1");
+        registry.register("win-a", "tab-1");
+
+        let pid = state
+            .0
+            .lock()
+            .unwrap()
+            .get("tab-1")
+            .and_then(PtyHandle::pid)
+            .expect("tab-1 should have a pid");
+
+        // The mid-move instant this ticket's ordering rule produces: already
+        // registered under the destination, not yet removed from the source.
+        registry.register("win-b", "tab-1");
+
+        // The SOURCE window's close fires here, mid-move.
+        kill_all_for_window(&state, &registry, "win-a");
+
+        assert!(
+            is_process_alive(pid),
+            "in-flight PTY must survive a source-window close racing a move"
+        );
+        assert!(
+            state.0.lock().unwrap().contains_key("tab-1"),
+            "PtyState entry must remain for the in-flight tab"
+        );
+        assert_eq!(
+            registry.tab_ids_for_window("win-b"),
+            vec!["tab-1"],
+            "destination registration must survive the source window's close"
+        );
+        assert!(
+            registry.tab_ids_for_window("win-a").is_empty(),
+            "source window's own bookkeeping is still forgotten on its close"
+        );
     }
 
     /// Ticket 06: `resolve_shell` is what `pty_spawn` calls fresh on every

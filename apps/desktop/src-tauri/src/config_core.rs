@@ -38,18 +38,20 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         SettingType::Number,
         serde_json::json!(14),
     ))?;
-    // Needs-Attention-Grundlage (terminalActivity.ts, Task #7/#13): ein Tab
-    // gilt intern als "aktiv", sobald innerhalb von activityIdleMs mindestens
-    // activityLineThreshold neue Zeilen committet wurden — das steuert aber
-    // seit dem Ungelesen-Umbau (terminalActivity.ts, Nutzer-Neuspezifikation
-    // 2026-08-13) KEIN sichtbares Aktiv/Inaktiv mehr, sondern nur noch, wie
-    // empfindlich der PERSISTENTE Ungelesen-Punkt anschlägt (der bleibt dann
-    // bestehen, bis der Tab angesehen wird, unabhängig von activityIdleMs).
-    // Default 15000 (statt vormals 1500) trägt dieser neuen, nicht mehr
-    // selbstheilenden Semantik Rechnung — ein zu kurzes Fenster markierte bei
-    // jedem harmlosen Gelegenheits-Log-Zeilchen sofort "ungelesen" (Fund
-    // 2026-08-13, Nutzer-Bugreport: mehrere echte Hintergrund-Agenten lösten
-    // den Punkt korrekt, aber zu leichtfertig aus).
+    // "Awaiting attention" basis (terminalActivity.ts, 2026-08-17 rewrite):
+    // activityIdleMs is how long a tab must receive NO output at all (not
+    // just no new committed line — see terminalActivity.ts header comment on
+    // why liveness needs the broader signal) before it flags as "done,
+    // waiting on you"; activityLineThreshold is how many committed lines a
+    // tab needs before it's considered to have done real work at all (a
+    // freshly spawned, still-empty shell must not flag immediately).
+    // 15000 verified against a real captured Claude Code PTY session // brandlint-ok: functional reference to the specific tool tested, not marketing
+    // (root-cause investigation for this rewrite): observed intra-turn
+    // "thinking" pauses between tool calls topped out around 8s with no new
+    // committed line, so 15000 leaves roughly 2x headroom against a false
+    // "done" flag while the tool is still visibly working. Kept unchanged
+    // from the previous (differently-motivated) default rather than tuned
+    // down, since that sample size doesn't justify tightening it further.
     registry.register(entry(
         "terminal.activityIdleMs",
         SettingType::Number,
@@ -59,6 +61,24 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
         "terminal.activityLineThreshold",
         SettingType::Number,
         serde_json::json!(1),
+    ))?;
+    // Ticket 35: which adapter a freshly opened terminal tab starts with
+    // when the user doesn't pick one explicitly from the picker's dropdown.
+    // "shell" is the built-in login shell, same as an absent per-tab
+    // `adapter_id` in the session schema — kept as an explicit enum member
+    // rather than reusing `null`/absent here so this setting round-trips
+    // through the generic Enum settings control like every other one.
+    registry.register(entry(
+        "terminal.defaultAdapter",
+        SettingType::Enum(vec![
+            "shell".into(),
+            "claude".into(),  // brandlint-ok: canonical adapter id, functional
+            "codex".into(),   // brandlint-ok: canonical adapter id, functional
+            "gemini".into(),  // brandlint-ok: canonical adapter id, functional
+            "copilot".into(), // brandlint-ok: canonical adapter id, functional
+            "opencode".into(),
+        ]),
+        serde_json::json!("shell"),
     ))?;
 
     // Explorer
@@ -72,7 +92,7 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     registry.register(entry(
         "appearance.theme",
         SettingType::Enum(vec!["system".into(), "light".into(), "dark".into()]),
-        serde_json::json!("system"),
+        serde_json::json!("dark"),
     ))?;
     registry.register(entry(
         "appearance.language",
@@ -84,10 +104,16 @@ pub fn register_core_settings(registry: &mut ConfigRegistry) -> Result<(), Regis
     // Bewusst von `terminal.fontSize` getrennt: Zoom skaliert die ganze
     // Oberfläche über den nativen Webview-Zoom, die Terminal-Schriftgröße nur
     // den Zellraster-Text in den Panes.
+    //
+    // Default 1.2 statt der neutralen 1.0, passend zu `DEFAULT_APP_ZOOM` in
+    // `shortcuts/zoom.ts` (2026-08-14, Nutzerentscheidung: native Stufe war
+    // auf den getesteten Monitoren spürbar zu klein) — beide Defaults müssen
+    // synchron bleiben, sonst zeigt ein frischer Start kurz 100% Chrome-Zoom,
+    // bevor `useAppZoom.ts`s eigener Default greift.
     registry.register(entry(
         "appearance.zoom",
         SettingType::Number,
-        serde_json::json!(1.0),
+        serde_json::json!(1.2),
     ))?;
 
     // Grid — dieselben sieben Werte wie `TemplateId` in gridState.ts
@@ -129,10 +155,39 @@ mod tests {
         assert!(keys.contains(&"terminal.fontSize"));
         assert!(keys.contains(&"terminal.activityIdleMs"));
         assert!(keys.contains(&"terminal.activityLineThreshold"));
+        assert!(keys.contains(&"terminal.defaultAdapter"));
         assert!(keys.contains(&"explorer.confirmBeforeDelete"));
         assert!(keys.contains(&"appearance.theme"));
         assert!(keys.contains(&"appearance.language"));
         assert!(keys.contains(&"grid.defaultTemplate"));
+    }
+
+    /// Ticket 35: the fixed adapter list ("shell" plus a handful of
+    /// in-code-known CLI tools) is duplicated here as the enum's own
+    /// options, same reasoning as `grid_default_template_covers_all...`
+    /// below — the frontend's `terminal/adapters.ts` is the live source of
+    /// truth, this test just keeps the two from silently drifting apart.
+    #[test]
+    fn terminal_default_adapter_defaults_to_shell_with_the_fixed_tool_list() {
+        let mut registry = ConfigRegistry::new();
+        register_core_settings(&mut registry).unwrap();
+
+        let entry = registry
+            .find("terminal.defaultAdapter")
+            .expect("should be registered");
+
+        assert_eq!(entry.default, serde_json::json!("shell"));
+        assert_eq!(
+            entry.setting_type,
+            SettingType::Enum(vec![
+                "shell".into(),
+                "claude".into(),  // brandlint-ok: canonical adapter id, functional
+                "codex".into(),   // brandlint-ok: canonical adapter id, functional
+                "gemini".into(),  // brandlint-ok: canonical adapter id, functional
+                "copilot".into(), // brandlint-ok: canonical adapter id, functional
+                "opencode".into(),
+            ])
+        );
     }
 
     #[test]
@@ -152,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn appearance_zoom_defaults_to_1_and_is_a_plain_number() {
+    fn appearance_zoom_defaults_to_1_2_and_is_a_plain_number() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
 
@@ -160,12 +215,12 @@ mod tests {
             .find("appearance.zoom")
             .expect("should be registered");
 
-        assert_eq!(entry.default, serde_json::json!(1.0));
+        assert_eq!(entry.default, serde_json::json!(1.2));
         assert_eq!(entry.setting_type, SettingType::Number);
     }
 
     #[test]
-    fn appearance_theme_defaults_to_system_with_the_three_documented_options() {
+    fn appearance_theme_defaults_to_dark_with_the_three_documented_options() {
         let mut registry = ConfigRegistry::new();
         register_core_settings(&mut registry).unwrap();
 
@@ -173,7 +228,7 @@ mod tests {
             .find("appearance.theme")
             .expect("should be registered");
 
-        assert_eq!(entry.default, serde_json::json!("system"));
+        assert_eq!(entry.default, serde_json::json!("dark"));
         assert_eq!(
             entry.setting_type,
             SettingType::Enum(vec!["system".into(), "light".into(), "dark".into()])

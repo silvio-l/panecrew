@@ -16,14 +16,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CHROME_FOCUS_RING } from "../components/ChromeTooltip";
+import { PermissionsSection } from "../components/PermissionsSection";
 import { TemplateGlyph } from "../components/TemplateSwitcher";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { GRID_TEMPLATES } from "../grid/gridState";
+import { info, warn } from "../logging/log";
+import { restartOnboarding } from "../onboarding/onboarding";
+import { isMacPlatform } from "../shortcuts/platform";
 import { MAX_ZOOM, MIN_ZOOM } from "../shortcuts/zoom";
 import { useSettings, type SettingSchemaEntry } from "./useSettings";
 
 const CORE_CATEGORY_ORDER = ["terminal", "explorer", "appearance", "grid"];
+// "help" is not schema-driven (no settings registry entries) — added
+// unconditionally rather than gated on `schema` presence like the core/
+// extension categories above, and rendered via its own `HelpCategoryPanel`
+// branch instead of the generic `SettingRow` list (see `selectedCategory ===
+// "help"` below).
+const STATIC_CATEGORIES = ["help"];
 
 function i18nBase(entry: SettingSchemaEntry): string | null {
   return entry.description.kind === "i18nKey"
@@ -174,10 +185,25 @@ export function SettingsWindow() {
                 }}
               />
             ))}
+            <div role="separator" className="my-1.5 border-t border-(--pc-widget-border)" />
+            {STATIC_CATEGORIES.map((id) => (
+              <CategoryButton
+                key={id}
+                id={id}
+                label={t(`settings.categories.${id}`)}
+                active={!trimmedQuery && id === selectedCategory}
+                onSelect={() => {
+                  setQuery("");
+                  setSelectedCategory(id);
+                }}
+              />
+            ))}
           </nav>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {loading ? (
+            {!trimmedQuery && selectedCategory === "help" ? (
+              <HelpCategoryPanel t={t} />
+            ) : loading ? (
               <p className="text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
                 {t("common.loading")}
               </p>
@@ -592,3 +618,84 @@ function RawJsonView({
     </div>
   );
 }
+
+// The one non-schema-driven category (`STATIC_CATEGORIES` above): the
+// onboarding restart button (works on every platform) plus the macOS
+// permissions dashboard folded in from the earlier permissions research —
+// a single place to re-grant OS access instead of waiting for a fresh TCC
+// prompt per-folder.
+function HelpCategoryPanel({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="flex flex-col divide-y divide-(--pc-widget-border)">
+      <OnboardingRestartRow t={t} />
+      {isMacPlatform() && (
+        <div className="py-3">
+          <PermissionsSection t={t} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same row shape as `SettingRow` (label + description on the left, control
+// on the right) even though this isn't a schema entry — a button instead of
+// a toggle/enum control, restarting the first-run hint from `App.tsx`
+// instead of writing a config value.
+function OnboardingRestartRow({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3">
+      <div className="min-w-0">
+        <span className="text-(length:--pc-chrome-fontSize) text-(--pc-foreground)">
+          {t("settings.help.onboarding.label")}
+        </span>
+        <p className="mt-0.5 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground)">
+          {t("settings.help.onboarding.description")}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          // `restartOnboarding()` shows the wizard as an app-window overlay
+          // in the MAIN window, not this one — awaited before closing this
+          // window so the broadcast that arms it has actually gone out
+          // first. Closing (rather than a "go look at the main window"
+          // confirmation, the previous approach) is what actually gets the
+          // wizard in front of the user: this window sits on top of
+          // everything else on most window managers, otherwise.
+          void (async () => {
+            await restartOnboarding();
+            void info("onboarding: restarted from settings");
+            // `hide()`, not `About.tsx`'s `close()`: this window is a
+            // prewarmed singleton that must never be destroyed
+            // (`settings_window.rs`), and its `CloseRequested` handler
+            // would only translate a close back into exactly this `hide()`
+            // anyway. Going straight there skips that round-trip.
+            //
+            // Needs `core:window:allow-hide` in
+            // `src-tauri/capabilities/settings.json` — without it Tauri's
+            // ACL rejects the call, which is what made two earlier fixes
+            // look like no-ops (the rejection was swallowed by a bare
+            // `void`). Hence the `catch`: never fail silently here again.
+            void getCurrentWindow()
+              .hide()
+              .catch((cause: unknown) => {
+                void warn(`onboarding: settings window hide failed: ${String(cause)}`);
+              });
+          })();
+        }}
+        className={`shrink-0 rounded-sm border border-(--pc-widget-border) px-3 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+      >
+        {t("settings.help.onboarding.button")}
+      </button>
+    </div>
+  );
+}
+

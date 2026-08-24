@@ -1,7 +1,12 @@
 import { Fragment, type ReactElement } from "react";
 import { Tooltip } from "radix-ui";
 import { useTranslation } from "react-i18next";
-import { formatMemoryBytes, type PaneUsageGroup, type TabUsageRow } from "../terminal/resourceUsageTree";
+import {
+  formatMemoryBytes,
+  type PaneUsageGroup,
+  type TabUsageRow,
+  type WindowUsageGroup,
+} from "../terminal/resourceUsageTree";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 
 // Dieselbe Radix-Root/Trigger/Portal/Content-Struktur und dieselben
@@ -41,10 +46,18 @@ const MICRO_LABEL_CLASS = "text-[10px] uppercase tracking-[0.08em] text-(--pc-de
 /**
  * Titelleisten-Ressourcen-Popover: dieselbe Kurzfassung ("RAM x % · CPU y %")
  * wie bisher als Kopfzeile, darunter — sofern mindestens ein Tab schon eine
- * erste Stichprobe hat — die Pane→Tab-Baumansicht (`resourceUsageTree.ts`
- * gruppiert/sortiert bereits fertig). Jede Tab-Zeile liest ihre Farbe live
- * aus `resourceGuard.ts` (derselbe Zustand wie der Warn-Chip am Tab selbst,
- * `PaneTabs.tsx`) statt eine zweite Schwellenlogik zu duplizieren.
+ * erste Stichprobe hat — die Fenster→Pane→Tab-Baumansicht
+ * (`resourceUsageTree.ts` gruppiert/sortiert bereits fertig). Jede Tab-Zeile
+ * liest ihre Farbe live aus `resourceGuard.ts` (derselbe Zustand wie der
+ * Warn-Chip am Tab selbst, `PaneTabs.tsx`) statt eine zweite Schwellenlogik
+ * zu duplizieren.
+ *
+ * Die Fenster-Ebene rendert nur eine sichtbare Überschrift, wenn tatsächlich
+ * mehr als ein Fenster offen ist (der weit überwiegende Ein-Fenster-Fall
+ * bleibt damit optisch unverändert) — mit mehreren Fenstern bekommt nur das
+ * EIGENE die volle Pane-Aufschlüsselung (die Pane-Struktur fremder Fenster
+ * kennt nur deren eigenes React-Grid, nie dieses hier), fremde Fenster zeigen
+ * eine flache Tab-Liste ohne Pane-Zuordnung.
  *
  * Layout: EIN gemeinsames Grid über alle Gruppen (Name | RAM | CPU) statt
  * `justify-between` pro Zeile — nur so stehen die Werte auch bei
@@ -58,14 +71,16 @@ const MICRO_LABEL_CLASS = "text-[10px] uppercase tracking-[0.08em] text-(--pc-de
  */
 export function ResourceUsageTreeTooltip({
   summary,
-  groups,
+  windowGroups,
   children,
 }: {
   summary: string;
-  groups: readonly PaneUsageGroup[];
+  windowGroups: readonly WindowUsageGroup[];
   children: ReactElement;
 }) {
   const { t } = useTranslation();
+  const hasContent = windowGroups.some((group) => group.panes.length > 0 || group.tabs.length > 0);
+  const showWindowHeadings = windowGroups.length > 1;
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
@@ -77,7 +92,7 @@ export function ResourceUsageTreeTooltip({
           className="z-20 max-w-80 rounded-md border border-(--pc-titleBar-border) bg-(--pc-explorer-background) px-2.5 py-2 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) shadow-lg data-[state=closed]:animate-[pc-overlay-out_150ms_ease-in] data-[state=delayed-open]:animate-[pc-overlay-in_150ms_ease-out] data-[state=instant-open]:animate-[pc-overlay-in_150ms_ease-out]"
         >
           <div className="tabular-nums">{summary}</div>
-          {groups.length > 0 && (
+          {hasContent && (
             <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 border-t border-(--pc-titleBar-border) pt-2">
               <span aria-hidden="true" />
               <span aria-hidden="true" className={`justify-self-end ${MICRO_LABEL_CLASS}`}>
@@ -86,14 +101,49 @@ export function ResourceUsageTreeTooltip({
               <span aria-hidden="true" className={`justify-self-end ${MICRO_LABEL_CLASS}`}>
                 {t("titleBar.resourceUsage.columnCpu")}
               </span>
-              {groups.map((group, index) => (
-                <PaneUsageGroupRows key={group.paneId} group={group} first={index === 0} />
+              {windowGroups.map((windowGroup, windowIndex) => (
+                <WindowUsageGroupRows
+                  key={windowGroup.windowLabel}
+                  windowGroup={windowGroup}
+                  first={windowIndex === 0}
+                  showHeading={showWindowHeadings}
+                />
               ))}
             </div>
           )}
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
+  );
+}
+
+function WindowUsageGroupRows({
+  windowGroup,
+  first,
+  showHeading,
+}: {
+  windowGroup: WindowUsageGroup;
+  first: boolean;
+  showHeading: boolean;
+}) {
+  return (
+    <Fragment>
+      {showHeading && (
+        <span
+          className={`col-span-3 min-w-0 truncate text-[11px] font-medium text-(--pc-foreground) ${
+            first ? "" : "mt-1.5 border-t border-(--pc-titleBar-border) pt-2.5"
+          }`}
+        >
+          {windowGroup.windowTitle}
+        </span>
+      )}
+      {windowGroup.panes.map((pane, index) => (
+        <PaneUsageGroupRows key={pane.paneId} group={pane} first={index === 0} />
+      ))}
+      {windowGroup.tabs.map((row) => (
+        <TabUsageRowLine key={row.tabId} row={row} />
+      ))}
+    </Fragment>
   );
 }
 

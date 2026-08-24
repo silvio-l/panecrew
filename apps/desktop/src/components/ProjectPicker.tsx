@@ -47,6 +47,16 @@ function projectDisplayName(path: string): string {
   return segments[segments.length - 1] ?? path;
 }
 
+// Everything before the last segment, kept in the path's own separator style
+// (a Windows path from a foreign session.json stays readable as one). Display
+// only — it disambiguates two projects that share a folder name ("web" under
+// different parents). Returns "" when there is no parent to show.
+function projectParentPath(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx <= 0 ? "" : trimmed.slice(0, idx);
+}
+
 export function ProjectPicker({
   onChoose,
   busy,
@@ -57,6 +67,7 @@ export function ProjectPicker({
   onOpenRecent,
   onRemoveRecent,
   dropInvite = null,
+  onboardingHint = null,
 }: {
   onChoose: () => void;
   busy: boolean;
@@ -97,6 +108,11 @@ export function ProjectPicker({
    * laufenden Zugs ist) — hier nur platziert, nicht hergeleitet: was ein Zug
    * ist und wann er läuft, weiß allein das Grid. */
   dropInvite?: ReactNode;
+  /** The first-run/restart callout (`onboarding/OnboardingHint.tsx`) for
+   * whichever slot `onboarding/onboardingState.ts::onboardingHintSlot`
+   * currently points at — same sibling-to-the-button placement as
+   * `dropInvite`, App.tsx decides which slot (if any) gets one. */
+  onboardingHint?: ReactNode;
 }) {
   const { t } = useTranslation();
   const slotNumber = slotIndex + 1;
@@ -106,7 +122,12 @@ export function ProjectPicker({
   if (restoring) {
     return (
       <div className="@container flex min-h-0 min-w-0" style={cellStyle}>
-        <div className="pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground)">
+        {/* `pc-slotcard` alongside `pc-slotframe`: every hover/focus state
+            selector in App.css roots at `.pc-slotcard` (the button+shelf card
+            of the empty branch) — here card and frame are the same element,
+            so the corner/readout/cursor hover rules keep matching exactly as
+            before the shelf rework. */}
+        <div className="pc-slotcard pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground)">
           <HudCorners />
           <SlotReadout number={slotNumber} />
           {/* Dasselbe Emblem wie im leeren Slot: der Restore-Zustand ist
@@ -123,6 +144,11 @@ export function ProjectPicker({
     );
   }
 
+  // The shelf (recent rows + the browse-other entry) exists only when there
+  // is at least one recent project. With zero recents the only actionable row
+  // would be "browse other" — a duplicate of the big button's own action, so
+  // an empty panel with just chrome would be noise, not an offer.
+  const hasShelf = !focusModeActive && recentProjects.length > 0;
   return (
     // Container-Query statt Media-Query: entscheidend ist die Breite DIESES
     // Slots, nicht die des Fensters. Derselbe Slot ist im Vierergrid rund
@@ -130,55 +156,187 @@ export function ProjectPicker({
     // `relative`: Anker für das Drop-Instrument des Tab-Zugs (`dropInvite`,
     // absolut über der ganzen Zelle) — als Geschwister NEBEN dem Knopf statt
     // in ihm, ein `<button>` soll keine Blockelemente enthalten.
+    // `pc-empty-slot`: the CSS scope App.css uses to reveal the recent-shelf
+    // drawer — hover ANYWHERE in the cell (button included) or focus
+    // anywhere within it wakes the shelf, so the slot reads as one interactive
+    // zone, not a button plus an unrelated list (see .pc-recent-panel there).
     <div
-      className="@container relative flex min-h-0 min-w-0 flex-col gap-2"
+      className="pc-empty-slot @container relative flex min-h-0 min-w-0 flex-col"
       style={cellStyle}
       data-empty-slot={slotIndex}
     >
-      <button
-        type="button"
-        onClick={onChoose}
-        disabled={busy}
-        aria-busy={busy}
-        // Der zugängliche Name ist der Knopftext; das aria-label hält ihn
-        // stabil, wenn die Erklärzeile darunter mitrendert (die sonst in den
-        // Namen einginge und ihn bei jeder Slot-Breite anders lauten ließe).
-        aria-label={t("projectPicker.choose")}
-        className={`pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
-      >
-        <HudCorners />
-        <SlotReadout number={slotNumber} />
-        <AsciiEmblem blinking />
-        <span className="text-(length:--pc-chrome-fontSize) font-medium">
-          {t("projectPicker.choose")}
-        </span>
-        {/* Erst ab 18rem Slot-Breite: in einer Viererreihen-Spalte bliebe von
-            dem Satz ein vierzeiliger Block, der den Knopf darüber erschlägt.
-            Ein leerer Slot braucht dort ein Ziel und eine Beschriftung, keine
-            Prosa. */}
-        <span className="hidden max-w-64 text-(length:--pc-chrome-fontSizeSmall) @2xs:block">
-          {t("projectPicker.hint")}
-        </span>
-      </button>
-      {/* Erst ab derselben Breitenschwelle wie die Erklärzeile im Knopf
-          darüber (@2xs) — in der Viererreihen-Spalte bliebe für Knopf UND
-          Liste zusammen kein Platz, die Liste bleibt dort schlicht weg statt
-          den Slot zu sprengen. `flex-none`: die Liste wächst nicht in den
-          Knopf hinein, sie nimmt nur so viel Höhe wie ihr Inhalt braucht. */}
-      {!focusModeActive && recentProjects.length > 0 && (
-        <div className="hidden max-h-32 flex-none flex-col gap-0.5 overflow-y-auto @2xs:flex">
-          {recentProjects.map((path) => (
-            <RecentProjectRow
-              key={path}
-              path={path}
-              onOpen={() => onOpenRecent(path)}
-              onRemove={() => onRemoveRecent(path)}
+      {/* `pc-slotcard`: button + shelf drawer as ONE card. Every hover/focus
+          state in App.css (corner amber, readout brighten, boot-lap, idle
+          scan pause, the hover fill itself) roots HERE instead of at the
+          button — deliberate: pointing at the drawer keeps the whole card
+          awake, including the button's hover fill, so the card never splits
+          into a lit shelf under a dimmed button (third pass, 2026-08-17,
+          user: "Die Recent-Files liegen immer noch außerhalb des Slots").
+          The former Tailwind `hover:bg-…`/`hover:text-…` utilities on the
+          button moved into App.css for exactly this reason — a `:hover` on
+          the button alone would drop the fill the moment the pointer enters
+          the drawer. */}
+      <div className="pc-slotcard relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <button
+          type="button"
+          onClick={onChoose}
+          disabled={busy}
+          aria-busy={busy}
+          // Der zugängliche Name ist der Knopftext; das aria-label hält ihn
+          // stabil, wenn die Erklärzeile darunter mitrendert (die sonst in den
+          // Namen einginge und ihn bei jeder Slot-Breite anders lauten ließe).
+          aria-label={t("projectPicker.choose")}
+          className={`pc-slotframe relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-(--pc-descriptionForeground) transition-colors disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
+        >
+          <HudCorners />
+          <SlotReadout number={slotNumber} />
+          <AsciiEmblem blinking />
+          <span className="text-(length:--pc-chrome-fontSize) font-medium">
+            {t("projectPicker.choose")}
+          </span>
+          {/* Erst ab 18rem Slot-Breite: in einer Viererreihen-Spalte bliebe von
+              dem Satz ein vierzeiliger Block, der den Knopf darüber erschlägt.
+              Ein leerer Slot braucht dort ein Ziel und eine Beschriftung, keine
+              Prosa. */}
+          <span className="hidden max-w-64 text-(length:--pc-chrome-fontSizeSmall) @2xs:block">
+            {t("projectPicker.hint")}
+          </span>
+          {/* Rest-state indicator INSIDE the button (2026-08-17, third pass):
+              the caption line pinned to the frame's bottom edge — since it
+              lives in the button it shares its frame by construction and can
+              never read as a floating block outside the slot. When the drawer
+              below wakes, it rises over exactly this zone and brings its own
+              copy of the caption as its cap. aria-hidden: the button's
+              accessible name is pinned to the aria-label above; the caption
+              is visual discoverability, the real rows carry the semantics.
+              Same @2xs gate as the drawer itself. */}
+          {hasShelf && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-3 bottom-2 hidden items-center gap-2 @2xs:flex"
+            >
+              <ShelfCaption count={recentProjects.length} />
+            </span>
+          )}
+        </button>
+        {/* The recent shelf as a DRAWER inside the slot frame — absolutely
+            positioned over the button's bottom edge, zero layout footprint at
+            rest (out of flow: no dead band, the button always fills the whole
+            cell). Anchored INSIDE rather than below (`top-full`) because the
+            quad start state puts two empty slots in the window's bottom row:
+            a below-the-cell overlay would fall past the window edge and be
+            clipped by body{overflow:hidden}. Inside the frame it is always
+            fully visible, needs no cross-cell z-index games, and answers the
+            user's actual complaint — the recents now sit IN the slot.
+            `rounded-b-lg` matches the button's own rounding so the drawer's
+            fill follows the card's corners instead of poking square edges
+            into them; the top hairline (`border-t`) marks the shelf edge in
+            the same 1px grammar as every other HUD hairline. Reveal
+            choreography (opacity/pointer-events, 150ms, reduced-motion-gated
+            3px rise) lives in App.css (.pc-recent-panel). The trailing
+            <HudCorners bottomOnly /> re-renders the frame's bottom corner
+            pair ABOVE the drawer fill, so the viewfinder stays closed while
+            the shelf is open. */}
+        {hasShelf && (
+          <div className="pc-recent-panel absolute inset-x-0 bottom-0 hidden flex-col rounded-b-lg border-t border-(--pc-pane-border) p-1 @2xs:flex">
+            <div className="flex flex-none items-center gap-2 px-2 py-1">
+              <ShelfCaption count={recentProjects.length} />
+            </div>
+            <div className="flex max-h-32 flex-none flex-col gap-0.5 overflow-y-auto">
+              {recentProjects.map((path, index) => (
+                <RecentProjectRow
+                  key={path}
+                  path={path}
+                  index={index}
+                  onOpen={() => onOpenRecent(path)}
+                  onRemove={() => onRemoveRecent(path)}
+                />
+              ))}
+            </div>
+            {/* Hairline divider + the one non-recent entry: same row grammar,
+                but a "+" glyph instead of a position index — an addition, not
+                a list position. It routes into the same dialog flow as the
+                big button (`onChoose`), for the project that is NOT on the
+                shelf. */}
+            <span
+              aria-hidden="true"
+              className="mx-2 my-1 h-px flex-none bg-(--pc-pane-border)"
             />
-          ))}
-        </div>
-      )}
+            <BrowseOtherRow onChoose={onChoose} busy={busy} />
+            <HudCorners bottomOnly />
+          </div>
+        )}
+      </div>
       {dropInvite}
+      {!dropInvite && onboardingHint}
     </div>
+  );
+}
+
+// Section caption in the slot's own HUD register (10px mono, tracked, dimmed
+// like the slot readout) plus a hairline running to the edge — the same 1px
+// pane-border grammar as the HUD corners. Rendered twice per slot: at rest as
+// the discoverability anchor pinned inside the button's bottom padding, and
+// as the cap of the woken drawer (which covers the rest copy exactly, so the
+// two are never visible together). The trailing zero-padded count readout
+// (same two-digit grammar as SlotReadout and the row indices) says how much
+// is on the shelf before it unfolds. Purely numeric, hence no i18n key —
+// same reasoning as SlotReadout; decorative for screen readers, which get
+// the real rows instead.
+function ShelfCaption({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <span className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] uppercase tracking-[0.25em]">
+        {t("projectPicker.recentHeading")}
+      </span>
+      <span
+        aria-hidden="true"
+        className="h-px min-w-4 flex-1 bg-(--pc-pane-border)"
+      />
+      <span
+        aria-hidden="true"
+        className="pc-hud-readout font-(family-name:--pc-terminal-fontFamily) text-[10px] tracking-[0.15em] tabular-nums"
+      >
+        {String(count).padStart(2, "0")}
+      </span>
+    </>
+  );
+}
+
+// The shelf's one non-recent entry (2026-08-17, user request: "plus dann halt
+// ein Eintrag für ein anderes Projekt"): opens the same file dialog as the
+// big slot button, for a project that is not on the recent list. Same row
+// grammar as RecentProjectRow — leading glyph slot, name, "↵" reveal — but a
+// "+" where the recents carry their position index: this row adds, it has no
+// position. Its own i18n key (`projectPicker.browseOther`) keeps its
+// accessible name distinct from the main button's pinned
+// `projectPicker.choose` — two buttons sharing one accessible name would
+// break every `getByRole("button", { name: … })` query on the slot.
+function BrowseOtherRow({
+  onChoose,
+  busy,
+}: {
+  onChoose: () => void;
+  busy: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onChoose}
+      disabled={busy}
+      aria-label={t("projectPicker.browseOther")}
+      className={`pc-recent-row flex min-w-0 shrink-0 items-center gap-2 rounded px-2 py-1 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) disabled:pointer-events-none disabled:opacity-50 ${CHROME_FOCUS_RING}`}
+    >
+      <span className="pc-recent-row__index shrink-0 text-[10px] tracking-[0.15em]">
+        {"+"}
+      </span>
+      <span className="truncate">{t("projectPicker.browseOther")}</span>
+      <span aria-hidden="true" className="pc-recent-row__go ml-auto shrink-0 pl-1">
+        {"↵"}
+      </span>
+    </button>
   );
 }
 
@@ -187,26 +345,78 @@ export function ProjectPicker({
 // (Radix `ContextMenu.Root`) einen eigenen Baum je Zeile braucht — ein
 // gemeinsamer Root für alle Zeilen könnte immer nur einen Eintrag zugleich
 // öffnen.
+// The row speaks the slot's HUD register (2026-08-17): a zero-padded index
+// readout in the terminal mono (same grammar as SlotReadout — labeling, not
+// invitation, so it brightens only to the description tone on hover), the
+// project name in the terminal mono like every pane header, the parent path
+// dimmed behind it as the disambiguator for two projects sharing a folder
+// name, and a reveal "↵" at the right edge as the open affordance. The "↵"
+// carries the dimmed 70% amber prompt tone at most — never a second
+// full-strength amber hover surface next to the slot button's own invitation
+// (Direction Contract: one accent, sparingly). NOT "❯": that glyph means
+// "you are here" everywhere else in the chrome (pane header, explorer), and
+// a hover target is exactly not that; "↵" says "enter opens this", which is
+// literally true for the focused row. Hover choreography lives in App.css
+// (.pc-recent-row*).
+//
+// No hover tooltip for the full path (removed 2026-08-19 — was ChromeTooltip,
+// side="bottom"): the panel's visibility is driven by CSS `:hover` on
+// `.pc-empty-slot`, but Tooltip.Content renders through a Portal outside that
+// DOM subtree. A tooltip opening below a row sat directly in the mouse's path
+// toward the next row, so the moment the pointer crossed onto the portaled
+// tooltip, `.pc-empty-slot:hover` went false and the whole recent-shelf
+// collapsed out from under the cursor — the rows underneath became
+// unreachable while hovering. This is the same failure mode the
+// `:has(.pc-recent-row[data-state="open"])` clause below already works around
+// for the context menu's own Portal (see App.css) — the tooltip just never
+// got the same treatment. Reproducing that fix for the tooltip would mean
+// scoping its Portal container to stay inside `.pc-empty-slot`, which needs
+// threading a ref down from the slot card. Simpler and just as informative in
+// practice: drop the tooltip, since the dimmed parent-path segment in the row
+// already disambiguates same-named projects. `aria-label` pins the accessible
+// name to the bare project name: without it, index + parent path would leak
+// into the name (the two Ticket-22 tests in App.test.tsx address rows by
+// exactly this name).
 function RecentProjectRow({
   path,
+  index,
   onOpen,
   onRemove,
 }: {
   path: string;
+  /** 0-based list position — rendered as the same zero-padded two-digit
+   * readout the slot number uses, purely visual orientation. */
+  index: number;
   onOpen: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
+  const name = projectDisplayName(path);
+  const parentPath = projectParentPath(path);
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <button
           type="button"
           onClick={onOpen}
-          title={path}
-          className={`flex min-w-0 shrink-0 items-center rounded px-2 py-1 text-left text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          aria-label={name}
+          className={`pc-recent-row flex min-w-0 shrink-0 items-center gap-2 rounded px-2 py-1 text-left font-(family-name:--pc-terminal-fontFamily) text-(length:--pc-chrome-fontSizeSmall) text-(--pc-descriptionForeground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) data-[state=open]:bg-(--pc-list-hoverBackground) data-[state=open]:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
-          <span className="truncate">{projectDisplayName(path)}</span>
+          <span className="pc-recent-row__index shrink-0 text-[10px] tracking-[0.15em] tabular-nums">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <span className="truncate">{name}</span>
+          {parentPath !== "" && (
+            // shrink-[4]: when space runs out, the parent path gives way
+            // four times faster than the project name — the name is the
+            // answer, the parent only its qualifier.
+            <span className="pc-recent-row__dir min-w-0 shrink-[4] truncate text-[10px]">
+              {parentPath}
+            </span>
+          )}
+          <span aria-hidden="true" className="pc-recent-row__go ml-auto shrink-0 pl-1">
+            {"↵"}
+          </span>
         </button>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
@@ -221,14 +431,20 @@ function RecentProjectRow({
 }
 
 // Vier Sucher-Ecken, je ein L aus zwei 1px-Kanten. Farb- und Hover-Verhalten
-// stehen in App.css (.pc-hud-corner, geschaltet über .pc-slotframe:hover) —
+// stehen in App.css (.pc-hud-corner, geschaltet über .pc-slotcard:hover) —
 // vier Spans statt eines Verlaufs-Tricks, weil border-color sauber mit den
 // 150ms-Hover-Transitions mitzieht, ein background-image nicht.
-function HudCorners() {
+// `bottomOnly` (2026-08-17): the recent-shelf drawer re-renders just the
+// bottom corner pair on top of its own fill — the drawer covers the button's
+// bottom corners while open, and without this second pair the viewfinder
+// would lose its lower half exactly when the card is awake. Both pairs sit at
+// the same coordinates (the drawer's bottom edge IS the button's), so the
+// visible frame never doubles or shifts.
+function HudCorners({ bottomOnly = false }: { bottomOnly?: boolean }) {
   return (
     <span aria-hidden="true" className="pointer-events-none absolute inset-0">
-      <span className="pc-hud-corner pc-hud-corner--tl" />
-      <span className="pc-hud-corner pc-hud-corner--tr" />
+      {!bottomOnly && <span className="pc-hud-corner pc-hud-corner--tl" />}
+      {!bottomOnly && <span className="pc-hud-corner pc-hud-corner--tr" />}
       <span className="pc-hud-corner pc-hud-corner--bl" />
       <span className="pc-hud-corner pc-hud-corner--br" />
     </span>
@@ -260,7 +476,7 @@ function SlotReadout({ number }: { number: number }) {
 // Box-Drawing rendert dagegen gestochen scharf, und die echte Marke bleibt
 // ohnehin das SVG in TitleBar.tsx. Zweifarbig: der Rahmen bleibt leise im
 // Beschreibungston, Prompt + Cursor tragen gedimmtes Amber; beim Überfahren
-// zieht beides an (App.css, .pc-slotframe:hover). Keine Buchstaben, deshalb
+// zieht beides an (App.css, .pc-slotcard:hover). Keine Buchstaben, deshalb
 // kein i18n-Fall; als reine Zeichnung für Screenreader unsichtbar.
 //
 // Das Emblem ist in EIGENE Spans zerlegt, weil die 3,5s-Choreografie in

@@ -139,5 +139,6 @@ export function mockProject(projectName: string): Project {
     tree: PROJECT_TREES[projectName] ?? FALLBACK_TREE,
     treeError: null,
     gitDecorations: new Map(),
+    gitRepo: null,
   };
 }

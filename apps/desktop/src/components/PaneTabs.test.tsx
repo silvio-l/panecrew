@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Tooltip } from "radix-ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneTabs, type PaneTabsProps } from "./PaneTabs";
-import { reportLineAdvance, resetTerminalActivityForTests } from "../terminal/terminalActivity";
+import {
+  reportOutput,
+  resetTerminalActivityForTests,
+  setActivityIdleMs,
+} from "../terminal/terminalActivity";
 import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 
 // Regressionstests zum Umbau vom 2026-08-13 (s. Kopfkommentar in
@@ -13,22 +17,24 @@ import { PtyBackendContext, type PtyBackend } from "../terminal/ptyBackend";
 const baseProps = (
   overrides: Partial<PaneTabsProps> = {},
 ): PaneTabsProps => ({
-  terminalTabs: [
-    { tabId: "tab-1", number: 1, label: null },
-    { tabId: "tab-2", number: 2, label: null },
+  tabs: [
+    { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+    { kind: "terminal", tabId: "tab-2", shortcutPosition: 2, label: null },
   ],
-  activeTerminalTabId: "tab-1",
+  activeTabId: "tab-1",
   paneFocused: true,
-  showingFile: false,
-  fileName: null,
-  fileDirty: false,
-  onSelectTerminalTab: vi.fn(),
+  project: {
+    name: "panecrew",
+    path: "/Users/dev/projects/panecrew",
+    gitRepo: null,
+  },
+  onSelectTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
   onCloseOtherTerminalTabs: vi.fn(),
   onCloseTerminalTabsToRight: vi.fn(),
   onRenameTerminalTab: vi.fn(),
-  onSelectFile: vi.fn(),
+  onCloseFileTab: vi.fn(),
   tabDrag: {
     start: vi.fn(),
     consumeClick: () => false,
@@ -74,23 +80,316 @@ const chipTrigger = (name: string) => {
   return el;
 };
 
+/** Öffnet Radix' `DropdownMenu` (Adapter-Picker, Ticket 35) — jsdom feuert
+ * kein reales Pointer-Gerät, ein bloßer `fireEvent.click` allein lässt
+ * Radix' Trigger deshalb geschlossen (kein `data-state="open"`); erst der
+ * vorgeschaltete `pointerdown` bringt denselben Zustand wie ein echter
+ * Maus-Klick. */
+const openAdapterDropdown = () => {
+  const trigger = screen.getByRole("button", { name: "Terminal-Tab mit Tool öffnen" });
+  fireEvent.pointerDown(trigger, { pointerId: 1, button: 0, isPrimary: true });
+  fireEvent.click(trigger);
+};
+
 describe("PaneTabs", () => {
+  it("uses tool identity instead of position numbering on terminal chips", () => {
+    const { container } = renderTabs(baseProps());
+    const chips = container.querySelectorAll("[data-pane-tab-chip]");
+
+    expect(chips[0]).toHaveTextContent("Shell");
+    expect(chips[0]).not.toHaveTextContent("1");
+    expect(chips[0]).toHaveAccessibleName("Terminal 1: Shell");
+    expect(chips[1]).toHaveTextContent("Shell");
+    expect(chips[1]).not.toHaveTextContent("2");
+    expect(chips[1]).toHaveAccessibleName("Terminal 2: Shell");
+  });
+
+  it("does not advertise a single file tab as draggable without a valid target", () => {
+    const { container } = renderTabs(
+      baseProps({
+        tabs: [
+          {
+            kind: "file",
+            tabId: "file-only",
+            label: "README.md",
+            path: "/repo/README.md",
+            dirty: false,
+          },
+        ],
+        activeTabId: "file-only",
+      }),
+    );
+
+    expect(container.querySelector("[data-pane-tab-chip]")).not.toHaveClass(
+      "cursor-grab",
+    );
+  });
+
+  it("renders multiple File-Tabs in the same mixed order as Terminal-Tabs", () => {
+    const props = baseProps({
+      tabs: [
+        { kind: "file", tabId: "file-a", label: "a.ts", path: "/repo/a.ts", dirty: false },
+        { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+        { kind: "file", tabId: "file-b", label: "b.rs", path: "/repo/b.rs", dirty: true },
+      ],
+      activeTabId: "file-b",
+    });
+    const { container } = renderTabs(props);
+
+    expect(
+      [...container.querySelectorAll("[data-pane-tab-chip]")].map((chip) =>
+        chip.getAttribute("data-pane-tab-chip"),
+      ),
+    ).toEqual(["file-a", "tab-1", "file-b"]);
+    expect(screen.getByRole("button", { name: /b\.rs/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("shows and dismisses the non-blocking six-terminal performance warning", () => {
+    const onDismiss = vi.fn();
+    renderTabs(
+      baseProps({
+        tabs: Array.from({ length: 6 }, (_, index) => ({
+          kind: "terminal" as const,
+          tabId: `tab-${String(index + 1)}`,
+          shortcutPosition: index + 1,
+          label: null,
+        })),
+        terminalPerformanceWarning: { dismissed: false, onDismiss },
+      }),
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Viele Terminal-Tabs können die Leistung beeinträchtigen",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hinweis ausblenden" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it("zeigt nach kurzem Hover eine tabbezogene Terminal-Übersicht", () => {
+    vi.useFakeTimers();
+    try {
+      const props = baseProps({
+        tabs: [
+          { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+          { kind: "terminal", tabId: "tab-2", shortcutPosition: 2, label: "API-Agent", adapterId: "codex" }, // brandlint-ok: functional adapter ID
+        ],
+        project: {
+          name: "panecrew",
+          path: "/Users/dev/projects/panecrew",
+          gitRepo: {
+            branch: { name: "dev", detached: false, ahead: 3, behind: 1 },
+            dirtyCount: 4,
+            worktree: null,
+          },
+        },
+      });
+      renderTabs(props);
+
+      fireEvent.pointerEnter(chipTrigger("Terminal 2: API-Agent"));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      const overview = screen.getByRole("dialog", { name: "Übersicht für API-Agent" });
+      expect(overview).toHaveTextContent("Terminal-Tab");
+      expect(overview).toHaveTextContent("Codex CLI"); // brandlint-ok: canonical adapter display label
+      expect(overview).toHaveTextContent("panecrew");
+      expect(overview).toHaveTextContent("/Users/dev/projects/panecrew");
+      expect(overview).toHaveTextContent("dev");
+      expect(overview).toHaveTextContent("4 geänderte Dateien");
+      expect(overview).toHaveTextContent("3 Commits vor dem Upstream");
+      expect(overview).toHaveTextContent("1 Commit hinter dem Upstream");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses tool identity instead of position in an unnamed terminal overview", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(baseProps());
+
+      fireEvent.pointerEnter(chipTrigger("Terminal 1: Shell"));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(
+        screen.getByRole("dialog", { name: "Übersicht für Shell" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Übersicht für Terminal 1" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("zeigt im File-Tab den exakten Pfad und ungespeicherte Änderungen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(
+        baseProps({
+          tabs: [
+            { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+            {
+              kind: "file",
+              tabId: "file-1",
+              label: "PaneTabs.tsx",
+              path: "/Users/dev/projects/panecrew/apps/desktop/src/components/PaneTabs.tsx",
+              dirty: true,
+            },
+          ],
+          activeTabId: "file-1",
+        }),
+      );
+
+      fireEvent.pointerEnter(
+        screen.getByRole("button", { name: /PaneTabs\.tsx/ }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      const overview = screen.getByRole("dialog", {
+        name: "Übersicht für PaneTabs.tsx",
+      });
+      expect(overview).toHaveTextContent("File-Tab");
+      expect(overview).toHaveTextContent("Ungespeicherte Änderungen");
+      expect(overview).toHaveTextContent(
+        "/Users/dev/projects/panecrew/apps/desktop/src/components/PaneTabs.tsx",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("öffnet während eines Tab-Zugs keine Übersicht über den Drop-Zielen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(
+        baseProps({
+          tabDrag: {
+            start: vi.fn(),
+            consumeClick: () => false,
+            draggingTabId: "tab-2",
+            draggable: true,
+          },
+        }),
+      );
+
+      fireEvent.pointerEnter(chipTrigger("Terminal 2: Shell"));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Shell" }))
+        .not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("öffnet die Übersicht erst nach kurzem Verweilen und schließt sie nach dem Verlassen", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(baseProps());
+      const trigger = chipTrigger("Terminal 2: Shell");
+
+      fireEvent.pointerEnter(trigger);
+      act(() => {
+        vi.advanceTimersByTime(349);
+      });
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Shell" }))
+        .not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole("dialog", { name: "Übersicht für Shell" }))
+        .toBeInTheDocument();
+
+      fireEvent.pointerLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
+      expect(screen.queryByRole("dialog", { name: "Übersicht für Shell" }))
+        .not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("macht dieselbe Übersicht per Tastaturfokus erreichbar", () => {
+    vi.useFakeTimers();
+    try {
+      renderTabs(baseProps());
+
+      fireEvent.focus(screen.getByRole("button", { name: "Terminal 2: Shell" }));
+      act(() => {
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(screen.getByRole("dialog", { name: "Übersicht für Shell" }))
+        .toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("wählt den Tab per Klick auf die Zahl aus, ohne ihn zu schließen", () => {
     const props = baseProps();
     renderTabs(props);
 
-    fireEvent.click(screen.getByRole("button", { name: "Terminal 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal 2: Shell" }));
 
-    expect(props.onSelectTerminalTab).toHaveBeenCalledWith("tab-2");
+    expect(props.onSelectTab).toHaveBeenCalledWith("tab-2");
     expect(props.onCloseTerminalTab).not.toHaveBeenCalled();
+  });
+
+  describe("Adapter-Picker (Ticket 35)", () => {
+    it("öffnet mit dem \"+\"-Knopf einen Terminal-Tab ohne explizite Adapter-Wahl", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      fireEvent.click(screen.getByRole("button", { name: "Weiteren Terminal-Tab öffnen" }));
+
+      // `undefined`, nicht `null`: der Aufrufer (`useGrid.ts`) löst den
+      // `terminal.defaultAdapter`-Default nur bei ECHT fehlendem Argument
+      // auf, ein explizites `null` bliebe (fälschlich) die eingebaute Shell.
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith();
+    });
+
+    it("öffnet einen Terminal-Tab mit einem bestimmten Tool über das Dropdown daneben", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      openAdapterDropdown();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Codex CLI" })); // brandlint-ok: canonical adapter display label, functional
+
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith("codex"); // brandlint-ok: canonical adapter id, functional
+    });
+
+    it("öffnet über \"Shell\" im Dropdown explizit ohne Adapter statt den Default zu übernehmen", () => {
+      const props = baseProps();
+      renderTabs(props);
+
+      openAdapterDropdown();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Shell" }));
+
+      expect(props.onOpenTerminalTab).toHaveBeenCalledWith(null);
+    });
   });
 
   it("schließt den Tab nur über das Kontextmenü, ohne ihn auszuwählen", async () => {
     const props = baseProps();
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 2"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 schließen" }));
+    fireEvent.contextMenu(chipTrigger("Terminal 2: Shell"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal-Tab schließen" }));
 
     // Wie beim Umbenennen (s. Test unten) läuft `onClose` erst über Radix'
     // `onCloseAutoFocus`, also erst einen Tick nach dem Klick — direkt aus
@@ -98,22 +397,24 @@ describe("PaneTabs", () => {
     // kollidiert (PaneTabs.tsx' `pendingActionRef`-Kommentar; genau das war
     // der real gemeldete Bug: "Schließen" tat sichtbar nichts).
     await waitFor(() => expect(props.onCloseTerminalTab).toHaveBeenCalledWith("tab-2"));
-    expect(props.onSelectTerminalTab).not.toHaveBeenCalled();
+    expect(props.onSelectTab).not.toHaveBeenCalled();
   });
 
   it("schließt alle Tabs rechts vom angeklickten über das Kontextmenü", async () => {
     const props = baseProps({
-      terminalTabs: [
-        { tabId: "tab-1", number: 1, label: null },
-        { tabId: "tab-2", number: 2, label: null },
-        { tabId: "tab-3", number: 3, label: null },
+      tabs: [
+        { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+        { kind: "terminal", tabId: "tab-2", shortcutPosition: 2, label: null },
+        { kind: "terminal", tabId: "tab-3", shortcutPosition: 3, label: null },
       ],
     });
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 1"));
+    fireEvent.contextMenu(chipTrigger("Terminal 1: Shell"));
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "2 Tabs rechts davon schließen" }),
+      screen.getByRole("menuitem", {
+        name: "2 Terminal-Tabs rechts davon schließen",
+      }),
     );
 
     await waitFor(() =>
@@ -123,17 +424,19 @@ describe("PaneTabs", () => {
 
   it("schließt alle anderen Tabs über das Kontextmenü", async () => {
     const props = baseProps({
-      terminalTabs: [
-        { tabId: "tab-1", number: 1, label: null },
-        { tabId: "tab-2", number: 2, label: null },
-        { tabId: "tab-3", number: 3, label: null },
+      tabs: [
+        { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+        { kind: "terminal", tabId: "tab-2", shortcutPosition: 2, label: null },
+        { kind: "terminal", tabId: "tab-3", shortcutPosition: 3, label: null },
       ],
     });
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.contextMenu(chipTrigger("Terminal 2: Shell"));
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "2 andere Tabs schließen" }),
+      screen.getByRole("menuitem", {
+        name: "2 andere Terminal-Tabs schließen",
+      }),
     );
 
     await waitFor(() =>
@@ -143,14 +446,14 @@ describe("PaneTabs", () => {
 
   it("bietet für den letzten Tab keinen 'Tabs rechts schließen'-Menüpunkt", () => {
     const props = baseProps({
-      terminalTabs: [
-        { tabId: "tab-1", number: 1, label: null },
-        { tabId: "tab-2", number: 2, label: null },
+      tabs: [
+        { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+        { kind: "terminal", tabId: "tab-2", shortcutPosition: 2, label: null },
       ],
     });
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 2"));
+    fireEvent.contextMenu(chipTrigger("Terminal 2: Shell"));
 
     expect(
       screen.queryByRole("menuitem", { name: /Tabs? rechts davon schließen/ }),
@@ -158,23 +461,23 @@ describe("PaneTabs", () => {
   });
 
   it("bietet für den letzten verbleibenden Tab keinen Schließen-Menüpunkt", () => {
-    renderTabs(baseProps({ terminalTabs: [{ tabId: "tab-1", number: 1, label: null }] }));
+    renderTabs(baseProps({ tabs: [{ kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null }] }));
 
-    fireEvent.contextMenu(chipTrigger("Terminal 1"));
+    fireEvent.contextMenu(chipTrigger("Terminal 1: Shell"));
 
-    expect(screen.queryByRole("menuitem", { name: "Terminal 1 schließen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Terminal-Tab schließen" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /andere Tabs? schließen/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Terminal 1 umbenennen" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Terminal-Tab umbenennen" })).toBeInTheDocument();
   });
 
   it("benennt einen Tab über das Kontextmenü um", async () => {
     const props = baseProps();
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 2"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 umbenennen" }));
+    fireEvent.contextMenu(chipTrigger("Terminal 2: Shell"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal-Tab umbenennen" }));
 
     // Das Feld hängt erst einen Tick nach dem Klick ein (PaneTabs.tsx'
     // `onStartRename`-Kommentar: Radix' eigener Schließvorgang muss dem
@@ -191,30 +494,30 @@ describe("PaneTabs", () => {
     const props = baseProps();
     renderTabs(props);
 
-    fireEvent.contextMenu(chipTrigger("Terminal 2"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal 2 umbenennen" }));
+    fireEvent.contextMenu(chipTrigger("Terminal 2: Shell"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Terminal-Tab umbenennen" }));
     const field = await screen.findByRole("textbox", { name: "Name für Terminal 2" });
     fireEvent.change(field, { target: { value: "build" } });
     fireEvent.keyDown(field, { key: "Escape" });
 
     expect(props.onRenameTerminalTab).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Terminal 2: Shell" })).toBeInTheDocument();
   });
 
   describe("Tab-Zug: Einfüge-Platzhalter und Ankunfts-Quittung", () => {
     // Politur-Runde nach Nutzer-Befund ("er muss mir natürlich auch
     // anzeigen, wo ich ihn jetzt loslassen könnte und ihn dort einsortieren
     // kann"): schwebt ein Tab-Zug über der Pane, zeigt die Leiste einen
-    // Platzhalter-Chip mit der Nummer, die der Tab hier bekäme; nach dem
-    // Drop quittiert der angekommene Chip mit einem einmaligen Wasch.
-    it("zeigt den Platzhalter-Chip mit der künftigen Nummer, solange ein Zug über der Pane schwebt", () => {
+    // Placeholder marks the exact insertion slot without turning position
+    // into tab identity; after the drop the arriving chip flashes once.
+    it("shows an unnumbered placeholder while a drag hovers over the pane", () => {
       const { container, rerender } = renderTabs(
-        baseProps({ incomingTab: { index: 2, number: 3 } }),
+        baseProps({ incomingTab: { index: 2 } }),
       );
 
       const slot = container.querySelector("[data-incoming-tab]");
       expect(slot).not.toBeNull();
-      expect(slot).toHaveTextContent("3");
+      expect(slot).toBeEmptyDOMElement();
       // Rein visuell, kein Bedienelement: dem Zeiger gehört der Zug.
       expect(slot).toHaveAttribute("aria-hidden", "true");
 
@@ -231,21 +534,21 @@ describe("PaneTabs", () => {
       // hinter der Runde: "ich möchte … das Drag-Tab zwischen zwei andere
       // Tabs platzieren können".
       const { container } = renderTabs(
-        baseProps({ incomingTab: { index: 1, number: 2 } }),
+        baseProps({ incomingTab: { index: 1 } }),
       );
 
       const slot = container.querySelector("[data-incoming-tab]");
       expect(slot).not.toBeNull();
-      expect(slot).toHaveTextContent("2");
+      expect(slot).toBeEmptyDOMElement();
       // DOM-Reihenfolge in der Leiste: Chip 1 davor, Chip 2 dahinter.
       expect(
         slot?.previousElementSibling?.querySelector(
-          '[data-terminal-tab-chip="tab-1"]',
+          '[data-pane-tab-chip="tab-1"]',
         ),
       ).not.toBeNull();
       expect(
         slot?.nextElementSibling?.querySelector(
-          '[data-terminal-tab-chip="tab-2"]',
+          '[data-pane-tab-chip="tab-2"]',
         ),
       ).not.toBeNull();
     });
@@ -259,133 +562,270 @@ describe("PaneTabs", () => {
       expect(washes).toHaveLength(1);
       expect(
         screen
-          .getByRole("button", { name: "Terminal 2" })
+          .getByRole("button", { name: "Terminal 2: Shell" })
           .querySelector("[data-drop-settle]"),
       ).not.toBeNull();
     });
   });
 
-  describe("Needs-Attention: Ungelesen-Punkt", () => {
-    // Umbau 2026-08-13 (Nutzer-Neuspezifikation, s. Kopfkommentar von
-    // PaneTabs.tsx, Umbau-Absatz): persistent statt transient. Der
-    // allererste Burst eines frischen Tab-Eintrags gilt als Shell-Start-
-    // Prompt und wird konsumiert, ohne zu markieren (terminalActivity.ts'
-    // `firstBurstConsumed`) — deshalb meldet jeder Test hier zuerst einen
-    // "Freipass"-Burst, bevor der eigentlich zu prüfende Burst kommt.
-    // `resetTerminalActivityForTests` statt einzelner
-    // `disposeTerminalActivity`-Aufrufe: löscht zusätzlich `viewedTabId`
-    // (terminalActivity.ts), das an keinem einzelnen Tab-Eintrag hängt und
-    // sonst aus früheren Tests dieser Datei durchsickern würde — jeder
-    // vorherige Test in dieser Datei rendert mit dem `baseProps`-Default
-    // (`activeTerminalTabId: "tab-1", paneFocused: true`) und setzt darüber
-    // unbemerkt `viewedTabId = "tab-1"`.
+  describe("Needs-Attention: wartet-auf-dich-Punkt", () => {
+    // 2026-08-17 rewrite (user bug report: activity detection "doesn't work
+    // meaningfully" — see terminalActivity.ts header comment for the full
+    // root-cause finding and semantic rewrite). The marker now means "this
+    // tab did real work, then went quiet" — the inverse of the previous
+    // "unread" signal: it appears once idle instead of on new output, and
+    // disappears the instant new output arrives instead of only on viewing.
+    //
+    // The very first burst of a fresh tab entry still counts as the shell's
+    // own startup prompt and gets consumed without arming the marker
+    // (terminalActivity.ts' `bootBurstConsumed`) — every test here reports
+    // that "free pass" burst before the one actually under test.
+    //
+    // idleMs is lowered to keep these tests fast (the real default is
+    // 15000ms, config_core.rs) — reset in afterEach so it can't leak into
+    // later tests in this file. `resetTerminalActivityForTests` (rather than
+    // individual `disposeTerminalActivity` calls) additionally clears
+    // `viewedTabId` (terminalActivity.ts), which isn't tied to any single
+    // tab entry and would otherwise leak from earlier tests in this file —
+    // every prior test here renders with the `baseProps` default
+    // (`activeTabId: "tab-1", paneFocused: true`), which sets
+    // `viewedTabId = "tab-1"` unnoticed.
+    const TEST_IDLE_MS = 1000;
     beforeEach(() => {
       resetTerminalActivityForTests();
+      setActivityIdleMs(TEST_IDLE_MS);
+      vi.useFakeTimers();
     });
     afterEach(() => {
-      resetTerminalActivityForTests();
-    });
-
-    it("zeigt den Punkt für einen Hintergrund-Tab einer unfokussierten Pane, ab dem zweiten Burst", () => {
-      renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: false }));
-
-      act(() => {
-        reportLineAdvance("tab-2", 1); // Freipass (Start-Prompt)
-        reportLineAdvance("tab-2", 1);
-      });
-
-      expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).toBeInTheDocument();
-    });
-
-    it("unterdrückt den Punkt nur für den Tab, den der Nutzer in der fokussierten Pane gerade ansieht", () => {
-      renderTabs(baseProps({ activeTerminalTabId: "tab-2", paneFocused: true }));
-
-      act(() => {
-        reportLineAdvance("tab-2", 1);
-        reportLineAdvance("tab-2", 1);
-      });
-
-      expect(
-        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
-    });
-
-    it("löscht den Punkt erst, wenn der Tab tatsächlich geöffnet wird — nicht durch Zeitablauf", () => {
-      vi.useFakeTimers();
-      const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
-      const { rerender } = renderTabs(props);
-
-      act(() => {
-        reportLineAdvance("tab-2", 1);
-        reportLineAdvance("tab-2", 1);
-      });
-      expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).toBeInTheDocument();
-
-      // Beliebig langes Verstreichen von Zeit — weit über jedes Idle-Fenster
-      // hinaus — löscht den Punkt NICHT, nur tatsächliches Öffnen darf das
-      // (Nutzer-Zitat: "so lange, bis man den Tab aufgemacht hat").
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-      expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).toBeInTheDocument();
       vi.useRealTimers();
-
-      rerender(
-        <Tooltip.Provider>
-          <PaneTabs {...props} activeTerminalTabId="tab-2" />
-        </Tooltip.Provider>,
-      );
-
-      expect(
-        screen.queryByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+      resetTerminalActivityForTests();
+      setActivityIdleMs(15000);
     });
 
-    it("re-armiert den Punkt nach dem Ansehen erneut, sobald neue Hintergrund-Aktivität die Schwelle wieder erreicht", () => {
-      // Regressionstest zum Fund 2026-08-13 ("Ich habe alle angeklickt...
-      // aber danach passierte nichts") — genau das Szenario, das der Nutzer
-      // beschrieben hat: Punkt sehen, Tab öffnen (löscht ihn), Tab
-      // verlassen, neue Aktivität, Punkt muss zurückkommen.
-      const props = baseProps({ activeTerminalTabId: "tab-1", paneFocused: true });
+    it("shows the dot for a background tab of an unfocused pane once it goes idle after real work", () => {
+      renderTabs(baseProps({ activeTabId: "tab-2", paneFocused: false }));
+
+      act(() => {
+        reportOutput("tab-2", 1); // free pass (boot prompt)
+        reportOutput("tab-2", 1);
+      });
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).toBeInTheDocument();
+    });
+
+    it("never shows the dot for the tab the user is currently viewing, even once idle", () => {
+      renderTabs(baseProps({ activeTabId: "tab-2", paneFocused: true }));
+
+      act(() => {
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 2: Shell" })).toBeInTheDocument();
+    });
+
+    it("clears the dot the instant new output arrives, without needing to open the tab", () => {
+      renderTabs(baseProps({ activeTabId: "tab-1", paneFocused: true }));
+
+      act(() => {
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).toBeInTheDocument();
+
+      act(() => {
+        reportOutput("tab-2", 1); // e.g. the agent starts working again
+      });
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("clears the dot as soon as the tab is actually opened", () => {
+      const props = baseProps({ activeTabId: "tab-1", paneFocused: true });
       const { rerender } = renderTabs(props);
 
       act(() => {
-        reportLineAdvance("tab-2", 1); // Freipass
-        reportLineAdvance("tab-2", 1); // markiert unread
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
       ).toBeInTheDocument();
 
-      // Tab 2 öffnen (fokussierte Pane) — löscht den Punkt.
       rerender(
         <Tooltip.Provider>
-          <PaneTabs {...props} activeTerminalTabId="tab-2" />
+          <PaneTabs {...props} activeTabId="tab-2" />
         </Tooltip.Provider>,
       );
-      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
 
-      // Zurück zu Tab 1, tab-2 bekommt neue Hintergrund-Aktivität.
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 2: Shell" })).toBeInTheDocument();
+    });
+
+    it("flags the tab again immediately once the user looks away, if it's still idle and nothing changed", () => {
+      // Not a bug: `isTabAwaitingAttention` is derived live from current
+      // state (terminalActivity.ts), not a sticky dismissal flag — a tab
+      // that finished while being watched, and still hasn't produced
+      // anything new, genuinely IS "done and not being looked at" the
+      // moment the user moves on.
+      const props = baseProps({ activeTabId: "tab-2", paneFocused: true });
+      const { rerender } = renderTabs(props);
+
+      act(() => {
+        reportOutput("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS); // finishes while being watched
+      });
+      expect(
+        screen.queryByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).not.toBeInTheDocument();
+
       rerender(
         <Tooltip.Provider>
-          <PaneTabs {...props} activeTerminalTabId="tab-1" />
+          <PaneTabs {...props} activeTabId="tab-1" />
+        </Tooltip.Provider>,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).toBeInTheDocument();
+    });
+
+    it("re-arms after being opened, once new background activity goes idle again", () => {
+      const props = baseProps({ activeTabId: "tab-1", paneFocused: true });
+      const { rerender } = renderTabs(props);
+
+      act(() => {
+        reportOutput("tab-2", 1); // free pass
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+      expect(
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
+      ).toBeInTheDocument();
+
+      // Open tab 2 (focused pane) — clears the dot.
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTabId="tab-2" />
+        </Tooltip.Provider>,
+      );
+      expect(screen.getByRole("button", { name: "Terminal 2: Shell" })).toBeInTheDocument();
+
+      // Back to tab 1, tab-2 gets new background activity, then goes idle again.
+      rerender(
+        <Tooltip.Provider>
+          <PaneTabs {...props} activeTabId="tab-1" />
         </Tooltip.Provider>,
       );
       act(() => {
-        reportLineAdvance("tab-2", 1);
+        reportOutput("tab-2", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
       });
 
       expect(
-        screen.getByRole("button", { name: "Terminal 2: Ungelesene Aktivität" }),
+        screen.getByRole("button", { name: "Terminal 2: Shell · Wartet auf dich" }),
       ).toBeInTheDocument();
+    });
+
+    // Karteikarten-Umbau 2026-08-19 (Kopfkommentar PaneTabs.tsx): der Marker
+    // ist nicht mehr nur der rote Punkt, sondern ein herausgezogener Chip —
+    // Hülle mit `pc-tabcard--pulled` (Höhenwachstum + Kartenfläche) und
+    // Erhebung am Knopf. Die Optik selbst kann jsdom nicht messen (kein CSS),
+    // aber genau diese Verdrahtung ist das, was beim letzten Anlauf still
+    // verloren ging — deshalb je eine Zusicherung auf den Haken, an dem der
+    // App.css-Block hängt. Seit der Amber-Korrektur (2026-08-19, dritter
+    // Durchgang) kommt die Kartentinte dazu: alles auf der Amber-Fläche steht
+    // in `--pc-pane-background`, der Punkt also auch — sein früheres
+    // `--pc-icon-red` wäre im Light-Theme auf Amber unsichtbar.
+    it("zieht den wartenden Chip als Karte heraus (Hülle, Erhebung, Punkt)", () => {
+      const { container } = renderTabs(
+        baseProps({ activeTabId: "tab-2", paneFocused: false }),
+      );
+      const chip = container.querySelector('[data-pane-tab-chip="tab-1"]');
+      const card = chip?.parentElement;
+      expect(card).not.toBeNull();
+
+      expect(card?.classList.contains("pc-tabcard")).toBe(true);
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).not.toContain("--pc-lift-elevation");
+      expect(chip?.querySelector("[data-attention-dot]")).toBeNull();
+
+      act(() => {
+        reportOutput("tab-1", 1); // free pass (boot prompt)
+        reportOutput("tab-1", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(true);
+      expect(chip?.className).toContain("shadow-[var(--pc-lift-elevation)]");
+      const dot = chip?.querySelector("[data-attention-dot]");
+      expect(dot).not.toBeNull();
+      // Kartentinte statt Attention-Rot, und die Karte ist RANDLOS: ihr Rand
+      // liegt in derselben Amber-Fläche, die sie füllt.
+      expect(dot?.className).toContain("bg-(--pc-pane-background)");
+      expect(chip?.className).toContain("text-(--pc-pane-background)");
+      expect(chip?.className).toContain("border-(--pc-pane-activeBorder)");
+
+      // Zurück in den Ruhezustand: die Karte sinkt wieder ein, samt Erhebung.
+      act(() => {
+        reportOutput("tab-1", 1);
+      });
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).not.toContain("--pc-lift-elevation");
+    });
+
+    // Der Überlagerungsfall, den die Amber-Korrektur lösen musste: der
+    // ausgewählte Tab einer NICHT fokussierten Pane kann gleichzeitig wartend
+    // sein (`markTabViewed` läuft nur bei Auswahl UND Pane-Fokus). Beide
+    // Zustände sprechen jetzt Amber — auseinander hält sie die Form: gefüllt
+    // heißt "wartet", umrandet heißt "ausgewählt". Genau das prüft dieser Test,
+    // denn er ist die einzige Stelle, an der ein stiller Rückfall auf einen
+    // gemeinsamen Farbzweig überhaupt auffallen würde.
+    it("hält Auswahl und Wartezustand auf demselben Chip auseinander", () => {
+      const { container } = renderTabs(
+        baseProps({ activeTabId: "tab-1", paneFocused: false }),
+      );
+      const chip = container.querySelector('[data-pane-tab-chip="tab-1"]');
+      const card = chip?.parentElement;
+
+      // Nur ausgewählt: umrandeter Chip mit Akzent-Wasch, keine Karte.
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(false);
+      expect(chip?.className).toContain("bg-(--pc-pane-activeBorder)/14");
+
+      act(() => {
+        reportOutput("tab-1", 1); // free pass (boot prompt)
+        reportOutput("tab-1", 1);
+        vi.advanceTimersByTime(TEST_IDLE_MS);
+      });
+
+      // Ausgewählt UND wartend: die volle Karte (Auszug, Erhebung, Punkt) plus
+      // die Auswahl-Randlinie in der Kartentinte. Der /14-Wasch des reinen
+      // Auswahlzustands ist ERSETZT, nicht überlagert — sonst stünden zwei
+      // Hintergrund-Utilities in derselben Klassenliste.
+      expect(card?.classList.contains("pc-tabcard--pulled")).toBe(true);
+      expect(chip?.className).toContain("border-(--pc-pane-background)");
+      expect(chip?.className).toContain("font-semibold");
+      expect(chip?.className).not.toContain("bg-(--pc-pane-activeBorder)/14");
     });
   });
 
@@ -408,7 +848,20 @@ describe("PaneTabs", () => {
 
     it("trägt der Datei-Tab denselben Steg, wenn er der aktive ist", () => {
       const { container } = renderTabs(
-        baseProps({ paneFocused: true, showingFile: true, fileName: "a.ts" }),
+        baseProps({
+          paneFocused: true,
+          activeTabId: "file-1",
+          tabs: [
+            { kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null },
+            {
+              kind: "file",
+              tabId: "file-1",
+              label: "a.ts",
+              path: "/repo/a.ts",
+              dirty: false,
+            },
+          ],
+        }),
       );
 
       const fileTab = screen.getByRole("button", { name: "a.ts" });
@@ -420,14 +873,14 @@ describe("PaneTabs", () => {
     it("dämpft das Amber des aktiven Tabs in einer unfokussierten Pane auf /45", () => {
       renderTabs(baseProps({ paneFocused: false }));
 
-      const active = screen.getByRole("button", { name: "Terminal 1" });
+      const active = screen.getByRole("button", { name: "Terminal 1: Shell" });
       expect(active.className).toContain("border-(--pc-pane-activeBorder)/45");
     });
 
     it("lässt den aktiven Tab der fokussierten Pane in voller Sättigung", () => {
       renderTabs(baseProps({ paneFocused: true }));
 
-      const active = screen.getByRole("button", { name: "Terminal 1" });
+      const active = screen.getByRole("button", { name: "Terminal 1: Shell" });
       expect(active.className).toContain("border-(--pc-pane-activeBorder)");
       expect(active.className).not.toContain("border-(--pc-pane-activeBorder)/45");
     });
@@ -441,7 +894,7 @@ describe("PaneTabs", () => {
       renderTabsWithBackend(baseProps(), fakePtyBackend(detectTool));
 
       expect(await screen.findByRole("button", { name: "Terminal 1: Claude Code" })).toBeInTheDocument(); // brandlint-ok: erwarteter i18n-Anzeigename desselben Mappings
-      expect(screen.getByRole("button", { name: "Terminal 2" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 2: Shell" })).toBeInTheDocument();
     });
 
     it("zeigt kein Icon und keinen Namenszusatz für einen unbekannten Prozess", async () => {
@@ -449,7 +902,7 @@ describe("PaneTabs", () => {
       renderTabsWithBackend(baseProps(), fakePtyBackend(detectTool));
 
       await waitFor(() => expect(detectTool).toHaveBeenCalled());
-      expect(screen.getByRole("button", { name: "Terminal 1" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal 1: Shell" })).toBeInTheDocument();
     });
   });
 });

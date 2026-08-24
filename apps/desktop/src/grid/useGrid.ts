@@ -1,22 +1,29 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { defaultAdapterIdFromSetting } from "../terminal/adapters";
+import { useSettings } from "../settings/useSettings";
 import {
   INITIAL_GRID_STATE,
   assignProjectToSlot,
   closePane as closePaneInState,
+  closeFileTab as closeFileTabInState,
   closeTerminalTab as closeTerminalTabInState,
   enterFocusMode as enterFocusModeInState,
   exitFocusMode as exitFocusModeInState,
   focusModeSelectSlot as focusModeSelectSlotInState,
   focusPane as focusPaneInState,
   moveTerminalTab as moveTerminalTabInState,
+  moveTab as moveTabInState,
   moveTerminalTabToEmptySlot as moveTerminalTabToEmptySlotInState,
   movePaneToEmptySlot as movePaneToEmptySlotInState,
   openTerminalTab as openTerminalTabInState,
+  openFileTab as openFileTabInState,
   renameTerminalTab as renameTerminalTabInState,
+  renameFileTabs as renameFileTabsInState,
+  closeFileTabsUnder as closeFileTabsUnderInState,
   setSplitRatios as setSplitRatiosInState,
   swapPanes as swapPanesInState,
   switchTemplate as switchTemplateInState,
-  switchToFileTab as switchToFileTabInState,
+  switchToTab as switchToTabInState,
   switchToTerminalTab as switchToTerminalTabInState,
   type GridState,
   type TemplateId,
@@ -31,9 +38,15 @@ export interface Grid {
    * neue). Gibt beide synchron zurück (sie entstehen hier, nicht erst im
    * nächsten Render) — die Sitzungs-Wiederherstellung (Ticket 06, seit
    * Ticket 18 auch für weitere Terminal-Tabs) braucht sie sofort. */
+  /** `adapterId` (Ticket 35): omitted (`undefined`) resolves the
+   * `terminal.defaultAdapter` setting for the pane's first tab — pass an
+   * explicit value (a specific adapter id, or `null` for the built-in
+   * shell) to override it, the restore path (`App.tsx`s `restoreSlot`) uses
+   * this for a persisted tab's saved choice. */
   assignProject: (
     slotIndex: number,
     projectPath: string,
+    adapterId?: string | null,
   ) => { paneId: string; tabId: string };
   closePane: (paneId: string) => void;
   /** Tauscht die Slot-Positionen zweier belegter Panes (Ticket 20). Bewusst
@@ -55,9 +68,14 @@ export interface Grid {
   switchTemplate: (target: TemplateId) => void;
   /** Öffnet einen weiteren Terminal-Tab in der Pane und erzeugt dafür eine
    * frische `tabId` — dieselbe Erzeugungs-Verantwortung wie `assignProject`
-   * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund. */
-  openTerminalTab: (paneId: string) => string;
+   * (Kopfkommentar). Gibt sie synchron zurück, aus demselben Grund.
+   * `adapterId` (Ticket 35): dieselbe omitted-vs-explizit-Semantik wie
+   * `assignProject` oben. */
+  openTerminalTab: (paneId: string, adapterId?: string | null) => string;
   closeTerminalTab: (paneId: string, tabId: string) => void;
+  openFileTab: (paneId: string, path: string, tabId?: string) => string;
+  closeFileTab: (paneId: string, tabId: string) => void;
+  moveTab: (paneId: string, tabId: string, insertIndex: number) => void;
   /** Verschiebt einen Terminal-Tab an eine Position (`insertIndex`,
    * Einfüge-Slot vor dem Herauslösen gezählt; ohne Angabe: ans Ende) einer
    * Pane desselben Projekts — Ziel darf auch die Quelle selbst sein
@@ -87,8 +105,10 @@ export interface Grid {
   /** Setzt/löscht den Anzeigenamen eines Terminal-Tabs (Kontextmenü
    * "Umbenennen", `PaneTabs.tsx`) — `label: null` löscht ihn wieder. */
   renameTerminalTab: (paneId: string, tabId: string, label: string | null) => void;
+  renameFileTabs: (projectPath: string, oldPath: string, newPath: string) => void;
+  closeFileTabsUnder: (projectPath: string, deletedPath: string) => void;
   switchToTerminalTab: (paneId: string, tabId: string) => void;
-  switchToFileTab: (paneId: string) => void;
+  switchToTab: (paneId: string, tabId: string) => void;
   /** Versetzt eine Pane in den Fokus-Modus (Ticket 19) — sie nimmt das
    * gesamte Grid ein, die übrigen Panes laufen unsichtbar im Hintergrund
    * weiter. */
@@ -113,18 +133,37 @@ export interface Grid {
 export function useGrid(): Grid {
   const [state, setState] = useState<GridState>(INITIAL_GRID_STATE);
 
+  // Ticket 35: der `terminal.defaultAdapter`-Wert lebt in einem Ref statt
+  // einer `useCallback`-Abhängigkeit, aus genau dem Grund, den der
+  // Kopfkommentar unten für `assignProject`/`closePane` nennt — die
+  // Callbacks sollen referenzstabil bleiben, nicht bei jeder
+  // Einstellungsänderung neu entstehen. Der Effekt liest trotzdem immer den
+  // aktuellen Wert beim nächsten Aufruf, nicht den vom Mount-Zeitpunkt.
+  const { values: settingsValues } = useSettings();
+  const defaultAdapterIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    defaultAdapterIdRef.current = defaultAdapterIdFromSetting(
+      settingsValues["terminal.defaultAdapter"],
+    );
+  }, [settingsValues]);
+
   // Referenzstabil (leere Dep-Arrays, beide schließen nur über `setState`s
   // Updater-Form): sonst müsste jeder `useEffect`, der `assignProject`/
   // `closePane` aufruft (der CLI-Start in App.tsx), sie in sein Dep-Array
   // aufnehmen und bei jedem Grid-Update erneut feuern.
-  const assignProject = useCallback((slotIndex: number, projectPath: string) => {
-    const paneId = crypto.randomUUID();
-    const tabId = crypto.randomUUID();
-    setState((current) =>
-      assignProjectToSlot(current, slotIndex, projectPath, paneId, tabId),
-    );
-    return { paneId, tabId };
-  }, []);
+  const assignProject = useCallback(
+    (slotIndex: number, projectPath: string, adapterId?: string | null) => {
+      const paneId = crypto.randomUUID();
+      const tabId = crypto.randomUUID();
+      const resolvedAdapterId =
+        adapterId === undefined ? defaultAdapterIdRef.current : adapterId;
+      setState((current) =>
+        assignProjectToSlot(current, slotIndex, projectPath, paneId, tabId, resolvedAdapterId),
+      );
+      return { paneId, tabId };
+    },
+    [],
+  );
 
   const closePane = useCallback((paneId: string) => {
     setState((current) => closePaneInState(current, paneId));
@@ -148,14 +187,29 @@ export function useGrid(): Grid {
     setState((current) => focusPaneInState(current, paneId));
   }, []);
 
-  const openTerminalTab = useCallback((paneId: string) => {
+  const openTerminalTab = useCallback((paneId: string, adapterId?: string | null) => {
     const tabId = crypto.randomUUID();
-    setState((current) => openTerminalTabInState(current, paneId, tabId));
+    const resolvedAdapterId = adapterId === undefined ? defaultAdapterIdRef.current : adapterId;
+    setState((current) => openTerminalTabInState(current, paneId, tabId, resolvedAdapterId));
     return tabId;
   }, []);
 
   const closeTerminalTab = useCallback((paneId: string, tabId: string) => {
     setState((current) => closeTerminalTabInState(current, paneId, tabId));
+  }, []);
+
+  const openFileTab = useCallback((paneId: string, path: string, restoredTabId?: string) => {
+    const tabId = restoredTabId ?? crypto.randomUUID();
+    setState((current) => openFileTabInState(current, paneId, tabId, path));
+    return tabId;
+  }, []);
+
+  const closeFileTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => closeFileTabInState(current, paneId, tabId));
+  }, []);
+
+  const moveTab = useCallback((paneId: string, tabId: string, insertIndex: number) => {
+    setState((current) => moveTabInState(current, paneId, tabId, insertIndex));
   }, []);
 
   const moveTerminalTab = useCallback(
@@ -210,12 +264,23 @@ export function useGrid(): Grid {
     [],
   );
 
+  const renameFileTabs = useCallback(
+    (projectPath: string, oldPath: string, newPath: string) => {
+      setState((current) => renameFileTabsInState(current, projectPath, oldPath, newPath));
+    },
+    [],
+  );
+
+  const closeFileTabsUnder = useCallback((projectPath: string, deletedPath: string) => {
+    setState((current) => closeFileTabsUnderInState(current, projectPath, deletedPath));
+  }, []);
+
   const switchToTerminalTab = useCallback((paneId: string, tabId: string) => {
     setState((current) => switchToTerminalTabInState(current, paneId, tabId));
   }, []);
 
-  const switchToFileTab = useCallback((paneId: string) => {
-    setState((current) => switchToFileTabInState(current, paneId));
+  const switchToTab = useCallback((paneId: string, tabId: string) => {
+    setState((current) => switchToTabInState(current, paneId, tabId));
   }, []);
 
   const enterFocusMode = useCallback((paneId: string) => {
@@ -243,12 +308,17 @@ export function useGrid(): Grid {
     focusPane,
     openTerminalTab,
     closeTerminalTab,
+    openFileTab,
+    closeFileTab,
+    moveTab,
     moveTerminalTab,
     moveTerminalTabToEmptySlot,
     movePaneToEmptySlot,
     renameTerminalTab,
+    renameFileTabs,
+    closeFileTabsUnder,
     switchToTerminalTab,
-    switchToFileTab,
+    switchToTab,
     enterFocusMode,
     exitFocusMode,
     focusModeSelectSlot,

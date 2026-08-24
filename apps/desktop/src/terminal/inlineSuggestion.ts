@@ -1,6 +1,9 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
 import type { DirectoryPopupControls } from "./directoryPopup";
 import { attachDirectoryPopup } from "./directoryPopup";
+import type { SnippetPopupControls } from "./snippetPopup";
+import { attachSnippetPopup } from "./snippetPopup";
+import type { SnippetCandidate } from "./snippetTrigger";
 import type { BufferPosition } from "./suggestion";
 import { classifyKeystroke, computeGhost, rememberCommand } from "./suggestion";
 import type { DirectoryLookup, SubdirectoryLookup } from "./workingDirectory";
@@ -29,6 +32,13 @@ export interface InlineSuggestion {
    * Modul oben zu vermeiden beschreibt.
    */
   directories: DirectoryPopupControls;
+  /**
+   * The `://` snippet/System-Befehl popup.
+   *
+   * Owned here for the same reason `directories` is: it needs the same
+   * anchor point, and there is exactly one.
+   */
+  snippets: SnippetPopupControls;
   dispose: () => void;
 }
 
@@ -40,6 +50,8 @@ export function attachInlineSuggestion(
     cwd,
     isDirectory,
     listSubdirectories,
+    listSnippetCandidates,
+    runSnippetCommand,
     font,
   }: {
     /** Schreibt Text in die PTY (derselbe Pfad wie eine echte Eingabe). */
@@ -50,6 +62,10 @@ export function attachInlineSuggestion(
     cwd: () => string | null;
     isDirectory: DirectoryLookup;
     listSubdirectories: SubdirectoryLookup;
+    /** System-Befehle + Snippets currently on offer behind the `://` trigger. */
+    listSnippetCandidates: () => readonly SnippetCandidate[];
+    /** Runs a `"command"`-kind snippet candidate (Ticket 01: only `init`). */
+    runSnippetCommand: (trigger: string) => void;
     font: { fontFamily: string; fontSize: number };
   },
 ): InlineSuggestion {
@@ -71,6 +87,12 @@ export function attachInlineSuggestion(
   const popup = attachDirectoryPopup(terminal, {
     write,
     listSubdirectories,
+    font,
+  });
+  const snippets = attachSnippetPopup(terminal, {
+    write,
+    listCandidates: listSnippetCandidates,
+    runCommand: runSnippetCommand,
     font,
   });
 
@@ -156,6 +178,10 @@ export function attachInlineSuggestion(
     // scheinliche Befehl aus der History, die Liste darunter alles, was es
     // hier wirklich gibt — dieselbe Aufteilung wie in fish.
     popup.update(line);
+    // Structurally exclusive with `popup` above: a word can't simultaneously
+    // start with a `cd` argument AND with `://`, so both never show at once
+    // in practice — no ordering dependency between the two `update()` calls.
+    snippets.update(line);
   };
 
   // Ausschließlich ausgabegetrieben: `onData` feuert, BEVOR die PTY das
@@ -172,6 +198,7 @@ export function attachInlineSuggestion(
       // geschriebene Ergänzung läuft am Terminal vorbei direkt in die PTY.
       // Genau das ist die Grenze, an der ein weggedrücktes Popup wieder gilt.
       popup.resume();
+      snippets.resume();
       if (action === "arm") {
         anchor ??= cursorPosition();
         return;
@@ -186,6 +213,7 @@ export function attachInlineSuggestion(
       anchor = null;
       clearGhost();
       popup.clear();
+      snippets.clear();
     }),
     terminal.onWriteParsed(schedule),
     terminal.onCursorMove(schedule),
@@ -218,6 +246,7 @@ export function attachInlineSuggestion(
       anchor = null;
       clearGhost();
       popup.clear();
+      snippets.clear();
     },
     refresh: schedule,
     directories: {
@@ -238,11 +267,28 @@ export function attachInlineSuggestion(
         schedule();
       },
     },
+    snippets: {
+      visible: snippets.visible,
+      move: (delta) => {
+        snippets.move(delta);
+        schedule();
+      },
+      accept: () => {
+        const accepted = snippets.accept();
+        if (accepted) schedule();
+        return accepted;
+      },
+      dismiss: () => {
+        snippets.dismiss();
+        schedule();
+      },
+    },
     dispose: () => {
       if (frame) cancelAnimationFrame(frame);
       for (const disposable of disposables) disposable.dispose();
       clearGhost();
       popup.dispose();
+      snippets.dispose();
     },
   };
 }

@@ -1,71 +1,71 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { Terminal } from "@xterm/xterm";
 
-// Aktivitätssignal für Terminal-Tabs: "empfängt diese PTY gerade laufend neue
-// Ausgabe" — Grundlage für ein künftiges Needs-Attention-Signal (Muster-
-// Erkennung auf neuen Zeilen), das entscheiden muss, WANN es überhaupt neue
-// Zeilen prüft, statt bei jedem Redraw. Bleibt bewusst reine
-// Durchsatz-/Zeilenzahl-Buchhaltung, keine inhaltliche Interpretation der
-// Ausgabe — die Projekt-Leitlinie ("Session-Status-Erkennung... explizit
-// außerhalb v0.1-Scope") gilt für heuristisches Parsen VOM Ausgabe-INHALT,
-// nicht für diese reine Zeilen-Zähl-Metrik.
+// Attention signal for terminal tabs: "this pane did real work, then went
+// quiet — you probably want to look at it." Tool-agnostic by construction:
+// it never parses PTY content, only counts committed lines (see
+// `committedLineCount`) and tracks whether *any* bytes arrived recently.
 //
-// Zeilen statt Zeichen: Ink-basierte CLI-Agenten malen Prompt/Spinner/
-// Statuszeile per Escape-Sequenzen laufend NEU,
-// auch im Leerlauf — ein reiner Zeichen-Diff an terminal.write() bliebe an
-// einem untätigen Prompt dauerhaft "aktiv". `buffer.active.baseY + cursorY`
-// wächst dagegen nur, wenn wirklich neuer Zeileninhalt committet wird
-// (Token-Streaming), nicht bei einem In-Place-Redraw. Im Alternate-Buffer
-// (vim, htop, jedes Fullscreen-TUI) wächst `baseY` grundsätzlich nie —
-// `committedLineCount` liefert dort bewusst `null` statt einer falschen 0,
-// damit ein Aufrufer das von "keine neuen Zeilen" unterscheiden kann.
+// Semantics (2026-08-17 rewrite, replacing the previous persistent "unread"
+// badge): the marker appears once a tab that has done genuine work falls
+// silent for `idleMs`, and disappears the instant new output arrives OR the
+// user actually looks at the tab. This is the inverse of the old "unread"
+// signal (which appeared on new background output and stuck until viewed,
+// regardless of further activity) — the user's own description made clear
+// that's what they wanted: a "done, your turn" indicator, not an "unread
+// mail" indicator. It must react to renewed activity, which the previous
+// design explicitly did not (see `terminalActivity.test.ts`'s regression
+// test for the old "danach passierte nichts" finding, and `PaneTabs.tsx`'s
+// header comment for the full history of the earlier design).
 //
-// Modul-globales Register statt lokalem usePtyTerminal-Rückgabewert:
-// PaneGrid.tsx hält jeden Terminal-Tab einer Pane dauerhaft gemountet (auch
-// unsichtbare) und rendert PaneTabs dabei mehrfach — jede Kopie braucht das
-// Signal für ALLE Tabs der Pane, nicht nur den eigenen tabId. Gleiches Muster
-// wie useDetectedTool.ts, dort per Poll, hier push-getrieben, weil
-// usePtyTerminal.ts ohnehin exakt weiß, wann neue Zeilen ankommen.
+// Lines, not characters/bytes, decide whether a tab has ever done "real
+// work": Ink-based CLI agents repaint prompt/spinner/status lines via escape
+// sequences continuously, even while idle or merely thinking — a raw
+// byte/char diff on `terminal.write()` would call an idle prompt "active"
+// forever. `buffer.active.baseY + cursorY` only grows when new line content
+// is actually committed (token streaming), not on an in-place redraw. In the
+// alternate buffer (vim, htop, any fullscreen TUI) `baseY` never grows at
+// all — `committedLineCount` returns `null` there rather than a misleading
+// 0, and this module simply never learns such a tab as "has done real
+// work", so it never shows the marker for it. That's a deliberate scope
+// limit, not an oversight: a fullscreen TUI doesn't have a meaningful
+// "finished, waiting on you" moment the way a turn-based CLI agent does.
 //
-// Zwei echte Settings-Felder (`terminal.activityIdleMs`/
-// `terminal.activityLineThreshold`, config_core.rs) statt fixer Konstanten —
-// live befüllt von applyActivitySettings.ts, dem einzigen Modul, das diese
-// beiden Setter je aufruft. Bewusst getrennt von dieser Datei: die
-// Tauri-Invoke/Listen-Aufrufe dort würden terminalActivity.test.ts (ruft
-// reportLineAdvance direkt auf, ohne echtes Backend) beim bloßen Import
-// scheitern lassen, gäbe es sie hier.
-// 15000 statt vormals 1500 (Fund 2026-08-13, Nutzer-Bugreport): der Punkt
-// unten ist persistent, kein selbstheilendes Signal mehr — ein zu kurzes
-// Fenster markiert schon vereinzeltes Gelegenheits-Log-Rauschen sofort
-// "ungelesen", ohne dass der Nutzer das je bewusst wahrnehmen könnte, bevor
-// es unwiderruflich (bis zum Ansehen) hängen bleibt. Muss synchron mit dem
-// Rust-Default in config_core.rs bleiben.
+// Liveness (whether a tab currently counts as "busy") is a SEPARATE signal
+// from line commits, and deliberately driven by ANY output, line-advancing
+// or not. Root-cause finding (2026-08-17, real PTY capture of a live Claude // brandlint-ok: functional reference to the specific tool tested, not marketing
+// Code session, see the bug's investigation): a purely spinner-driven
+// "thinking" phase between tool calls can run several seconds without
+// committing a single new line. Gating liveness on line advances alone (as
+// the old `active` internal state did) let that idle timer expire mid-turn,
+// which — had the "done" marker been built on top of it, as first
+// considered — would have flagged an agent that's still visibly working as
+// "waiting on you". `reportOutput` is called on every completed flush
+// regardless of its line delta specifically to avoid that.
+//
+// Module-global registry instead of a local usePtyTerminal return value:
+// PaneGrid.tsx keeps every terminal tab of a pane mounted permanently (even
+// invisible ones) and renders PaneTabs multiple times — every copy needs the
+// signal for ALL tabs of the pane, not just its own tabId. Same pattern as
+// useDetectedTool.ts, there polled, here push-driven because
+// usePtyTerminal.ts already knows exactly when new output arrives.
+//
+// Two real settings fields (`terminal.activityIdleMs`/
+// `terminal.activityLineThreshold`, config_core.rs) instead of fixed
+// constants — live-populated by applyActivitySettings.ts, the only module
+// that ever calls these two setters. Deliberately kept out of this file: the
+// Tauri invoke/listen calls there would make terminalActivity.test.ts (calls
+// `reportOutput` directly, without a real backend) fail on the bare import.
 const DEFAULT_IDLE_MS = 15000;
 const DEFAULT_LINE_THRESHOLD = 1;
 let idleMs = DEFAULT_IDLE_MS;
 let lineThreshold = DEFAULT_LINE_THRESHOLD;
 
-// Ungelesen-Zustand (Umbau 2026-08-13, Nutzer-Neuspezifikation): `active`
-// oben ist bewusst TRANSIENT (fällt nach `idleMs` Stille von selbst zurück)
-// — genau das ist für ein "bis du den Tab öffnest, bleibt es markiert"-Signal
-// die falsche Grundlage, ein Agent-Lauf mit Sprechpausen über `idleMs` hinaus
-// würde das Badge sonst zwischendurch fälschlich verlieren. `unread` ist
-// deshalb ein ZWEITER, unabhängig gepflegter Zustand pro Tab: gesetzt bei
-// jedem frischen Aktivitäts-Burst auf einem Tab, der gerade NICHT der eine
-// angesehene Tab ist (s. `viewedTabId` unten), gelöscht ausschließlich durch
-// `markTabViewed` — nie durch Zeitablauf.
-//
-// GENAU EIN global angesehener Tab (`viewedTabId`) statt eines Pane-lokalen
-// Zustands: Nutzer-Zitat zur Neuspezifikation, "es gibt ja immer nur ein
-// aktives Tab, das hat nichts mit dem Grid oder dem Pane zu tun" — wörtlich
-// nur wahr, wenn "angesehen" GRID-WEIT eindeutig ist (sonst gäbe es bis zu
-// vier gleichzeitig "ausgewählte" Tabs, einen pro Pane). Der Aufrufer
-// (PaneTabs.tsx' `TerminalTabChip`) meldet genau den einen Tab, der sowohl
-// innerhalb seiner Pane ausgewählt ALS AUCH dessen Pane grid-fokussiert ist —
-// dieselbe Kombination, die dort schon den Hintergrund-Pane-Fund behoben hat
-// (Kopfkommentar dort, Korrektur "Hintergrund-Pane-Fund"). Modul-global statt
-// Pane-lokal gehalten, weil genau EIN Tab app-weit gemeint ist, nicht einer
-// pro Pane.
+// Exactly ONE globally viewed tab (`viewedTabId`), not a per-pane state —
+// same reasoning as the previous design: "viewed" only has one sensible
+// meaning app-wide, reported by PaneTabs.tsx's `TerminalTabChip` as the one
+// tab that is both selected within its pane AND whose pane currently has
+// grid focus.
 let viewedTabId: string | null = null;
 
 export function setActivityIdleMs(value: number): void {
@@ -77,34 +77,31 @@ export function setActivityLineThreshold(value: number): void {
 }
 
 interface ActivityEntry {
-  active: boolean;
-  /** Noch nicht als "aktiv" gewertete Zeilen, gesammelt innerhalb des
-   * laufenden Idle-Fensters — verfällt auf 0, wenn `idleMs` ohne weiteren
-   * Nachschub verstreicht, bevor `lineThreshold` erreicht ist (s.
-   * `reportLineAdvance`). Ein einzelner Schwellwert PRO Flush wäre kein
-   * brauchbarer Regler: ein Flush ist ein Animationsframe, ein streamender
-   * Agent committet darin fast immer nur 1-2 Zeilen, jede Schwelle über 1
-   * schaltete das Signal faktisch ab. Diese Fenster-Summe macht
-   * `lineThreshold` dagegen über den gesamten sinnvollen Bereich nutzbar. */
+  /** True while output has arrived within the last `idleMs` — the pure
+   * liveness signal, updated on every flush regardless of its line delta
+   * (see header comment). Flips false via `idleTimer` once `idleMs` passes
+   * without any further output. */
+  busy: boolean;
+  /** Set once this tab has committed at least `lineThreshold` real lines,
+   * beyond its very first qualifying burst (the shell/tool's own startup
+   * prompt — see `bootBurstConsumed`). Never reset — a tab that has done
+   * real work once remains eligible for the "done" marker for its whole
+   * lifetime. Without this gate, a freshly spawned, still-empty shell would
+   * flag "waiting on you" a few seconds after opening, for having done
+   * nothing at all. */
+  hasBeenActive: boolean;
+  /** Lines committed towards `lineThreshold` since the boot burst was
+   * consumed — mirrors the previous design's debounce reasoning: a single
+   * flush is one animation frame, a streaming agent commits only 1-2 lines
+   * in it, so any threshold above 1 needs to accumulate across flushes to
+   * be usable at all. */
   pendingLines: number;
-  windowTimer: number;
+  /** The very first qualifying line burst of a fresh entry is the shell's
+   * own startup prompt, not evidence of real work — consumed once, then
+   * never checked again. */
+  bootBurstConsumed: boolean;
+  idleTimer: number;
   listeners: Set<() => void>;
-  /** Persistenter Ungelesen-Zustand, s. Kommentar an `viewedTabId` oben. */
-  unread: boolean;
-  /** Ungelesen-Akkumulator — bewusst UNABHÄNGIG von `pendingLines`/`active`
-   * oben, s. Kopfkommentar an `reportLineAdvance` (Fund 2026-08-13: "danach
-   * passierte nichts"). Verfällt auf 0 nach `idleMs` ohne Nachschub, aus
-   * demselben Grund wie `pendingLines`. */
-  unreadPendingLines: number;
-  /** Der allererste Zeilen-Burst eines frischen Eintrags ist der
-   * Shell-Start-Prompt, kein verpasstes Ereignis — wird einmalig konsumiert,
-   * ohne `unread` zu setzen, dann nie wieder geprüft. Ersetzt ein früheres
-   * zeitbasiertes Start-Ruhefenster (`createdAt`/1s ab Entstehung des
-   * Eintrags), das bei einem langsam startenden Shell — mehrere Panes
-   * spawnen beim Sitzungs-Restore gleichzeitig ihre PTY — schon abgelaufen
-   * sein konnte, BEVOR der erste echte Output überhaupt ankam, und den Boot-
-   * Prompt dadurch fälschlich als ungelesen markierte. */
-  firstBurstConsumed: boolean;
 }
 
 const entries = new Map<string, ActivityEntry>();
@@ -113,13 +110,12 @@ function getOrCreateEntry(tabId: string): ActivityEntry {
   let entry = entries.get(tabId);
   if (!entry) {
     entry = {
-      active: false,
+      busy: false,
+      hasBeenActive: false,
       pendingLines: 0,
-      windowTimer: 0,
+      bootBurstConsumed: false,
+      idleTimer: 0,
       listeners: new Set(),
-      unread: false,
-      unreadPendingLines: 0,
-      firstBurstConsumed: false,
     };
     entries.set(tabId, entry);
   }
@@ -130,133 +126,107 @@ function notify(entry: ActivityEntry): void {
   for (const listener of entry.listeners) listener();
 }
 
-/** Committete Zeilenposition (Scrollback + Cursor-Zeile) im normalen Puffer,
- * `null` im Alternate-Puffer (dort ist "aktiv/inaktiv" nicht sinnvoll
- * definierbar, s. Kopfkommentar). Vom Aufrufer VOR und NACH einem
- * `terminal.write()` gemessen — die Differenz ist die Zahl der neu
- * committeten Zeilen. */
+/** Committed line position (scrollback + cursor row) in the normal buffer,
+ * `null` in the alternate buffer (there, "active/inactive" isn't meaningfully
+ * definable, see header comment). Measured by the caller BEFORE and AFTER a
+ * `terminal.write()` — the difference is the number of newly committed
+ * lines. */
 export function committedLineCount(terminal: Terminal): number | null {
   const buffer = terminal.buffer.active;
   return buffer.type === "normal" ? buffer.baseY + buffer.cursorY : null;
 }
 
-/** Von usePtyTerminal.ts aufgerufen, sobald ein Flush tatsächlich neue Zeilen
- * committet hat (`linesAdvanced > 0`, s. `committedLineCount`) — reine
- * Durchsatz-Buchhaltung, kein Rückschluss auf den geschriebenen Inhalt. */
-export function reportLineAdvance(
-  tabId: string,
-  linesAdvanced: number,
-): void {
-  if (linesAdvanced <= 0) return;
+/** Called by usePtyTerminal.ts after EVERY completed flush, whether or not
+ * it committed new lines (`linesAdvanced` is 0, or the alt-buffer sentinel
+ * value, when nothing committed — see header comment on why liveness must
+ * not depend on line advances alone). */
+export function reportOutput(tabId: string, linesAdvanced: number): void {
   const entry = getOrCreateEntry(tabId);
 
-  // Ungelesen-Erkennung läuft VOR und UNABHÄNGIG vom active/idle-Zweig
-  // unten — der hat für einen bereits aktiven Tab einen frühen `return`.
-  // Ohne diese Trennung bliebe ein durchgehend streamender Hintergrund-Tab
-  // (dessen `active`-Fenster nie abreißt) für immer im "schon aktiv"-Zweig
-  // gefangen, und `unread` würde nach einem `markTabViewed` nie wieder
-  // gesetzt, egal wie viel neuer Output noch ankommt (Nutzer-Fund
-  // 2026-08-13: "danach passierte nichts").
-  if (tabId !== viewedTabId && !entry.unread) {
-    entry.unreadPendingLines += linesAdvanced;
-    if (entry.unreadPendingLines >= lineThreshold) {
-      entry.unreadPendingLines = 0;
-      if (entry.firstBurstConsumed) {
-        entry.unread = true;
-        notify(entry);
+  window.clearTimeout(entry.idleTimer);
+  const wasBusy = entry.busy;
+  entry.busy = true;
+  entry.idleTimer = window.setTimeout(() => {
+    entry.busy = false;
+    notify(entry);
+  }, idleMs);
+
+  if (linesAdvanced > 0 && !entry.hasBeenActive) {
+    entry.pendingLines += linesAdvanced;
+    if (entry.pendingLines >= lineThreshold) {
+      entry.pendingLines = 0;
+      if (entry.bootBurstConsumed) {
+        entry.hasBeenActive = true;
       } else {
-        // S. Kommentar an `firstBurstConsumed`: der allererste Burst ist der
-        // Shell-Start-Prompt, kein verpasstes Ereignis.
-        entry.firstBurstConsumed = true;
+        entry.bootBurstConsumed = true;
       }
     }
   }
 
-  window.clearTimeout(entry.windowTimer);
-
-  if (entry.active) {
-    // Schon aktiv: weiterer Nachschub verlängert nur das Idle-Fenster, ohne
-    // die Schwelle erneut zu prüfen — ein einmal erkannter Burst bleibt
-    // "aktiv", solange er nicht abreißt.
-    entry.windowTimer = window.setTimeout(() => {
-      entry.active = false;
-      entry.pendingLines = 0;
-      entry.unreadPendingLines = 0;
-      notify(entry);
-    }, idleMs);
-    return;
-  }
-
-  entry.pendingLines += linesAdvanced;
-  if (entry.pendingLines >= lineThreshold) {
-    entry.active = true;
-    entry.pendingLines = 0;
-    entry.windowTimer = window.setTimeout(() => {
-      entry.active = false;
-      entry.unreadPendingLines = 0;
-      notify(entry);
-    }, idleMs);
-    notify(entry);
-  } else {
-    // Schwelle noch nicht erreicht: die Zähler verfallen, wenn innerhalb des
-    // Zeitfensters kein weiterer Nachschub kommt — sonst würde ein einzelner
-    // Streuling von vor Minuten einen viel späteren, unabhängigen Burst zu
-    // Unrecht mit auffüllen.
-    entry.windowTimer = window.setTimeout(() => {
-      entry.pendingLines = 0;
-      entry.unreadPendingLines = 0;
-    }, idleMs);
-  }
+  // A transition on `busy` alone is enough to notify: `isTabAwaitingAttention`
+  // is derived (see below), so listeners must re-read it whenever any input
+  // to that derivation could have changed. `hasBeenActive` only ever flips
+  // false→true, and only matters once `busy` is already false (a tab can't
+  // become "awaiting attention" the instant it becomes active) — no separate
+  // notify needed for it.
+  if (wasBusy !== entry.busy) notify(entry);
 }
 
-/** Vom Cleanup derselben usePtyTerminal-Instanz aufgerufen, die den Tab
- * besitzt — ohne das behielte ein geschlossener Tab seinen Idle-Timer, und
- * ein wiederverwendetes tabId erbte dessen alten "aktiv"-Zustand. */
+/** Called from the cleanup of the same usePtyTerminal instance that owns the
+ * tab — without this, a closed tab would keep its idle timer, and a reused
+ * tabId would inherit its old state. */
 export function disposeTerminalActivity(tabId: string): void {
   const entry = entries.get(tabId);
   if (!entry) return;
-  window.clearTimeout(entry.windowTimer);
+  window.clearTimeout(entry.idleTimer);
   entries.delete(tabId);
 }
 
-/** Nur für Tests: räumt sämtliche Einträge UND `viewedTabId` zurück — Letzteres
- * hängt an keinem einzelnen Tab-Eintrag und würde sonst unbemerkt aus einem
- * Test in den nächsten derselben Datei durchsickern (dasselbe Leck-Risiko,
- * gegen das `setActivityIdleMs`/`setActivityLineThreshold` ihr eigenes
- * Zurücksetzen in `afterEach` brauchen). */
+/** Test-only: resets every entry AND `viewedTabId` — the latter isn't tied to
+ * any single tab entry and would otherwise leak unnoticed from one test into
+ * the next in the same file (same leak risk `setActivityIdleMs`/
+ * `setActivityLineThreshold` need their own `afterEach` reset for). */
 export function resetTerminalActivityForTests(): void {
   for (const tabId of entries.keys()) disposeTerminalActivity(tabId);
   viewedTabId = null;
 }
 
-export function isTerminalActive(tabId: string): boolean {
-  return entries.get(tabId)?.active ?? false;
-}
-
-/** Meldet, dass der Nutzer `tabId` gerade tatsächlich ansieht (PaneTabs.tsx'
- * `TerminalTabChip`, ausgewählt UND eigene Pane grid-fokussiert) — der
- * einzige Weg, `unread` zu löschen (kein Zeitablauf, s. Kommentar an
- * `viewedTabId` oben). Setzt `viewedTabId` auch dann, wenn für diesen Tab
- * noch gar kein Eintrag existiert (z. B. ein Tab ohne jede PTY-Ausgabe
- * bislang) — spätere `reportLineAdvance`-Aufrufe für ihn müssen ihn trotzdem
- * korrekt als "der angesehene" erkennen. */
-export function markTabViewed(tabId: string): void {
-  viewedTabId = tabId;
+/** Pure function of current state — deliberately NOT a stored flag: the
+ * "awaiting attention" marker for `tabId` is exactly "has done real work,
+ * currently silent, and isn't the tab the user is looking at". Computing it
+ * live (rather than caching it as a separate boolean that would need manual
+ * invalidation on every input change) is what makes `markTabViewed`'s
+ * "the previously viewed tab may now qualify" case below correct for free:
+ * there is no stale sticky state to reconcile, only inputs that changed. */
+export function isTabAwaitingAttention(tabId: string): boolean {
   const entry = entries.get(tabId);
-  if (!entry) return;
-  // Alles bis hierhin gilt als gesehen, auch ein noch unter der Schwelle
-  // liegender Teil-Akkumulator — sonst würde ein späterer, eigentlich
-  // unabhängiger Rest-Burst fälschlich mit bereits gesehenem Output
-  // zusammengezählt.
-  entry.unreadPendingLines = 0;
-  if (entry.unread) {
-    entry.unread = false;
-    notify(entry);
-  }
+  if (!entry) return false;
+  return entry.hasBeenActive && !entry.busy && tabId !== viewedTabId;
 }
 
-export function isTabUnread(tabId: string): boolean {
-  return entries.get(tabId)?.unread ?? false;
+/** Reports that the user is actually looking at `tabId` right now
+ * (PaneTabs.tsx's `TerminalTabChip`, selected AND its own pane grid-focused).
+ * Sets `viewedTabId` even if no entry exists yet for this tab (e.g. a tab
+ * with no PTY output so far) — later `reportOutput` calls for it must still
+ * recognise it as "the viewed one" correctly.
+ *
+ * Also re-evaluates the PREVIOUSLY viewed tab: since "awaiting attention" is
+ * derived from `viewedTabId` (see `isTabAwaitingAttention`), the moment the
+ * user looks away from a tab that has been silently done for a while, it
+ * must be able to show the marker immediately — without this, a tab that
+ * went idle while it happened to be the viewed one would never get a chance
+ * to flag itself once the user moves on. */
+export function markTabViewed(tabId: string): void {
+  const previousTabId = viewedTabId;
+  if (previousTabId === tabId) return;
+  viewedTabId = tabId;
+
+  if (previousTabId !== null) {
+    const previousEntry = entries.get(previousTabId);
+    if (previousEntry) notify(previousEntry);
+  }
+  const entry = entries.get(tabId);
+  if (entry) notify(entry);
 }
 
 function subscribe(tabId: string, listener: () => void): () => void {
@@ -267,18 +237,13 @@ function subscribe(tabId: string, listener: () => void): () => void {
   };
 }
 
-/** Push-getriebener React-Hook — liefert `unread` (Kommentar an
- * `viewedTabId` oben) für `tabId`. `entry.active` selbst (s.
- * `isTerminalActive`) treibt inzwischen keine eigene UI mehr, bleibt aber
- * intern die Burst-Erkennung, auf der `unread` aufsetzt (s.
- * `reportLineAdvance`) — kein eigener Hook mehr dafür, seit PaneTabs.tsx'
- * Umbau (Kopfkommentar dort) das transiente Blink-Badge durch dieses
- * persistente Signal ersetzt hat. */
-export function useTerminalUnread(tabId: string): boolean {
+/** Push-driven React hook — liveness for `tabId` (see `isTabAwaitingAttention`
+ * above for the exact definition). */
+export function useTerminalAwaitingAttention(tabId: string): boolean {
   const subscribeForTab = useCallback(
     (listener: () => void) => subscribe(tabId, listener),
     [tabId],
   );
-  const getSnapshot = useCallback(() => isTabUnread(tabId), [tabId]);
+  const getSnapshot = useCallback(() => isTabAwaitingAttention(tabId), [tabId]);
   return useSyncExternalStore(subscribeForTab, getSnapshot);
 }

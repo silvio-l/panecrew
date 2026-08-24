@@ -1,31 +1,22 @@
 import { Terminal } from "@xterm/xterm";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   committedLineCount,
   disposeTerminalActivity,
-  isTabUnread,
-  isTerminalActive,
+  isTabAwaitingAttention,
   markTabViewed,
-  reportLineAdvance,
+  reportOutput,
   resetTerminalActivityForTests,
   setActivityIdleMs,
   setActivityLineThreshold,
 } from "./terminalActivity";
 
-// committedLineCount() ist der Teil, den usePtyTerminal.ts tatsächlich VOR und
-// NACH jedem terminal.write() aufruft — getestet mit einem echten xterm.js-
-// Kern statt eines Mocks, gleiches Vorgehen wie ptyResizeFlush.test.ts.
+// committedLineCount() is the part usePtyTerminal.ts actually calls BEFORE
+// and AFTER every terminal.write() — tested against a real xterm.js core
+// instead of a mock, same approach as ptyResizeFlush.test.ts.
 
-// xterm fragt beim Öffnen das Device-Pixel-Ratio über eine Media Query ab;
-// jsdom hat matchMedia nicht (wie in inlineSuggestion.test.ts).
+// xterm queries the device pixel ratio via a media query on open; jsdom has
+// no matchMedia (same workaround as inlineSuggestion.test.ts).
 beforeAll(() => {
   window.matchMedia = (query) =>
     ({
@@ -50,231 +41,203 @@ function write(terminal: Terminal, data: string): Promise<void> {
 }
 
 describe("committedLineCount", () => {
-  it("wächst, wenn ein Zeilenumbruch neuen Zeileninhalt committet", async () => {
+  it("grows when a line break commits new line content", async () => {
     const terminal = makeTerminal();
     const before = committedLineCount(terminal);
-    await write(terminal, "erste Zeile\r\nzweite Zeile\r\n");
+    await write(terminal, "first line\r\nsecond line\r\n");
     const after = committedLineCount(terminal);
     if (before === null || after === null) {
-      throw new Error("erwartete den normalen Puffer, nicht den Alternate-Puffer");
+      throw new Error("expected the normal buffer, not the alternate buffer");
     }
     expect(after).toBeGreaterThan(before);
   });
 
-  it("bleibt unverändert bei einem reinen In-Place-Redraw (Spinner-Muster)", async () => {
+  it("stays unchanged on a pure in-place redraw (spinner pattern)", async () => {
     const terminal = makeTerminal();
     await write(terminal, "prompt> ");
     const before = committedLineCount(terminal);
-    // Carriage Return ohne Linefeed: derselbe Zeilenanfang wird neu
-    // überschrieben, wie es ein Ink-Spinner tut — genau der Fall, an dem ein
-    // reiner Zeichen-Diff fälschlich "aktiv" bliebe.
+    // Carriage return without linefeed: the same line start gets overwritten
+    // in place, exactly what an Ink spinner does — precisely the case where
+    // a raw character diff would stay "active" forever.
     await write(terminal, "\rprompt> |");
     await write(terminal, "\rprompt> /");
     const after = committedLineCount(terminal);
     expect(after).toBe(before);
   });
 
-  it("liefert null im Alternate-Puffer (Fullscreen-TUI wie vim/htop)", async () => {
+  it("returns null in the alternate buffer (fullscreen TUI like vim/htop)", async () => {
     const terminal = makeTerminal();
-    await write(terminal, "\x1b[?1049h"); // Alternate-Puffer aktivieren
+    await write(terminal, "\x1b[?1049h"); // enter alternate buffer
     expect(committedLineCount(terminal)).toBeNull();
   });
 });
 
-describe("reportLineAdvance / isTerminalActive", () => {
+// reportOutput/isTabAwaitingAttention: 2026-08-17 rewrite (user bug report:
+// activity detection "doesn't work meaningfully", especially inside Claude Code). // brandlint-ok: functional reference to the specific tool tested, not marketing
+// Root cause of the detection gap: the previous design (`active`,
+// gated purely on committed-line advances) let its liveness timer expire
+// during a pure "thinking" phase (spinner-only redraws, no new committed
+// line for several seconds — confirmed against a real captured Claude Code // brandlint-ok: functional reference to the specific tool tested, not marketing
+// PTY session). `reportOutput` fixes that by treating ANY output as
+// liveness, independent of whether it committed a line.
+describe("reportOutput / isTabAwaitingAttention", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
   afterEach(() => {
     vi.useRealTimers();
-    disposeTerminalActivity("tab-a");
-    disposeTerminalActivity("tab-b");
-    // Module-globale Schwellen zurücksetzen — sonst leckt eine in einem Test
-    // gesetzte Schwelle in nachfolgende Tests (setActivityIdleMs/
-    // setActivityLineThreshold sind bewusst modul-global, s. Kopfkommentar
-    // von terminalActivity.ts).
+    resetTerminalActivityForTests();
+    // Module-global thresholds reset — otherwise a threshold set in one test
+    // leaks into the next (setActivityIdleMs/setActivityLineThreshold are
+    // deliberately module-global, see terminalActivity.ts header comment).
     setActivityIdleMs(1500);
     setActivityLineThreshold(1);
   });
 
-  it("ist inaktiv, solange kein Fortschritt gemeldet wurde", () => {
-    expect(isTerminalActive("tab-a")).toBe(false);
+  it("is not awaiting attention before any output was ever reported", () => {
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
   });
 
-  it("wird aktiv, sobald neue Zeilen gemeldet werden", () => {
-    reportLineAdvance("tab-a", 3);
-    expect(isTerminalActive("tab-a")).toBe(true);
+  it("consumes only the very first qualifying burst as the boot prompt", () => {
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    // First burst was the boot prompt — no real work yet, so no marker even
+    // after going idle.
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    // Second burst is real work — now eligible, and idle long enough.
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
   });
 
-  it("ignoriert eine Meldung ohne tatsächlichen Fortschritt", () => {
-    reportLineAdvance("tab-a", 0);
-    expect(isTerminalActive("tab-a")).toBe(false);
+  it("does not flag a tab that only ever produced non-committing output (pure redraws)", () => {
+    reportOutput("tab-a", 0);
+    reportOutput("tab-a", 0);
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
   });
 
-  it("fällt nach der Idle-Schwelle ohne weiteren Fortschritt zurück auf inaktiv", () => {
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    vi.advanceTimersByTime(1499);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(isTerminalActive("tab-a")).toBe(false);
-  });
+  it("stays busy (not awaiting attention) while output keeps arriving within idleMs", () => {
+    reportOutput("tab-a", 1); // boot prompt, consumed
+    reportOutput("tab-a", 1); // real work, arms hasBeenActive
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
 
-  it("verlängert die Idle-Schwelle bei fortlaufendem Nachschub, statt vorzeitig zu kippen", () => {
-    reportLineAdvance("tab-a", 1);
     vi.advanceTimersByTime(1000);
-    reportLineAdvance("tab-a", 1);
+    reportOutput("tab-a", 0); // pure spinner redraw, no line advance
     vi.advanceTimersByTime(1000);
-    expect(isTerminalActive("tab-a")).toBe(true);
+    // Total elapsed since the last real line advance is 2000ms > idleMs
+    // (1500), but the spinner redraw at t=1000ms kept the tab "busy" — this
+    // is exactly the root-cause case: a tool still visibly working (via
+    // redraws) must not be flagged "done".
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+
     vi.advanceTimersByTime(500);
-    expect(isTerminalActive("tab-a")).toBe(false);
+    // Now 1500ms have passed since that last redraw with no further output.
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
   });
 
-  it("hält Tabs unabhängig auseinander", () => {
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    expect(isTerminalActive("tab-b")).toBe(false);
+  it("clears the marker the instant new output arrives, of any kind", () => {
+    reportOutput("tab-a", 1); // boot prompt
+    reportOutput("tab-a", 1); // real work
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+
+    reportOutput("tab-a", 0); // e.g. the agent starts thinking again
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
   });
 
-  it("disposeTerminalActivity räumt Zustand UND den laufenden Idle-Timer auf", () => {
-    reportLineAdvance("tab-a", 1);
+  it("keeps tabs independent of each other", () => {
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    reportOutput("tab-b", 1);
+    reportOutput("tab-b", 1);
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+    expect(isTabAwaitingAttention("tab-b")).toBe(true);
+
+    reportOutput("tab-a", 1); // only tab-a resumes
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+    expect(isTabAwaitingAttention("tab-b")).toBe(true);
+  });
+
+  it("never flags the currently viewed tab, even once it's idle", () => {
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    markTabViewed("tab-a");
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+  });
+
+  it("flags a tab immediately once the user looks away from it, if it's already idle", () => {
+    // Regression coverage for the derived-state design: isTabAwaitingAttention
+    // is computed live from (hasBeenActive, busy, viewedTabId), not cached —
+    // markTabViewed must re-evaluate the PREVIOUSLY viewed tab, or a tab that
+    // finished while being watched would never get a chance to flag itself
+    // once the user moves on.
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    markTabViewed("tab-a");
+    vi.advanceTimersByTime(1500); // finishes while still being watched
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+
+    markTabViewed("tab-b"); // user looks away, no new output on tab-a since
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+  });
+
+  it("markTabViewed clears an already-set marker immediately", () => {
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+
+    markTabViewed("tab-a");
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+  });
+
+  it("setActivityLineThreshold requires the raised line count before a tab counts as having done real work", () => {
+    setActivityLineThreshold(3);
+    reportOutput("tab-a", 3); // boot prompt, consumed regardless of size
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(false); // only 2 of 3 lines
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(1500);
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+  });
+
+  it("setActivityIdleMs changes how long a busy tab takes to flag as done", () => {
+    setActivityIdleMs(500);
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
+    vi.advanceTimersByTime(499);
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
+  });
+
+  it("disposeTerminalActivity clears state AND the running idle timer", () => {
+    reportOutput("tab-a", 1);
     expect(vi.getTimerCount()).toBe(1);
     disposeTerminalActivity("tab-a");
-    expect(isTerminalActive("tab-a")).toBe(false);
-    // Kein herrenloser Timer mehr im Umlauf — sonst erbte ein
-    // wiederverwendetes tabId dessen späteren Feuer-Effekt.
+    expect(isTabAwaitingAttention("tab-a")).toBe(false);
+    // No orphaned timer left running — otherwise a reused tabId would
+    // inherit its later firing effect.
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("setActivityLineThreshold verlangt erst den erhöhten Zeilen-Nachschub, bevor ein Tab als aktiv gilt", () => {
-    setActivityLineThreshold(3);
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(false);
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(false);
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(true);
-  });
-
-  it("Zeilen, die außerhalb des Idle-Fensters ankommen, akkumulieren nicht über das Fenster hinweg", () => {
-    setActivityLineThreshold(3);
-    reportLineAdvance("tab-a", 1);
-    vi.advanceTimersByTime(1501);
-    // Zähler ist verfallen — die folgenden 2 Zeilen reichen für sich allein
-    // nicht an die Schwelle heran, obwohl 1 + 2 = 3 wäre.
-    reportLineAdvance("tab-a", 2);
-    expect(isTerminalActive("tab-a")).toBe(false);
-  });
-
-  it("setActivityIdleMs verändert, wie lange ein aktiver Tab braucht, um zurückzufallen", () => {
-    setActivityIdleMs(500);
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    vi.advanceTimersByTime(499);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(isTerminalActive("tab-a")).toBe(false);
-  });
-});
-
-// unread/markTabViewed/viewedTabId: Umbau 2026-08-13 (Nutzer-Neuspezifikation,
-// s. Kopfkommentar dieser Datei zu `viewedTabId`) — persistenter Zustand,
-// unabhängig von `active`/`idleMs` oben, s. dortige Tests.
-describe("unread / markTabViewed", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    resetTerminalActivityForTests();
-  });
-
-  it("unterdrückt nur den allerersten Burst eines frischen Eintrags (Shell-Start-Prompt)", () => {
-    // Frischer Eintrag: der erste Burst ist der Start-Prompt der Shell, kein
-    // verpasstes Ereignis (s. Kommentar an `firstBurstConsumed`).
-    reportLineAdvance("tab-a", 1);
-    expect(isTabUnread("tab-a")).toBe(false);
-
-    // Zweiter Burst — auch direkt im Anschluss, ohne jedes Zeitfenster
-    // dazwischen — zählt als echte, verpasste Aktivität.
-    vi.advanceTimersByTime(1500);
-    reportLineAdvance("tab-a", 1);
-    expect(isTabUnread("tab-a")).toBe(true);
-  });
-
-  it("re-armiert nach dem Ansehen, auch wenn der Tab dabei durchgehend aktiv (streamend) bleibt", () => {
-    // Fund 2026-08-13 ("danach passierte nichts"): ein Tab, der beim
-    // Verlassen mitten in einem ununterbrochenen Stream steckt, verlässt den
-    // `active`-Zweig nie von selbst — die Ungelesen-Prüfung darf trotzdem
-    // nicht auf einen erneuten "aktiv"-Wechsel angewiesen sein.
-    reportLineAdvance("tab-a", 1); // Start-Prompt, konsumiert den Freipass
-    markTabViewed("tab-a"); // Nutzer sieht sich tab-a live an
-    expect(isTerminalActive("tab-a")).toBe(true);
-
-    // Durchgehender Nachschub OHNE Idle-Lücke — active bleibt ununterbrochen
-    // true, kein Rückfall auf inaktiv zwischendurch.
-    vi.advanceTimersByTime(500);
-    reportLineAdvance("tab-a", 1);
-    vi.advanceTimersByTime(500);
-    reportLineAdvance("tab-a", 1);
-    expect(isTerminalActive("tab-a")).toBe(true);
-    expect(isTabUnread("tab-a")).toBe(false); // noch der angesehene Tab
-
-    // Nutzer wechselt zu einem anderen Tab, tab-a streamt unverändert weiter.
-    markTabViewed("tab-b");
-    vi.advanceTimersByTime(500);
-    reportLineAdvance("tab-a", 1);
-
-    expect(isTerminalActive("tab-a")).toBe(true); // Stream reißt nie ab
-    expect(isTabUnread("tab-a")).toBe(true); // re-armiert trotzdem
-  });
-
-  it("verfällt NICHT durch Zeitablauf, anders als active", () => {
-    reportLineAdvance("tab-a", 1);
-    vi.advanceTimersByTime(1500);
-    reportLineAdvance("tab-a", 1);
-    expect(isTabUnread("tab-a")).toBe(true);
-
-    vi.advanceTimersByTime(60_000);
-    expect(isTerminalActive("tab-a")).toBe(false);
-    expect(isTabUnread("tab-a")).toBe(true);
-  });
-
-  it("markiert unread nicht auf dem aktuell angesehenen Tab, wohl aber auf jedem anderen", () => {
-    reportLineAdvance("tab-a", 1);
-    reportLineAdvance("tab-b", 1);
-    vi.advanceTimersByTime(1500);
-    markTabViewed("tab-a");
-
-    reportLineAdvance("tab-a", 1);
-    reportLineAdvance("tab-b", 1);
-
-    expect(isTabUnread("tab-a")).toBe(false);
-    expect(isTabUnread("tab-b")).toBe(true);
-  });
-
-  it("markTabViewed löscht ein bereits gesetztes unread sofort", () => {
-    reportLineAdvance("tab-a", 1);
-    vi.advanceTimersByTime(1500);
-    reportLineAdvance("tab-a", 1);
-    expect(isTabUnread("tab-a")).toBe(true);
-
-    markTabViewed("tab-a");
-    expect(isTabUnread("tab-a")).toBe(false);
-  });
-
-  it("resetTerminalActivityForTests setzt auch viewedTabId zurück", () => {
-    reportLineAdvance("tab-a", 1);
-    vi.advanceTimersByTime(1500);
+  it("resetTerminalActivityForTests also resets viewedTabId", () => {
+    reportOutput("tab-a", 1);
+    reportOutput("tab-a", 1);
     markTabViewed("tab-a");
     resetTerminalActivityForTests();
 
-    reportLineAdvance("tab-a", 1); // frischer Eintrag nach dem Reset, konsumiert dessen eigenen Freipass
+    reportOutput("tab-a", 1); // fresh entry after reset, consumes its own boot prompt
+    reportOutput("tab-a", 1);
     vi.advanceTimersByTime(1500);
-    reportLineAdvance("tab-a", 1); // zweiter Burst
-    // Ohne Rücksetzen bliebe "tab-a" weiterhin der angesehene Tab und
-    // unterdrückte unread dauerhaft — genau das Leck-Risiko, gegen das
-    // dieser Test wacht.
-    expect(isTabUnread("tab-a")).toBe(true);
+    // Without the reset, "tab-a" would still be the viewed tab and
+    // permanently suppress the marker — exactly the leak this test guards.
+    expect(isTabAwaitingAttention("tab-a")).toBe(true);
   });
 });

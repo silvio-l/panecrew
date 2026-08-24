@@ -83,6 +83,7 @@
   "unsavedDialog": {
     "title": "Discard unsaved changes?",
     "description": "The changes to <bold>{{fileName}}</bold> haven't been saved yet. They will be lost if you leave the file.",
+    "descriptionMultiple": "The changes to <bold>{{fileNames}}</bold> haven't been saved yet. They will be lost if you close the pane.",
     "discard": "Discard changes",
     "cancel": "Cancel"
   },
@@ -90,6 +91,16 @@
     "panes": "{{active}} of {{slots}} grid slots in use",
     "terminals_one": "{{count}} running terminal session in total",
     "terminals_other": "{{count}} running terminal sessions in total"
+  },
+  "gitRepo": {
+    "detachedBranch": "detached HEAD",
+    "worktreeBranch": "Worktree of {{repo}}, branch {{branch}}",
+    "dirtyCount_one": "{{count}} changed file",
+    "dirtyCount_other": "{{count}} changed files",
+    "ahead_one": "{{count}} commit ahead of upstream",
+    "ahead_other": "{{count}} commits ahead of upstream",
+    "behind_one": "{{count}} commit behind upstream",
+    "behind_other": "{{count}} commits behind upstream"
   },
   "gridSplitters": {
     "columnAria": "Adjust column width between column {{left}} and {{right}}",
@@ -100,7 +111,7 @@
     "paneDescription": "The pane <bold>{{projectName}}</bold> will be closed and its running terminal sessions ended.",
     "confirmPane": "Close pane",
     "terminalTabTitle": "Close terminal tab?",
-    "terminalTabDescription": "<bold>Terminal {{number}}</bold> will be closed and the session running in it ended.",
+    "terminalTabDescription": "The <bold>terminal tab</bold> will be closed and the session running in it ended.",
     "confirmTerminalTab": "Close tab",
     "terminalTabsBatchTitle_one": "Close 1 tab?",
     "terminalTabsBatchTitle_other": "Close {{count}} tabs?",
@@ -113,6 +124,11 @@
     "confirmWindow": "Close window",
     "cancel": "Cancel"
   },
+  "gridFullDialog": {
+    "title": "Grid is full",
+    "description": "All panes in this window are already in use, so <bold>{{projectName}}</bold> can't open here without replacing one of them. Open it in a new window instead?",
+    "confirm": "Open in new window"
+  },
   "terminalPane": {
     "terminalAria": "Terminal {{projectName}}",
     "closePane": "Close pane",
@@ -123,7 +139,8 @@
     "clear": "Clear terminal",
     "dropHint": "Insert path",
     "enterFocusMode": "Focus mode",
-    "exitFocusMode": "Exit focus mode"
+    "exitFocusMode": "Exit focus mode",
+    "initFailed": "Init failed: {{error}}"
   },
   "resourceGuard": {
     "warnTabSuffix": "High memory usage",
@@ -149,18 +166,33 @@
   },
   "paneTabs": {
     "selectView": "Select view",
-    "terminalTab": "Terminal {{number}}",
+    "terminalTab": "Terminal",
+    "terminalTabAccessible": "Terminal {{number}}",
     "openTerminalTab": "Open another terminal tab",
-    "closeTerminalTab": "Close terminal {{number}}",
-    "closeOtherTerminalTabs_one": "Close 1 other tab",
-    "closeOtherTerminalTabs_other": "Close {{count}} other tabs",
-    "closeTerminalTabsToRight_one": "Close 1 tab to the right",
-    "closeTerminalTabsToRight_other": "Close {{count}} tabs to the right",
-    "killTerminalTab": "Force-quit terminal {{number}}",
-    "renameTerminalTab": "Rename terminal {{number}}",
+    "chooseAdapter": "Open a terminal tab with a tool",
+    "closeTerminalTab": "Close terminal tab",
+    "closeOtherTerminalTabs_one": "Close 1 other terminal tab",
+    "closeOtherTerminalTabs_other": "Close {{count}} other terminal tabs",
+    "closeTerminalTabsToRight_one": "Close 1 terminal tab to the right",
+    "closeTerminalTabsToRight_other": "Close {{count}} terminal tabs to the right",
+    "killTerminalTab": "Force-quit terminal tab",
+    "renameTerminalTab": "Rename terminal tab",
     "renameTerminalTabFieldLabel": "Name for terminal {{number}}",
     "middleClickCloseHint": "Middle-click to close",
-    "unreadActivityLabel": "Unread activity",
+    "awaitingAttentionLabel": "Waiting for you",
+    "overviewLabel": "Overview for {{name}}",
+    "terminalTabKind": "Terminal tab",
+    "overviewTool": "Tool",
+    "overviewStatus": "Status",
+    "overviewProject": "Project",
+    "overviewPath": "Path",
+    "overviewRepository": "Repository",
+    "fileTab": "File tab",
+    "saved": "Saved",
+    "unsavedChanges": "Unsaved changes",
+    "activeTab": "Active",
+    "performanceWarning": "Many terminal tabs can affect performance",
+    "dismissPerformanceWarning": "Dismiss notice",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -177,7 +209,54 @@
   "projectPicker": {
     "choose": "Choose project",
     "hint": "PaneCrew starts a real shell in it.",
+    "recentHeading": "Recently opened",
+    "browseOther": "Choose another project …",
     "removeRecent": "Remove from list"
+  },
+  "onboarding": {
+    "wizard": {
+      "welcome": {
+        "title": "Welcome to PaneCrew",
+        "body": "Multiple real terminals visible at once, side by side instead of one after another — the explorer automatically follows whichever pane you're working in.",
+        "cta": "Let's go"
+      },
+      "preferences": {
+        "title": "Your preferences",
+        "body": "You can change this anytime in Settings.",
+        "cta": "Continue"
+      },
+      "permissions": {
+        "title": "Terminal permissions",
+        "body": "If your terminal ever hits “Operation not permitted” outside your project folder, this fixes it. You can do this anytime later in Settings too.",
+        "cta": "Continue"
+      },
+      "ready": {
+        "title": "Ready to start",
+        "body": "Once two projects are open side by side, you'll see the grid in action — start by opening your first one.",
+        "cta": "Open first project",
+        "skip": "Continue without a project",
+        "bodyExisting": "Your open projects stay exactly as they are — carry on.",
+        "ctaContinue": "Continue"
+      },
+      "back": "Back",
+      "close": "Close introduction",
+      "stepIndicator": "Step {{step}} of {{total}}"
+    },
+    "hint": {
+      "empty": {
+        "title": "Multiple projects, side by side",
+        "body": "Open your first project here to get started."
+      },
+      "hasPanes": {
+        "title": "The explorer follows the active pane",
+        "body": "Open a second project in an empty slot to see the grid in action."
+      },
+      "ahaReached": {
+        "title": "This is the grid in action",
+        "body": "You already have multiple projects open at once — the explorer automatically follows whichever pane is focused."
+      },
+      "dismiss": "Dismiss hint"
+    }
   },
   "templateSwitcher": {
     "selectTemplate": "Choose template",
@@ -200,6 +279,7 @@
     "description": "Several real terminal sessions side by side instead of one after another — a grid of live panes, plus a file explorer that always follows the currently focused pane.",
     "checkForUpdates": "Check for updates",
     "githubRepo": "GitHub repository",
+    "xProfile": "X profile",
     "licenseText": "License text",
     "copyright": "© 2026 Silvio Lindstedt",
     "mitLicense": "MIT License",
@@ -213,6 +293,17 @@
   "directoryPopup": {
     "tabHint": "accept",
     "enterHint": "submit"
+  },
+  "snippetPopup": {
+    "enterHint": "accept"
+  },
+  "systemCommands": {
+    "init": {
+      "description": "Scaffolds .panecrew/ with example snippets"
+    },
+    "reloadSnippets": {
+      "description": "Reloads project and user snippets"
+    }
   },
   "settings": {
     "windowTitle": "Settings",
@@ -231,7 +322,20 @@
       "terminal": "Terminal",
       "explorer": "Explorer",
       "appearance": "Appearance",
-      "grid": "Grid"
+      "grid": "Grid",
+      "help": "Help"
+    },
+    "help": {
+      "onboarding": {
+        "label": "Show onboarding again",
+        "description": "Shows the introduction (setup wizard and guided tour) again, as if you were starting PaneCrew for the first time.",
+        "button": "Restart onboarding"
+      },
+      "permissions": {
+        "title": "Permissions (macOS)",
+        "explainer": "macOS asks for extra access when a terminal command reaches outside your project folder. Full Disk Access covers that in one place:",
+        "fullDiskAccess": "Full Disk Access"
+      }
     },
     "terminalRestartHint": "Applies starting with the next new terminal session — the running session is unaffected.",
     "rawJson": {
@@ -256,12 +360,24 @@
           "description": "Character size in the terminal, in pixels."
         },
         "activityIdleMs": {
-          "label": "Unread time window",
-          "description": "How long to wait after the last new line before an activity burst counts as its own event. Only controls how easily the persistent unread dot triggers — the dot itself never expires on its own, only by viewing the tab. In milliseconds."
+          "label": "Idle time before \"waiting for you\"",
+          "description": "How long a terminal tab must produce no output at all before it's flagged as done and waiting for you. Clears immediately once new output arrives or you open the tab. In milliseconds."
         },
         "activityLineThreshold": {
-          "label": "Unread threshold (lines)",
-          "description": "Minimum number of new lines within the time window before an unviewed terminal tab gets the unread dot."
+          "label": "Activity threshold (lines)",
+          "description": "Minimum number of new lines a terminal tab must produce before it's considered to have done real work at all — a freshly opened, still-empty shell won't be flagged as \"waiting for you\"."
+        },
+        "defaultAdapter": {
+          "label": "Default tool for new terminal tabs",
+          "description": "What a newly opened terminal tab starts with, without picking it from the dropdown yourself. Clicking the dropdown still offers every alternative.",
+          "options": {
+            "shell": "Shell",
+            "claude": "Claude Code",
+            "codex": "Codex",
+            "gemini": "Gemini CLI",
+            "copilot": "GitHub Copilot CLI",
+            "opencode": "opencode"
+          }
         }
       },
       "explorer": {

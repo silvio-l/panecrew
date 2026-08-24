@@ -102,6 +102,13 @@ beforeEach(async () => {
         : (subdirectories[directory] ?? []).filter((name) =>
             name.toLowerCase().startsWith(prefix.toLowerCase()),
           ),
+    // Covered on its own in snippetTrigger.test.ts/completionKeys.test.ts —
+    // this suite is about the ghost-text/cd-popup pairing, an empty snippet
+    // candidate list keeps it out of the way here.
+    listSnippetCandidates: () => [],
+    runSnippetCommand: () => {
+      /* not exercised in this suite */
+    },
     font: { fontFamily: "monospace", fontSize: 13 },
   });
   await write(PROMPT);

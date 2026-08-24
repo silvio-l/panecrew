@@ -43,7 +43,7 @@ pub fn default_shell() -> String {
 /// since `try_clone_reader` gives an owned reader that can block on `read`
 /// independently of anything callers do with the handle.
 pub struct PtyHandle {
-    writer: Mutex<Box<dyn Write + Send>>,
+    writer_tx: mpsc::Sender<Vec<u8>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     /// Windows-only job object the spawned process was assigned to at spawn
@@ -203,6 +203,26 @@ where
     })?;
 
     let mut cmd = CommandBuilder::new(opts.cmd);
+    // `CommandBuilder::new` seeds itself from this process's own full
+    // environment (`get_base_env()` in portable-pty's cmdbuilder.rs, plain
+    // `std::env::vars_os()`). If PaneCrew itself was launched as a child of a
+    // hosted coding-agent CLI's own session (e.g. a dev run started from
+    // that CLI's own shell-command tool, or the built app opened from a
+    // shell with an active session — CLAUDECODE / CLAUDE_CODE_* for the
+    // Claude Code CLI specifically, checked below), that inherited env // brandlint-ok: functional — bug is Claude Code's own env-var mechanism colliding with a hosted pane, not orientation
+    // carries the CLI's own child-session markers straight into every pane.
+    // A same-named CLI the user then starts inside a pane would read its own
+    // "child session" marker back and wrongly conclude it's a harness-
+    // managed child of another instance, silently disabling its own
+    // transcript storage. Hosting CLI agents equally is this app's whole
+    // purpose, so a fresh pane must never carry its host's own orchestration
+    // state into them.
+    for key in std::env::vars_os().map(|(k, _)| k).filter(|k| {
+        k.to_str()
+            .is_some_and(|k| k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_"))
+    }) {
+        cmd.env_remove(key);
+    }
     cmd.args(opts.args);
     cmd.cwd(opts.cwd);
     // portable-pty sets no TERM of its own — without one, curses/Ink-based
@@ -237,6 +257,37 @@ where
 
     let mut reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
+
+    // A dedicated writer thread: `write_all` into the pty has no timeout and
+    // blocks for as long as the foreground process in this pane doesn't read
+    // stdin (e.g. mid-build, or genuinely stuck) — moved off `PtyHandle::
+    // write`'s caller (the IPC dispatch thread, for the non-`(async)`
+    // `pty_write` command) onto its own thread so a slow/stuck consumer can
+    // never freeze the whole window (2026-08-16 perf/leak audit finding).
+    //
+    // `pty_write` deliberately stays non-`(async)`: marking it `(async)`
+    // would let Tauri's async runtime dispatch concurrent invocations onto
+    // different threads with no ordering guarantee between them, corrupting
+    // keystroke order — `usePtyTerminal.ts` sends one `pty_write` per
+    // keystroke via `terminal.onData`, and those are a byte stream, not
+    // independent/idempotent calls. Keeping the command synchronous means
+    // every `pty_write` still enqueues into the channel below in the exact
+    // order IPC delivered it; only the actual (potentially slow) OS write
+    // moves off-thread, not the ordering decision.
+    //
+    // Unbounded, unlike the reader's channel below: write volume is driven by
+    // human typing / one-shot paste size, not an unbounded producer like a
+    // build log's output, so there's no equivalent backpressure need to
+    // bound it here.
+    let (writer_tx, writer_rx) = mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        let mut writer = writer;
+        for data in writer_rx {
+            if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
+                break;
+            }
+        }
+    });
 
     // Two threads, not one: `reader.read` is a blocking OS call with no
     // timeout, so a single thread can't also watch a clock to enforce the
@@ -307,7 +358,7 @@ where
     });
 
     Ok(PtyHandle {
-        writer: Mutex::new(writer),
+        writer_tx,
         master: Mutex::new(pair.master),
         child: Mutex::new(child),
         #[cfg(windows)]
@@ -316,11 +367,15 @@ where
 }
 
 impl PtyHandle {
+    /// Enqueues onto the dedicated writer thread (see `spawn`'s comment) and
+    /// returns immediately — the actual OS write happens asynchronously, off
+    /// whatever thread called this (the IPC dispatch thread for a live
+    /// `pty_write`). Only fails if that thread has already exited (a prior
+    /// write errored, e.g. broken pipe after the child exited).
     pub fn write(&self, data: &[u8]) -> anyhow::Result<()> {
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(data)?;
-        writer.flush()?;
-        Ok(())
+        self.writer_tx
+            .send(data.to_vec())
+            .map_err(|_| anyhow::anyhow!("pty writer thread has stopped"))
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> anyhow::Result<()> {
@@ -530,6 +585,43 @@ mod tests {
         assert!(
             saw_term,
             "expected the child to get a color-capable TERM/COLORTERM even without one in the parent process"
+        );
+    }
+
+    // Reproduces PaneCrew itself running as a child of a coding-agent CLI's // brandlint-ok: functional — reproduces a real interop bug against a specific hosted tool's own env-var mechanism
+    // own session (a dev run started from that CLI's own shell-command tool,
+    // or the built app opened from a shell with an active session) by
+    // setting the same two markers — CLAUDECODE / CLAUDE_CODE_CHILD_SESSION,
+    // the Claude Code CLI's own naming — in *this* process before spawning. // brandlint-ok: functional, same as above
+    // Without the strip in `spawn`, `CommandBuilder::new`'s base-env
+    // inheritance (`get_base_env()`, plain `std::env::vars_os()`) would
+    // carry them straight into the child pty — and that same CLI run inside
+    // a real pane would read its own child-session marker back and wrongly
+    // conclude it's a harness-managed child of another instance, silently
+    // disabling its own transcript storage.
+    #[test]
+    fn spawn_strips_claude_code_orchestration_env_from_the_child() {
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- test-only env mutation, see the safety comment on spawn_sets_a_color_capable_term_for_the_child above.
+        unsafe {
+            std::env::set_var("CLAUDECODE", "1");
+            std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
+        }
+
+        let (handle, output) = spawn_sh(Some(
+            "echo \"code=[$CLAUDECODE] child=[$CLAUDE_CODE_CHILD_SESSION]\"",
+        ));
+
+        let saw_stripped = saw(&output, "code=[] child=[]");
+
+        handle.kill().expect("kill should succeed");
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- test-only env mutation, see the safety comment on spawn_sets_a_color_capable_term_for_the_child above.
+        unsafe {
+            std::env::remove_var("CLAUDECODE");
+            std::env::remove_var("CLAUDE_CODE_CHILD_SESSION");
+        }
+        assert!(
+            saw_stripped,
+            "expected a hosted CLI's own orchestration env not to leak into a spawned pane"
         );
     }
 

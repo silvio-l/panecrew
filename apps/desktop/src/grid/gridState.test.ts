@@ -6,24 +6,30 @@ import {
   activePanes,
   assignProjectToSlot,
   closePane,
+  closeFileTab,
+  closeFileTabsUnder,
   closeTerminalTab,
   enterFocusMode,
   exitFocusMode,
+  firstEmptySlotIndex,
   focusModeSelectSlot,
   focusPane,
   focusedProjectPath,
   moveTerminalTab,
   moveTerminalTabToEmptySlot,
   movePaneToEmptySlot,
+  moveTab,
   nextGrowthTemplate,
   nextPaneId,
   openTerminalTab,
+  openFileTab,
   renameTerminalTab,
   setSplitRatios,
   swapPanes,
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
+  terminalTabs,
   templateSwitchBlockReason,
   trackShape,
   type GridState,
@@ -31,6 +37,132 @@ import {
 } from "./gridState";
 
 describe("gridState", () => {
+  describe("generic pane tabs (Ticket 34)", () => {
+    it("stores Terminal- and File-Tabs in one ordered list and activates a newly opened file", () => {
+      const withPane = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/a",
+        "pane-0",
+        "terminal-0",
+      );
+
+      const next = openFileTab(
+        withPane,
+        "pane-0",
+        "file-0",
+        "src/App.tsx",
+      );
+
+      expect(next.slots[0]).toEqual({
+        paneId: "pane-0",
+        projectPath: "/repo/a",
+        tabs: [
+          {
+            kind: "terminal",
+            tabId: "terminal-0",
+            label: null,
+            adapterId: null,
+          },
+          { kind: "file", tabId: "file-0", path: "src/App.tsx" },
+        ],
+        activeTabId: "file-0",
+      });
+    });
+
+    it("reuses an already open file instead of creating a duplicate tab", () => {
+      const withFile = openFileTab(
+        assignProjectToSlot(
+          INITIAL_GRID_STATE,
+          0,
+          "/repo/a",
+          "pane-0",
+          "terminal-0",
+        ),
+        "pane-0",
+        "file-0",
+        "src/App.tsx",
+      );
+
+      const next = openFileTab(
+        openTerminalTab(withFile, "pane-0", "terminal-1"),
+        "pane-0",
+        "unused-file-id",
+        "src/App.tsx",
+      );
+
+      expect((next.slots[0] as Pane).tabs.map((tab) => tab.tabId)).toEqual([
+        "terminal-0",
+        "file-0",
+        "terminal-1",
+      ]);
+      expect((next.slots[0] as Pane).activeTabId).toBe("file-0");
+    });
+
+    it("reorders tabs freely across kinds inside one pane", () => {
+      const withTabs = openTerminalTab(
+        openFileTab(
+          assignProjectToSlot(
+            INITIAL_GRID_STATE,
+            0,
+            "/repo/a",
+            "pane-0",
+            "terminal-0",
+          ),
+          "pane-0",
+          "file-0",
+          "src/App.tsx",
+        ),
+        "pane-0",
+        "terminal-1",
+      );
+
+      const next = moveTab(withTabs, "pane-0", "file-0", 0);
+
+      expect((next.slots[0] as Pane).tabs.map((tab) => tab.tabId)).toEqual([
+        "file-0",
+        "terminal-0",
+        "terminal-1",
+      ]);
+      expect((next.slots[0] as Pane).activeTabId).toBe("file-0");
+    });
+
+    it("removes a file-only pane when its final tab is closed", () => {
+      const withFileOnly = moveTerminalTab(
+        openFileTab(
+          assignProjectToSlot(
+            assignProjectToSlot(
+              INITIAL_GRID_STATE,
+              0,
+              "/repo/a",
+              "pane-0",
+              "terminal-0",
+            ),
+            1,
+            "/repo/a",
+            "pane-1",
+            "terminal-1",
+          ),
+          "pane-0",
+          "file-0",
+          "README.md",
+        ),
+        "pane-0",
+        "terminal-0",
+        "pane-1",
+      );
+
+      const next = closeFileTab(
+        focusPane(withFileOnly, "pane-0"),
+        "pane-0",
+        "file-0",
+      );
+
+      expect(next.slots[0]).toBeNull();
+      expect(next.focusedPaneId).toBe("pane-1");
+    });
+  });
+
   it("startet mit Quad und vier leeren Slots", () => {
     expect(INITIAL_GRID_STATE.template).toBe(DEFAULT_TEMPLATE);
     expect(INITIAL_GRID_STATE.template).toBe("quad");
@@ -61,11 +193,31 @@ describe("gridState", () => {
       {
         paneId: "pane-1",
         projectPath: "/repo/storefront",
-        terminalTabs: [{ tabId: "tab-1", label: null }],
-        activeTerminalTabId: "tab-1",
-        showingFile: false,
+        tabs: [
+          {
+            kind: "terminal",
+            tabId: "tab-1",
+            label: null,
+            adapterId: null,
+          },
+        ],
+        activeTabId: "tab-1",
       },
       null,
+    ]);
+  });
+
+  it("übernimmt eine übergebene adapterId für den ersten Tab einer neu zugewiesenen Pane (Ticket 35)", () => {
+    const next = assignProjectToSlot(
+      INITIAL_GRID_STATE,
+      2,
+      "/repo/storefront",
+      "pane-1",
+      "tab-1",
+      "codex", // brandlint-ok: canonical adapter id, functional
+    );
+    expect(terminalTabs(next.slots[2] as Pane)).toEqual([
+      { kind: "terminal", tabId: "tab-1", label: null, adapterId: "codex" }, // brandlint-ok: canonical adapter id, functional
     ]);
   });
 
@@ -203,6 +355,50 @@ describe("gridState", () => {
     const shrunk = switchTemplate(empty, "single");
     expect(shrunk.template).toBe("single");
     expect(shrunk.slots).toEqual([null]);
+  });
+
+  // Regressionstest für den Bugfix 2026-08-16 (User-Report: ein Klick auf
+  // "Zuletzt geöffnet" hat vorher stillschweigend die fokussierte Pane
+  // überschrieben) — `App.tsx`s menü-getriebenes Öffnen zielt jetzt
+  // ausschließlich über diese Funktion, nie mehr über eine
+  // fokussierte-Pane-zuerst-Regel.
+  describe("firstEmptySlotIndex", () => {
+    it("findet den ersten leeren Slot in Template-Reihenfolge", () => {
+      const withGapAtTwo = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        3,
+        "/repo/storefront",
+        "pane-1",
+        "tab-1",
+      );
+      expect(firstEmptySlotIndex(withGapAtTwo)).toBe(0);
+    });
+
+    it("überspringt bereits belegte Slots", () => {
+      let state = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/storefront",
+        "pane-1",
+        "tab-1",
+      );
+      state = assignProjectToSlot(state, 1, "/repo/api", "pane-2", "tab-2");
+      expect(firstEmptySlotIndex(state)).toBe(2);
+    });
+
+    it("liefert -1 bei komplett vollem Grid — niemals einen belegten Index", () => {
+      let state = INITIAL_GRID_STATE;
+      state.slots.forEach((_, index) => {
+        state = assignProjectToSlot(
+          state,
+          index,
+          `/repo/project-${index}`,
+          `pane-${index}`,
+          `tab-${index}`,
+        );
+      });
+      expect(firstEmptySlotIndex(state)).toBe(-1);
+    });
   });
 
   describe("nextGrowthTemplate ('Pane teilen')", () => {
@@ -343,11 +539,27 @@ describe("gridState", () => {
       );
       const next = openTerminalTab(withOne, "pane-0", "tab-1");
       const pane = next.slots[0] as Pane;
-      expect(pane.terminalTabs).toEqual([
-        { tabId: "tab-0", label: null },
-        { tabId: "tab-1", label: null },
+      expect(terminalTabs(pane)).toEqual([
+        { kind: "terminal", tabId: "tab-0", label: null, adapterId: null },
+        { kind: "terminal", tabId: "tab-1", label: null, adapterId: null },
       ]);
-      expect(pane.activeTerminalTabId).toBe("tab-1");
+      expect(pane.activeTabId).toBe("tab-1");
+    });
+
+    it("übernimmt eine übergebene adapterId für den neuen Tab, ohne den bestehenden zu verändern (Ticket 35)", () => {
+      const withOne = assignProjectToSlot(
+        INITIAL_GRID_STATE,
+        0,
+        "/repo/a",
+        "pane-0",
+        "tab-0",
+      );
+      const next = openTerminalTab(withOne, "pane-0", "tab-1", "claude"); // brandlint-ok: canonical adapter id, functional
+      const pane = next.slots[0] as Pane;
+      expect(terminalTabs(pane)).toEqual([
+        { kind: "terminal", tabId: "tab-0", label: null, adapterId: null },
+        { kind: "terminal", tabId: "tab-1", label: null, adapterId: "claude" }, // brandlint-ok: canonical adapter id, functional
+      ]);
     });
 
     it("verlässt dabei einen gerade sichtbaren File-Tab", () => {
@@ -358,9 +570,9 @@ describe("gridState", () => {
         "pane-0",
         "tab-0",
       );
-      const withFile = switchToFileTab(pane, "pane-0");
+      const withFile = openFileTab(pane, "pane-0", "file-0", "src/App.tsx");
       const next = openTerminalTab(withFile, "pane-0", "tab-1");
-      expect((next.slots[0] as Pane).showingFile).toBe(false);
+      expect((next.slots[0] as Pane).activeTabId).toBe("tab-1");
     });
 
     it("lässt den State bei unbekannter paneId unverändert", () => {
@@ -382,20 +594,22 @@ describe("gridState", () => {
     it("entfernt einen Terminal-Tab, ohne die anderen anzutasten", () => {
       const withTwo = twoTabPane();
       const next = closeTerminalTab(withTwo, "pane-0", "tab-0");
-      expect((next.slots[0] as Pane).terminalTabs).toEqual([{ tabId: "tab-1", label: null }]);
+      expect(terminalTabs(next.slots[0] as Pane)).toEqual([
+        { kind: "terminal", tabId: "tab-1", label: null, adapterId: null },
+      ]);
     });
 
     it("übernimmt der Vorgänger, wenn der aktive Tab geschlossen wird", () => {
       const withThree = openTerminalTab(twoTabPane(), "pane-0", "tab-2");
       const next = closeTerminalTab(withThree, "pane-0", "tab-2");
-      expect((next.slots[0] as Pane).activeTerminalTabId).toBe("tab-1");
+      expect((next.slots[0] as Pane).activeTabId).toBe("tab-1");
     });
 
     it("übernimmt der Nachfolger, wenn Tab 0 aktiv war und geschlossen wird", () => {
       const withTwo = twoTabPane();
       const backToFirst = switchToTerminalTab(withTwo, "pane-0", "tab-0");
       const next = closeTerminalTab(backToFirst, "pane-0", "tab-0");
-      expect((next.slots[0] as Pane).activeTerminalTabId).toBe("tab-1");
+      expect((next.slots[0] as Pane).activeTabId).toBe("tab-1");
     });
 
     it("lässt den letzten verbleibenden Terminal-Tab nicht schließen (No-Op)", () => {
@@ -425,30 +639,36 @@ describe("gridState", () => {
         "tab-1",
       );
       const next = switchToTerminalTab(withTwo, "pane-0", "tab-0");
-      expect((next.slots[0] as Pane).activeTerminalTabId).toBe("tab-0");
-      expect((next.slots[0] as Pane).showingFile).toBe(false);
+      expect((next.slots[0] as Pane).activeTabId).toBe("tab-0");
     });
 
-    it("wechselt zum File-Tab, ohne den aktiven Terminal-Tab zu verändern", () => {
-      const withOne = assignProjectToSlot(
-        INITIAL_GRID_STATE,
-        0,
-        "/repo/a",
+    it("wechselt zu einem File-Tab über dessen stabile Identität", () => {
+      const withFile = openFileTab(
+        assignProjectToSlot(
+          INITIAL_GRID_STATE,
+          0,
+          "/repo/a",
+          "pane-0",
+          "tab-0",
+        ),
         "pane-0",
-        "tab-0",
+        "file-0",
+        "src/App.tsx",
       );
-      const next = switchToFileTab(withOne, "pane-0");
+      const backToTerminal = switchToTerminalTab(withFile, "pane-0", "tab-0");
+      const next = switchToFileTab(backToTerminal, "pane-0", "file-0");
       const pane = next.slots[0] as Pane;
-      expect(pane.showingFile).toBe(true);
-      expect(pane.activeTerminalTabId).toBe("tab-0");
+      expect(pane.activeTabId).toBe("file-0");
     });
 
     it("switchToFileTab ist ein No-Op, wenn der File-Tab bereits sichtbar ist", () => {
-      const withFile = switchToFileTab(
+      const withFile = openFileTab(
         assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
         "pane-0",
+        "file-0",
+        "src/App.tsx",
       );
-      expect(switchToFileTab(withFile, "pane-0")).toBe(withFile);
+      expect(switchToFileTab(withFile, "pane-0", "file-0")).toBe(withFile);
     });
 
     it("switchToTerminalTab ist ein No-Op, wenn der Tab bereits aktiv ist und kein File-Tab sichtbar war", () => {
@@ -497,12 +717,11 @@ describe("gridState", () => {
       const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
 
       const target = next.slots[1] as Pane;
-      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(target).map((tab) => tab.tabId)).toEqual([
         "tab-1",
         "tab-0b",
       ]);
-      expect(target.activeTerminalTabId).toBe("tab-0b");
-      expect(target.showingFile).toBe(false);
+      expect(target.activeTabId).toBe("tab-0b");
       expect(next.focusedPaneId).toBe("pane-1");
     });
 
@@ -514,14 +733,40 @@ describe("gridState", () => {
       const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
 
       const source = next.slots[0] as Pane;
-      expect(source.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
-      expect(source.activeTerminalTabId).toBe("tab-0");
+      expect(terminalTabs(source).map((tab) => tab.tabId)).toEqual(["tab-0"]);
+      expect(source.activeTabId).toBe("tab-0");
+    });
+
+    it("keeps File-Tabs in the source Pane when its only Terminal moves", () => {
+      const start = openFileTab(
+        assignProjectToSlot(
+          assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+          1,
+          "/repo/a",
+          "pane-1",
+          "tab-1",
+        ),
+        "pane-0",
+        "file-0",
+        "src/App.tsx",
+      );
+
+      const next = moveTerminalTab(start, "pane-0", "tab-0", "pane-1");
+
+      expect((next.slots[0] as Pane).tabs).toEqual([
+        { kind: "file", tabId: "file-0", path: "src/App.tsx" },
+      ]);
+      expect((next.slots[0] as Pane).activeTabId).toBe("file-0");
+      expect(terminalTabs(next.slots[1] as Pane).map((tab) => tab.tabId)).toEqual([
+        "tab-1",
+        "tab-0",
+      ]);
     });
 
     it("lässt den aktiven Tab der Quelle unangetastet, wenn ein INAKTIVER wegzieht", () => {
       const start = switchToTerminalTab(twoPanesSameProject(), "pane-0", "tab-0");
       const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
-      expect((next.slots[0] as Pane).activeTerminalTabId).toBe("tab-0");
+      expect((next.slots[0] as Pane).activeTabId).toBe("tab-0");
     });
 
     it("verschiebt den Tab als identisches Objekt (Name/PTY-Zuordnung bleiben)", () => {
@@ -531,9 +776,9 @@ describe("gridState", () => {
         "tab-0b",
         "Build",
       );
-      const movedBefore = (start.slots[0] as Pane).terminalTabs[1];
+      const movedBefore = terminalTabs(start.slots[0] as Pane)[1];
       const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1");
-      expect((next.slots[1] as Pane).terminalTabs[1]).toBe(movedBefore);
+      expect(terminalTabs(next.slots[1] as Pane)[1]).toBe(movedBefore);
     });
 
     it("ist ein No-Op über Projektgrenzen hinweg (identische Referenz)", () => {
@@ -566,11 +811,11 @@ describe("gridState", () => {
 
       expect(next.slots[0]).toBeNull();
       const target = next.slots[1] as Pane;
-      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(target).map((tab) => tab.tabId)).toEqual([
         "tab-1",
         "tab-0",
       ]);
-      expect(target.activeTerminalTabId).toBe("tab-0");
+      expect(target.activeTabId).toBe("tab-0");
       expect(next.focusedPaneId).toBe("pane-1");
     });
 
@@ -595,12 +840,12 @@ describe("gridState", () => {
       const next = moveTerminalTab(start, "pane-0", "tab-0b", "pane-1", 1);
 
       const target = next.slots[1] as Pane;
-      expect(target.terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(target).map((tab) => tab.tabId)).toEqual([
         "tab-1",
         "tab-0b",
         "tab-1b",
       ]);
-      expect(target.activeTerminalTabId).toBe("tab-0b");
+      expect(target.activeTabId).toBe("tab-0b");
     });
 
     it("sortiert innerhalb DERSELBEN Pane um und macht den gezogenen Tab aktiv", () => {
@@ -611,12 +856,12 @@ describe("gridState", () => {
       const next = moveTerminalTab(start, "pane-0", "tab-0", "pane-0", 2);
 
       const pane = next.slots[0] as Pane;
-      expect(pane.terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(pane).map((tab) => tab.tabId)).toEqual([
         "tab-0b",
         "tab-0",
         "tab-0c",
       ]);
-      expect(pane.activeTerminalTabId).toBe("tab-0");
+      expect(pane.activeTabId).toBe("tab-0");
       expect(next.focusedPaneId).toBe("pane-0");
     });
 
@@ -624,7 +869,7 @@ describe("gridState", () => {
       const start = openTerminalTab(twoPanesSameProject(), "pane-0", "tab-0c");
       const next = moveTerminalTab(start, "pane-0", "tab-0c", "pane-0", 0);
       expect(
-        (next.slots[0] as Pane).terminalTabs.map((tab) => tab.tabId),
+        terminalTabs(next.slots[0] as Pane).map((tab) => tab.tabId),
       ).toEqual(["tab-0c", "tab-0", "tab-0b"]);
     });
 
@@ -680,21 +925,20 @@ describe("gridState", () => {
       const created = next.slots[2] as Pane;
       expect(created.paneId).toBe("pane-neu");
       expect(created.projectPath).toBe("/repo/a");
-      expect(created.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0b"]);
-      expect(created.activeTerminalTabId).toBe("tab-0b");
-      expect(created.showingFile).toBe(false);
+      expect(terminalTabs(created).map((tab) => tab.tabId)).toEqual(["tab-0b"]);
+      expect(created.activeTabId).toBe("tab-0b");
       expect(next.focusedPaneId).toBe("pane-neu");
       // Die Quelle behält ihren verbleibenden Tab als aktiven.
       const source = next.slots[0] as Pane;
-      expect(source.terminalTabs.map((tab) => tab.tabId)).toEqual(["tab-0"]);
-      expect(source.activeTerminalTabId).toBe("tab-0");
+      expect(terminalTabs(source).map((tab) => tab.tabId)).toEqual(["tab-0"]);
+      expect(source.activeTabId).toBe("tab-0");
     });
 
     it("verschiebt den Tab als identisches Objekt (Name/PTY-Zuordnung bleiben)", () => {
       const start = renameTerminalTab(onePaneTwoTabs(), "pane-0", "tab-0b", "Build");
-      const movedBefore = (start.slots[0] as Pane).terminalTabs[1];
+      const movedBefore = terminalTabs(start.slots[0] as Pane)[1];
       const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0b", 1, "pane-neu");
-      expect((next.slots[1] as Pane).terminalTabs[0]).toBe(movedBefore);
+      expect(terminalTabs(next.slots[1] as Pane)[0]).toBe(movedBefore);
     });
 
     it("leert den Quell-Slot, wenn der LETZTE Tab wegzieht", () => {
@@ -707,7 +951,7 @@ describe("gridState", () => {
       );
       const next = moveTerminalTabToEmptySlot(start, "pane-0", "tab-0", 3, "pane-neu");
       expect(next.slots[0]).toBeNull();
-      expect((next.slots[3] as Pane).terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(next.slots[3] as Pane).map((tab) => tab.tabId)).toEqual([
         "tab-0",
       ]);
     });
@@ -769,7 +1013,7 @@ describe("gridState", () => {
 
       expect(next.slots[2]).toBe(paneBefore);
       expect(next.slots[0]).toBeNull();
-      expect((next.slots[2] as Pane).terminalTabs.map((tab) => tab.tabId)).toEqual([
+      expect(terminalTabs(next.slots[2] as Pane).map((tab) => tab.tabId)).toEqual([
         "tab-0",
         "tab-0b",
       ]);
@@ -840,12 +1084,46 @@ describe("gridState", () => {
     });
 
     it("bewegt die Panes als identische Objekte (Tabs/PTY-Zuordnung unverändert)", () => {
-      const withTwo = quadWithTwoPanes();
+      const withTwo = openFileTab(
+        quadWithTwoPanes(),
+        "pane-0",
+        "file-0",
+        "README.md",
+      );
       const next = swapPanes(withTwo, 0, 3);
       // Referenzgleich: der Tausch schreibt Panes um, er baut sie nicht neu —
       // sonst wären Terminal-Tabs (und damit die PTY-Zuordnung) neue Objekte.
       expect(next.slots[0]).toBe(withTwo.slots[3]);
       expect(next.slots[3]).toBe(withTwo.slots[0]);
+    });
+
+    it("clears focus when deleting the final File-Tab removes its Pane", () => {
+      const withFileOnly = moveTerminalTab(
+        openFileTab(
+          assignProjectToSlot(
+            assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-0", "tab-0"),
+            1,
+            "/repo/a",
+            "pane-1",
+            "tab-1",
+          ),
+          "pane-0",
+          "file-0",
+          "README.md",
+        ),
+        "pane-0",
+        "tab-0",
+        "pane-1",
+      );
+
+      const next = closeFileTabsUnder(
+        focusPane(withFileOnly, "pane-0"),
+        "/repo/a",
+        "README.md",
+      );
+
+      expect(next.slots[0]).toBeNull();
+      expect(next.focusedPaneId).toBe("pane-1");
     });
 
     it("lässt Fokus und Fokus-Modus an der Pane, nicht an der Position", () => {

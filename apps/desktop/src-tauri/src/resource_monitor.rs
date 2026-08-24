@@ -5,14 +5,15 @@
 //! günstig genug, um über die gesamte Prozesslaufzeit mitzulaufen.
 
 use std::collections::VecDeque;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::pty_commands::PtyState;
+use crate::pty_commands::{PtyState, WindowPtyRegistry};
 use crate::resource_guard::{self, ResourceGuardState};
+use crate::windows;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -22,15 +23,17 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 // über Zeit auf statt kurz zu zappeln.
 const CPU_SMOOTHING_WINDOW: usize = 3;
 
-// RAM = (eigene RSS + Summe aller PTY-Prozessbaum-RSS) / Gesamt-RAM. Ein einzelner
-// Prozess mit wenigen Panes bleibt üblicherweise deutlich unter 5 %; auch
-// mehrere schwere Dev-Tools parallel in den Panes (Cargo, rust-analyzer,
-// weitere Agents) treiben das transient auf 10-15 %, ohne dass etwas kaputt
-// ist — das ist informativ (warn), nicht alarmierend. Erst deutlich darüber
-// ist es ein Signal für ein echtes Leck oder eine ungewöhnlich exzessive
-// Situation.
-const MEM_WARN_PERCENT: f32 = 8.0;
-const MEM_CRITICAL_PERCENT: f32 = 20.0;
+// RAM = eigene RSS + Summe aller PTY-Prozessbaum-RSS, absolut in Bytes
+// bewertet statt als Anteil am Gesamt-RAM der Maschine: ein Prozentsatz vom
+// System-Gesamt-RAM wäre auf einer 8-GB-Maschine viel zu empfindlich und auf
+// einer 64-GB-Maschine viel zu träge, obwohl PaneCrews eigener Verbrauch
+// (Terminals + darin laufende Agent-CLIs) auf beiden identisch aussieht.
+// Baseline: ein einzelnes Terminal mit einer laufenden Agent-CLI zieht grob
+// 1 GB — mehrere solcher Panes parallel sind normaler Betrieb, kein
+// Warnsignal. Erst deutlich darüber ist es ein Signal für ein echtes Leck
+// oder eine ungewöhnlich exzessive Situation.
+const MEM_WARN_BYTES: u64 = 6 * 1024 * 1024 * 1024;
+const MEM_CRITICAL_BYTES: u64 = 12 * 1024 * 1024 * 1024;
 
 // CPU = Summe der Prozess-CPU-Auslastung (sysinfo-Konvention: 0-100 pro
 // Kern), normalisiert auf die Gesamtkapazität der Maschine, über das
@@ -61,6 +64,22 @@ struct TabUsage {
     mem_percent: f32,
     cpu_percent: f32,
     mem_bytes: u64,
+    /// `None` only in the brief race between a tab spawning and
+    /// `WindowPtyRegistry::register` running for it (see `pty_spawn`) — the
+    /// frontend drops such a tab from window grouping the same way it
+    /// already drops a tab with no sample yet.
+    window_label: Option<String>,
+}
+
+/// One entry per open content window (excludes "about"/"settings"/splash,
+/// same filter as the native "Window" menu it's built from) — lets the
+/// frontend label each window's tab group with something a user recognizes
+/// instead of the bare Tauri window label.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowInfo {
+    label: String,
+    title: String,
 }
 
 #[derive(Serialize)]
@@ -77,12 +96,13 @@ struct ResourceUsage {
     /// System-Gesamt-RAM und würde Rundungsdrift einführen).
     mem_bytes_total: u64,
     tabs: Vec<TabUsage>,
+    windows: Vec<WindowInfo>,
 }
 
-fn classify(percent: f32, warn: f32, critical: f32) -> Status {
-    if percent > critical {
+fn classify<T: PartialOrd>(value: T, warn: T, critical: T) -> Status {
+    if value > critical {
         Status::Critical
-    } else if percent > warn {
+    } else if value > warn {
         Status::Warn
     } else {
         Status::Normal
@@ -118,6 +138,7 @@ pub fn start(app: AppHandle) {
         let mut cpu_history: VecDeque<f32> = VecDeque::with_capacity(CPU_SMOOTHING_WINDOW);
 
         loop {
+            let tick_start = Instant::now();
             // `All` instead of only PaneCrew's own pid and its PTY shells:
             // `resource_guard`'s per-tab tree walk needs every process'
             // parent pointer to find descendants it doesn't already know the
@@ -163,23 +184,49 @@ pub fn start(app: AppHandle) {
             cpu_history.push_back(cpu_percent_raw);
             let cpu_percent = cpu_history.iter().sum::<f32>() / cpu_history.len() as f32;
 
+            let window_for_tab = app.state::<WindowPtyRegistry>().window_for_tab_snapshot();
+            let window_infos: Vec<WindowInfo> = windows::window_labels_and_titles(&app)
+                .into_iter()
+                .map(|(label, title)| WindowInfo { label, title })
+                .collect();
+
             let usage = ResourceUsage {
                 mem_percent,
                 cpu_percent,
-                mem_status: classify(mem_percent, MEM_WARN_PERCENT, MEM_CRITICAL_PERCENT),
+                mem_status: classify(mem_bytes, MEM_WARN_BYTES, MEM_CRITICAL_BYTES),
                 cpu_status: classify(cpu_percent, CPU_WARN_PERCENT, CPU_CRITICAL_PERCENT),
                 mem_bytes_total: mem_bytes,
                 tabs: tab_samples
                     .into_iter()
                     .map(|sample| TabUsage {
+                        window_label: window_for_tab.get(&sample.tab_id).cloned(),
                         tab_id: sample.tab_id,
                         mem_percent: sample.mem_percent,
                         cpu_percent: sample.cpu_percent,
                         mem_bytes: sample.mem_bytes,
                     })
                     .collect(),
+                windows: window_infos,
             };
             let _ = app.emit(EVENT_NAME, &usage);
+
+            // User-reported beachball-on-pane-switch (2026-08-16): no
+            // reproduction was pinned down yet (this thread's own
+            // `ProcessesToUpdate::All` scan measured ~3ms on a 440-process
+            // dev machine, not a plausible cause on its own), but this tick
+            // does touch several shared locks (`PtyState`, `WindowPtyRegistry`,
+            // `ResourceGuardState`) that PTY commands also take — an
+            // occasional slow tick, if one ever occurs, is a real suspect.
+            // Threshold-gated so a normal ~3-10ms tick never spams the log,
+            // which the user can already inspect without a live console
+            // handoff (`PANECREW_LOG=debug`, see logging.rs docstring).
+            let tick_elapsed = tick_start.elapsed();
+            if tick_elapsed > Duration::from_millis(100) {
+                log::warn!(
+                    "resource_monitor: tick took {:?} (budget: 100ms)",
+                    tick_elapsed
+                );
+            }
 
             std::thread::sleep(SAMPLE_INTERVAL);
         }
@@ -197,6 +244,13 @@ mod tests {
         assert!(matches!(classify(8.1, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.0, 8.0, 20.0), Status::Warn));
         assert!(matches!(classify(20.1, 8.0, 20.0), Status::Critical));
+    }
+
+    #[test]
+    fn classify_works_over_byte_thresholds_too() {
+        assert!(matches!(classify(MEM_WARN_BYTES, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Normal));
+        assert!(matches!(classify(MEM_WARN_BYTES + 1, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Warn));
+        assert!(matches!(classify(MEM_CRITICAL_BYTES + 1, MEM_WARN_BYTES, MEM_CRITICAL_BYTES), Status::Critical));
     }
 
     #[test]

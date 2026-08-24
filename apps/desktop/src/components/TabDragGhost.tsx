@@ -1,34 +1,11 @@
 import type { RefObject } from "react";
 
-// Das Chip-Abbild am Zeiger, solange ein Terminal-Tab gezogen wird (Ticket
-// 32; Präzisions-Runde nach dem Nutzer-Befund "ich möchte auch den Tab
-// sehen, wenn ich im Drag-Vorgang bin und ihn ziehe soll ich ihn quasi in
-// der Hand halten") — das Schwester-Instrument zum PathDragGhost des
-// Explorer-Ziehens, mit exakt dessen Mechanik: `fixed` am Nullpunkt, der
-// Zieh-Hook (`usePaneDrag.ts`) schiebt es per `element.style.transform`
-// direkt übers Ref statt über State, denn `pointermove` feuert bei jeder
-// Mausbewegung und ein Render pro Bewegung ginge durch die gesamte App.
-// Bewusst OHNE Easing auf der Position (Bewegung aus Interaktion, nie aus
-// Easing — Direction-Contract): das Abbild klebt 1:1 am Zeiger.
-//
-// Seit der Präzisions-Runde ist es kein Text-Schild mit ⇥-Glyphe mehr,
-// sondern ein Abbild des Chips selbst — dieselben Maße und Töne wie
-// `TerminalTabChip` (PaneTabs.tsx: h-6, oben gerundet, Akzent-Box mit
-// /14-Lasur, Nummer in Terminalschrift), damit "das habe ich in der Hand"
-// wörtlich stimmt: man sieht den Tab, nicht eine Beschreibung von ihm. Der
-// eigene Name steht, falls vergeben, daneben (im Chip wohnt er nur im
-// Tooltip — hier gibt es keinen Hover, also zeigt das Abbild ihn direkt).
-// Es beantwortet weiter die zweite Frage des Vorgängers: WÜRDE ein Loslassen
-// jetzt etwas tun — über einer gültigen Ziel-Pane spricht die Box in voller
-// Akzent-Sättigung, sonst in derselben 45%-Dämpfung, mit der auch die
-// Kandidaten-Ecken des Drop-HUDs warten (`pc-hud-corner--invite-dim`).
-//
-// `aria-hidden` und ohne eigenen i18n-Import (Nummer/Name kommen nackt vom
-// Aufrufer): ein Zeiger-Zug ist für Screenreader-Nutzung kein Weg, der Chip
-// behält daneben seinen vollen Tastatur-/Kontextmenü-Pfad.
+// Pointer-following preview for any dragged tab. The drag hook writes position
+// directly through the ref to avoid a React render per pointermove. Stable
+// content identity is shown instead of source/target position, and saturation
+// communicates whether dropping at the current pointer would succeed.
 export function TabDragGhost({
   ghostRef,
-  number,
   label,
   origin,
   overTarget,
@@ -36,11 +13,8 @@ export function TabDragGhost({
   /** Schreibziel für die Zeigerposition (s. Kopfkommentar) — der Hook setzt
    * ausschließlich `style.transform`. */
   ghostRef: RefObject<HTMLDivElement | null>;
-  /** Die Nummer des gezogenen Tabs (Position in seiner Quell-Leiste). */
-  number: number;
-  /** Sein eigener Name (`renameTerminalTab`) — `null` heißt "kein eigener
-   * Name", das Abbild zeigt dann nur die Nummer, wie der Chip selbst. */
-  label: string | null;
+  /** Stable content identity, never the source or target position. */
+  label: string;
   /** Zeigerposition beim Scharfwerden — das erste Bild, danach übernimmt der
    * Hook. Ohne diesen Startwert erschiene das Abbild einen Frame lang in
    * der linken oberen Ecke. */
@@ -81,12 +55,7 @@ export function TabDragGhost({
               : "bg-(--pc-pane-activeBorder)/8"
           }`}
         />
-        <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums">
-          {number}
-        </span>
-        {label !== null && (
-          <span className="min-w-0 truncate font-medium">{label}</span>
-        )}
+        <span className="min-w-0 truncate font-medium">{label}</span>
       </span>
     </div>
   );

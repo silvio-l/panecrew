@@ -4,7 +4,7 @@ import { Tooltip } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { ExplorerPanel } from "./ExplorerPanel";
 import { resetSettingsStoreForTests } from "../settings/settingsStore";
-import type { GitDecorations } from "../types/gitStatus";
+import type { GitDecorations, GitRepoSummary } from "../types/gitStatus";
 import type { Project, TreeNode } from "../types/project";
 
 // Dasselbe Muster wie About.test.tsx: ein einzelner, überall erfolgreich
@@ -46,22 +46,25 @@ const ROW_HEIGHT = 22;
 const project = (
   tree: TreeNode[],
   gitDecorations: GitDecorations,
+  gitRepo: GitRepoSummary | null = null,
 ): Project => ({
   path: "/Users/dev/projects/storefront",
   name: "storefront",
   tree,
   treeError: null,
   gitDecorations,
+  gitRepo,
 });
 
 const renderPanel = (
   tree: TreeNode[],
   gitDecorations: GitDecorations = new Map(),
+  gitRepo: GitRepoSummary | null = null,
 ) =>
   render(
     <Tooltip.Provider>
       <ExplorerPanel
-        project={project(tree, gitDecorations)}
+        project={project(tree, gitDecorations, gitRepo)}
         width={224}
         selectedFile=""
         dirtyFile={null}
@@ -387,5 +390,26 @@ describe("ExplorerPanel", () => {
     // Wieder auf den Datei-weiten Default zurück, damit ein späterer Lauf
     // (anderer Testfile-Prozess, `--watch`) nicht an dieser Überschreibung hängen bleibt.
     vi.mocked(invoke).mockImplementation(() => Promise.resolve());
+  });
+
+  it("zeigt keine Git-Zeile ohne erkanntes Repo", () => {
+    renderPanel([{ name: "readme.md", isDirectory: false }]);
+
+    expect(screen.queryByText("dev")).not.toBeInTheDocument();
+  });
+
+  it("zeigt Branch/Dirty/Ahead-Behind über dem Baum, wenn ein Repo erkannt wurde", () => {
+    renderPanel(
+      [{ name: "readme.md", isDirectory: false }],
+      new Map(),
+      {
+        branch: { name: "dev", detached: false, ahead: 1, behind: 0 },
+        dirtyCount: 2,
+        worktree: null,
+      },
+    );
+
+    expect(screen.getByText("dev")).toBeInTheDocument();
+    expect(screen.getByText("↑")).toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ import {
 } from "./ChromeTooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FileIcon, FolderIcon } from "./explorerIcons";
+import { GitRepoReadout } from "./GitRepoReadout";
 import { HudReadout } from "./HudReadout";
 import { isPathOrDescendant, remapRenamedPath } from "../explorer/filePath";
 import { searchProjectTree } from "../explorer/searchTree";
@@ -78,6 +79,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 export function ExplorerPanel({
   project,
   width,
+  resizing = false,
   selectedFile,
   dirtyFile,
   initialExpanded,
@@ -95,6 +97,14 @@ export function ExplorerPanel({
 }: {
   project: Project;
   width: number;
+  /** True nur während eines laufenden Drags am Resize-Handle
+   * (`App.tsx`s `resizingExplorer`) — schaltet die Breite unten auf die
+   * `--pc-explorer-live-width`-Override um, s. dortiger Kommentar an
+   * `explorerContainerRef`. `false`/weggelassen (Normalfall, auch der
+   * Default hier) rendert `width`px direkt, unverändert gegenüber vor
+   * dieser Umstellung — bestehende Aufrufer (Tests, `HarnessApp.tsx`), die
+   * das Prop nicht kennen, bleiben dadurch unverändert lauffähig. */
+  resizing?: boolean;
   selectedFile: string;
   /** Die im Editor geöffnete Datei, solange sie ungespeicherte Änderungen
    * trägt — projekt-relativ, also in derselben Pfad-Konvention wie
@@ -578,7 +588,20 @@ export function ExplorerPanel({
 
   return (
     <aside
-      style={{ width }}
+      // Nur WÄHREND eines Drags (`resizing`) auf die CSS-Custom-Property
+      // ausweichen: `App.tsx`s Resize-Handle (`startExplorerResize`) trägt
+      // die Breite dann pro `pointermove` direkt als
+      // `--pc-explorer-live-width` auf einen gemeinsamen Vorfahren auf, statt
+      // React State zu committen (kein Re-Render pro Zeigerbewegung, s.
+      // dortiger Kommentar an `explorerContainerRef`) — `var()` löst sie hier
+      // trotzdem jeden Frame live auf. Außerhalb eines Drags bleibt es beim
+      // reinen `width`px wie zuvor, unter anderem damit das Inline-Style
+      // exakt `${width}px` bleibt (Bestandsverhalten/-tests).
+      style={
+        resizing
+          ? { width: `var(--pc-explorer-live-width, ${width}px)` }
+          : { width }
+      }
       className="group/explorer flex shrink-0 flex-col border-r border-(--pc-explorer-border) bg-(--pc-explorer-background)"
     >
       {/* Werkzeugleiste ÜBER dem Projektnamen statt daneben (Ticket 26,
@@ -669,10 +692,18 @@ export function ExplorerPanel({
           sie rahmt den Baum wie die Pane-Header ihre Terminals — und hätte
           bei h-10 die optische Mitte der Zeile auf 19,5px gedrückt, aus der
           Flucht mit dem Projektnamen im Pane-Header (Mitte 20, s. o.). Sie
-          bleibt die einzige Trennlinie des gesamten (jetzt zweizeiligen)
-          Kopfbereichs — zwischen Werkzeugleiste und Namenszeile steht bewusst
-          keine zweite: beide bilden optisch einen Block. */}
-      <div className="flex h-[41px] shrink-0 items-center gap-1 border-b border-(--pc-explorer-border) pl-0.5 pr-1.5">
+          bleibt die einzige Trennlinie des gesamten (jetzt drei- statt
+          zweizeiligen) Kopfbereichs — zwischen Werkzeugleiste und
+          Namenszeile steht bewusst keine zweite: beide bilden optisch einen
+          Block. Seit Ticket 02/03 wandert die Hairline mit auf die Git-Zeile
+          darunter, wenn die erkannt wurde (`project.gitRepo !== null`) —
+          sonst blieben zwei gestapelte Trennlinien übrig, wenn beide Zeilen
+          stehen. */}
+      <div
+        className={`flex h-[41px] shrink-0 items-center gap-1 pl-0.5 pr-1.5 ${
+          project.gitRepo === null ? "border-b border-(--pc-explorer-border)" : ""
+        }`}
+      >
         {/* Die Kopfzeile ist zugleich der Wurzelknoten: ein Klick klappt den
             gesamten Baum weg. Der zugängliche Name des Knopfes ist der
             Projektname selbst, `aria-expanded` trägt den Zustand: das
@@ -700,6 +731,18 @@ export function ExplorerPanel({
           </span>
         </button>
       </div>
+      {/* Eigene Zeile, unabhängig vom Klapp-Zustand des Baums darunter
+          (Ticket 02/03): Branch/Dirty/Ahead-Behind/Worktree sind eine
+          Aussage über das PROJEKT, nicht über den Baum, und bleiben deshalb
+          sichtbar, auch wenn der Baum selbst gerade eingeklappt ist. Kein
+          Repo erkannt → die ganze Zeile entfällt, kein leerer Platzhalter. */}
+      {project.gitRepo !== null && (
+        // Trägt jetzt die Hairline, die sonst an der Namenszeile darüber
+        // sitzt (s. Kommentar dort) — sonst zwei gestapelte Trennlinien.
+        <div className="flex h-6 shrink-0 items-center border-b border-(--pc-explorer-border) px-3">
+          <GitRepoReadout summary={project.gitRepo} />
+        </div>
+      )}
       {!rootCollapsed && (
         <>
           {/* Über dem Baumbereich statt darin: das Feld ist eine Aussage über

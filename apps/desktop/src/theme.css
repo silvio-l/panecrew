@@ -102,6 +102,26 @@
     transparent 62%
   );
   --pc-glass-blur: blur(16px) saturate(150%);
+
+  /*
+   * Elevation of a card lifted OUT of its own surface — currently the pulled
+   * terminal tab (PaneTabs.tsx, `isAwaitingAttention`). Deliberately not
+   * --pc-glass-elevation: that one dresses a floating, translucent plate
+   * (tooltip, menu, title capsule) and carries an `inset` sheen along its top
+   * edge, which is exactly the edge a pulled card must NOT draw — it grows out
+   * of the header, so a bright top line would read as a highlight sitting on
+   * the card rather than as the card standing proud of the surface. Two
+   * downward-offset layers, both with negative spread so nothing reaches
+   * upward: a tight contact shadow right under the bottom edge plus a wider
+   * ambient one. Neutral and offset, never centred and never tinted — shadows
+   * mean depth here, never glow (motion rules, App.css top).
+   *
+   * Theme-independent formula for the same reason as the glass block above:
+   * the geometry is shared, the `var()` colour resolves per theme at the point
+   * of use (--pc-lift-shadow in both theme blocks below).
+   */
+  --pc-lift-elevation:
+    0 1px 2px -1px var(--pc-lift-shadow), 0 4px 10px -2px var(--pc-lift-shadow);
 }
 
 :root,
@@ -219,6 +239,14 @@
   --pc-glass-sheen: rgba(255, 255, 255, 0.015);
   --pc-glass-topLight: rgba(255, 255, 255, 0.012);
   --pc-glass-shadow: rgba(0, 0, 0, 0.1);
+
+  /* Deutlich satter als --pc-glass-shadow: das Glas schwebt über beliebigem,
+     oft hellem Inhalt und darf ihn nicht zudecken, die herausgezogene Karte
+     steht dagegen auf dem dunklen Pane-Grund (#121314) — dort trägt ein
+     10%-Schatten sichtbar gar nichts. Reines Schwarz ohne Farbstich, damit
+     der Schatten nie mit dem einen Akzent oder mit ANSI-Semantik im Terminal
+     darunter verwechselt werden kann. */
+  --pc-lift-shadow: rgba(0, 0, 0, 0.38);
 
   /* Hairline schwebender Chrome-Ränder (Tooltip, Kontextmenü) — seit dem
      Glas-Umbau nicht mehr der Rand der Titelzeile selbst. */
@@ -498,6 +526,13 @@
   --pc-glass-sheen: rgba(255, 255, 255, 0.3);
   --pc-glass-topLight: rgba(255, 255, 255, 0.18);
   --pc-glass-shadow: rgba(15, 23, 42, 0.05);
+
+  /* Gleiche Rolle wie im Dark-Block, aber der Ton ist der kühle Schiefer der
+     übrigen Light-Schatten statt Schwarz (auf Weiß liest reines Schwarz als
+     Schmutz, nicht als Tiefe). Auf hellem Grund kann die Karte nicht heller
+     werden als ihre Umgebung — hier trägt der Schatten die Erhebung praktisch
+     allein, deshalb liegt er deutlich über dem Glas-Wert. */
+  --pc-lift-shadow: rgba(15, 23, 42, 0.16);
 
   /* Hairline schwebender Chrome-Ränder, gleiche Regel wie im Dark-Block. */
   --pc-titleBar-border: #f0f1f2;

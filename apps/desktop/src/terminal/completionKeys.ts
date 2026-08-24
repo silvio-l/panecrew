@@ -15,14 +15,21 @@ import type { InlineSuggestion } from "./inlineSuggestion";
 // Zeile schreibt, statt sie abzuschicken). Deshalb wird eine Taste nur dann
 // genommen, wenn wirklich etwas sichtbar ist, das sie bedienen kann.
 //
-// Enter ist von dieser Politik ganz ausgenommen und schickt immer ab
-// (Produktentscheidung 2026-08-05). Ein Terminal-Nutzer hat jahrzehntelange
-// Übung darin, dass Enter absendet; jede Ausnahme davon ist ein Stolperstein —
-// der erste gemeldete Fehler dieses Features war genau einer: Der Nutzer
-// drückte Escape nur deshalb, um sein Enter durchzubekommen, und ein Escape,
-// das an der Liste vorbeigeht, macht in der Shell Schaden. Übernommen wird
-// mit Tab, passend zur Tab-Completion, die die Shell an derselben Stelle
-// ohnehin anbietet.
+// Enter ist von DIESER Politik (dem Verzeichnis-Popup) ganz ausgenommen und
+// schickt immer ab (Produktentscheidung 2026-08-05). Ein Terminal-Nutzer hat
+// jahrzehntelange Übung darin, dass Enter absendet; jede Ausnahme davon ist
+// ein Stolperstein — der erste gemeldete Fehler dieses Features war genau
+// einer: Der Nutzer drückte Escape nur deshalb, um sein Enter durchzubekommen,
+// und ein Escape, das an der Liste vorbeigeht, macht in der Shell Schaden.
+// Übernommen wird mit Tab, passend zur Tab-Completion, die die Shell an
+// derselben Stelle ohnehin anbietet.
+//
+// Das `://`-Popup (snippetPopup.ts) unten ist die EINE bewusste Ausnahme von
+// dieser Regel: `://foo` ist nie ein Befehl, den Enter absenden würde, die
+// 2026-08-05-Begründung trägt hier also nicht — Enter übernimmt dort
+// tatsächlich (Spec-Vorgabe). Genauso eng gefasst wie beim Verzeichnis-Popup:
+// nur `if (bare && snippets.visible())`, sonst würde ein Enter, das wirklich
+// die Shell meint, spurlos verschwinden.
 
 /** Nur das, was die Politik von einem Tastenereignis braucht. */
 export interface CompletionKey {
@@ -37,11 +44,28 @@ export interface CompletionKey {
 /** true = die Vervollständigung hat die Taste verbraucht. */
 export function routeCompletionKey(
   event: CompletionKey,
-  suggestion: Pick<InlineSuggestion, "accept" | "directories">,
+  suggestion: Pick<InlineSuggestion, "accept" | "directories" | "snippets">,
 ): boolean {
   const bare =
     !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
   const popup = suggestion.directories;
+  const snippets = suggestion.snippets;
+
+  if (bare && snippets.visible()) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      snippets.move(event.key === "ArrowDown" ? 1 : -1);
+      return true;
+    }
+    if (event.key === "Escape") {
+      snippets.dismiss();
+      return true;
+    }
+    if (event.key === "Enter") {
+      snippets.accept();
+      return true;
+    }
+    // Jede andere Taste fällt weiter.
+  }
 
   if (bare && popup.visible()) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {

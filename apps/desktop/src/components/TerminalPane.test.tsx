@@ -24,6 +24,7 @@ vi.mock("../terminal/usePtyTerminal", () => ({
   usePtyTerminal: (
     _tabId: string,
     _cwd: string,
+    _adapterId: string | null,
     _onSelectTerminalTabByNumber: (number: number) => void,
     _onCloseTerminalTab: () => void,
     _onOpenTerminalTab: () => void,
@@ -44,19 +45,17 @@ vi.mock("../terminal/usePtyTerminal", () => ({
 }));
 
 const paneTabs: PaneTabsProps = {
-  terminalTabs: [{ tabId: "tab-1", number: 1, label: null }],
-  activeTerminalTabId: "tab-1",
+  tabs: [{ kind: "terminal", tabId: "tab-1", shortcutPosition: 1, label: null }],
+  activeTabId: "tab-1",
   paneFocused: true,
-  showingFile: false,
-  fileName: null,
-  fileDirty: false,
-  onSelectTerminalTab: vi.fn(),
+  project: { name: "projekt", path: "/tmp/projekt", gitRepo: null },
+  onSelectTab: vi.fn(),
   onOpenTerminalTab: vi.fn(),
   onCloseTerminalTab: vi.fn(),
   onCloseOtherTerminalTabs: vi.fn(),
   onCloseTerminalTabsToRight: vi.fn(),
   onRenameTerminalTab: vi.fn(),
-  onSelectFile: vi.fn(),
+  onCloseFileTab: vi.fn(),
   tabDrag: {
     start: vi.fn(),
     consumeClick: () => false,
@@ -71,6 +70,7 @@ const paneElement = (dropTarget: boolean, active: boolean, focused = true) => (
       paneId="pane-1"
       slotIndex={0}
       tabId="tab-1"
+      adapterId={null}
       projectPath="/tmp/projekt"
       projectName="projekt"
       focused={focused}
@@ -207,6 +207,7 @@ describe("TerminalPane", () => {
           paneId={paneId}
           slotIndex={0}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused
@@ -249,6 +250,7 @@ describe("TerminalPane", () => {
           paneId={paneId}
           slotIndex={0}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused
@@ -291,6 +293,7 @@ describe("TerminalPane", () => {
           paneId="pane-1"
           slotIndex={slotIndex}
           tabId="tab-1"
+          adapterId={null}
           projectPath="/tmp/projekt"
           projectName="projekt"
           focused

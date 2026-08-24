@@ -51,6 +51,24 @@ trash = "5.2.6"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 notify-debouncer-full = "0.7.0"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+# git_status.rs: vendored feature bundles and compiles libgit2 itself via
+# `cc`, the same way `ring` (transitively pulled in via rustls/the updater)
+# already does on both macos-latest and windows-latest with no extra CI
+# tooling -- never switch to system libgit2 via pkg-config, see
+# docs/adr/0011-git2-vendored-over-gix.md.
+# `vendored-openssl` is required too: libgit2-sys/libssh2-sys still pull in
+# openssl-sys for TLS/SSH crypto even with vendored-libgit2, and without this
+# flag openssl-sys links dynamically against whatever OpenSSL pkg-config
+# finds on the build machine (Homebrew's on macOS) -- a hardcoded
+# /opt/homebrew/.../libssl.3.dylib path that hardened-runtime library
+# validation then refuses to load on launch (Team ID mismatch), crashing the
+# app on any machine, including the build machine after a Homebrew upgrade.
+git2 = { version = "0.20", features = ["vendored-libgit2", "vendored-openssl"] }
+# explorer_fs.rs::explorer_read_media (Ticket 38, image/video preview):
+# base64-encodes a file's raw bytes for transport as one IPC/JSON message --
+# already a transitive dependency via tauri itself (see Cargo.lock), so this
+# is the same already-resolved version, not a second copy.
+base64 = "0.22"
 
 # pty_manager.rs::PtyHandle::kill(): killing just the shell's own pid leaves
 # a foreground child it started (dev server, CLI agent, ...) reparented and

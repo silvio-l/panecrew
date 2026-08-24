@@ -4,7 +4,7 @@
 // (`explorer_fs.rs`) real von der Platte — eine Ebene pro Aufruf, siehe
 // `TreeNode` unten.
 
-import type { GitDecorations } from "./gitStatus";
+import type { GitDecorations, GitRepoSummary } from "./gitStatus";
 
 export type FileKind =
   | "ts"
@@ -68,6 +68,11 @@ export interface Project {
    * das Projekt kein Git-Repo ist oder `git` nicht gefunden wurde; das ist
    * bewusst kein Fehlerzustand, siehe `git_status.rs`. */
   gitDecorations: GitDecorations;
+  /** Branch/Dirty/Ahead-Behind/Worktree-Zusammenfassung aus demselben
+   * `explorer_git_status`-Aufruf (Ticket 02/03) — `null`, wenn das Projekt
+   * kein Git-Repo ist; genau wie `gitDecorations` bewusst kein
+   * Fehlerzustand. */
+  gitRepo: GitRepoSummary | null;
 }
 
 /** Letztes Segment eines absoluten Pfads (POSIX wie Windows). */

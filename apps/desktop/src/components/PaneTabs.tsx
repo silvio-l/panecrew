@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import type {
+  ButtonHTMLAttributes,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  RefObject,
+} from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { ContextMenu } from "radix-ui";
+import { ContextMenu, DropdownMenu } from "radix-ui";
 import {
   CHROME_FOCUS_RING,
   CHROME_MENU_CONTENT_CLASS,
@@ -13,26 +20,28 @@ import {
 import { isMacPlatform } from "../shortcuts/platform";
 import { formatChord, SHORTCUTS, terminalTabSelectId } from "../shortcuts/registry";
 import { useDetectedToolId } from "../terminal/useDetectedTool";
-import { markTabViewed, useTerminalUnread } from "../terminal/terminalActivity";
+import { markTabViewed, useTerminalAwaitingAttention } from "../terminal/terminalActivity";
 import { useTabResourceGuard } from "../terminal/resourceGuard";
 import { resolveToolIcon } from "../terminal/toolIcons";
-import { debug } from "../logging/log";
+import { ADAPTERS } from "../terminal/adapters";
+import { TabOverviewCard, type TabOverviewProject } from "./TabOverviewCard";
+import { FileIcon } from "./explorerIcons";
+import { fileKindFromName } from "../types/project";
 
-// [DEBUG-a4f2] Kept at debug level through the general sink (src/logging/log.ts)
-// for the still-open intermittent context-menu bug — grep `[bug2]`. Migrate to
-// a real regression test / delete once the bug is fixed and reproduced once
-// through this logging.
-function logBug2(line: string): void {
-  void debug(`[bug2] ${line}`);
-}
+// Ticket 35: die Optionen des Adapter-Dropdowns neben dem "+"-Knopf —
+// eingebaute Shell (`id: null`) plus die feste `ADAPTERS`-Liste aus
+// `adapters.ts`. `labelKey` zeigt auf dieselben `paneTabs.tool.*`-Strings,
+// die auch die Tool-Badges der Chips selbst nutzen (Kopfkommentar dieser
+// Datei) — keine zweite Übersetzung für dieselben Namen. Modulweit statt je
+// Render neu gebaut, da rein statisch.
+const ADAPTER_PICKER_OPTIONS: readonly { id: string | null; labelKey: string }[] = [
+  { id: null, labelKey: "paneTabs.tool.shell" },
+  ...ADAPTERS.map((adapter) => ({ id: adapter.id, labelKey: `paneTabs.tool.${adapter.id}` })),
+];
 
-// Tab-Leiste einer Pane (Ticket 18): N Terminal-Tabs (je eine eigene PTY,
-// durchnummeriert) plus höchstens ein File-Tab, immer hinter allen
-// Terminal-Tabs. Ersetzt den früheren reinen Zwei-Wege-Umschalter zwischen
-// "Terminal" und "Datei" (2026-08-12) — der Unterschied ist jetzt N statt 1
-// Terminal-Tab, das File-Tab-Verhalten (nur sichtbar, wenn eine Datei offen
-// ist, kein X in dieser Leiste — das Schließen bleibt FileEditor.tsx' eigenem
-// Knopf vorbehalten) ist unverändert.
+// Shared pane tab strip (ticket 34): terminal and file tabs occupy one freely
+// reorderable sequence and use the same chip surface. Stable `tabId`s and
+// content identity remain independent of their current position.
 //
 // Wird jetzt UNBEDINGT gerendert (vorher nur, solange eine Datei offen war):
 // die "+"-Schaltfläche zum Öffnen eines weiteren Terminal-Tabs muss auch ohne
@@ -50,10 +59,9 @@ function logBug2(line: string): void {
 // inzwischen selbst wieder abgelöst (s. u., Nachtrag "Schließen per
 // Kontextmenü"), aus demselben Grund: die Trefferfläche eines 24px hohen
 // Chips bleibt für ein zusätzliches Schließkreuz grundsätzlich knapp.
-// Zusätzlich trägt der Tooltip jetzt den Akkord aus der Kürzel-Registry
-// (Cmd/Strg+1..9, `usePtyTerminal.ts`s Pane-Kürzel-Zweig) — der Weg von der
-// Maus zur Tastatur muss sich aus der UI selbst erschließen, nicht aus
-// docs/shortcuts.md.
+// The hover overview also shows the shortcut-registry chord (Cmd/Ctrl+1..9,
+// matching `usePtyTerminal.ts`'s pane-shortcut branch), so the UI itself
+// reveals the path from pointer use to keyboard use.
 //
 // Nachtrag 2026-08-13, später (Impeccable-Critique, zwei gemeldete Mängel:
 // Klickfläche weiterhin zu klein, Aktiv/Inaktiv kaum unterscheidbar):
@@ -202,22 +210,38 @@ function logBug2(line: string): void {
 // Umbau 2026-08-13, noch später (Nutzer-Neuspezifikation nach Abnahme des
 // Hintergrund-Pane-Fixes): das bis dahin blinkende `bg-current`-Badge
 // ("aktiv im Hintergrund", reine Streaming-Anzeige, s. Korrektur oben) wird
-// hier durch ein zweistufiges Signal ersetzt, wörtliches Nutzer-Zitat: "das
-// Tab gerät farblich in den Vordergrund und geht dann langsam wieder aus...
-// und dann bleibt halt bloß noch dieser typische rote Punkt... und zwar so
-// lange, bis man den Tab aufgemacht hat". Zwei GETRENNTE Zustände in
-// terminalActivity.ts (dortiger Kopfkommentar zu `viewedTabId`/`unread`,
-// nicht hier wiederholt):
+// hier durch ein persistentes "ungelesen"-Signal ersetzt.
 //
-// 1. `unread` (persistent, KEIN Zeitablauf) treibt den kleinen Punkt — jetzt
-//    statisch statt blinkend, in `--pc-icon-red` statt `bg-current`. Dieselbe
-//    Farbe wie ConfirmDialog.tsx' Gefahren-Icon und ExplorerPanel.tsx' Alarm-
-//    Rahmen (beide bereits "hier ist etwas, das Aufmerksamkeit braucht"),
-//    bewusst NICHT `--pc-terminal-ansiRed`: die dortige Datei trennt eigens
-//    einen Chrome-Rot-Ton vom Terminal-Inhalts-Rot, genau die Trennung, die
-//    ein Notiz-Punkt in der Tab-Leiste (Chrome, kein Terminal-Inhalt)
-//    braucht, um nicht als ANSI-Fehlerfarbe gelesen zu werden.
-// 2. Der false→true-Übergang von `unread` löst zusätzlich EINMALIG den
+// Umbau 2026-08-17 (Nutzer-Bugreport: Aktivitätserkennung "funktioniert
+// noch nicht sinnvoll", insbesondere innerhalb von Claude Code): das // brandlint-ok: functional reference to the specific tool tested, not marketing
+// "ungelesen"-Signal von 2026-08-13 war das falsche Modell — es erschien bei
+// jedem neuen Hintergrund-Output und blieb bestehen bis zum Ansehen,
+// UNABHÄNGIG von weiterer Aktivität in der Zwischenzeit (ein durchgehend
+// streamender Tab zeigte denselben Punkt wie ein längst fertiger). Der
+// Nutzer wollte tatsächlich das Gegenteil, wörtliches Zitat auf Rückfrage
+// (Option "1a"): der Marker soll erscheinen, wenn eine Pane FERTIG/STILL ist
+// (nichts mehr passiert), und wieder verschwinden, sobald neuer Output
+// kommt. `useTerminalAwaitingAttention` (terminalActivity.ts, dortiger
+// Kopfkommentar für die vollständige Herleitung inkl. des Root-Cause-Funds
+// zur Spinner-Lücke) liefert genau dieses Signal, live aus dem aktuellen
+// Zustand abgeleitet statt als eigener, manuell zu invalidierender Flag:
+//
+// 1. Der zugrundeliegende Zustand (`busy`/`hasBeenActive` in
+//    terminalActivity.ts) treibt den kleinen Punkt — in `--pc-icon-red`.
+//    Dieselbe Farbe wie ConfirmDialog.tsx' Gefahren-Icon und
+//    ExplorerPanel.tsx' Alarm-Rahmen (beide bereits "hier ist etwas, das
+//    Aufmerksamkeit braucht"), bewusst NICHT `--pc-terminal-ansiRed`: die
+//    dortige Datei trennt eigens einen Chrome-Rot-Ton vom
+//    Terminal-Inhalts-Rot, genau die Trennung, die ein Notiz-Punkt in der
+//    Tab-Leiste (Chrome, kein Terminal-Inhalt) braucht, um nicht als
+//    ANSI-Fehlerfarbe gelesen zu werden.
+// 2. Zusätzlich hebt sich der ganze Chip beim false→true-Übergang optisch an
+//    ("Karteireiter, der ein Stück herausgezogen wird", Nutzer-Zitat) — ein
+//    persistenter `-translate-y` + Schatten, kein einmaliger Flash, bleibt
+//    also so lange angehoben, wie der Marker aktiv ist, und sinkt animiert
+//    wieder ab, sobald er verschwindet (motion-safe: reduzierte Bewegung
+//    bekommt nur den Sprung ohne Animation, s. dortiger Kommentar).
+// 3. Der false→true-Übergang löst zusätzlich EINMALIG den
 //    `pc-attention-flash`-Wasch über den ganzen Chip aus (App.css, dortiger
 //    Kommentar zur Hüllkurve/Farbwahl) — per `key`-Neumount erkannt
 //    (`flashKey` unten), derselbe Mechanismus wie am Tool-Icon-Badge.
@@ -228,21 +252,10 @@ function logBug2(line: string): void {
 // diesen Tab gerade tatsächlich geöffnet"-Signal wiederverwendet, statt eine
 // zweite, abweichende Definition von "angesehen" einzuführen.
 //
-// Nachtrag 2026-08-13, noch später (Nutzer-Zusatzwunsch: "wäre es glaube ich
-// ganz cool, wenn einmal der Slot selbst, also das Pane, kurz mit aufleuchtet,
-// plus das betroffene Tab, so dass man es halt auch wirklich wahrnimmt"): der
-// `pc-attention-flash`-Aufblitz oben (Punkt 2) bleibt nicht mehr auf den Chip
-// beschränkt — `onTabAttentionFlash` (optional, s. `PaneTabsProps`) meldet
-// denselben false→true-Übergang zusätzlich nach außen. TerminalPane.tsx und
-// FileEditor.tsx (BEIDE, nicht nur eine — welche der beiden gerade sichtbar
-// ist, hängt an `showingFile`, s. `viewedTabId`-Kommentar in
-// terminalActivity.ts) fangen ihn lokal auf und waschen ihre eigene
-// `<section>` mit demselben Keyframe, statt eine zweite, eigene Animation zu
-// erfinden — dieselbe "vorhandenes Muster wiederverwenden"-Linie wie der
-// Chip-Flash selbst. Absichtlich NICHT über den Pane-Rahmen (`border-color`):
-// der trägt bereits den Fokus, ein zweites Signal in derselben Fläche wäre
-// als "diese Pane hat jetzt den Fokus" lesbar, nicht als "hier kam etwas
-// rein" — bleibt bei reiner Flächenfarbe wie am Chip.
+// Attention also flashes the owning pane through `onTabAttentionFlash`.
+// Both terminal and file surfaces consume the same transition because either
+// can host the active generic tab. The fill animation deliberately avoids the
+// pane border, whose existing meaning is focus rather than incoming activity.
 //
 // Nachtrag 2026-08-13, Fokus-Leiterbahn (PCB-Metapher, s. FocusTrace.tsx —
 // zwei minimale Ergänzungen an BEIDEN Tab-Arten, sonst bleibt die Box+
@@ -257,36 +270,155 @@ function logBug2(line: string): void {
 //    TerminalPane.tsx) — der aktive Tab bleibt als Auswahl lesbar, aber nur
 //    die fokussierte Pane spricht in voller Sättigung.
 //
-// Umbenennen (`renameTerminalTab`, `gridState.ts`) zeigt den eigenen Namen
-// als ANHANG im bestehenden Tooltip (`am besten als Tooltip"`, Nutzer-Zitat,
-// selbst als bevorzugte von zwei genannten Optionen) — bewusst NICHT als
-// Chip, der beim Hover breiter wird: der Chip sitzt in einer `shrink-0`-
-// Gruppe (Kopfkommentar weiter oben, "soll nie unter Platzdruck geraten"),
-// ein einzelner wachsender Chip darin verschöbe seine Nachbarn im laufenden
-// Betrieb — genau der Sprung, den `shrink-0` an dieser Stelle verhindern
-// soll. Die Eingabe selbst (`TerminalTabRenameField` unten) ist ein
-// `absolute` positioniertes Feld unterhalb des Chips (Widget-Material wie
-// `ConfirmDialog.tsx`), nimmt also am Flex-Layout gar nicht erst teil.
+// A custom name from `renameTerminalTab` (`gridState.ts`) becomes the hover
+// overview's title. It deliberately does not widen the chip on hover: the
+// chip lives in a `shrink-0` group, where one growing child would shift its
+// neighbours during use. The editor itself (`TerminalTabRenameField` below)
+// is positioned absolutely beneath the chip and therefore never participates
+// in the flex layout.
+//
+// Rework 2026-08-19 — the waiting tab as a card pulled out of a card file
+// (user: "it should look like an index card being pulled part way out", and:
+// the 3px nudge "reads as nothing"). Three separate defects, one metaphor:
+//
+// 1. IT NOW GROWS, it no longer just moves. A card of unchanged size that
+//    shifts by 3px reads as a wobble, not as being pulled. The chip's height
+//    is now `1.5rem + --pc-tab-pull` (`.pc-tabcard`, App.css) and grows to
+//    30px while the marker is on. All of that growth goes UPWARD, because the
+//    tab row is bottom-aligned (`items-end` plus a fixed `h-6` on the group
+//    above; the 18px "+" button opts back out with `self-center`). The bottom
+//    edge therefore never moves — it stays welded to the header hairline,
+//    which is both the physical point of the metaphor (the card is still in
+//    the box) and the pixel-alignment fix already paid for once in the
+//    "die Linien liegen nicht ganz sauber" correction above. The contents ride
+//    the pull as a rigid body (`.pc-tabcard__label`), so the number does not
+//    appear to sink into a growing box.
+//
+// 2. IT CAN ESCAPE THE PANE AT ALL. The pane `<section>` was `overflow-hidden`
+//    with its header flush against the top edge — there was literally zero
+//    headroom, so the old 3px lift was shaved down to about one visible pixel.
+//    That is the real reason it "did nothing", and no amount of extra offset
+//    would have helped. The pane now clips with `.pc-pane-clip` (App.css), a
+//    `clip-path` with a negative top inset that opens a window above the
+//    header and keeps the other three sides (and the rounded bottom corners)
+//    clipping exactly as before. Deliberately NOT `overflow-clip-margin`, the
+//    textbook answer: WebKit has never shipped it, and this app runs in
+//    WKWebView on macOS. The pulled card pokes into the workspace gutter that
+//    already exists between panes, so nothing in the layout shifts at rest —
+//    no permanent padding was added to the header.
+//
+// 3. THE ELEVATION IS THEME-AWARE. The old shadow was a hardcoded
+//    `rgba(0,0,0,0.35)` that only ever knew the dark theme. It is now
+//    `--pc-lift-elevation` (theme.css), built like `--pc-glass-elevation`:
+//    shared geometry up top, the colour (`--pc-lift-shadow`) per theme. Two
+//    downward-offset layers with negative spread, no upward reach and no
+//    inset sheen — depth, never glow, and never tinted with the one accent.
+//
+// The extra cue on top of the (still present) red dot is the pull itself plus
+// its elevation — geometry and depth, no second colour. The dot additionally
+// breathes (`pc-attention-breathe`, 2.4s, never down to zero): the only looping
+// motion here, and the only part gated behind `prefers-reduced-motion` besides
+// the pull and the label ride. With motion reduced, the card still sits there
+// pulled out, shadow and all; only the travel between the two states is
+// instant.
+//
+// Korrektur 2026-08-19, noch am selben Tag (Nutzer-Fund am laufenden Build:
+// „so optisch wirklich schön finde ich das ehrlich gesagt nicht"): der erste
+// Anlauf trug zusätzlich einen REITER — eine 2px-Leiste in `--pc-icon-red` an
+// der Oberkante der Karte, als Spiegelbild der verdoppelten Unterkante des
+// aktiven Tabs. Ersatzlos gestrichen. Die Idee stimmte auf dem Papier (gleicher
+// Signalton wie der Punkt statt einer vierten Farbe, unterscheidbar durch
+// Position statt durch Farbe), im echten Bild kippte sie das Ergebnis: auf
+// einem ~24×30px-Chip standen damit DREI rote Flächen dicht beieinander — der
+// Punkt, die Leiste und, je nach Tab, das ohnehin schon rot eingefärbte
+// Tool-Icon-Badge. Zusammen mit der jetzt spürbar höheren, beschatteten Karte
+// las sich das Ganze als „dieser Tab ist rot", also als Fehler/Alarm, statt als
+// „diese Karte wartet ruhig, mit einem kleinen roten Marker". Die Lehre ist
+// nicht „zu viel Rot" im Sinne von Sättigung, sondern FLÄCHENANTEIL: auf einer
+// so kleinen Fläche addieren sich zwei kleine Signale in derselben Farbe nicht,
+// sie verschmelzen zu einer eingefärbten Fläche. Der Auszug selbst ist der
+// zweite Hinweis — Geometrie und Tiefe tragen ihn, ohne dem Chip Farbe
+// hinzuzufügen; genau die Aufteilung, die der Direction Contract für den Akzent
+// schon verlangt, hier nur auf das Attention-Rot angewandt. Nichts trat an die
+// Stelle des Reiters: der Punkt ist wieder das einzige farbige Signal, und die
+// Atmung ist der einzige nicht-farbliche Zusatz.
+//
+// Correction 2026-08-19, third pass the same day — the waiting card is AMBER
+// now, and that reverses a rule both passes above defended. User, on the
+// running build: "I'd prefer the tab get the colour area-wide, the orange
+// tone." The two paragraphs above both concluded, correctly on their own terms,
+// that the one app accent is reserved for focus and the active tab and that
+// the pull must therefore stay colourless card stock. The product owner is the
+// design authority here and overrode that knowingly, for this one state. Kept
+// as a dated reversal instead of a rewrite, because the reasoning it overrides
+// is still the reason everything else in this file behaves the way it does.
+//
+// Two things had to be solved for it, and they are the actual work of this
+// pass:
+//
+// A. THE ACCENT NOW MEANS TWO THINGS, so shape has to separate them. A
+//    background pane's selected tab can be `active` AND `isAwaitingAttention`
+//    at once (`isTabAwaitingAttention`, terminalActivity.ts: the marker only
+//    clears for the VIEWED tab of the focused pane), so both signals can land
+//    on one 24px chip. They stay legible because they use the accent
+//    differently: the active tab is OUTLINED (1px keyline + /14 wash, resting
+//    height), the waiting card is FILLED (solid face, 6px taller, shadowed),
+//    and a chip that is both wears the solid face plus its selection keyline
+//    re-inked in `--pc-pane-background`. Filled = wants you, outlined =
+//    selected, both = both. That is the same shape-not-hue separation the
+//    "Akzent auf Tabs erlaubt" correction already established for pane focus
+//    vs. active tab, extended by one term.
+//
+// B. EVERYTHING ON THE FACE FLIPS TO ONE INK. `--pc-pane-background` — label,
+//    attention dot, resource-warn dot, selection keyline, and a hairline around
+//    the tool badge. One rule, no per-element judgement calls, and it is safe
+//    in both themes by construction because it is the ground the accent was
+//    tuned against (WCAG 2.1 relative luminance, measured against the two
+//    token pairs: 7.82:1 dark `#121314` on `#e59656`, 5.49:1 light `#ffffff`
+//    on `#a05605`). It also removes three separate collisions the amber face
+//    would otherwise have caused: `--pc-icon-red` on amber (1.04:1 in the light
+//    theme — the dot would have been gone, not just dim),
+//    `--pc-status-warn` (dark `#e8a33d`, amber on amber), and the tool badges'
+//    warm brand fills, `#D97757` above all — the very badge that helped tip the
+//    round before this one into "this tab is red". The dot losing its red is
+//    the point, not a regression: the card face is the colour signal now, and
+//    the FLÄCHENANTEIL lesson from the paragraph above says a second colour on
+//    a chip this small merges instead of adding.
+//
+// The clearance the card needs grew with it: the workspace gutter is 12px, not
+// 8px, and `.pc-pane-clip`'s window follows it exactly (App.css) — at 8px the
+// raised card had ~2px of air left to the pane above, which did not clip but
+// read as cramped ("the gap is too tight", same session). Both values live in
+// App.css; nothing else hardcodes the gutter (`GridSplitters.tsx` measures it,
+// `splitRatios.ts` takes it as a parameter).
 
 interface TerminalTabInfo {
+  kind: "terminal";
   tabId: string;
-  /** 1-basiert, aus der Position in `Pane.terminalTabs` (gridState.ts trägt
-   * keine Nummerierung selbst — reine Anzeigeableitung des Aufrufers). */
-  number: number;
-  /** Nutzer-Umbenennung (`renameTerminalTab`) — `null` heißt "kein eigener
-   * Name", der Chip zeigt dann nur seine Nummer. */
+  /** One-based terminal position used only for the existing keyboard shortcut
+   * registry and its accessible hint. It is not rendered as tab identity. */
+  shortcutPosition: number;
+  /** User-defined identity; `null` falls back to the detected/launch tool. */
   label: string | null;
+  /** Launch adapter chosen for this tab. Tool detection can refine this once
+   * the process is running; the adapter keeps the overview truthful before
+   * that first asynchronous detection result arrives. */
+  adapterId?: string | null;
 }
 
-/** Props dieser Komponente, als eigener Typ — TerminalPane.tsx und
- * FileEditor.tsx binden beide denselben Tab-Zustand derselben Pane ein
- * (Kopfkommentar) und reichen deshalb dasselbe Objekt einfach durch, statt
- * jedes Feld einzeln zu wiederholen. */
-/** Der Zug eines Terminal-Tabs in eine andere Pane (Ticket 32) — er lebt in
- * `PaneGrid.tsx` (dort sind Ziele und Wirkung bekannt), hier hängen nur der
- * Griff und die Quell-Optik daran. Nicht exportiert: `PaneGrid.tsx` baut das
- * Objekt strukturell als Teil von `PaneTabsProps` (dieselbe Linie wie
- * `TerminalTabInfo` oben). */
+interface FileTabInfo {
+  kind: "file";
+  tabId: string;
+  label: string;
+  path: string;
+  dirty: boolean;
+}
+
+type PaneTabInfo = TerminalTabInfo | FileTabInfo;
+
+/** Shared props used by terminal and file surfaces of the same pane. */
+/** Drag behavior is owned by `PaneGrid.tsx`, where valid targets and the
+ * state transition are known. This strip only exposes the handle state. */
 interface PaneTabDrag {
   /** An `onPointerDown` des Chips. */
   start: (tabId: string, event: ReactPointerEvent<HTMLElement>) => void;
@@ -304,22 +436,23 @@ interface PaneTabDrag {
 }
 
 export interface PaneTabsProps {
-  terminalTabs: readonly TerminalTabInfo[];
-  activeTerminalTabId: string;
+  tabs: readonly PaneTabInfo[];
+  activeTabId: string;
   /** Ob die EIGENE Pane gerade den Grid-Fokus trägt (`PaneCell`s `focused`
-   * in PaneGrid.tsx) — unabhängig von `activeTerminalTabId`, das nur die
+   * in PaneGrid.tsx) — unabhängig von `activeTabId`, das nur die
    * Tab-Auswahl INNERHALB dieser Pane trägt. Alleine für die
    * Needs-Attention-Unterdrückung auf dem ausgewählten Tab gebraucht (s.
    * Kopfkommentar dieser Datei, Korrektur zum Hintergrund-Pane-Fund) — die
    * Auswahl-Optik selbst (`active` an den Chips) bleibt davon unberührt. */
   paneFocused: boolean;
-  showingFile: boolean;
-  /** `null`, solange in dieser Pane keine Datei offen ist — dann gibt es
-   * keinen File-Tab in der Leiste. */
-  fileName: string | null;
-  fileDirty: boolean;
-  onSelectTerminalTab: (tabId: string) => void;
-  onOpenTerminalTab: () => void;
+  /** Shared, already-cached project context for every tab in this Pane. */
+  project: TabOverviewProject;
+  onSelectTab: (tabId: string) => void;
+  /** `adapterId` (Ticket 35): omitted für den einfachen "+"-Klick (löst den
+   * `terminal.defaultAdapter`-Default auf, s. `useGrid.ts`), explizit
+   * gesetzt vom Adapter-Dropdown daneben — `null` für die eingebaute Shell,
+   * sonst eine feste `adapters.ts`-Id. */
+  onOpenTerminalTab: (adapterId?: string | null) => void;
   onCloseTerminalTab: (tabId: string) => void;
   /** Browser-übliches "Andere Tabs schließen" (Kontextmenü) — schließt alle
    * Terminal-Tabs AUSSER `tabId` in einem Zug, EIN gemeinsamer Guard statt
@@ -332,21 +465,15 @@ export interface PaneTabsProps {
   /** Kontextmenü-Aktion "Umbenennen" — `label: null` löscht den Namen wieder
    * (leeres/unverändertes Eingabefeld committen, s. `TerminalTabRenameField`). */
   onRenameTerminalTab: (tabId: string, label: string | null) => void;
-  onSelectFile: () => void;
+  onCloseFileTab: (tabId: string) => void;
+  terminalPerformanceWarning?: {
+    dismissed: boolean;
+    onDismiss: () => void;
+  };
   /** Tab-Verschieben zwischen Panes (Ticket 32). */
   tabDrag: PaneTabDrag;
-  /** Wo ein gerade schwebender Tab-Zug HIER landen würde — `null`, solange
-   * kein Zug über dieser Pane schwebt. `index` ist der Einfüge-Slot in der
-   * aktuellen Chip-Reihe (0 = vor dem ersten Chip … `länge` = hinter dem
-   * letzten; beim Umsortieren innerhalb der eigenen Pane zählt der gezogene
-   * Chip mit), `number` die Nummer, die der Tab NACH dem Drop trüge (beim
-   * Umsortieren nach rechts nicht `index + 1` — der eigene Chip löst sich ja
-   * heraus; die Umrechnung macht `PaneGrid.tsx`, das Quelle und Ziel kennt).
-   * Rendert einen Platzhalter-Chip an genau dieser Stelle (s.
-   * `IncomingTabSlot` unten): die präzise Antwort auf "wo genau würde er
-   * einsortiert", Nutzer-Befund zum Tab-Zug ("nicht an eine ganz bestimmte
-   * Stelle" droppen zu können). */
-  incomingTab?: { index: number; number: number } | null;
+  /** Exact insertion slot for the active drag preview. */
+  incomingTab?: { index: number } | null;
   /** Der zuletzt per Zug angekommene Tab (PaneGrid.tsx setzt es beim Drop) —
    * sein Chip quittiert die Ankunft mit einem einmaligen, kurzen
    * `pc-drop-settle`-Wasch (App.css). `nonce` unterscheidet zwei Züge
@@ -360,31 +487,47 @@ export interface PaneTabsProps {
 }
 
 export function PaneTabs({
-  terminalTabs,
-  activeTerminalTabId,
+  tabs,
+  activeTabId,
   paneFocused,
-  showingFile,
-  fileName,
-  fileDirty,
-  onSelectTerminalTab,
+  project,
+  onSelectTab,
   onOpenTerminalTab,
   onCloseTerminalTab,
   onCloseOtherTerminalTabs,
   onCloseTerminalTabsToRight,
   onRenameTerminalTab,
-  onSelectFile,
+  onCloseFileTab,
+  terminalPerformanceWarning,
   tabDrag,
   incomingTab = null,
   dropSettle = null,
   onTabAttentionFlash,
 }: PaneTabsProps) {
   const { t } = useTranslation();
+  const terminalTabs = tabs.filter(
+    (tab): tab is TerminalTabInfo => tab.kind === "terminal",
+  );
   // Höchstens EIN Umbenennen-Feld gleichzeitig offen, über die ganze Leiste
   // hinweg — dieselbe Alleinstellung wie ExplorerPanel.tsx' `isRenaming`
   // (dort pfadgeschlüsselt, hier tabId-geschlüsselt). Lebt bewusst hier statt
   // in `App.tsx`/`gridState.ts`: rein transiente UI-Absicht, kein
   // persistierter Zustand.
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  // Fix 2026-08-19 (horizontal-scroll bugfix, second pass after review): a
+  // plain vertical mouse wheel over an `overflow-x: auto` box does not
+  // reliably become `scrollLeft` movement in WebKit — there is nothing for
+  // the wheel to scroll vertically (see the height comment below), so
+  // without this the wheel event would just do nothing, and a mouse user
+  // (no trackpad, no visible scrollbar — see `.pc-tabstrip-scroll` in
+  // App.css) would have no way at all to reach an off-screen tab. Only
+  // redirects a vertical-only delta (plain wheel); leaves a genuine
+  // horizontal delta (Shift+wheel, trackpad two-finger swipe) alone since
+  // the browser already applies that to `scrollLeft` natively.
+  const handleTabStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY === 0 || event.deltaX !== 0) return;
+    event.currentTarget.scrollLeft += event.deltaY;
+  };
   return (
     <div
       role="group"
@@ -411,91 +554,253 @@ export function PaneTabs({
       // die Gruppe exakt die Chip-Höhe (24px) und damit exakt die
       // Header-Höhe — nur noch EINE Linie an dieser Kante, die der Chips
       // selbst (aktiv: volle Akzent-Box; inaktiv: gedämpfte 1px-Kontur).
-      className="flex min-w-0 shrink-0 items-center gap-px"
+      //
+      // Nachtrag 2026-08-19 (Karteikarten-Umbau, s. Kopfkommentar):
+      // `items-end` statt `items-center`, dazu explizit `h-6`. Der wartende
+      // Chip wird jetzt HÖHER als seine Nachbarn (24px → 30px), und nur eine
+      // untenbündige Reihe lässt dieses Wachstum vollständig nach oben gehen
+      // — mit `items-center` hätte es sich wieder je zur Hälfte auf beide
+      // Kanten verteilt und die Unterkante genau um die 1px verschoben, die
+      // der Absatz darüber teuer geradegezogen hat. Das `h-6` hält die Gruppe
+      // dabei auf Chiphöhe, obwohl ein Kind zeitweise darüber hinausragt:
+      // ohne feste Höhe wüchse die Gruppe mit dem Chip mit und säße als
+      // 30px-Block wieder mittig im 24px-Header — derselbe Fehler, nur an
+      // einer Ebene höher.
+      //
+      // The group shrinks with the pane. Every generic tab kind scrolls in the
+      // inner strip, while terminal creation controls stay fixed and reachable.
+      className="flex h-6 min-w-0 shrink items-end gap-px"
     >
-      {/* Der Platzhalter des schwebenden Tab-Zugs steht AN seinem Einfüge-
-          Slot zwischen den Chips (flatMap statt map), nicht mehr fix am Ende
-          — die Leiste zeigt exakt die Reihenfolge, die ein Loslassen jetzt
-          ergäbe. Sein fester Key hält ihn beim Wandern zwischen den Slots
-          als dasselbe Element (kein Neumount pro Position). */}
-      {terminalTabs.flatMap((tab, i) => [
-        ...(incomingTab !== null && incomingTab.index === i
-          ? [<IncomingTabSlot key="incoming-tab" number={incomingTab.number} />]
-          : []),
-        <TerminalTabChip
-          key={tab.tabId}
-          tabId={tab.tabId}
-          number={tab.number}
-          label={tab.label}
-          active={!showingFile && tab.tabId === activeTerminalTabId}
-          paneFocused={paneFocused}
-          // Der letzte verbleibende Terminal-Tab lässt sich nicht schließen
-          // (gridState.ts' closeTerminalTab ist an dieser Stelle ohnehin ein
-          // No-Op) — der Menüpunkt entfällt dafür ganz, statt wirkungslos
-          // anklickbar zu bleiben.
-          closable={terminalTabs.length > 1}
-          otherTabsCount={terminalTabs.length - 1}
-          tabsToRightCount={terminalTabs.length - 1 - i}
-          draggable={tabDrag.draggable}
-          dragging={tabDrag.draggingTabId === tab.tabId}
-          renaming={tab.tabId === renamingTabId}
-          onAttentionFlash={
-            onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
-          }
-          settleNonce={dropSettle?.tabId === tab.tabId ? dropSettle.nonce : null}
-          onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
-          onSelect={() => {
-            // Der Abschlussklick eines Zugs darf den Quell-Tab nicht
-            // nebenbei auswählen (s. `PaneTabDrag.consumeClick`).
-            if (tabDrag.consumeClick()) return;
-            onSelectTerminalTab(tab.tabId);
-          }}
-          onClose={() => onCloseTerminalTab(tab.tabId)}
-          onCloseOthers={() => onCloseOtherTerminalTabs(tab.tabId)}
-          onCloseTabsToRight={() => onCloseTerminalTabsToRight(tab.tabId)}
-          onStartRename={() => setRenamingTabId(tab.tabId)}
-          onCommitRename={(label) => {
-            onRenameTerminalTab(tab.tabId, label);
-            setRenamingTabId(null);
-          }}
-          onDiscardRename={() => setRenamingTabId(null)}
-        />,
-      ])}
-      {incomingTab !== null && incomingTab.index >= terminalTabs.length && (
-        <IncomingTabSlot key="incoming-tab" number={incomingTab.number} />
-      )}
+      {/* No fixed height: horizontal overflow also makes vertical overflow
+          scrollable in WebKit, so the container must grow with pulled
+          attention cards instead of clipping them. */}
+      <div
+        className="pc-tabstrip-scroll flex min-w-0 shrink items-end gap-px overflow-x-auto"
+        onWheel={handleTabStripWheel}
+      >
+        {/* Der Platzhalter des schwebenden Tab-Zugs steht AN seinem Einfüge-
+            Slot zwischen den Chips (flatMap statt map), nicht mehr fix am
+            Ende — die Leiste zeigt exakt die Reihenfolge, die ein Loslassen
+            jetzt ergäbe. Sein fester Key hält ihn beim Wandern zwischen den
+            Slots als dasselbe Element (kein Neumount pro Position). */}
+        {tabs.flatMap((tab, i) => [
+          ...(incomingTab !== null && incomingTab.index === i
+            ? [<IncomingTabSlot key="incoming-tab" />]
+            : []),
+          tab.kind === "terminal" ? (
+            <TerminalTabChip
+              key={tab.tabId}
+              tabId={tab.tabId}
+              shortcutPosition={tab.shortcutPosition}
+              label={tab.label}
+              adapterId={tab.adapterId}
+              project={project}
+              active={tab.tabId === activeTabId}
+              paneFocused={paneFocused}
+              closable={tabs.length > 1}
+              otherTabsCount={terminalTabs.length - 1}
+              tabsToRightCount={terminalTabs.filter(
+                (candidate) => tabs.indexOf(candidate) > i,
+              ).length}
+              draggable={tabDrag.draggable}
+              dragging={tabDrag.draggingTabId === tab.tabId}
+              renaming={tab.tabId === renamingTabId}
+              onAttentionFlash={
+                onTabAttentionFlash ? () => onTabAttentionFlash(tab.tabId) : undefined
+              }
+              settleNonce={dropSettle?.tabId === tab.tabId ? dropSettle.nonce : null}
+              onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
+              onSelect={() => {
+                if (tabDrag.consumeClick()) return;
+                onSelectTab(tab.tabId);
+              }}
+              onClose={() => onCloseTerminalTab(tab.tabId)}
+              onCloseOthers={() => onCloseOtherTerminalTabs(tab.tabId)}
+              onCloseTabsToRight={() => onCloseTerminalTabsToRight(tab.tabId)}
+              onStartRename={() => setRenamingTabId(tab.tabId)}
+              onCommitRename={(label) => {
+                onRenameTerminalTab(tab.tabId, label);
+                setRenamingTabId(null);
+              }}
+              onDiscardRename={() => setRenamingTabId(null)}
+            />
+          ) : (
+            <FileTabChip
+              key={tab.tabId}
+              tabId={tab.tabId}
+              label={tab.label}
+              path={tab.path}
+              dirty={tab.dirty}
+              active={tab.tabId === activeTabId}
+              paneFocused={paneFocused}
+              project={project}
+              draggable={tabDrag.draggable && tabs.length > 1}
+              dragging={tabDrag.draggingTabId === tab.tabId}
+              onPointerDown={(event) => tabDrag.start(tab.tabId, event)}
+              onClick={() => {
+                if (tabDrag.consumeClick()) return;
+                onSelectTab(tab.tabId);
+              }}
+              onClose={() => onCloseFileTab(tab.tabId)}
+            />
+          ),
+        ])}
+        {incomingTab !== null && incomingTab.index >= tabs.length && (
+          <IncomingTabSlot key="incoming-tab" />
+        )}
+      </div>
       <ChromeTooltip label={t("paneTabs.openTerminalTab")}>
         <button
           type="button"
           aria-label={t("paneTabs.openTerminalTab")}
-          onClick={onOpenTerminalTab}
-          className={`flex size-(--pc-paneControl-size) shrink-0 items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          onClick={() => onOpenTerminalTab()}
+          // `self-center` hält diesen Knopf da, wo er immer saß: er ist mit
+          // 18px (`--pc-paneControl-size`) kleiner als die 24px-Chips, das
+          // untenbündige `items-end` der Gruppe (2026-08-19) würde ihn sonst
+          // um 3px nach unten fallen lassen und aus der Kopfzeilenmitte
+          // kippen. Die Chips brauchen die Unterkante als Bezug, dieses
+          // Bedienelement die Mitte — beides gleichzeitig geht nur, indem
+          // genau dieses eine Kind ausschert.
+          className={`flex size-(--pc-paneControl-size) shrink-0 self-center items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
         >
           <PlusIcon />
         </button>
       </ChromeTooltip>
-      {fileName !== null && (
-        <PaneTab
-          label={fileName}
-          dirty={fileDirty}
-          active={showingFile}
-          paneFocused={paneFocused}
-          onClick={onSelectFile}
-        />
+      {/* Ticket 35: Dropdown neben dem "+"-Knopf — der Klick selbst startet
+          immer schon den `terminal.defaultAdapter`-Default (Knopf oben),
+          dieses Menü bietet die Alternativen dazu an, genau wie im Ticket
+          gefordert ("ein Dropdown daneben"). Eigener Trigger statt eines
+          Untermenüs am "+"-Knopf: der bleibt so ein einfacher, sofortiger
+          Klick ohne Menü-Umweg für den häufigen Fall. */}
+      <DropdownMenu.Root>
+        <ChromeTooltip label={t("paneTabs.chooseAdapter")}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label={t("paneTabs.chooseAdapter")}
+              className={`flex size-(--pc-paneControl-size) shrink-0 self-center items-center justify-center rounded-(--pc-paneControl-radius) text-(--pc-paneHeader-foreground) transition-colors hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+            >
+              <ChevronDownIcon />
+            </button>
+          </DropdownMenu.Trigger>
+        </ChromeTooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className={`min-w-40 ${CHROME_MENU_CONTENT_CLASS}`}>
+            {ADAPTER_PICKER_OPTIONS.map((option) => (
+              <DropdownMenu.Item
+                key={option.id ?? "shell"}
+                onSelect={() => onOpenTerminalTab(option.id)}
+                className={CHROME_MENU_ITEM_CLASS}
+              >
+                {t(option.labelKey)}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      {terminalTabs.length >= 6 && !terminalPerformanceWarning?.dismissed && (
+        <span
+          role="status"
+          className="flex h-5 shrink-0 items-center gap-1 rounded border border-(--pc-status-warn)/45 bg-(--pc-status-warn)/10 px-1.5 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-paneHeader-foreground)"
+        >
+          <span className="max-w-48 truncate">
+            {t("paneTabs.performanceWarning")}
+          </span>
+          <button
+            type="button"
+            aria-label={t("paneTabs.dismissPerformanceWarning")}
+            onClick={terminalPerformanceWarning?.onDismiss}
+            className={`shrink-0 text-(--pc-paneHeader-foreground) hover:text-(--pc-foreground) ${CHROME_FOCUS_RING}`}
+          >
+            ×
+          </button>
+        </span>
       )}
     </div>
   );
 }
 
-// Ein einzelner Terminal-Tab: nur die Nummer, mittig, IMMER sichtbar
-// (Kopfkommentar). Schließen und Umbenennen laufen beide über das
-// Kontextmenü (Rechtsklick) — Schließen zusätzlich über Mittelklick
-// (`onAuxClick`), dasselbe Idiom wie Browser-Tabs, das die Entwickler-
-// Zielgruppe dieser App aus jedem Chrome-artigen Werkzeug kennt.
+/** Shared interactive surface for every content Tab kind. Kind-specific
+ * identity stays in the children; selection, drag semantics, sizing hooks,
+ * focus treatment, and insertion measurement stay identical. */
+const TabChipButton = forwardRef<HTMLButtonElement, TabChipButtonProps>(
+  function TabChipButton(
+    {
+  tabId,
+  active,
+  paneFocused,
+  draggable,
+  dragging,
+  ariaLabel,
+  layoutClassName,
+  toneClassName,
+  onPointerDown,
+  onClick,
+  onAuxClick,
+      children,
+      className,
+      ...buttonProps
+    },
+    ref,
+  ) {
+    const selectionTone =
+      toneClassName ??
+      (active
+        ? `${
+            paneFocused
+              ? "border-(--pc-pane-activeBorder)"
+              : "border-(--pc-pane-activeBorder)/45"
+          } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
+        : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)");
+    return (
+      <button
+        {...buttonProps}
+        ref={ref}
+        type="button"
+        onPointerDown={onPointerDown}
+        onClick={onClick}
+        onAuxClick={onAuxClick}
+        aria-pressed={active}
+        aria-label={ariaLabel}
+        data-pane-tab-chip={tabId}
+        className={`relative flex items-center rounded-t-(--pc-paneControl-radius) border border-b-2 text-(length:--pc-chrome-fontSizeSmall) ${layoutClassName} ${
+          dragging ? "cursor-grabbing opacity-50" : draggable ? "cursor-grab" : ""
+        } ${selectionTone} ${CHROME_FOCUS_RING} ${className ?? ""}`}
+      >
+        {children}
+      </button>
+    );
+  },
+);
+
+interface TabChipButtonProps
+  extends Omit<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    "aria-label" | "children" | "draggable" | "onAuxClick" | "onClick" | "onPointerDown"
+  > {
+  tabId: string;
+  active: boolean;
+  paneFocused: boolean;
+  draggable: boolean;
+  dragging: boolean;
+  ariaLabel?: string;
+  layoutClassName: string;
+  toneClassName?: string;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onClick: () => void;
+  onAuxClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}
+
+// One terminal tab. Its face shows stable content identity (custom name or
+// tool), never the tab's current position. Close and rename remain available
+// through the browser-style context menu and middle-click close gesture.
 function TerminalTabChip({
   tabId,
-  number,
+  shortcutPosition,
   label,
+  adapterId,
+  project,
   active,
   paneFocused,
   closable,
@@ -516,8 +821,10 @@ function TerminalTabChip({
   onDiscardRename,
 }: {
   tabId: string;
-  number: number;
+  shortcutPosition: number;
   label: string | null;
+  adapterId?: string | null;
+  project: TabOverviewProject;
   active: boolean;
   paneFocused: boolean;
   closable: boolean;
@@ -555,13 +862,21 @@ function TerminalTabChip({
   onDiscardRename: () => void;
 }) {
   const { t } = useTranslation();
-  const baseLabel = t("paneTabs.terminalTab", { number });
+  const baseLabel = t("paneTabs.terminalTabAccessible", {
+    number: shortcutPosition,
+  });
   const toolIcon = resolveToolIcon(useDetectedToolId(tabId));
-  const toolLabel = toolIcon ? t(toolIcon.labelKey) : null;
-  // Persistent statt transient (Kopfkommentar dieser Datei, Umbau-Absatz;
-  // terminalActivity.ts' Kommentar an `viewedTabId`/`unread`) — bleibt
-  // gesetzt über Sprechpausen hinweg, bis `markTabViewed` unten feuert.
-  const isUnread = useTerminalUnread(tabId);
+  const adapterLabelKey = ADAPTER_PICKER_OPTIONS.find(
+    (option) => option.id === (adapterId ?? null),
+  )?.labelKey;
+  const toolLabel = toolIcon
+    ? t(toolIcon.labelKey)
+    : t(adapterLabelKey ?? "paneTabs.tool.shell");
+  // Derived live from terminalActivity.ts' module state (this file's header
+  // comment, Umbau 2026-08-17) — true once this tab has done real work and
+  // then fallen silent, false again the instant new output arrives or the
+  // user looks at it via `markTabViewed` below.
+  const isAwaitingAttention = useTerminalAwaitingAttention(tabId);
   // Pro-Tab-Ressourcen-Eskalationskette (`resource_guard.rs`): "warn" ist die
   // einzige Stufe, die dieser Chip selbst zeigt — "paused"/"terminated"
   // übernimmt `TabResourceBanner.tsx` in der Terminalfläche, hier reicht ein
@@ -571,58 +886,75 @@ function TerminalTabChip({
   // `markTabViewed` meldet "der Nutzer sieht diesen Tab gerade tatsächlich"
   // an terminalActivity.ts, sobald Auswahl UND Pane-Fokus zusammenfallen —
   // dieselbe Kombination wie zuvor die reine Badge-Unterdrückung, jetzt
-  // zusätzlich der einzige Weg, `unread` wieder zu löschen.
+  // zusätzlich der einzige Weg, den Marker sofort zu löschen statt erst über
+  // die nächste Aktivität abzuwarten.
   useEffect(() => {
     if (isViewed) markTabViewed(tabId);
   }, [isViewed, tabId]);
-  // Löst den einmaligen Aufblitz-Effekt (App.css' `pc-attention-flash`) exakt
-  // am false→true-Übergang von `isUnread` aus, nicht bei jedem Re-Render
-  // während `isUnread` bereits `true` ist — ein `key`-Neumount pro Übergang
-  // startet die `animation` jedes Mal frisch (dasselbe Muster wie das
-  // Tool-Icon-Badge, s. `pc-overlay-in` oben im Kopfkommentar).
-  const wasUnreadRef = useRef(isUnread);
+  // Fix 2026-08-19 (horizontal-scroll bugfix, s. Kommentar an `.pc-tabstrip-
+  // scroll` in PaneTabs): a newly opened or selected tab lands as `active`
+  // outside the visible scroll window whenever earlier tabs pushed it off —
+  // opening tab #12 must not require the user to then manually scroll to
+  // find it. `"nearest"` on both axes keeps this confined to the tab strip's
+  // own scroll container instead of also nudging any outer page scroll.
+  const cardRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    // Explicit `typeof` feature check, not just optional chaining on the ref:
+    // jsdom (this file's own test environment) doesn't implement
+    // `scrollIntoView` at all, but the DOM lib types claim it always exists,
+    // so `cardRef.current?.scrollIntoView?.(...)` trips the type-aware
+    // "unnecessary optional chain" lint rule while still crashing at runtime
+    // under jsdom — the types and the actual environment disagree here.
+    const card = cardRef.current;
+    if (active && typeof card?.scrollIntoView === "function") {
+      card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [active]);
+  // Fires the one-shot flash effect (App.css' `pc-attention-flash`) exactly
+  // on the false→true transition of `isAwaitingAttention`, not on every
+  // re-render while it's already true — a `key` remount per transition
+  // restarts the `animation` fresh each time (same pattern as the tool icon
+  // badge, see `pc-overlay-in` in the header comment above). Also drives the
+  // persistent "lifted" resting state further below for as long as the
+  // marker stays active, not just the one-shot flash.
+  const wasAwaitingAttentionRef = useRef(isAwaitingAttention);
   const [flashKey, setFlashKey] = useState(0);
   useEffect(() => {
-    if (isUnread && !wasUnreadRef.current) {
+    if (isAwaitingAttention && !wasAwaitingAttentionRef.current) {
       setFlashKey((key) => key + 1);
       onAttentionFlash?.();
     }
-    wasUnreadRef.current = isUnread;
-  }, [isUnread, onAttentionFlash]);
-  const needsAttentionLabel = isUnread ? t("paneTabs.unreadActivityLabel") : null;
+    wasAwaitingAttentionRef.current = isAwaitingAttention;
+  }, [isAwaitingAttention, onAttentionFlash]);
+  const needsAttentionLabel = isAwaitingAttention
+    ? t("paneTabs.awaitingAttentionLabel")
+    : null;
   const resourceWarnLabel = isResourceWarn ? t("resourceGuard.warnTabSuffix") : null;
-  // Nur die Zahlen 1-9 haben ein Kürzel (registry.ts) — ein zehnter Tab wäre
-  // ohnehin am Rand dessen, was in eine Pane-Kopfzeile passt, und bekommt
-  // schlicht keinen Akkord im Tooltip.
-  const shortcut = SHORTCUTS.find((def) => def.id === terminalTabSelectId(number));
-  const chordLabel = shortcut
-    ? `${baseLabel} (${formatChord(shortcut, isMacPlatform() ? "mac" : "other")})`
-    : baseLabel;
-  // Der eigene Name UND das erkannte Tool hängen sich als Anhang an den
-  // Tooltip, statt ihn zu ersetzen — die Nummer bleibt die verlässliche,
-  // immer gültige Kennung (Cmd/Strg+1..9 bleibt positionsbasiert), beides
-  // andere ist zusätzlicher Kontext. Siehe Kopfkommentar dieser Datei zur
-  // "am besten als Tooltip"-Entscheidung.
-  const suffixParts = [label, toolLabel, needsAttentionLabel, resourceWarnLabel].filter(
-    (part): part is string => part !== null,
+  // Only positions 1-9 have a registry shortcut. Later tabs simply omit the
+  // shortcut hint from the overview.
+  const shortcut = SHORTCUTS.find(
+    (def) => def.id === terminalTabSelectId(shortcutPosition),
   );
-  // Der Mittelklick-Hinweis hängt sich NUR an den sichtbaren Tooltip, nicht
-  // an `ariaLabel` (Punkt c) der User-Anfrage, "Tabster"-Optimierung ohne
-  // Schließkreuz): die Geste existiert schon länger (`onAuxClick` oben), war
-  // aber nirgends kommuniziert. Für Screenreader-Nutzer ist ein
-  // Maus-only-Gesten-Hinweis dagegen reine Ablenkung, keine zusätzliche
-  // Information — sie haben mit dem Kontextmenü ohnehin den vollwertigen Weg.
-  // Nur wenn überhaupt schließbar (letzter verbleibender Tab, s. `closable`
-  // oben), sonst wäre der Hinweis für eine wirkungslose Geste irreführend.
-  const tooltipSuffixParts = closable
-    ? [...suffixParts, t("paneTabs.middleClickCloseHint")]
-    : suffixParts;
-  const tooltipLabel =
-    tooltipSuffixParts.length === 0
-      ? chordLabel
-      : `${chordLabel} — ${tooltipSuffixParts.join(" · ")}`;
+  const shortcutHint = shortcut
+    ? formatChord(shortcut, isMacPlatform() ? "mac" : "other")
+    : null;
+  // The accessible name includes the visible content identity (WCAG 2.5.3)
+  // while retaining position only as keyboard-shortcut orientation.
+  const identityLabel = label ?? toolLabel;
+  const suffixParts = [
+    identityLabel,
+    label !== null && toolIcon ? toolLabel : null,
+    needsAttentionLabel,
+    resourceWarnLabel,
+  ].filter((part): part is string => part !== null);
   const ariaLabel =
     suffixParts.length === 0 ? baseLabel : `${baseLabel}: ${suffixParts.join(" · ")}`;
+  const overviewHint = [
+    shortcutHint,
+    closable ? t("paneTabs.middleClickCloseHint") : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
   // Radix' ContextMenu.Content hält seinen FocusScope-Trap bis zum Ende des
   // eigenen Schließvorgangs aktiv (in der echten App bis zum Ablauf der
   // `CHROME_MENU_CONTENT_CLASS`-Austrittsanimation) — ein Fokussieren des neu
@@ -645,23 +977,42 @@ function TerminalTabChip({
     "rename" | "close" | "closeOthers" | "closeToRight" | null
   >(null);
 
-  // Während des Umbenennens bewusst OHNE `ChromeTooltip`-Hülle: der Tooltip
-  // triggert auf Hover, und die Maus steht nach dem Menüpunkt-Klick fast
-  // immer noch genau über dem Chip — ohne diesen Zweig läge der Tooltip-Text
-  // sichtbar über dem frisch fokussierten Eingabefeld.
+  // Renaming intentionally omits `TabOverviewCard`: the pointer is usually
+  // still over the chip after choosing the context-menu item, and an overview
+  // would otherwise cover the freshly focused rename field.
   const trigger = (
     <ContextMenu.Trigger asChild>
-      <span className="group/tab relative flex h-6 shrink-0 items-stretch">
+      {/* `pc-tabcard` (App.css) besitzt die Höhe dieses Chips — 24px in Ruhe,
+          `+ --pc-tab-pull` im herausgezogenen Zustand — statt eines festen
+          `h-6`; sie ist der Wert, auf den der Auszug addiert. Die Kartenfläche
+          (opaker Grund) sitzt hier auf der Hülle und nicht auf dem Knopf, damit
+          dessen eigener Hintergrund (Akzent-Lasur des aktiven Tabs,
+          Hover-Füllung) und seine `-z-10`-Wasch-Flächen weiterhin DARÜBER malen
+          können — Begründung im App.css-Block.
+          Beim Umbenennen bewusst NICHT herausgezogen: dann rendert statt des
+          Knopfs nur das absolut positionierte Eingabefeld, die Hülle bliebe als
+          leere, 30px hohe Kartenfläche im Kopf stehen. */}
+      <span
+        ref={cardRef}
+        className={`group/tab pc-tabcard relative flex min-w-6 max-w-32 shrink items-stretch rounded-t-(--pc-paneControl-radius) ${
+          isAwaitingAttention && !renaming ? "pc-tabcard--pulled" : ""
+        }`}
+      >
         {renaming ? (
           <TerminalTabRenameField
-            number={number}
+            shortcutPosition={shortcutPosition}
             initialValue={label ?? ""}
+            anchorRef={cardRef}
             onCommit={onCommitRename}
             onDiscard={onDiscardRename}
           />
         ) : (
-          <button
-            type="button"
+          <TabChipButton
+            tabId={tabId}
+            active={active}
+            paneFocused={paneFocused}
+            draggable={draggable}
+            dragging={dragging}
             onPointerDown={onPointerDown}
             onClick={onSelect}
             onAuxClick={(event) => {
@@ -673,14 +1024,12 @@ function TerminalTabChip({
                 onClose();
               }
             }}
-            aria-pressed={active}
-            aria-label={ariaLabel}
+            ariaLabel={ariaLabel}
             // Messhaken für die Einfüge-Position des Tab-Zugs
-            // (`PaneGrid.tsx`' `terminalTabInsertionIndex`): die Chip-Mitten
-            // entscheiden, vor oder hinter welchem Chip ein Drop landete.
+            // (`PaneGrid.tsx`'s `paneTabInsertionIndex`): chip midpoints
+            // decide whether the insertion lands before or after each chip.
             // Ein data-Attribut wie `data-pane-id`, kein aria-Merkmal — für
             // Screenreader ist der Chip weiterhin nur ein Knopf.
-            data-terminal-tab-chip={tabId}
             // `border-b-2` IMMER gesetzt (Farbe verzweigt, nicht die Kante
             // selbst) — sonst würde die 2px-Zeile beim Aktivwerden neu
             // reserviert und die Zahl spränge einen Frame lang nach oben.
@@ -722,17 +1071,44 @@ function TerminalTabChip({
             // Pointer-Capture hält den Zeiger am Chip, dessen Cursor gilt
             // also für den ganzen Zug — die geschlossene Hand ist das
             // systemübliche "ich halte gerade etwas".
-            className={`relative flex h-full min-w-6 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-b-2 px-3 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
-              dragging ? "cursor-grabbing" : draggable ? "cursor-grab" : ""
-            } ${dragging ? "opacity-50" : ""} ${
-              active
-                ? `${
-                    paneFocused
-                      ? "border-(--pc-pane-activeBorder)"
-                      : "border-(--pc-pane-activeBorder)/45"
-                  } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
-                : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
-            } ${CHROME_FOCUS_RING}`}
+            //
+            // `isAwaitingAttention` (2026-08-17, Auszug-Umbau 2026-08-19, s.
+            // Kopfkommentar): der Chip steht heraus, solange der Marker aktiv
+            // ist — "als würde man diese Karteikarte ein bisschen rausziehen",
+            // Nutzer-Zitat zur gewünschten Optik. Geometrie und Kartenfläche
+            // liegen an der `pc-tabcard`-Hülle (App.css), hier bleibt, was
+            // wirklich diesem Knopf gehört: seine Erhebung, seine Tinte und
+            // seine Randlinie (Amber-Fassung, Korrektur 2026-08-19 im
+            // Kopfkommentar). `--pc-lift-
+            // elevation` (theme.css) statt des vorigen, hart notierten
+            // `rgba(0,0,0,0.35)` — der kannte nur das Dark-Theme und lag im
+            // Light-Theme als schwarzer Klotz unter der Karte. `box-shadow`
+            // steht schon in der Transition-Liste dieses Knopfs, das Ein- und
+            // Ausblenden läuft also ohne weiteres Zutun mit dem Auszug
+            // zusammen. Bewusst keine Akzentfarbe IM SCHATTEN: die Karte
+            // darüber ist inzwischen selbst vollflächig Amber, ein amber
+            // getönter Schatten daran läse sich als Glühen statt als Tiefe —
+            // und Tiefe ist genau der Anteil, den der Schatten hier beiträgt.
+            //
+            // `isolate`: dieser Knopf spannt seinen eigenen Stacking-Context
+            // auf, damit die beiden `-z-10`-Wasch-Flächen weiter unten
+            // garantiert IN ihm bleiben — direkt über seiner eigenen Fläche,
+            // unter seiner Beschriftung. Vorher hing das daran, dass der
+            // wartende Chip zufällig ein `-translate-y` (und damit einen
+            // Stacking-Context) trug; ohne diesen Ersatz wären die Flächen mit
+            // dem Wegfall des Translate hinter den nächsten opaken Grund
+            // gerutscht und unsichtbar geworden — was `pc-drop-settle`, das
+            // nie ein Translate hatte, ohnehin schon war.
+            layoutClassName="h-full min-w-10 max-w-32 isolate justify-center px-2 transition-[color,background-color,border-color,transform,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            toneClassName={
+              isAwaitingAttention
+                ? `shadow-[var(--pc-lift-elevation)] text-(--pc-pane-background) hover:bg-(--pc-pane-background)/10 ${
+                    active
+                      ? "border-(--pc-pane-background) font-semibold"
+                      : "border-(--pc-pane-activeBorder) font-medium"
+                  }`
+                : undefined
+            }
           >
             {active && paneFocused && <TraceStub />}
             {settleNonce !== null && (
@@ -754,17 +1130,28 @@ function TerminalTabChip({
                 className="pointer-events-none absolute inset-0 -z-10 animate-[pc-attention-flash_1400ms_ease-out] rounded-t-(--pc-paneControl-radius)"
               />
             )}
-            <span className="flex items-center gap-1">
-              {isUnread && (
+            {/* `pc-tabcard__label` (App.css): der Inhalt fährt den Auszug als
+                starrer Körper mit — die wachsende Box hebt ihn von allein nur
+                um die Hälfte. */}
+            <span className="pc-tabcard__label flex items-center gap-1">
+              {isAwaitingAttention && (
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 rounded-full bg-(--pc-icon-red)"
+                  data-attention-dot=""
+                  className="pc-tabcard__dot size-1.5 shrink-0 rounded-full bg-(--pc-pane-background)"
                 />
               )}
               {isResourceWarn && (
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 rounded-full bg-(--pc-status-warn)"
+                  className={`size-1.5 shrink-0 rounded-full ${
+                    // Auf der Amber-Karte hätte `--pc-status-warn` im Dark-Theme
+                    // (#e8a33d) praktisch keinen Kontrast mehr — dieselbe Tinte
+                    // wie jede andere Marke darauf.
+                    isAwaitingAttention
+                      ? "bg-(--pc-pane-background)"
+                      : "bg-(--pc-status-warn)"
+                  }`}
                 />
               )}
               {toolIcon && (
@@ -772,32 +1159,52 @@ function TerminalTabChip({
                   aria-hidden="true"
                   className={`flex size-4 shrink-0 animate-[pc-overlay-in_150ms_ease-out] items-center justify-center rounded-[3px] transition-colors ${
                     toolIcon.badgeClassName ?? "border border-current/35"
+                  } ${
+                    // Markenfarben der Tool-Badges sind warm (Claude #D97757 vorn // brandlint-ok: funktionale Farbwert-Begründung, kein Marketing
+                    // weg) und verschmieren auf der Amber-Karte zur Fläche. Eine
+                    // Haarlinie in der Kartentinte trennt sie wieder ab —
+                    // `outline` statt `border`, damit die 16px-Box nicht kleiner
+                    // wird. Der Fallback ohne Markenfläche braucht sie nicht:
+                    // dessen `border-current` IST bereits die Tinte.
+                    isAwaitingAttention && toolIcon.badgeClassName
+                      ? "outline-1 outline-(--pc-pane-background)"
+                      : ""
                   }`}
                 >
                   <toolIcon.Icon />
                 </span>
               )}
-              {/* Terminalschrift + tabular-nums statt der Chrome-Schrift:
-                  die Nummer ist HUD-Readout wie die Slot-Nummern der leeren
-                  Slots (ProjectPicker.tsx) und bleibt bei jedem Wert gleich
-                  breit. */}
-              <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums">
-                {number}
-              </span>
+              <span className="min-w-0 truncate">{label ?? toolLabel}</span>
             </span>
-          </button>
+          </TabChipButton>
         )}
       </span>
     </ContextMenu.Trigger>
   );
 
   return (
-    <ContextMenu.Root
-      onOpenChange={(open) => {
-        logBug2(`onOpenChange tabId=${tabId} open=${String(open)}`);
-      }}
-    >
-      {renaming ? trigger : <ChromeTooltip label={tooltipLabel}>{trigger}</ChromeTooltip>}
+    <ContextMenu.Root>
+      {renaming ? (
+        trigger
+      ) : (
+        <TabOverviewCard
+          title={label ?? toolLabel}
+          kindLabel={t("paneTabs.terminalTabKind")}
+          detailLabel={t("paneTabs.overviewTool")}
+          detail={toolLabel}
+          path={project.path}
+          project={project}
+          status={
+            needsAttentionLabel ??
+            resourceWarnLabel ??
+            (active ? t("paneTabs.activeTab") : undefined)
+          }
+          hint={overviewHint || undefined}
+          disabled={dragging}
+        >
+          {trigger}
+        </TabOverviewCard>
+      )}
       <ContextMenu.Portal>
         <ContextMenu.Content
           className={`min-w-40 ${CHROME_MENU_CONTENT_CLASS}`}
@@ -807,7 +1214,6 @@ function TerminalTabChip({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const action = pendingActionRef.current;
-            logBug2(`onCloseAutoFocus tabId=${tabId} pending=${String(action)}`);
             pendingActionRef.current = null;
             if (action === "rename") {
               onStartRename();
@@ -823,11 +1229,10 @@ function TerminalTabChip({
           <ContextMenu.Item
             onSelect={() => {
               pendingActionRef.current = "rename";
-              logBug2(`onSelect tabId=${tabId} action=rename`);
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
-            {t("paneTabs.renameTerminalTab", { number })}
+            {t("paneTabs.renameTerminalTab")}
           </ContextMenu.Item>
           {/* Trennt "Umbenennen" von der Schließen-Gruppe darunter, dasselbe
               Idiom wie ExplorerPanel.tsx/TerminalPane.tsx' Kontextmenüs —
@@ -839,18 +1244,16 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "close";
-                logBug2(`onSelect tabId=${tabId} action=close`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
-              {t("paneTabs.closeTerminalTab", { number })}
+              {t("paneTabs.closeTerminalTab")}
             </ContextMenu.Item>
           )}
           {otherTabsCount > 0 && (
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeOthers";
-                logBug2(`onSelect tabId=${tabId} action=closeOthers`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -861,7 +1264,6 @@ function TerminalTabChip({
             <ContextMenu.Item
               onSelect={() => {
                 pendingActionRef.current = "closeToRight";
-                logBug2(`onSelect tabId=${tabId} action=closeToRight`);
               }}
               className={CHROME_MENU_ITEM_CLASS}
             >
@@ -880,7 +1282,6 @@ function TerminalTabChip({
           <ContextMenu.Separator className={CHROME_MENU_SEPARATOR_CLASS} />
           <ContextMenu.Item
             onSelect={() => {
-              logBug2(`onSelect tabId=${tabId} action=killTerminal`);
               void invoke("resource_guard_kill_manual", { tabId }).catch(() => {
                 // Best-effort wie jeder andere PTY-Kill-Aufruf im Frontend
                 // (s. `ptyBackend.ts`s `reportIpcFailure`) — ein bereits
@@ -889,7 +1290,7 @@ function TerminalTabChip({
             }}
             className={CHROME_MENU_ITEM_CLASS}
           >
-            {t("paneTabs.killTerminalTab", { number })}
+            {t("paneTabs.killTerminalTab")}
           </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
@@ -897,33 +1298,89 @@ function TerminalTabChip({
   );
 }
 
-// Ersetzt die Nummer durch ein `absolute` positioniertes Eingabefeld
-// unterhalb des Chips (Widget-Material wie `ConfirmDialog.tsx` — dieselben
-// `--pc-widget-*`-Töne) — nimmt bewusst NICHT am Flex-Layout der Tab-Gruppe
-// teil (Begründung: Kopfkommentar dieser Datei). Enter committet, Escape UND
-// Blur verwerfen (kein `RenameField`-artiges Commit-on-Blur: ein Klick weg
-// vom Feld ist hier eher ein "ich hab's mir anders überlegt" als ein
-// "fertig", anders als bei ExplorerPanel.tsx' Dateiumbenennung). Leeres oder
-// unverändertes Feld committet als "kein Name" (`label: null`) — so lässt
-// sich ein vergebener Name über dasselbe Feld auch wieder löschen.
+// Ersetzt die Nummer durch ein Eingabefeld (Widget-Material wie
+// `ConfirmDialog.tsx` — dieselben `--pc-widget-*`-Töne) — nimmt bewusst NICHT
+// am Flex-Layout der Tab-Gruppe teil (Begründung: Kopfkommentar dieser
+// Datei). Enter committet, Escape UND Blur verwerfen (kein `RenameField`-
+// artiges Commit-on-Blur: ein Klick weg vom Feld ist hier eher ein "ich hab's
+// mir anders überlegt" als ein "fertig", anders als bei ExplorerPanel.tsx'
+// Dateiumbenennung). Leeres oder unverändertes Feld committet als "kein Name"
+// (`label: null`) — so lässt sich ein vergebener Name über dasselbe Feld auch
+// wieder löschen.
+//
+// Fix 2026-08-20 (Bugreport: Umbenennen ließ den ganzen Tab-Chip aus der Pane
+// verschwinden, kein Eingabefeld sichtbar): dieses Feld saß vorher `absolute`
+// INNERHALB von `.pc-tabstrip-scroll` — genau der Container, dessen
+// `overflow-x: auto` seit dem horizontal-scroll-Fix (Kopfkommentar dieser
+// Datei, "Fix 2026-08-19") per CSS-Spec-Kopplung auch `overflow-y` auf `auto`
+// erzwingt. Der 12px-Padding/Margin-Trick an `.pc-tabstrip-scroll` (App.css)
+// gibt genau so viel Raum, wie der `--pc-lift-elevation`-Schatten der
+// herausgezogenen Attention-Karte braucht — bei weitem nicht genug für dieses
+// ~40px hohe Feld unterhalb der Zeile. Es wurde also vom Container
+// weggeclippt, und `input.focus()` löste den Browser-Standard aus, den
+// fokussierten (aber unsichtbaren) Bereich in seinen nächsten scrollbaren
+// Vorfahren zu scrollen — genau dieser Container. Das schob die eigentlich
+// sichtbare Chip-Zeile aus dem schmalen, nur 12px hohen Fenster, das
+// `.pc-pane-clip` oberhalb des Headers öffnet, also optisch "aus der Pane
+// heraus". Statt den Trick zu vergrößern (würde denselben Fehler nur nach
+// oben statt nach unten verschieben, sobald das Feld selbst größer wird),
+// rendert das Feld jetzt per `createPortal` direkt unter `document.body` —
+// dasselbe Ziel wie Radix' eigene Portale in dieser Datei (Kontextmenü,
+// Tooltip) — mit `position: fixed` auf Basis der Chip-Bounding-Box
+// (`anchorRef`). Damit ist es kein Nachfahre von `.pc-tabstrip-scroll` mehr
+// und weder dessen Clip noch dessen automatischem Scroll-in-View unterworfen.
+// Einmalige Messung beim Mount reicht: das Grid scrollt/resized während des
+// Umbenennens nicht, und jede Interaktion außerhalb des Felds verwirft es
+// ohnehin per Blur.
 function TerminalTabRenameField({
-  number,
+  shortcutPosition,
   initialValue,
+  anchorRef,
   onCommit,
   onDiscard,
 }: {
-  number: number;
+  shortcutPosition: number;
   initialValue: string;
+  anchorRef: RefObject<HTMLElement | null>;
   onCommit: (label: string | null) => void;
   onDiscard: () => void;
 }) {
   const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
+  // Plain `useEffect`, NOT `useLayoutEffect`: this field mounts as part of
+  // the SAME commit that (re-)attaches the anchor span's own ref — the
+  // trigger swaps between a `TabOverviewCard`-wrapped and a bare
+  // `ContextMenu.Trigger` subtree when renaming starts/stops (see the
+  // renaming comment above), so React treats it as a fresh mount of the whole
+  // trigger subtree, span included.
+  // React's commit walk fires child layout effects BEFORE it (re-)attaches
+  // an ancestor host ref in that same commit (post-order: children finish
+  // before their parent's own ref-attach step runs) — a `useLayoutEffect`
+  // here reliably read `anchorRef.current` as still `null`. A passive effect
+  // runs in its own later pass, after the whole layout phase (all refs
+  // included) has already completed, so it sees the attached ref. Same
+  // reasoning `cardRef`'s own `scrollIntoView` effect above already relies
+  // on (plain `useEffect`, not layout).
   useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setPosition({ left: rect.left, top: rect.bottom });
+  }, [anchorRef]);
+
+  // Callback ref, not a `useEffect`: focusing has to happen exactly once, the
+  // moment the `<input>` actually attaches (which only happens once
+  // `position` flips from `null` to a real rect, see above). An effect keyed
+  // on `[position]` would look equivalent today, but re-fires on ANY later
+  // `setPosition` call — e.g. a future reposition-on-resize handler — which
+  // would steal focus and reselect the text mid-edit. A ref callback only
+  // ever runs on attach/detach, so it stays correct if that's added later.
+  const focusedOnAttach = useRef(false);
+  const inputRef = useCallback((input: HTMLInputElement | null) => {
+    if (!input || focusedOnAttach.current) return;
+    focusedOnAttach.current = true;
     input.focus();
     input.select();
   }, []);
@@ -933,15 +1390,22 @@ function TerminalTabRenameField({
     onCommit(trimmed === "" ? null : trimmed);
   };
 
-  return (
-    <div className="absolute left-0 top-full z-20 mt-1 w-36 rounded-md border border-(--pc-widget-border) bg-(--pc-widget-background) p-1 shadow-lg">
+  if (!position) return null;
+
+  return createPortal(
+    <div
+      style={{ left: position.left, top: position.top }}
+      className="fixed z-20 mt-1 w-36 rounded-md border border-(--pc-widget-border) bg-(--pc-widget-background) p-1 shadow-lg"
+    >
       <input
         ref={inputRef}
         type="text"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        aria-label={t("paneTabs.renameTerminalTabFieldLabel", { number })}
-        placeholder={t("paneTabs.terminalTab", { number })}
+        aria-label={t("paneTabs.renameTerminalTabFieldLabel", {
+          number: shortcutPosition,
+        })}
+        placeholder={t("paneTabs.terminalTab")}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
@@ -954,84 +1418,90 @@ function TerminalTabRenameField({
         onBlur={onDiscard}
         className={`w-full rounded bg-transparent px-1.5 py-1 text-(length:--pc-chrome-fontSizeSmall) text-(--pc-foreground) outline-none ${CHROME_FOCUS_RING}`}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-function PaneTab({
+function FileTabChip({
+  tabId,
   label,
+  path,
   dirty,
   active,
   paneFocused,
+  project,
+  draggable,
+  dragging,
+  onPointerDown,
   onClick,
+  onClose,
 }: {
+  tabId: string;
   label: string;
+  path: string;
   dirty?: boolean;
   active: boolean;
   paneFocused: boolean;
+  project: TabOverviewProject;
+  draggable: boolean;
+  dragging: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onClick: () => void;
+  onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      // Dieselbe Aktiv-Signalisierung wie TerminalTabChip (volle 1px-Box,
-      // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token,
-      // seit der Leiterbahn-Runde auch Stub + 45%-Dämpfung) — ein Bauteil,
-      // ein Idiom, s. Kopfkommentar dieser Datei. Kein
-      // ❯-Präfix (2026-08-13 mitentfernt, s. Kopfkommentar "Nachtrag …noch
-      // später") — dasselbe Idiom auf beiden Tab-Arten heißt auch: beide
-      // verlieren dasselbe Signal, nicht nur eine. Nur oben gerundet, aus
-      // demselben Grund wie dort (siehe Kommentar an TerminalTabChip).
-      className={`relative flex h-6 max-w-32 min-w-0 shrink items-center gap-1 rounded-t-(--pc-paneControl-radius) border border-b-2 px-1.5 text-(length:--pc-chrome-fontSizeSmall) transition-colors ${
-        active
-          ? `${
-              paneFocused
-                ? "border-(--pc-pane-activeBorder)"
-                : "border-(--pc-pane-activeBorder)/45"
-            } bg-(--pc-pane-activeBorder)/14 font-semibold text-(--pc-paneHeader-activeForeground)`
-          : "border-(--pc-paneHeader-border) font-medium text-(--pc-paneHeader-foreground) hover:border-(--pc-pane-border) hover:bg-(--pc-list-hoverBackground) hover:text-(--pc-foreground)"
-      } ${CHROME_FOCUS_RING}`}
+    <TabOverviewCard
+      title={label}
+      kindLabel={t("paneTabs.fileTab")}
+      detailLabel={t("paneTabs.overviewStatus")}
+      detail={t(dirty ? "paneTabs.unsavedChanges" : "paneTabs.saved")}
+      path={path}
+      project={project}
+      status={active ? t("paneTabs.activeTab") : undefined}
     >
-      {active && paneFocused && <TraceStub />}
-      <span className="min-w-0 truncate">{label}</span>
-      {dirty && <DirtyMark />}
-    </button>
+      <TabChipButton
+        tabId={tabId}
+        active={active}
+        paneFocused={paneFocused}
+        draggable={draggable}
+        dragging={dragging}
+        onPointerDown={onPointerDown}
+        onClick={onClick}
+        onAuxClick={(event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          onClose();
+        }}
+        // Dieselbe Aktiv-Signalisierung wie TerminalTabChip (volle 1px-Box,
+        // verdoppelte Unterkante, Akzent-Lasur, gepaartes Foreground-Token,
+        // seit der Leiterbahn-Runde auch Stub + 45%-Dämpfung) — ein Bauteil,
+        // ein Idiom, s. Kopfkommentar dieser Datei. Kein
+        // ❯-Präfix (2026-08-13 mitentfernt, s. Kopfkommentar "Nachtrag …noch
+        // später") — dasselbe Idiom auf beiden Tab-Arten heißt auch: beide
+        // verlieren dasselbe Signal, nicht nur eine. Nur oben gerundet, aus
+        // demselben Grund wie dort (siehe Kommentar an TerminalTabChip).
+        layoutClassName="h-6 max-w-32 min-w-10 shrink gap-1 px-1.5 transition-colors"
+      >
+        {active && paneFocused && <TraceStub />}
+        <FileIcon kind={fileKindFromName(label)} />
+        <span className="min-w-0 truncate">{label}</span>
+        {dirty && <DirtyMark />}
+      </TabChipButton>
+    </TabOverviewCard>
   );
 }
 
-// Der Platzhalter-Chip eines schwebenden Tab-Zugs (Ticket 32, Politur-Runde
-// nach Nutzer-Befund): steht exakt dort in der Leiste, wo `moveTerminalTab`
-// den Tab einhängen würde — seit der Präzisions-Runde am zeigergenauen
-// Einfüge-Slot zwischen den Chips (`incomingTab.index`, s. `PaneTabsProps`),
-// nicht mehr fix am Ende — und trägt bereits die Nummer, die er dort bekäme:
-// die Leiste zeigt ihre eigene Zukunft, statt sie den Nutzer raten zu lassen. Chip-Maße wie ein echter
-// `TerminalTabChip` (h-6, min-w-6, px-3, oben gerundet), aber als leere
-// Fassung im PCB-Duktus: 1px gestrichelte Amber-Kontur in der 45%-Dämpfung
-// (ein angekündigter, noch nicht bestromter Footprint — dieselbe Abstufung
-// wie die Kandidaten-Ecken des Drop-HUDs) mit hauchdünner Akzent-Lasur.
-// Bewusst KEINE verdoppelte Unterkante und kein Löt-Steg: beides ist die
-// Sprache des AKTIVEN Tabs, dieser hier existiert noch gar nicht.
-//
-// `aria-hidden` wie das Drop-HUD selbst (ein Zeiger-Zug ist reine
-// Zeigerführung); `data-incoming-tab` ist der Test-Haken, ein verstecktes
-// Deko-Element hat keine Rolle, über die es sich sonst greifen ließe. Das
-// Erscheinen ist ein harter Schnitt wie beim Drop-HUD — sein Auftauchen IST
-// der Zustandswechsel. Dass der „+"-Knopf dabei einen Chip weit nach rechts
-// rückt, ist kein Layout-Sprung, sondern die Vorschau selbst: genau so sähe
-// die Leiste nach dem Loslassen aus.
-function IncomingTabSlot({ number }: { number: number }) {
+// Empty drag placeholder at the exact future insertion slot. It previews
+// geometry without assigning position-derived identity to the incoming tab.
+function IncomingTabSlot() {
   return (
     <span
       aria-hidden="true"
       data-incoming-tab=""
-      className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-t-(--pc-paneControl-radius) border border-dashed border-(--pc-pane-activeBorder)/45 bg-(--pc-pane-activeBorder)/8 px-3 text-(length:--pc-chrome-fontSizeSmall)"
-    >
-      <span className="font-(family-name:--pc-terminal-fontFamily) tabular-nums text-(--pc-pane-activeBorder)/70">
-        {number}
-      </span>
-    </span>
+      className="flex h-6 min-w-10 shrink-0 rounded-t-(--pc-paneControl-radius) border border-dashed border-(--pc-pane-activeBorder)/45 bg-(--pc-pane-activeBorder)/8 px-3"
+    />
   );
 }
 
@@ -1091,6 +1561,24 @@ function PlusIcon() {
       aria-hidden="true"
     >
       <path d="M6 2v8M2 6h8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 4.5 6 8l3-3.5" />
     </svg>
   );
 }

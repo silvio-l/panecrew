@@ -37,6 +37,7 @@ export function TerminalPane({
   paneId,
   slotIndex,
   tabId,
+  adapterId,
   projectPath,
   projectName,
   focused,
@@ -64,6 +65,9 @@ export function TerminalPane({
    * (eine Pane kann mehrere `TerminalPane`-Mounts gleichzeitig haben, je
    * einen pro Terminal-Tab). Geht 1:1 in `usePtyTerminal`. */
   tabId: string;
+  /** Launch adapter stored on this `TerminalTab`; `null` selects the built-in
+   * login shell. Passed unchanged from `Pane.tabs` to `usePtyTerminal`. */
+  adapterId: string | null;
   projectPath: string;
   projectName: string;
   /** Genau eine Pane im ganzen Grid ist das (`state.focusedPaneId`). Trägt
@@ -123,19 +127,22 @@ export function TerminalPane({
   onRestartTerminatedTab: (paneId: string, tabId: string) => void;
 }) {
   const { t } = useTranslation();
+  const terminalTabItems = tabs.tabs.filter((tab) => tab.kind === "terminal");
   // Destrukturiert statt als Objekt weitergereicht: der Hook gibt neben den
   // Aktionen auch containerRef zurück, und die React-Compiler-Regel
   // react-hooks/refs wertet jeden Property-Zugriff auf so ein Objekt während
   // des Renderns als Ref-Zugriff.
   const selectTerminalTabByNumber = (number: number) => {
-    const target = tabs.terminalTabs.find((tab) => tab.number === number);
-    if (target) tabs.onSelectTerminalTab(target.tabId);
+    const target = terminalTabItems.find(
+      (tab) => tab.shortcutPosition === number,
+    );
+    if (target) tabs.onSelectTab(target.tabId);
   };
   // Dieselbe Bedingung wie das Kontextmenü-Kreuz (PaneTabs.tsx' `closable`):
   // der letzte verbleibende Terminal-Tab lässt sich auch über das Kürzel
   // nicht schließen, statt eine Pane leer zurückzulassen.
   const closeActiveTerminalTab = () => {
-    if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+    if (tabs.tabs.length > 1) tabs.onCloseTerminalTab(tabId);
   };
   // Kopiert-Bestätigung: das Kontextmenü schließt sich beim Kopieren sofort,
   // und das System quittiert einen Zwischenablage-Schreibvorgang mit nichts —
@@ -171,6 +178,7 @@ export function TerminalPane({
   } = usePtyTerminal(
     tabId,
     projectPath,
+    adapterId,
     selectTerminalTabByNumber,
     closeActiveTerminalTab,
     tabs.onOpenTerminalTab,
@@ -287,7 +295,16 @@ export function TerminalPane({
       // wechselt — und weil ihn jede Pane trägt, nur eben in zwei Tönen,
       // springt die Breite beim Fokuswechsel nicht (ein Rahmen, der nur bei
       // Fokus da ist, verschöbe das Terminal darin um 1px).
-      className={`group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-(--pc-pane-background) transition-colors ${
+      // `pc-pane-clip` (App.css) statt `overflow-hidden` (2026-08-19): ein
+      // `clip-path` mit NEGATIVEM oberem Inset, das dem herausgezogenen
+      // Tab-Chip (PaneTabs.tsx) 8px Luft über der Kopfzeile lässt und an den
+      // übrigen drei Seiten — inklusive der gerundeten unteren Ecken —
+      // unverändert an der Rahmenkante schneidet. `overflow-hidden` hatte den
+      // Kopf bündig an der Oberkante gekappt, der Auszug war damit auf 1-2px
+      // beschnitten. Warum kein `overflow-clip-margin`: von WebKit nie
+      // ausgeliefert, wäre also ausgerechnet im macOS-WKWebView wirkungslos
+      // geblieben.
+      className={`group/pane pc-pane-clip relative flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border bg-(--pc-pane-background) transition-colors ${
         focused ? "border-(--pc-pane-activeBorder)" : "border-(--pc-pane-border)"
       }`}
     >
@@ -304,7 +321,12 @@ export function TerminalPane({
         <span
           key={paneFlashKey}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out]"
+          // `rounded-t-[7px]`: seit `pc-pane-clip` (oben) rundet der Clip die
+          // oberen Ecken nicht mehr für absolut positionierte Kinder mit — ohne
+          // eigene Rundung stünde diese Fläche dort quadratisch über der
+          // gerundeten Pane-Ecke. 7px = 8px Außenradius minus 1px Rahmen, also
+          // exakt der Innenradius, an dem sie anliegt.
+          className="pointer-events-none absolute inset-0 z-20 animate-[pc-attention-flash_1400ms_ease-out] rounded-t-[7px]"
         />
       )}
       {/* Zweites Fokussignal: der Projektname der aktiven Pane steht im
@@ -485,7 +507,7 @@ export function TerminalPane({
           <TabResourceBanner
             tabId={tabId}
             onTerminate={() => {
-              if (tabs.terminalTabs.length > 1) tabs.onCloseTerminalTab(tabId);
+              if (tabs.tabs.length > 1) tabs.onCloseTerminalTab(tabId);
               else onClose();
             }}
             onRestart={() => onRestartTerminatedTab(paneId, tabId)}

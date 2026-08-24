@@ -1,17 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { GridState, Pane } from "../grid/gridState";
+import type { GitRepoSummary } from "../types/gitStatus";
 import { GridStatusRail } from "./GridStatusRail";
 
 const pane = (paneId: string, tabs: number): Pane => ({
   paneId,
   projectPath: `/Users/dev/projects/${paneId}`,
-  terminalTabs: Array.from({ length: tabs }, (_, i) => ({
+  tabs: Array.from({ length: tabs }, (_, i) => ({
+    kind: "terminal" as const,
     tabId: `${paneId}-tab-${String(i)}`,
     label: null,
+    adapterId: null,
   })),
-  activeTerminalTabId: `${paneId}-tab-0`,
-  showingFile: false,
+  activeTabId: `${paneId}-tab-0`,
 });
 
 const state = (slots: (Pane | null)[]): GridState => ({
@@ -27,6 +29,7 @@ describe("GridStatusRail", () => {
     render(
       <GridStatusRail
         state={state([pane("a", 2), null, pane("b", 3), null])}
+        focusedGitRepo={null}
       />,
     );
 
@@ -44,7 +47,10 @@ describe("GridStatusRail", () => {
 
   it("bleibt im leeren Raster ganz weg, statt „0/4“ zu zeigen", () => {
     const { container } = render(
-      <GridStatusRail state={state([null, null, null, null])} />,
+      <GridStatusRail
+        state={state([null, null, null, null])}
+        focusedGitRepo={null}
+      />,
     );
 
     // Beim ersten Start soll der Blick auf dem Projekt-Picker liegen, nicht
@@ -53,10 +59,43 @@ describe("GridStatusRail", () => {
   });
 
   it("setzt die Einzahl, wenn genau eine Sitzung läuft", () => {
-    render(<GridStatusRail state={state([pane("a", 1), null, null, null])} />);
+    render(
+      <GridStatusRail
+        state={state([pane("a", 1), null, null, null])}
+        focusedGitRepo={null}
+      />,
+    );
 
     expect(
       screen.getByText("1 laufende Terminal-Sitzung insgesamt"),
     ).toBeInTheDocument();
+  });
+
+  it("zeigt keine Git-Zeile ohne erkanntes Repo", () => {
+    render(
+      <GridStatusRail
+        state={state([pane("a", 1), null, null, null])}
+        focusedGitRepo={null}
+      />,
+    );
+
+    expect(screen.queryByText("dev")).not.toBeInTheDocument();
+  });
+
+  it("zeigt Branch/Dirty/Ahead-Behind der fokussierten Pane, wenn ein Repo erkannt wurde", () => {
+    const gitRepo: GitRepoSummary = {
+      branch: { name: "dev", detached: false, ahead: 2, behind: 0 },
+      dirtyCount: 3,
+      worktree: null,
+    };
+    render(
+      <GridStatusRail
+        state={state([pane("a", 1), null, null, null])}
+        focusedGitRepo={gitRepo}
+      />,
+    );
+
+    expect(screen.getByText("dev")).toBeInTheDocument();
+    expect(screen.getByText("↑")).toBeInTheDocument();
   });
 });

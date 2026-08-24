@@ -1,50 +1,78 @@
-// Reine Übersetzung zwischen dem Live-App-Zustand (`GridState` +
-// `selectedFile`) und der Rust-Seite (`session_store.rs`), im selben Schnitt
-// wie `grid/gridState.ts`: kein React-, kein `@tauri-apps`-Import. Feldnamen
-// bleiben `snake_case` — `session_store.rs` hat kein `serde(rename_all)`,
-// dieselbe Konvention wie `FileStamp.modified_ms`.
+// Pure translation between live `GridState` and Rust's `session_store.rs`, at
+// the same boundary as `grid/gridState.ts`. It imports neither React nor
+// `@tauri-apps`; snake_case field names mirror the Rust schema directly.
 //
 // v2-Schema (Ticket 17): ein `windows`-Array statt eines einzelnen impliziten
 // Fensters, seit Ticket 27 (Multi-Window) tatsächlich mit mehr als einem
 // Eintrag befüllt — `label` (Tauri-Fensterlabel, zugleich `PersistedWindow`-
-// Schlüssel) ordnet Einträge zu, nicht mehr der Array-Index. Diese Datei
-// liefert/liest die neuen Terminal-Tab-, Aktiver-Tab- und Adapter-Felder nur
-// als Rundlauf-Daten (Default-Werte, kein Datenverlust bei Restart) — mehrere
-// Terminal-Tabs und Adapter-Auswahl selbst verdrahtet erst ein späteres
-// Ticket. `maximized_pane_id` (Ticket 19: Fokus-Modus) ist dagegen bereits
-// echt verdrahtet.
+// Schlüssel) ordnet Einträge zu, nicht mehr der Array-Index. `maximized_pane_id`
+// (Ticket 19: Fokus-Modus) ist echt verdrahtet, Adapter-Auswahl selbst
+// verdrahtet erst ein späteres Ticket (35).
+//
+// v3-Schema (Ticket 33): jeder Tab (Terminal- wie File-Tab) trägt eine
+// stabile `id` — dieselbe `tabId`, die die Live-Panes ohnehin schon führen
+// (`gridState.ts`s `TerminalTab.tabId`) —, und `active_tab` referenziert
+// darüber statt über Art+Index. Grund: Art+Position identifiziert einen Tab
+// nicht mehr eindeutig, sobald sich mehrere File-Tabs und beliebig
+// umsortierte Terminal-Tabs unabhängig ändern können (Ticket 34). Rein
+// Ticket 34 uses this schema fully: all tab kinds share one order and a pane
+// can contain multiple file tabs.
 
-import { DEFAULT_TEMPLATE, GRID_TEMPLATES, type GridState, type TemplateId } from "../grid/gridState";
+import {
+  DEFAULT_TEMPLATE,
+  GRID_TEMPLATES,
+  activeTab,
+  fileTabs,
+  terminalTabs,
+  type GridState,
+  type TemplateId,
+} from "../grid/gridState";
 
 // Nicht exportiert, solange nichts außerhalb dieser Datei den Typ selbst
 // braucht (nur seine Form, über `PersistedWindow.slots`) — dieselbe
 // Konvention wie `gridState.ts`s eigenes, ebenfalls modulinternes `Slot`.
 interface PersistedTerminalTab {
+  /** Stabile Identität (Ticket 33) — dieselbe `tabId` wie im Live-Zustand
+   * (`gridState.ts`s `TerminalTab.tabId`). */
+  id: string;
   /** Nutzer-Umbenennung eines Tabs. Nummer/Farbe sind index-abgeleiteter
    * Anzeigezustand (siehe `session_store.rs`), nicht persistiert. */
   title?: string | null;
+  /** Gewählter CLI-Tool-Adapter dieses Tabs (Ticket 35) — pro Terminal-Tab,
+   * nicht mehr pro Pane, seit eine Pane mehrere unabhängig gestartete
+   * Terminal-Tabs haben kann (Ticket 18); dieselbe Verschiebung wie
+   * `session_store.rs`s `PersistedTerminalTab.adapter_id`. `null`/fehlend
+   * heißt eingebaute Login-Shell. */
+  adapter_id?: string | null;
 }
 
 interface PersistedFileTab {
+  /** Stable live file-tab id used by ordering and active selection. */
+  id: string;
   /** Projekt-relativer Pfad — dieselbe Semantik wie das frühere
    * `last_selected_file`, jetzt als eigener optionaler Tab statt als
    * Einzelfeld. */
   path: string;
 }
 
-/** Welcher Tab einer Pane aktiv ist. Ein reiner Index wäre mehrdeutig,
- * sobald sich Terminal-Tab-Array und File-Tab unabhängig ändern — der
- * `kind`-Diskriminator macht "welcher Tab" eindeutig. */
-type PersistedActiveTab = { kind: "terminal"; index: number } | { kind: "file" };
+/** Welcher Tab einer Pane aktiv ist, referenziert über die stabile `id`
+ * (Ticket 33) statt über Art+Index — Art+Position identifiziert einen Tab
+ * nicht mehr eindeutig, sobald Terminal-Tabs und File-Tabs unabhängig
+ * voneinander umsortiert/vermehrt werden können (Ticket 34). Der
+ * `kind`-Diskriminator bleibt, macht "welche Liste" weiterhin eindeutig. */
+type PersistedActiveTab =
+  | { kind: "terminal"; id: string }
+  | { kind: "file"; id: string };
 
 interface PersistedPane {
   project_path: string;
   terminal_tabs: PersistedTerminalTab[];
   active_tab: PersistedActiveTab;
-  file_tab?: PersistedFileTab | null;
-  /** Gewählter CLI-Tool-Adapter (Ticket 12s Adapter-Manifest); `null`/fehlend
-   * heißt nackte Shell. */
-  adapter_id?: string | null;
+  /** Round-trip list replacing the former optional singleton. */
+  file_tabs?: PersistedFileTab[];
+  /** Stable IDs in the pane's kind-crossing display order. Missing values
+   * from pre-ticket-34 sessions fall back to terminals followed by files. */
+  tab_order?: string[];
 }
 
 export interface PersistedWindow {
@@ -112,47 +140,30 @@ export function withoutRecentProject(
   return recentProjects.filter((existing) => existing !== path);
 }
 
-/** Baut den zu persistierenden Zustand EINES Fensters (Ticket 27) aus dem
- * laufenden Grid und der `paneId`-geschlüsselten Dateiauswahl im Explorer
- * (Ticket 06) — `expanded_folders`/`explorer_width` gehören nicht hierher,
- * die bleiben window-agnostische Globals und gehen separat an
- * `saveSessionWindow` (`session_store.rs`s eigener Kommentar). Jede Pane
- * trägt seit Ticket 18 ihre echten Terminal-Tabs (`Pane.terminalTabs`) ein,
- * `title` ist seit dem Kontextmenü-Umbenennen (`PaneTabs.tsx`)
- * `Pane.terminalTabs[i].label`. Aktiver Tab ist `Pane.activeTerminalTabId`,
- * als Index in `terminal_tabs` (das persistierte Schema kennt keine `tabId`,
- * s. `PersistedActiveTab`), AUSSER eine Datei ist sowohl ausgewählt als auch
- * als aktive Ansicht gewählt — genau dieselbe "nur wenn wirklich offen"-
- * Bedingung wie `PaneGrid.tsx`s `showingFile`, hier unabhängig nachgebildet:
- * dieses Modul kennt keinen Editor-Zustand, nur die `selectedFile`-Map, die
- * exakt genau dann einen Eintrag für eine Pane trägt, wenn deren Datei
- * tatsächlich offen ist. `maximized_pane_id` (Ticket 19) kommt direkt aus
- * `grid.maximizedPaneId` — echt verdrahtet für den Save, das Zurückmappen
- * auf eine frisch erzeugte `paneId` beim Restore bleibt offen (Ticket 19,
- * Persistenz-Teilaufgabe). */
+/** Builds one persisted window from the live grid. Explorer globals remain
+ * outside this window-specific shape. Terminal metadata and file paths come
+ * from their respective tab variants; stable ids drive active selection and
+ * `tab_order` preserves their mixed sequence. */
 export function buildWindowState(
   label: string,
   grid: GridState,
-  selectedFile: Record<string, string>,
 ): PersistedWindow {
   return {
     label,
     template: grid.template,
     slots: grid.slots.map((slot): PersistedPane | null => {
       if (slot === null) return null;
-      const lastSelectedFile = selectedFile[slot.paneId] ?? null;
-      const showingFile = slot.showingFile && lastSelectedFile !== null;
-      const activeTabIndex = slot.terminalTabs.findIndex(
-        (tab) => tab.tabId === slot.activeTerminalTabId,
-      );
+      const currentTab = activeTab(slot);
       return {
         project_path: slot.projectPath,
-        terminal_tabs: slot.terminalTabs.map((tab) => ({ title: tab.label })),
-        active_tab: showingFile
-          ? { kind: "file" }
-          : { kind: "terminal", index: Math.max(activeTabIndex, 0) },
-        file_tab: lastSelectedFile === null ? null : { path: lastSelectedFile },
-        adapter_id: null,
+        terminal_tabs: terminalTabs(slot).map((tab) => ({
+          id: tab.tabId,
+          title: tab.label,
+          adapter_id: tab.adapterId,
+        })),
+        active_tab: { kind: currentTab.kind, id: currentTab.tabId },
+        file_tabs: fileTabs(slot).map((tab) => ({ id: tab.tabId, path: tab.path })),
+        tab_order: slot.tabs.map((tab) => tab.tabId),
       };
     }),
     split_ratios: [...grid.splitRatios],
@@ -183,9 +194,9 @@ export function restoredTemplate(session: SessionState, label: string): Template
   return known ? (template as TemplateId) : DEFAULT_TEMPLATE;
 }
 
-/** Die Slots dieses Fensters — Restore-Code fragt nach `slot.project_path`/
- * `slot.file_tab`, nicht nach den neuen, noch
- * unverdrahteten Feldern (Terminal-Tab-Array, `adapter_id`, …). */
+/** Die Slots dieses Fensters — Restore-Code (`App.tsx`) liest
+ * `slot.project_path`, `slot.terminal_tabs` (samt je Tab dessen
+ * `adapter_id`, Ticket 35), `slot.active_tab` und `slot.file_tabs`. */
 export function restoredSlots(session: SessionState, label: string): (PersistedPane | null)[] {
   return restoredWindow(session, label)?.slots ?? [];
 }

@@ -83,6 +83,7 @@
   "unsavedDialog": {
     "title": "Ungespeicherte Änderungen verwerfen?",
     "description": "Die Änderungen an <bold>{{fileName}}</bold> sind noch nicht gespeichert. Beim Verlassen der Datei gehen sie verloren.",
+    "descriptionMultiple": "Die Änderungen an <bold>{{fileNames}}</bold> sind noch nicht gespeichert. Beim Schließen der Pane gehen sie verloren.",
     "discard": "Änderungen verwerfen",
     "cancel": "Abbrechen"
   },
@@ -90,6 +91,16 @@
     "panes": "{{active}} von {{slots}} Rasterflächen belegt",
     "terminals_one": "{{count}} laufende Terminal-Sitzung insgesamt",
     "terminals_other": "{{count}} laufende Terminal-Sitzungen insgesamt"
+  },
+  "gitRepo": {
+    "detachedBranch": "detached HEAD",
+    "worktreeBranch": "Worktree von {{repo}}, Branch {{branch}}",
+    "dirtyCount_one": "{{count}} geänderte Datei",
+    "dirtyCount_other": "{{count}} geänderte Dateien",
+    "ahead_one": "{{count}} Commit vor dem Upstream",
+    "ahead_other": "{{count}} Commits vor dem Upstream",
+    "behind_one": "{{count}} Commit hinter dem Upstream",
+    "behind_other": "{{count}} Commits hinter dem Upstream"
   },
   "gridSplitters": {
     "columnAria": "Spaltenbreite zwischen Spalte {{left}} und {{right}} anpassen",
@@ -100,7 +111,7 @@
     "paneDescription": "Die Pane <bold>{{projectName}}</bold> wird geschlossen, ihre laufenden Terminal-Sitzungen werden beendet.",
     "confirmPane": "Pane schließen",
     "terminalTabTitle": "Terminal-Tab schließen?",
-    "terminalTabDescription": "<bold>Terminal {{number}}</bold> wird geschlossen, die darin laufende Sitzung wird beendet.",
+    "terminalTabDescription": "Der <bold>Terminal-Tab</bold> wird geschlossen, die darin laufende Sitzung wird beendet.",
     "confirmTerminalTab": "Tab schließen",
     "terminalTabsBatchTitle_one": "1 Tab schließen?",
     "terminalTabsBatchTitle_other": "{{count}} Tabs schließen?",
@@ -113,6 +124,11 @@
     "confirmWindow": "Fenster schließen",
     "cancel": "Abbrechen"
   },
+  "gridFullDialog": {
+    "title": "Grid ist voll",
+    "description": "Alle Panes in diesem Fenster sind bereits belegt, <bold>{{projectName}}</bold> kann hier nicht geöffnet werden, ohne eine davon zu ersetzen. Stattdessen in einem neuen Fenster öffnen?",
+    "confirm": "In neuem Fenster öffnen"
+  },
   "terminalPane": {
     "terminalAria": "Terminal {{projectName}}",
     "closePane": "Pane schließen",
@@ -123,7 +139,8 @@
     "clear": "Terminal leeren",
     "dropHint": "Pfad einfügen",
     "enterFocusMode": "Fokus-Modus",
-    "exitFocusMode": "Fokus-Modus verlassen"
+    "exitFocusMode": "Fokus-Modus verlassen",
+    "initFailed": "Init fehlgeschlagen: {{error}}"
   },
   "resourceGuard": {
     "warnTabSuffix": "Hoher Speicherverbrauch",
@@ -149,18 +166,33 @@
   },
   "paneTabs": {
     "selectView": "Ansicht wählen",
-    "terminalTab": "Terminal {{number}}",
+    "terminalTab": "Terminal",
+    "terminalTabAccessible": "Terminal {{number}}",
     "openTerminalTab": "Weiteren Terminal-Tab öffnen",
-    "closeTerminalTab": "Terminal {{number}} schließen",
-    "closeOtherTerminalTabs_one": "1 anderen Tab schließen",
-    "closeOtherTerminalTabs_other": "{{count}} andere Tabs schließen",
-    "closeTerminalTabsToRight_one": "1 Tab rechts davon schließen",
-    "closeTerminalTabsToRight_other": "{{count}} Tabs rechts davon schließen",
-    "killTerminalTab": "Terminal {{number}} hart beenden",
-    "renameTerminalTab": "Terminal {{number}} umbenennen",
+    "chooseAdapter": "Terminal-Tab mit Tool öffnen",
+    "closeTerminalTab": "Terminal-Tab schließen",
+    "closeOtherTerminalTabs_one": "1 anderen Terminal-Tab schließen",
+    "closeOtherTerminalTabs_other": "{{count}} andere Terminal-Tabs schließen",
+    "closeTerminalTabsToRight_one": "1 Terminal-Tab rechts davon schließen",
+    "closeTerminalTabsToRight_other": "{{count}} Terminal-Tabs rechts davon schließen",
+    "killTerminalTab": "Terminal-Tab hart beenden",
+    "renameTerminalTab": "Terminal-Tab umbenennen",
     "renameTerminalTabFieldLabel": "Name für Terminal {{number}}",
     "middleClickCloseHint": "Mittelklick zum Schließen",
-    "unreadActivityLabel": "Ungelesene Aktivität",
+    "awaitingAttentionLabel": "Wartet auf dich",
+    "overviewLabel": "Übersicht für {{name}}",
+    "terminalTabKind": "Terminal-Tab",
+    "overviewTool": "Tool",
+    "overviewStatus": "Status",
+    "overviewProject": "Projekt",
+    "overviewPath": "Pfad",
+    "overviewRepository": "Repository",
+    "fileTab": "File-Tab",
+    "saved": "Gespeichert",
+    "unsavedChanges": "Ungespeicherte Änderungen",
+    "activeTab": "Aktiv",
+    "performanceWarning": "Viele Terminal-Tabs können die Leistung beeinträchtigen",
+    "dismissPerformanceWarning": "Hinweis ausblenden",
     "tool": {
       "claude": "Claude Code",
       "gemini": "Gemini CLI",
@@ -177,7 +209,54 @@
   "projectPicker": {
     "choose": "Projekt wählen",
     "hint": "PaneCrew startet darin eine echte Shell.",
+    "recentHeading": "Zuletzt geöffnet",
+    "browseOther": "Anderes Projekt wählen …",
     "removeRecent": "Aus Liste entfernen"
+  },
+  "onboarding": {
+    "wizard": {
+      "welcome": {
+        "title": "Willkommen bei PaneCrew",
+        "body": "Mehrere echte Terminals gleichzeitig sichtbar, nebeneinander statt hintereinander — der Explorer folgt automatisch der Pane, an der du gerade arbeitest.",
+        "cta": "Los geht's"
+      },
+      "preferences": {
+        "title": "Deine Einstellungen",
+        "body": "Du kannst das jederzeit in den Einstellungen ändern.",
+        "cta": "Weiter"
+      },
+      "permissions": {
+        "title": "Terminal-Berechtigung",
+        "body": "Falls dein Terminal später mit „Keine Berechtigung“ auf einen Ordner außerhalb deines Projekts stößt, hilft das hier. Du kannst es auch jederzeit in den Einstellungen nachholen.",
+        "cta": "Weiter"
+      },
+      "ready": {
+        "title": "Bereit zum Start",
+        "body": "Sobald zwei Projekte nebeneinander offen sind, siehst du das Raster in Aktion — öffne dazu dein erstes Projekt.",
+        "cta": "Erstes Projekt öffnen",
+        "skip": "Ohne Projekt fortfahren",
+        "bodyExisting": "Deine offenen Projekte bleiben unverändert — mach direkt weiter.",
+        "ctaContinue": "Weiter"
+      },
+      "back": "Zurück",
+      "close": "Einführung schließen",
+      "stepIndicator": "Schritt {{step}} von {{total}}"
+    },
+    "hint": {
+      "empty": {
+        "title": "Mehrere Projekte, gleichzeitig sichtbar",
+        "body": "Öffne hier dein erstes Projekt, um loszulegen."
+      },
+      "hasPanes": {
+        "title": "Der Explorer folgt der aktiven Pane",
+        "body": "Öffne ein zweites Projekt in einem freien Platz, um das Raster in Aktion zu sehen."
+      },
+      "ahaReached": {
+        "title": "Genau so funktioniert das Raster",
+        "body": "Du hast bereits mehrere Projekte gleichzeitig offen — der Explorer folgt dabei automatisch der fokussierten Pane."
+      },
+      "dismiss": "Hinweis schließen"
+    }
   },
   "templateSwitcher": {
     "selectTemplate": "Template wählen",
@@ -200,6 +279,7 @@
     "description": "Mehrere echte Terminal-Sitzungen nebeneinander statt hintereinander — ein Raster aus lebenden Panes, dazu ein Datei-Explorer, der immer der gerade fokussierten Pane folgt.",
     "checkForUpdates": "Nach Updates suchen",
     "githubRepo": "GitHub-Repository",
+    "xProfile": "X-Profil",
     "licenseText": "Lizenztext",
     "copyright": "© 2026 Silvio Lindstedt",
     "mitLicense": "MIT-Lizenz",
@@ -213,6 +293,17 @@
   "directoryPopup": {
     "tabHint": "übernehmen",
     "enterHint": "abschicken"
+  },
+  "snippetPopup": {
+    "enterHint": "übernehmen"
+  },
+  "systemCommands": {
+    "init": {
+      "description": "Legt .panecrew/ mit Beispiel-Snippets an"
+    },
+    "reloadSnippets": {
+      "description": "Liest Projekt- und User-Snippets neu ein"
+    }
   },
   "settings": {
     "windowTitle": "Einstellungen",
@@ -231,7 +322,20 @@
       "terminal": "Terminal",
       "explorer": "Explorer",
       "appearance": "Erscheinungsbild",
-      "grid": "Raster"
+      "grid": "Raster",
+      "help": "Hilfe"
+    },
+    "help": {
+      "onboarding": {
+        "label": "Einführung erneut anzeigen",
+        "description": "Zeigt die Einführung (Setup-Assistent und geführte Tour) erneut an, so als würdest du PaneCrew zum ersten Mal starten.",
+        "button": "Einführung neu starten"
+      },
+      "permissions": {
+        "title": "Berechtigungen (macOS)",
+        "explainer": "macOS fragt bei Zugriffen außerhalb deines Projektordners gesondert nach. Der vollständige Festplattenzugriff deckt das an einer Stelle ab:",
+        "fullDiskAccess": "Vollständiger Festplattenzugriff"
+      }
     },
     "terminalRestartHint": "Gilt ab der nächsten neuen Terminal-Sitzung — die laufende Sitzung bleibt unverändert.",
     "rawJson": {
@@ -256,12 +360,24 @@
           "description": "Zeichengröße im Terminal, in Pixel."
         },
         "activityIdleMs": {
-          "label": "Ungelesen-Zeitfenster",
-          "description": "Wie lange nach dem letzten Zeilen-Nachschub gewartet wird, bevor ein Aktivitäts-Burst als eigenständig zählt. Steuert nur, wie leicht der persistente Ungelesen-Punkt anspringt — der Punkt selbst verfällt nicht von selbst, sondern ausschließlich durchs Ansehen des Tabs. In Millisekunden."
+          "label": "Leerlaufzeit bis \"wartet auf dich\"",
+          "description": "Wie lange ein Terminal-Tab gar keine Ausgabe mehr produzieren muss, bevor er als fertig und wartend markiert wird. Verschwindet sofort wieder, sobald neue Ausgabe kommt oder du den Tab öffnest. In Millisekunden."
         },
         "activityLineThreshold": {
-          "label": "Ungelesen-Schwelle (Zeilen)",
-          "description": "Mindestzahl neuer Zeilen innerhalb des Zeitfensters, ab der ein nicht angesehener Terminal-Tab den Ungelesen-Punkt bekommt."
+          "label": "Aktivitäts-Schwelle (Zeilen)",
+          "description": "Mindestzahl neuer Zeilen, die ein Terminal-Tab produzieren muss, um überhaupt als \"hat etwas getan\" zu gelten — ein frisch geöffneter, noch leerer Shell-Tab wird dadurch nicht sofort als \"wartet auf dich\" markiert."
+        },
+        "defaultAdapter": {
+          "label": "Standard-Tool für neue Terminal-Tabs",
+          "description": "Womit ein neu geöffneter Terminal-Tab direkt startet, ohne dass du es im Dropdown auswählen musst. Ein Klick auf das Dropdown bietet weiterhin jede Alternative an.",
+          "options": {
+            "shell": "Shell",
+            "claude": "Claude Code",
+            "codex": "Codex",
+            "gemini": "Gemini CLI",
+            "copilot": "GitHub Copilot CLI",
+            "opencode": "opencode"
+          }
         }
       },
       "explorer": {

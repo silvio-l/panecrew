@@ -33,6 +33,256 @@ be added to both files, with the same version heading.
   the file's **first** `## [...]` version heading and looks up the matching
   coverage/hash record for it in `release-state.json`.
 
+**Nightly version numbers (2026-08-20, replaces the earlier hand-counted
+`0.1.0-nightly.N` scheme):** the heading must be the exact version the build
+will actually carry — `0.1.<commit count>`, no `-nightly` suffix, with
+` (Nightly)` appended after the date outside the brackets, e.g.
+`## [0.1.394] - 2026-08-20 (Nightly)`. This is the same
+`MAJOR.MINOR.<git rev-list --count HEAD>` the release workflow computes for
+`CFBundleShortVersionString`/the in-app About dialog (see
+`release-nightly.yml` → "Nightly-Pseudoversion setzen") — before this,
+the changelog carried its own, unrelated hand-counted number that never
+matched what the app itself reported. Since the changelog commit is always
+the last commit before the tag push (existing convention), the number is
+`git rev-list --count HEAD` *before* that commit, plus 1. Stable headings
+are unaffected — `app-v{X.Y.Z}` tags already are the real version.
+
+**App-only prose (2026-08-16)**: this changelog ships inside the desktop app
+(the updater points users at the GitHub release, which links here) and is
+read as "what changed in the app I'm about to install" — it is not a
+project-wide changelog. `apps/website` commits (marketing site copy, SEO,
+guides, layout) never get a bullet here, even though the gate still requires
+`website` in the release's `coverage` list whenever the diff touches it (the
+gate checks module coverage mechanically, not prose — the module still has
+to be accounted for, it's just never described in the human-facing text).
+
+## [0.1.407] - 2026-08-21 (Nightly)
+### Added
+- Hovering a terminal or file tab now shows a compact overview with its
+  project, path, repository, state, and available shortcut.
+
+### Fixed
+- Added an automated release-signing guard that blocks Nightly and Stable
+  builds if the long-lived macOS keychain setup or single certificate import
+  regresses.
+
+## [0.1.402] - 2026-08-21 (Nightly)
+### Fixed
+- Fixed macOS release signing hanging after long builds by keeping one
+  dedicated signing keychain unlocked for the entire CI job.
+
+## [0.1.397] - 2026-08-20 (Nightly)
+### Fixed
+- Fixed a bug where a coding-agent CLI session started inside a pane could
+  inherit PaneCrew's own environment markers and wrongly conclude it was a
+  managed sub-session, silently disabling its own conversation history.
+
+## [0.1.0-nightly.15] - 2026-08-20
+### Fixed
+- Fixed a bug where the app could crash immediately on launch — a
+  background dependency tried to load a library the operating system
+  blocked, aborting startup before any window opened.
+- Fixed the "Resume" button on a paused terminal tab doing nothing a
+  few seconds after pausing it.
+
+## [0.1.0-nightly.14] - 2026-08-19
+### Added
+- Typing `://` at the start of a terminal line (or after a space) now opens
+  a searchable command popup: built-in commands like scaffolding a
+  project's snippet folder, plus your own reusable text snippets from
+  project and user snippet files, inserted in place of what you typed.
+- Each terminal tab can now launch with a specific CLI tool adapter
+  instead of always using your default shell, chosen from a dropdown next
+  to the "new tab" button.
+- Opening an image (PNG, JPEG, GIF, SVG, WebP) or video (MP4, WebM) file
+  in a file tab now shows a preview instead of raw text or binary
+  garbage.
+- The file-tab code editor now has syntax highlighting and line numbers
+  for TypeScript/JavaScript, Rust, JSON, CSS, and Markdown.
+- The explorer header and the pane status rail now show the current
+  project's git branch, dirty-file count, ahead/behind status, and
+  worktree info.
+
+### Changed
+- The "finished, waiting for you" tab marker is now a card that visibly
+  lifts out of the tab row, instead of an easy-to-miss highlight.
+
+### Fixed
+- Terminal tabs no longer get silently clipped off the right edge of a
+  pane once too many are open — the tab row now scrolls horizontally
+  (mouse wheel included), and the active or newly opened tab scrolls
+  into view automatically.
+- Selecting text by dragging the mouse now copies to the clipboard
+  correctly even when the drag ends outside the pane's bounds.
+- Hovering a recent-project row in the project picker no longer opens a
+  tooltip that blocked the mouse path to the rows below it.
+
+## [0.1.0-nightly.13] - 2026-08-17
+### Changed
+- Terminal tabs now stay marked "active" through a tool's whole
+  thinking/working phase instead of flickering to idle during pauses with
+  no new output; the tab highlight now means "finished, waiting for you"
+  instead of "unread", and clears the moment you look back at that tab.
+- Closing a terminal pane or tab now reliably stops every process it
+  started, not just its shell — a background dev server or CLI agent you
+  were running can no longer keep running invisibly after its pane closes.
+- The About window reopens instantly instead of rebuilding itself every
+  time.
+- Reduced background CPU/battery use from terminal tool-detection,
+  especially with many tabs open.
+- App startup and restoring windows from your last session are both
+  faster, especially with several windows open.
+
+### Fixed
+- The splash screen — and the main window behind it — could appear
+  off-center, or on the wrong monitor entirely, on multi-monitor setups.
+  Both now always center correctly on whichever monitor the app is
+  starting on.
+- A window's layout (open projects, split panes, which pane was focused)
+  could occasionally fail to be saved if you closed the window very soon
+  after making a change.
+
+## [0.1.0-nightly.12] - 2026-08-17
+### Added
+- A guided first-run setup wizard: pick your language and theme (applied
+  immediately, live, as you click), grant macOS's Full Disk Access
+  permission if needed, then jump straight into your first project.
+  Replaces the previous single hint and now works correctly no matter how
+  full the grid already is.
+- Empty project slots show a "recent projects" panel on hover, docked right
+  into the slot itself, plus an entry to browse for a project that isn't on
+  the list yet.
+
+### Fixed
+- Right-clicking a terminal tab and choosing "Rename" or "Close" could
+  silently do nothing.
+- "Restart onboarding" in Settings left the Settings window open on top of
+  the wizard it triggers; it now closes itself.
+- Restarting onboarding on a grid that already has a project open no longer
+  offers to silently replace it.
+- Some notifications (the close-confirmation dialog, menu actions like
+  "Open Folder") could incorrectly fire in every open window instead of
+  just the one they were meant for.
+- A secondary window's title-bar resource-usage popover now correctly
+  groups its terminal tabs by pane instead of showing a flat, unlabeled
+  list.
+
+## [0.1.0-nightly.11] - 2026-08-16
+### Added
+- First-run onboarding: a short on-grid hint appears the first time you have
+  two panes open side by side, and clears itself once you've tried it.
+  Settings has a new "Help" category (macOS) with a button to replay the
+  hint and direct links into System Settings' Full Disk Access, Files &
+  Folders, and Privacy & Security panes for the permissions PaneCrew needs.
+
+### Changed
+- New installs now default to the dark theme instead of following the
+  system setting.
+
+### Fixed
+- Switching focus between panes could still occasionally make the app
+  briefly unresponsive (beachball on macOS) even after the previous fix: a
+  file-watcher restart was doing a full, unbounded filesystem scan on the
+  main thread. It now runs in the background.
+- Closing and reopening terminal tabs in quick succession could very rarely
+  leave an orphaned shell process running after its window closed, and a
+  large paste into a terminal could momentarily freeze the whole window
+  while it was being sent to the shell.
+- A stale internal flag could very rarely leave an empty ghost window open
+  after quitting and immediately reopening the app.
+- Every open window kept checking every terminal tab for which CLI tool is
+  running even while minimized or hidden; this check now pauses while a
+  window isn't visible.
+- Dragging the explorer panel's resize handle could feel sluggish with many
+  open panes, since every mouse movement re-rendered the whole grid; now
+  only the final width triggers a re-render.
+- PaneCrew rewrote its whole saved-session file on every single pane click,
+  even when nothing about it had actually changed, and two open windows
+  saving around the same moment could very rarely overwrite each other's
+  changes. Both fixed.
+- On a fresh install, the app could briefly appear at 100% zoom before
+  settling at its intended default.
+
+## [0.1.0-nightly.10] - 2026-08-16
+### Changed
+- The window resource usage popover in the title bar now lists every open
+  window, not just the one you're currently looking at.
+
+### Fixed
+- Switching focus between panes could occasionally make the app briefly
+  unresponsive (beachball on macOS): a background check was rebuilding the
+  whole native menu bar far more often than needed. It now only rebuilds
+  when something actually changed.
+- The "Recent Projects" menu could lag behind or show stale entries after
+  opening or closing projects; fixed by the same change as above.
+- Opening a project from the "Recent Projects" menu or Cmd+O could silently
+  replace whatever was running in the currently focused pane. It now only
+  opens into an empty pane; if every pane is already in use, PaneCrew asks
+  whether to open the project in a new window instead.
+
+## [0.1.0-nightly.9] - 2026-08-16
+### Fixed
+- The title bar's memory warning could trigger far too easily on machines
+  with less total RAM (and too late on machines with more): the threshold
+  was a percentage of total system RAM instead of an absolute amount. Now a
+  fixed 6GB (warning) / 12GB (critical), independent of the machine's total
+  RAM.
+
+## [0.1.0-nightly.8] - 2026-08-16
+### Fixed
+- Fixed a startup crash introduced in nightly.7: the app could fail to
+  launch at all (crashing before its first window appeared) because the
+  application menu was being built too early in Tauri's own startup
+  sequence.
+
+## [0.1.0-nightly.7] - 2026-08-16
+### Added
+- Split Pane shortcut (Ctrl/Cmd+Shift+5): splits the currently focused pane
+  by growing the grid to the next-larger layout and moving that pane's
+  project into the newly revealed slot.
+- Pane borders between adjacent slots can now be dragged (or resized with
+  arrow keys) to adjust the size ratio between them, without changing the
+  overall grid layout; double-click resets a border to its default.
+- Command Palette (⌘⇧P), also reachable via the title bar's search field,
+  for quickly switching layouts or jumping to Open Folder, Settings, or the
+  shortcuts reference.
+- File menu: "Open Folder" (⌘O), a "Recently Opened Projects" submenu, "New
+  Window", and "Close All Windows".
+- An in-app keyboard shortcuts reference, reachable from the menu.
+- Empty grid slots now show a "recently opened projects" list app-wide
+  instead of just an empty picker.
+- Title bar back/forward arrows now navigate pane focus in both grid and
+  focus mode.
+
+### Changed
+- New installs now default to English instead of following the system
+  language automatically.
+- Internal: replaced a throwaway single-bug debug capture with durable
+  production logging (backend + frontend) to a rotating log file, making
+  future bug reports easier to diagnose without a live console handoff.
+
+### Fixed
+- Title bar memory indicator: total RAM usage now also counts terminal
+  child processes, not just the shells themselves.
+- Ctrl+K for clearing the terminal no longer collides with the readline
+  kill-line shortcut on Windows/Linux.
+- Cmd+W now closes only the current terminal tab instead of the whole
+  window.
+- Closing a window (via the close button or Cmd+Q) now asks for
+  confirmation if terminal sessions are still running.
+- File explorer: the `.git` folder is no longer hidden — it was being
+  filtered the same way as `node_modules`.
+- File explorer tree now genuinely shows everything, including `.git` and
+  `node_modules`/`target` directories together.
+- File explorer: "Copy Path" in the context menu now actually copies to the
+  clipboard.
+- File explorer: refreshing no longer visibly collapses and re-expands
+  already-open subfolders.
+- Inline autocomplete ghost text no longer inserts at the wrong cursor
+  position.
+- Windows: fixed two real compile bugs surfaced by adding a Windows CI
+  matrix job for the Rust test suite.
+
 ## [0.1.0-nightly.6] - 2026-08-15
 ### Added
 - Right-clicking the Dock icon on macOS now shows a native menu with "New

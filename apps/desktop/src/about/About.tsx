@@ -36,6 +36,7 @@ import { useUpdateFlow, type UpdateFlowState } from "../updater/useUpdateFlow";
 
 const REPOSITORY_URL = "https://github.com/silvio-l/panecrew";
 const RELEASES_URL = `${REPOSITORY_URL}/releases`;
+const X_PROFILE_URL = "https://x.com/silviolindstedt";
 
 // Die LICENSE ist auf 80 Zeichen hart umbrochen. In einer 380px schmalen Box
 // zerfiele sie dadurch in Stummelzeilen — hier werden die Umbrüche INNERHALB
@@ -252,6 +253,9 @@ export function About() {
           <div className="flex items-center gap-5">
             <QuietButton onClick={() => void openUrl(REPOSITORY_URL)}>
               {t("about.githubRepo")}
+            </QuietButton>
+            <QuietButton onClick={() => void openUrl(X_PROFILE_URL)}>
+              {t("about.xProfile")}
             </QuietButton>
             <QuietButton
               onClick={() => setLicenseOpen((open) => !open)}

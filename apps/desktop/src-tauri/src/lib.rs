@@ -13,6 +13,7 @@ pub mod json_store;
 pub mod launch;
 pub mod logging;
 pub mod menu;
+pub mod onboarding_store;
 pub mod path_probe;
 pub mod pty_commands;
 pub mod pty_manager;
@@ -24,9 +25,11 @@ pub mod settings_store;
 pub mod settings_window;
 pub mod shell_history;
 pub mod shell_integration;
+pub mod snippet_fs;
 pub mod splash;
 pub mod tool_detect;
 pub mod updater;
+pub mod window_state;
 pub mod windows;
 
 use about::PendingUpdateCheck;
@@ -36,12 +39,13 @@ use explorer_watch::ExplorerWatchState;
 use launch::LaunchProject;
 use pty_commands::{PtyState, ShellIntegrationDir, WindowPtyRegistry};
 use resource_guard::ResourceGuardState;
+use session_store::SessionWriteLock;
 use settings_commands::ConfigRegistryState;
 use splash::RevealGate;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent};
 use tool_detect::ToolDetector;
-use windows::{ConfirmedCloseWindows, DeferredQuitState, QuittingFlag};
+use windows::{ConfirmedCloseWindows, DeferredQuitState, PendingWindowProjects, QuittingFlag};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -77,10 +81,22 @@ pub fn run() {
         .manage(ConfigRegistryState(Mutex::new(config_registry)))
         .manage(QuittingFlag::default())
         .manage(ConfirmedCloseWindows::default())
+        .manage(PendingWindowProjects::default())
         .manage(DeferredQuitState::default())
         .manage(ExplorerWatchState::default())
         .manage(ResourceGuardState::default())
-        .menu(menu::build)
+        .manage(SessionWriteLock::default())
+        .manage(window_state::WindowStateStore::default())
+        // Not `.menu(menu::build)`: Tauri evaluates that closure while
+        // building the `App` itself, before `register_core_plugins()` has
+        // managed the internal `PathResolver` state -- and `menu::build`
+        // reaches `session_store::recent_projects` -> `app.path()` to list
+        // recent projects, which panics ("state() called before manage()")
+        // at that point. `menu::refresh()` below runs from `.setup()`,
+        // after core plugins are ready, and is the same build-then-set_menu
+        // path already used for every later menu rebuild (window
+        // focus/close, see `.on_window_event` below).
+        .enable_macos_default_menu(false)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             log::debug!("menu event: {id}");
@@ -100,17 +116,17 @@ pub fn run() {
                 }
                 menu::OPEN_FOLDER => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_OPEN_FOLDER, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_OPEN_FOLDER, ());
                     }
                 }
                 menu::SHOW_SHORTCUTS => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_SHOW_SHORTCUTS, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_SHOW_SHORTCUTS, ());
                     }
                 }
                 menu::SHOW_COMMAND_PALETTE => {
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_SHOW_COMMAND_PALETTE, ());
+                        let _ = window.emit_to(window.label(), menu::EVENT_SHOW_COMMAND_PALETTE, ());
                     }
                 }
                 menu::CLOSE_WINDOW => {
@@ -121,7 +137,7 @@ pub fn run() {
                 _ if id.starts_with(menu::RECENT_PROJECT_ITEM_PREFIX) => {
                     let path = &id[menu::RECENT_PROJECT_ITEM_PREFIX.len()..];
                     if let Some(window) = windows::focused_content_window(app) {
-                        let _ = window.emit(menu::EVENT_OPEN_RECENT_PROJECT, path);
+                        let _ = window.emit_to(window.label(), menu::EVENT_OPEN_RECENT_PROJECT, path);
                     }
                 }
                 menu::CLOSE_ALL_WINDOWS => {
@@ -138,7 +154,7 @@ pub fn run() {
                 }
                 #[cfg(target_os = "macos")]
                 _ if id == dock::NEW_WINDOW_ITEM_ID => {
-                    if let Err(error) = windows::window_open_new(app.clone()) {
+                    if let Err(error) = windows::window_open_new(app.clone(), None) {
                         log::warn!("new window from dock menu failed: {error}");
                     }
                 }
@@ -158,6 +174,22 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 explorer_watch::stop_for_window(window.app_handle(), window.label());
             }
+            // WKWebView doesn't reliably fire the matchMedia/resize signal
+            // xterm.js's own CoreBrowserService relies on internally to
+            // detect a devicePixelRatio change (observed: dragging a window
+            // between two differently-scaled displays leaves the WebGL
+            // texture atlas sized for the old DPR, rendering garbled
+            // glyphs). This native event comes straight from the window
+            // server instead of WebKit's own event delivery, so it's the
+            // reliable signal the frontend forces a WebGL renderer rebuild
+            // on (usePtyTerminal.ts).
+            if let tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } = event {
+                let _ = window.emit_to(
+                    window.label(),
+                    "window:scale-factor-changed",
+                    *scale_factor,
+                );
+            }
             // Hält die dynamische "Fenster"-Menüliste (menu.rs) aktuell:
             // ohne Rebuild bei jedem Fokuswechsel bliebe der Haken beim
             // zuletzt fokussierten Fenster hängen, und ein zerstörtes
@@ -172,29 +204,59 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // Written once here rather than per spawn, so concurrently opening
-            // panes can't race on the same three files. A failure is
+            // Core plugins (incl. the `PathResolver` state `app.path()`
+            // needs) are managed by now, unlike during `.menu(menu::build)`
+            // above -- see the comment there.
+            menu::refresh(app.handle());
+
+            // See `ShellIntegrationDir`'s own doc comment for why this starts
+            // as `None` and who fills it in.
+            app.manage(ShellIntegrationDir(Mutex::new(None)));
+
+            // Ticket 04 (perf audit): none of `.setup()`'s filesystem-writing
+            // or window-building work may run synchronously here, or the
+            // splash's first frame can't render until all of it finishes.
+            // Written once per launch rather than per spawn, so concurrently
+            // opening panes can't race on the same three files. A failure is
             // survivable: panes then run the user's shell exactly as before,
             // without PaneCrew's prompt and without cwd reporting.
-            let root = app
-                .path()
-                .app_config_dir()
-                .map(|dir| dir.join("shell-integration"))
-                .ok()
-                .filter(|root| match shell_integration::materialize(root) {
-                    Ok(()) => true,
-                    Err(error) => {
-                        log::warn!("shell integration unavailable: {error}");
-                        false
+            let integration_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let Ok(root) = integration_handle
+                    .path()
+                    .app_config_dir()
+                    .map(|dir| dir.join("shell-integration"))
+                else {
+                    return;
+                };
+                match shell_integration::materialize(&root) {
+                    Ok(()) => {
+                        let state = integration_handle.state::<ShellIntegrationDir>();
+                        *state.0.lock().expect("shell integration dir poisoned") = Some(root);
                     }
-                });
-            app.manage(ShellIntegrationDir(root));
+                    Err(error) => log::warn!("shell integration unavailable: {error}"),
+                }
+            });
+
             #[cfg(target_os = "macos")]
             dock::install(app.handle());
+
+            // `restore_persisted_windows` only synchronously reads
+            // `session.json` (cheap) here — it queues each window's own
+            // `build()` call onto the main thread itself (ticket 07), so
+            // `.setup()` still returns immediately without waiting on any of
+            // them.
             windows::restore_persisted_windows(app.handle());
-            splash::position_on_cursor_monitor(app.handle());
+
+            let settings_handle = app.handle().clone();
+            if let Err(error) = app.handle().run_on_main_thread(move || {
+                settings_window::prewarm(&settings_handle);
+            }) {
+                log::warn!("failed to queue settings-window prewarm: {error}");
+            }
+
+            splash::position_on_launch_monitor(app.handle());
             splash::arm_watchdog(app.handle());
-            settings_window::prewarm(app.handle());
             resource_monitor::start(app.handle().clone());
             Ok(())
         })
@@ -211,6 +273,7 @@ pub fn run() {
             explorer_fs::explorer_search_names,
             explorer_fs::explorer_search_contents,
             explorer_fs::explorer_read_file,
+            explorer_fs::explorer_read_media,
             explorer_fs::explorer_write_file,
             explorer_fs::explorer_create_file,
             explorer_fs::explorer_create_directory,
@@ -224,6 +287,8 @@ pub fn run() {
             path_probe::path_is_directory,
             path_probe::list_subdirectories,
             launch::get_launch_project,
+            snippet_fs::snippet_init,
+            snippet_fs::snippet_list,
             session_store::session_load,
             session_store::session_save,
             session_store::session_save_window,
@@ -242,8 +307,15 @@ pub fn run() {
             settings_commands::settings_write_raw,
             settings_commands::settings_open_window,
             settings_window::settings_visible,
+            onboarding_store::onboarding_get_state,
+            onboarding_store::onboarding_set_completed,
+            onboarding_store::onboarding_set_wizard_completed,
+            onboarding_store::onboarding_restart,
             windows::window_open_new,
+            windows::take_pending_window_project,
             windows::window_close_confirmed,
+            window_state::window_state_publish,
+            window_state::window_state_snapshot,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

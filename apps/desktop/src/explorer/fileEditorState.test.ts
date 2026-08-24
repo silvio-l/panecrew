@@ -6,6 +6,7 @@ import {
   edit,
   loadFailed,
   loadSucceeded,
+  mediaLoadSucceeded,
   renamePath,
   saveFailed,
   saveSucceeded,
@@ -255,5 +256,56 @@ describe("fileEditorState", () => {
 
   it("closeIfUnder an idle ist ein No-Op", () => {
     expect(closeIfUnder(IDLE_STATE, "a.txt")).toBe(IDLE_STATE);
+  });
+
+  it("mediaLoadSucceeded führt zum media-Zustand mit Art/MIME/Base64 (Ticket 38)", () => {
+    const loading = startLoading("logo.png");
+
+    const media = mediaLoadSucceeded(loading, "logo.png", {
+      kind: "image",
+      mime: "image/png",
+      base64: "QUJD",
+    });
+
+    expect(media).toEqual({
+      status: "media",
+      path: "logo.png",
+      kind: "image",
+      mime: "image/png",
+      base64: "QUJD",
+    });
+  });
+
+  it("mediaLoadSucceeded ignoriert eine veraltete Antwort für einen inzwischen verlassenen Pfad", () => {
+    const stillLoadingOther = startLoading("second.png");
+
+    const afterStale = mediaLoadSucceeded(stillLoadingOther, "first.png", {
+      kind: "image",
+      mime: "image/png",
+      base64: "stale",
+    });
+
+    expect(afterStale).toBe(stillLoadingOther);
+  });
+
+  it("media zählt nicht als ungespeicherte Arbeit — reine Vorschau, kein Puffer", () => {
+    const media = mediaLoadSucceeded(startLoading("logo.png"), "logo.png", {
+      kind: "image",
+      mime: "image/png",
+      base64: "QUJD",
+    });
+
+    expect(wouldLoseWork(media)).toBe(false);
+  });
+
+  it("renamePath/closeIfUnder wirken auch auf den media-Zustand", () => {
+    const media = mediaLoadSucceeded(startLoading("old/logo.png"), "old/logo.png", {
+      kind: "image",
+      mime: "image/png",
+      base64: "QUJD",
+    });
+
+    expect(renamePath(media, "old", "new")).toEqual({ ...media, path: "new/logo.png" });
+    expect(closeIfUnder(media, "old")).toEqual(IDLE_STATE);
   });
 });

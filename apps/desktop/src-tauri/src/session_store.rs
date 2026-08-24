@@ -1,16 +1,21 @@
-//! Whole-session persistence (Ticket 06, v2 schema per Ticket 17): windows,
+//! Whole-session persistence (Ticket 06, v3 schema per Ticket 33): windows,
 //! each with a grid template, slot→project assignments, per-pane terminal
-//! tabs/file tab, and each slot's last-opened explorer file, written to
+//! tabs/file tabs, and each slot's last-opened explorer file, written to
 //! `session.json` in the app-data dir. The PTY process itself is never
 //! persisted — restoring a pane only respawns fresh shells for its terminal
 //! tabs in the right `cwd` (the frontend's job), this module only
 //! round-trips the JSON.
 //!
-//! v2 is a hard cutover (Ticket 17): no v1 migration/compat code. A v1 file
-//! (top-level `template`/`slots` instead of `windows`) simply fails to
-//! deserialize into this shape and `read_session` returns `None`, exactly
-//! like a missing or corrupt file — the app starts at the picker instead of
-//! failing to launch.
+//! v3 is a hard cutover (Ticket 33, same stance as the v1→v2 cutover of
+//! Ticket 17): no migration/compat code for an older shape. `id` on
+//! `PersistedTerminalTab`/`PersistedFileTab` and the switch of `ActiveTab`
+//! from an index/no-payload pair to an id reference are both new mandatory
+//! fields — a v2 file's tabs simply fail to deserialize into this shape and
+//! `read_session` returns `None`, exactly like a missing or corrupt file.
+//! The stable id is what lets a tab survive free reordering across tab kinds
+//! (Ticket 34) without "which tab is active" going ambiguous the way a plain
+//! index/position would the moment the array it counted into changes shape
+//! independently of the other.
 //!
 //! `read_session` also validates every `project_path` against the real
 //! filesystem: a folder that no longer exists must fall back to an empty
@@ -20,40 +25,83 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 use crate::menu;
 use crate::settings_commands::app_data_dir;
 
 const FILE_NAME: &str = "session.json";
 
-/// One PTY-backed terminal tab within a pane. `title` is a user-set rename;
-/// number and colour are index-derived UI state (Spec 2026-08-12: "konkretes
-/// Farbschema ist Implementierungsdetail"), not persisted.
+/// Serializes every read-modify-write against `session.json` across
+/// concurrently open windows. Tauri multi-window (Ticket 27) runs all
+/// windows in one OS process, each with its own autosave effect firing
+/// independently — without this, two windows' autosaves landing close in
+/// time could interleave their read-modify-write cycles (a lost-update
+/// race: both read the same on-disk state, both write back from that stale
+/// snapshot, whichever renames last silently drops the other's change) and
+/// could even collide on the shared per-process temp file path below.
+#[derive(Default)]
+pub struct SessionWriteLock(pub Mutex<()>);
+
+/// Per-call nonce for the temp file name, on top of the existing per-process
+/// one — belt-and-suspenders alongside `SessionWriteLock` above so two
+/// concurrent writers can never share a temp path even if a future call site
+/// ever wrote without holding the lock.
+static TEMP_FILE_NONCE: AtomicU64 = AtomicU64::new(0);
+
+/// One PTY-backed terminal tab within a pane. `id` is a stable identity
+/// (Ticket 33) the frontend's own live `tabId` — round-tripped so
+/// `ActiveTab::Terminal` can reference a specific tab across a restore
+/// instead of a position. `title` is a user-set rename; number and colour
+/// are index-derived UI state (Spec 2026-08-12: "konkretes Farbschema ist
+/// Implementierungsdetail"), not persisted.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PersistedTerminalTab {
+    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Chosen CLI-tool adapter for this specific terminal tab (Ticket 35:
+    /// moved here from `PersistedPane` — a pane can hold several
+    /// independently-started terminal tabs since Ticket 18, so one
+    /// pane-level choice no longer made sense). One of the fixed,
+    /// in-code adapter ids (`terminal/adapters.ts`); `None` means the
+    /// built-in login shell. An id absent from that fixed list (adapter
+    /// removed from the code) is a stale reference the frontend resolves
+    /// back to the login shell at spawn time, not a load error — see
+    /// `resolveAdapter` in `terminal/adapters.ts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_id: Option<String>,
 }
 
-/// The at-most-one file tab of a pane (Spec: "höchstens einen File-Tab pro
-/// Pane"), always ordered after every terminal tab in the live tab strip.
+/// A file tab of a pane. `id` (Ticket 33) is what `ActiveTab::File`
+/// references; runtime behavior still only ever produces at most one entry
+/// per pane (Spec: "höchstens einen File-Tab pro Pane", always ordered after
+/// every terminal tab in the live tab strip) — a list rather than an
+/// `Option` only because the wire schema itself no longer bakes in that
+/// limit (Ticket 34 lifts it in the live app).
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PersistedFileTab {
+    pub id: String,
     /// Project-relative path, same convention as the pre-v2
     /// `last_selected_file` field it replaces.
     pub path: String,
 }
 
-/// Which of a pane's tabs is active. A plain index would silently misparse
-/// after either array changed shape independently; the explicit `kind` tag
-/// makes "which tab" unambiguous regardless of how many terminal tabs exist.
+/// Which of a pane's tabs is active, referenced by the stable `id` of a
+/// `PersistedTerminalTab`/`PersistedFileTab` (Ticket 33) rather than a
+/// position — a plain index/no-payload pair silently misparsed once
+/// `terminal_tabs` and `file_tabs` could change shape independently of each
+/// other (Ticket 34's free cross-kind reorder). The explicit `kind` tag
+/// still makes "which list" unambiguous even though both variants now carry
+/// the same kind of payload.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ActiveTab {
-    Terminal { index: usize },
-    File,
+    Terminal { id: String },
+    File { id: String },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -61,13 +109,13 @@ pub struct PersistedPane {
     pub project_path: String,
     pub terminal_tabs: Vec<PersistedTerminalTab>,
     pub active_tab: ActiveTab,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_tab: Option<PersistedFileTab>,
-    /// Chosen CLI-tool adapter (Ticket 17 cross-cutting note: identified as a
-    /// missing field in round-1 research, added here). References the
-    /// adapter manifest from Ticket 12; `None` means a bare shell.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub adapter_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_tabs: Vec<PersistedFileTab>,
+    /// Stable tab IDs in their cross-kind display order. Sessions written
+    /// before Ticket 34 omit this field; the frontend then falls back to
+    /// terminal tabs followed by file tabs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tab_order: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -133,14 +181,27 @@ fn session_path(dir: &Path) -> PathBuf {
     dir.join(FILE_NAME)
 }
 
+/// Parses the persisted session with no per-pane project-path existence
+/// check — the raw round-trip, no filesystem stat beyond the read itself.
+/// Used by the save path's internal read-modify-write (`session_save_
+/// window`), which only needs *some* other windows'/globals' last-known
+/// state to merge into, not a freshly re-validated one: paths were already
+/// checked once at load/restore time (`read_session` below), and nothing
+/// changes a project's existence between one live save and the next within
+/// the same session (perf-audit ticket 02 — re-`is_dir()`-ing every pane on
+/// every save was pure syscall overhead the save path never needed).
+fn read_session_raw(dir: &Path) -> Option<SessionState> {
+    let bytes = std::fs::read(session_path(dir)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
 /// Reads the persisted session, or `None` if there is none yet, the file is
 /// unreadable, or it fails to parse — a corrupt, foreign, or v1-shaped file
 /// must not fail app startup (same "survivable, not fatal" stance as
 /// `launch.rs`), it just means starting at the picker exactly as on first
 /// launch.
 pub fn read_session(dir: &Path) -> Option<SessionState> {
-    let bytes = std::fs::read(session_path(dir)).ok()?;
-    let mut state: SessionState = serde_json::from_slice(&bytes).ok()?;
+    let mut state = read_session_raw(dir)?;
     for window in &mut state.windows {
         for slot in &mut window.slots {
             if let Some(pane) = slot {
@@ -184,7 +245,12 @@ pub fn write_session(dir: &Path, state: &SessionState) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(state)
         .map_err(|error| format!("Sitzung konnte nicht serialisiert werden: {error}"))?;
 
-    let temp_path = dir.join(format!(".{FILE_NAME}.panecrew-tmp-{}", std::process::id()));
+    let nonce = TEMP_FILE_NONCE.fetch_add(1, Ordering::Relaxed);
+    let temp_path = dir.join(format!(
+        ".{FILE_NAME}.panecrew-tmp-{}-{}",
+        std::process::id(),
+        nonce
+    ));
     let write_result = (|| -> std::io::Result<()> {
         let mut file = std::fs::File::create(&temp_path)?;
         file.write_all(&json)?;
@@ -209,8 +275,13 @@ pub fn session_load(app: AppHandle) -> Option<SessionState> {
 }
 
 #[tauri::command(async)]
-pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
+pub fn session_save(
+    app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
+    state: SessionState,
+) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
+    let _guard = lock.0.lock().unwrap();
     write_session(&dir, &state)
 }
 
@@ -232,16 +303,73 @@ pub fn session_save(app: AppHandle, state: SessionState) -> Result<(), String> {
 /// exactly as read — callers that don't own that piece of state (e.g. a save
 /// triggered purely by a grid change) pass `None` rather than resending a
 /// value they don't have.
+///
+/// Bug (found 2026-08-16, user-reported beachball on pane switching): the
+/// frontend's autosave effect (`App.tsx`) actually passes the CURRENT
+/// `recentProjects` array on every single fire, never `None` — including one
+/// triggered by a pure pane-focus switch, since that touches `gridState`,
+/// which is in the effect's dependency array. A prior `recent_projects.
+/// is_some()` check here was therefore true on nearly every autosave, not
+/// just an actual list change as this docstring already claimed — so a full
+/// native macOS menu-bar rebuild (`menu::refresh` -> `set_menu` ->
+/// `run_on_main_thread`) fired on every single pane click, a plausible
+/// contributor to the reported lag. `recent_projects_actually_changed` below
+/// restores the intended "only on a real change" gate.
+///
+/// Bug (found 2026-08-16, perf audit): this used to write unconditionally on
+/// every call, including the no-op case above where `window` is byte-identical
+/// to what's already stored (a pure focus switch never touches any persisted
+/// field of `PersistedWindow` — `focusedPaneId` isn't part of the schema) —
+/// a full read + `serde_json` re-encode + `fsync` + `rename` for content that
+/// hadn't actually changed, on every single pane click. Now skipped whenever
+/// the merged state doesn't actually differ from what was just read.
 #[tauri::command(async)]
 pub fn session_save_window(
     app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
     window: PersistedWindow,
     expanded_folders: Option<HashMap<String, Vec<String>>>,
     explorer_width: Option<f64>,
     recent_projects: Option<Vec<String>>,
 ) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
-    let mut state = read_session(&dir).unwrap_or_default();
+    let _guard = lock.0.lock().unwrap();
+    let previous = read_session_raw(&dir).unwrap_or_default();
+    let (state, recent_projects_changed) = merge_window_state(
+        previous.clone(),
+        window,
+        expanded_folders,
+        explorer_width,
+        recent_projects,
+    );
+    if state != previous {
+        write_session(&dir, &state)?;
+    }
+    // Hält `menu.rs`s dynamisches "Zuletzt geöffnete Projekte"-Untermenü
+    // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
+    // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
+    // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
+    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save.
+    if recent_projects_changed {
+        menu::refresh(&app);
+    }
+    Ok(())
+}
+
+/// Pure merge step behind `session_save_window` — shared with the test
+/// helpers below so both the real command and the tests exercise the exact
+/// same logic, no independent reimplementation to drift out of sync.
+/// Returns the merged state plus whether `recent_projects` specifically
+/// changed (the menu-refresh gate needs that distinction; the write-skip
+/// gate above just compares the whole returned state against `previous`).
+fn merge_window_state(
+    previous: SessionState,
+    window: PersistedWindow,
+    expanded_folders: Option<HashMap<String, Vec<String>>>,
+    explorer_width: Option<f64>,
+    recent_projects: Option<Vec<String>>,
+) -> (SessionState, bool) {
+    let mut state = previous;
     match state.windows.iter_mut().find(|w| w.label == window.label) {
         Some(existing) => *existing = window,
         None => state.windows.push(window),
@@ -252,21 +380,22 @@ pub fn session_save_window(
     if let Some(explorer_width) = explorer_width {
         state.explorer_width = Some(explorer_width);
     }
-    let recent_projects_changed = recent_projects.is_some();
+    let recent_projects_changed =
+        recent_projects_actually_changed(&recent_projects, &state.recent_projects);
     if let Some(recent_projects) = recent_projects {
         state.recent_projects = recent_projects;
     }
-    write_session(&dir, &state)?;
-    // Hält `menu.rs`s dynamisches "Zuletzt geöffnete Projekte"-Untermenü
-    // aktuell — dieselbe Rebuild-die-ganze-Leiste-Begründung wie bei der
-    // "Fenster"-Liste (`lib.rs`s `on_window_event`), nur hier ausgelöst vom
-    // Frontend-Autosave-Effekt statt einem nativen Fensterereignis. Nur bei
-    // einer tatsächlichen Änderung, nicht bei jedem reinen Grid-Save (die
-    // meisten Aufrufe reichen `recent_projects: None` durch).
-    if recent_projects_changed {
-        menu::refresh(&app);
-    }
-    Ok(())
+    (state, recent_projects_changed)
+}
+
+/// Pure comparison behind `session_save_window`'s menu-refresh gate — split
+/// out so the "only on a real change" contract has its own test, independent
+/// of a live `AppHandle`. `None` (caller doesn't own this field) is never a
+/// change; `Some` is a change only if it actually differs from what's
+/// currently stored.
+fn recent_projects_actually_changed(new: &Option<Vec<String>>, previous: &[String]) -> bool {
+    new.as_ref()
+        .is_some_and(|new_list| new_list.as_slice() != previous)
 }
 
 /// Reads just the recent-projects list, for `menu.rs`'s dynamic "Zuletzt
@@ -290,8 +419,13 @@ pub fn recent_projects<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
 /// A label not present in the file is not an error — the window may never
 /// have autosaved (e.g. closed within the same tick it was opened).
 #[tauri::command(async)]
-pub fn session_remove_window(app: AppHandle, label: String) -> Result<(), String> {
+pub fn session_remove_window(
+    app: AppHandle,
+    lock: State<'_, SessionWriteLock>,
+    label: String,
+) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
+    let _guard = lock.0.lock().unwrap();
     let Some(mut state) = read_session(&dir) else {
         return Ok(());
     };
@@ -329,10 +463,16 @@ mod tests {
     fn terminal_only_pane(project_path: &str) -> Option<PersistedPane> {
         Some(PersistedPane {
             project_path: project_path.to_string(),
-            terminal_tabs: vec![PersistedTerminalTab { title: None }],
-            active_tab: ActiveTab::Terminal { index: 0 },
-            file_tab: None,
-            adapter_id: None,
+            terminal_tabs: vec![PersistedTerminalTab {
+                id: "tab-1".to_string(),
+                title: None,
+                adapter_id: None,
+            }],
+            active_tab: ActiveTab::Terminal {
+                id: "tab-1".to_string(),
+            },
+            file_tabs: Vec::new(),
+            tab_order: vec!["tab-1".to_string()],
         })
     }
 
@@ -368,8 +508,61 @@ mod tests {
         assert_eq!(read_session(&fixture.0), None);
     }
 
+    /// The v2→v3 cutover (Ticket 33): a v2 file's tabs use the old
+    /// index/no-payload `active_tab` shape and lack the new mandatory `id`
+    /// on each tab — both fail to deserialize into the v3 shape, same
+    /// "start at the picker" fallback as the v1 cutover above.
     #[test]
-    fn round_trips_the_full_v2_state_through_write_and_read() {
+    fn a_v2_shaped_session_file_fails_to_parse_and_reads_as_none() {
+        let fixture = Fixture::new("v2-cutover");
+        std::fs::write(
+            session_path(&fixture.0),
+            br#"{"windows":[{"label":"main","template":"single","slots":[
+                {"project_path":"/some/project",
+                 "terminal_tabs":[{"title":null}],
+                 "active_tab":{"kind":"terminal","index":0}}
+            ]}]}"#,
+        )
+        .expect("fixture write");
+
+        assert_eq!(read_session(&fixture.0), None);
+    }
+
+    /// Ticket 35 moved `adapter_id` from `PersistedPane` to
+    /// `PersistedTerminalTab` — unlike the v1→v2 and v2→v3 cutovers above,
+    /// this is not a hard break: a pre-Ticket-35 file's pane-level
+    /// `adapter_id` is just an unknown field to serde, silently ignored
+    /// rather than a parse failure, so a restart after upgrading loses the
+    /// old per-pane choice (falls back to the built-in shell on every tab)
+    /// instead of refusing to load the whole session.
+    #[test]
+    fn a_pre_ticket_35_pane_level_adapter_id_is_ignored_rather_than_a_parse_error() {
+        let fixture = Fixture::new("pane-level-adapter-id");
+        let project = fixture.0.join("project");
+        std::fs::create_dir_all(&project).expect("fixture dir");
+        let project = project.to_string_lossy().into_owned();
+        std::fs::write(
+            session_path(&fixture.0),
+            format!(
+                r#"{{"windows":[{{"label":"main","template":"single","slots":[
+                    {{"project_path":{project:?},
+                     "terminal_tabs":[{{"id":"tab-1"}}],
+                     "active_tab":{{"kind":"terminal","id":"tab-1"}},
+                     "adapter_id":"demo-agent"}}
+                ]}}]}}"#
+            ),
+        )
+        .expect("fixture write");
+
+        let state = read_session(&fixture.0).expect("should still parse despite the stray field");
+        let pane = state.windows[0].slots[0]
+            .as_ref()
+            .expect("slot should be present");
+        assert_eq!(pane.terminal_tabs[0].adapter_id, None);
+    }
+
+    #[test]
+    fn round_trips_the_full_v3_state_through_write_and_read() {
         let fixture = Fixture::new("roundtrip");
         // The two project paths must actually exist on disk — `read_session`
         // validates every slot against the real filesystem.
@@ -389,15 +582,28 @@ mod tests {
                             project_path: project_a.clone(),
                             terminal_tabs: vec![
                                 PersistedTerminalTab {
+                                    id: "tab-1".to_string(),
                                     title: Some("build".to_string()),
+                                    adapter_id: Some("claude".to_string()), // brandlint-ok: canonical adapter id, functional round-trip test
                                 },
-                                PersistedTerminalTab { title: None },
+                                PersistedTerminalTab {
+                                    id: "tab-2".to_string(),
+                                    title: None,
+                                    adapter_id: None,
+                                },
                             ],
-                            active_tab: ActiveTab::Terminal { index: 1 },
-                            file_tab: Some(PersistedFileTab {
+                            active_tab: ActiveTab::Terminal {
+                                id: "tab-2".to_string(),
+                            },
+                            file_tabs: vec![PersistedFileTab {
+                                id: "file-1".to_string(),
                                 path: "src/App.tsx".to_string(),
-                            }),
-                            adapter_id: Some("demo-agent".to_string()),
+                            }],
+                            tab_order: vec![
+                                "file-1".to_string(),
+                                "tab-1".to_string(),
+                                "tab-2".to_string(),
+                            ],
                         }),
                         terminal_only_pane(&project_b),
                     ],
@@ -670,6 +876,51 @@ mod tests {
         assert_eq!(read_back.windows[0].template, "split");
     }
 
+    /// Perf-audit regression test (2026-08-16): re-saving the exact same
+    /// window — the shape of a pure pane-focus switch, since `focusedPaneId`
+    /// isn't part of the persisted schema — must not touch the file at all.
+    #[test]
+    fn session_save_window_skips_the_write_entirely_when_nothing_actually_changed() {
+        let fixture = Fixture::new("save-window-noop-skip");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("seed");
+        let mtime_before = std::fs::metadata(session_path(&fixture.0))
+            .expect("file exists")
+            .modified()
+            .expect("mtime supported");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("no-op save");
+
+        let mtime_after = std::fs::metadata(session_path(&fixture.0))
+            .expect("file still exists")
+            .modified()
+            .expect("mtime supported");
+        assert_eq!(mtime_before, mtime_after);
+    }
+
+    /// Counterpart to the no-op-skip test above: an actual change must still
+    /// reach disk, not get swallowed by the same gate.
+    #[test]
+    fn session_save_window_still_writes_when_the_window_actually_changed() {
+        let fixture = Fixture::new("save-window-real-change-writes");
+        session_save_window_for_test(&fixture.0, empty_quad_window("main")).expect("seed");
+        let mtime_before = std::fs::metadata(session_path(&fixture.0))
+            .expect("file exists")
+            .modified()
+            .expect("mtime supported");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut changed = empty_quad_window("main");
+        changed.template = "split".to_string();
+        session_save_window_for_test(&fixture.0, changed).expect("real change save");
+
+        let mtime_after = std::fs::metadata(session_path(&fixture.0))
+            .expect("file still exists")
+            .modified()
+            .expect("mtime supported");
+        assert!(mtime_after > mtime_before);
+    }
+
     /// `expanded_folders` entries are pruned on read for any project no
     /// window currently references (see `prunes_expanded_folder_entries_…`
     /// above) — the seeded window and every save below must keep carrying a
@@ -707,6 +958,57 @@ mod tests {
         let read_back = read_session(&fixture.0).expect("should read back");
         assert_eq!(read_back.expanded_folders, folders);
         assert_eq!(read_back.explorer_width, Some(300.0));
+    }
+
+    /// Perf-audit ticket 02: the save path's internal read-modify-write must
+    /// not re-run `is_dir()` project-path validation — paths were already
+    /// checked once at load/restore time, and nothing changes a project's
+    /// existence between one live save and the next within the same
+    /// session. A slot whose project folder disappears mid-session must
+    /// therefore still round-trip through an unrelated window's save,
+    /// rather than getting silently nulled out by a stat the save path has
+    /// no business performing.
+    #[test]
+    fn session_save_window_does_not_revalidate_project_paths_on_its_internal_read() {
+        let fixture = Fixture::new("save-window-no-revalidate");
+        let vanishing = fixture.0.join("vanishing-project");
+        std::fs::create_dir_all(&vanishing).expect("fixture dir");
+        let vanishing_path = vanishing.to_string_lossy().into_owned();
+
+        let mut main_window = empty_quad_window("main");
+        main_window.slots[0] = terminal_only_pane(&vanishing_path);
+        write_session(
+            &fixture.0,
+            &SessionState {
+                windows: vec![main_window],
+                ..SessionState::default()
+            },
+        )
+        .expect("seed initial state");
+
+        // The project folder is gone now — a real `is_dir()` check on this
+        // path would fail.
+        std::fs::remove_dir_all(&vanishing).expect("remove project dir");
+
+        // Saves an unrelated second window; "main"'s own entry is only
+        // carried through the save path's internal read, never touched
+        // directly.
+        session_save_window_for_test(&fixture.0, empty_quad_window("main-2"))
+            .expect("save unrelated window");
+
+        let raw_bytes = std::fs::read(session_path(&fixture.0)).expect("file exists");
+        let raw: SessionState = serde_json::from_slice(&raw_bytes).expect("valid json");
+        let main = raw
+            .windows
+            .iter()
+            .find(|w| w.label == "main")
+            .expect("main window still present");
+        assert_eq!(
+            main.slots[0],
+            terminal_only_pane(&vanishing_path),
+            "expected the save path's internal read to leave the now-nonexistent \
+             project's slot untouched instead of nulling it out"
+        );
     }
 
     /// `recent_projects`' own analogue to the two tests above — same
@@ -753,6 +1055,36 @@ mod tests {
         .expect("overwrite recent_projects");
         let read_back = read_session(&fixture.0).expect("should read back");
         assert_eq!(read_back.recent_projects, vec![project_b, project_a]);
+    }
+
+    /// Regression test for the beachball-on-pane-switch investigation
+    /// (2026-08-16): the frontend always passes `Some(recentProjects)` here,
+    /// including on saves that a pure focus switch triggers, so this gate is
+    /// the only thing standing between that and a native menu-bar rebuild on
+    /// every single pane click.
+    #[test]
+    fn recent_projects_actually_changed_ignores_none_and_a_resent_identical_list() {
+        let previous = vec!["/a".to_string(), "/b".to_string()];
+        assert!(!recent_projects_actually_changed(&None, &previous));
+        assert!(!recent_projects_actually_changed(
+            &Some(previous.clone()),
+            &previous
+        ));
+    }
+
+    #[test]
+    fn recent_projects_actually_changed_detects_a_real_difference() {
+        let previous = vec!["/a".to_string()];
+        assert!(recent_projects_actually_changed(
+            &Some(vec!["/b".to_string(), "/a".to_string()]),
+            &previous
+        ));
+        // Empty previous state (fresh install/session) is also a real change
+        // once the frontend has anything to report.
+        assert!(recent_projects_actually_changed(
+            &Some(vec!["/a".to_string()]),
+            &[]
+        ));
     }
 
     #[test]
@@ -824,21 +1156,18 @@ mod tests {
         explorer_width: Option<f64>,
         recent_projects: Option<Vec<String>>,
     ) -> Result<(), String> {
-        let mut state = read_session(dir).unwrap_or_default();
-        match state.windows.iter_mut().find(|w| w.label == window.label) {
-            Some(existing) => *existing = window,
-            None => state.windows.push(window),
+        let previous = read_session_raw(dir).unwrap_or_default();
+        let (state, _) = merge_window_state(
+            previous.clone(),
+            window,
+            expanded_folders,
+            explorer_width,
+            recent_projects,
+        );
+        if state != previous {
+            write_session(dir, &state)?;
         }
-        if let Some(expanded_folders) = expanded_folders {
-            state.expanded_folders = expanded_folders;
-        }
-        if let Some(explorer_width) = explorer_width {
-            state.explorer_width = Some(explorer_width);
-        }
-        if let Some(recent_projects) = recent_projects {
-            state.recent_projects = recent_projects;
-        }
-        write_session(dir, &state)
+        Ok(())
     }
 
     fn session_remove_window_for_test(dir: &Path, label: &str) -> Result<(), String> {

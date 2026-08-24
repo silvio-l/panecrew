@@ -4,7 +4,11 @@
 // dafür nicht mehrfach gelesen werden — das Deduplizieren übernimmt der
 // Cache, das Lesen bleibt hier gebündelt.
 import { invoke } from "@tauri-apps/api/core";
-import { gitDecorationsFromStatuses, type GitFileStatus } from "../types/gitStatus";
+import {
+  gitDecorationsFromStatuses,
+  gitRepoSummaryFromRaw,
+  type RawGitRepoStatus,
+} from "../types/gitStatus";
 import {
   projectNameFromPath,
   treeNodesFromRawEntries,
@@ -20,11 +24,11 @@ import {
 // anderen.
 export async function buildProject(path: string): Promise<Project> {
   const name = projectNameFromPath(path);
-  const [tree, gitDecorations] = await Promise.all([
+  const [tree, gitStatus] = await Promise.all([
     readTree(path),
-    readGitDecorations(path),
+    readGitStatus(path),
   ]);
-  return { path, name, ...tree, gitDecorations };
+  return { path, name, ...tree, ...gitStatus };
 }
 
 /** Liest EINE Verzeichnisebene (`explorer_read_dir`) und bildet sie auf
@@ -57,16 +61,22 @@ async function readTree(
 
 // Kein Analogon zu `treeError`: ein Projekt, das kein Git-Repo ist (oder ein
 // fehlendes `git`), ist kein Fehlerzustand des Explorers — das Backend
-// (`git_status.rs`) liefert dafür schon eine leere Liste statt eines Fehlers,
-// hier bleibt nur der Transport-Fall (IPC selbst schlägt fehl) abzufangen.
-async function readGitDecorations(path: string) {
+// (`git_status.rs`) liefert dafür schon eine leere Antwort statt eines
+// Fehlers, hier bleibt nur der Transport-Fall (IPC selbst schlägt fehl)
+// abzufangen.
+async function readGitStatus(
+  path: string,
+): Promise<Pick<Project, "gitDecorations" | "gitRepo">> {
   try {
-    const statuses = await invoke<GitFileStatus[]>("explorer_git_status", {
+    const raw = await invoke<RawGitRepoStatus>("explorer_git_status", {
       root: path,
     });
-    return gitDecorationsFromStatuses(statuses);
+    return {
+      gitDecorations: gitDecorationsFromStatuses(raw.files),
+      gitRepo: gitRepoSummaryFromRaw(raw),
+    };
   } catch (error) {
     console.error("PaneCrew: Git-Status konnte nicht gelesen werden", error);
-    return gitDecorationsFromStatuses([]);
+    return { gitDecorations: gitDecorationsFromStatuses([]), gitRepo: null };
   }
 }

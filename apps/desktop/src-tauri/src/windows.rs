@@ -18,6 +18,7 @@ use tauri::{
 use crate::pty_commands::{self, PtyState, WindowPtyRegistry};
 use crate::session_store;
 use crate::settings_commands::app_data_dir;
+use crate::window_state::{self, WindowStateStore};
 
 pub(crate) const MAIN: &str = "main";
 
@@ -120,7 +121,29 @@ pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Str
         .values()
         .find(|w| w.is_focused().unwrap_or(false))
         .map(|w| w.label().to_string());
-    let mut labels: Vec<String> = windows
+
+    window_labels_and_titles(app)
+        .into_iter()
+        .map(|(label, title)| {
+            let checked = focused_label.as_deref() == Some(label.as_str());
+            (label, title, checked)
+        })
+        .collect()
+}
+
+/// Same label/title list as `window_entries`, but without its `is_focused()`
+/// call per window — that dispatches to the platform window handle and, on
+/// macOS, blocks waiting for the main thread's event loop. `window_entries`
+/// itself already only runs from menu-rebuild call sites, all on the main
+/// thread already, so the cost is fine there; `resource_monitor`'s 5-second
+/// background-thread sampler tick doesn't need "is this window focused" at
+/// all (only `label`/`title`, for the resource popover's window grouping)
+/// and calling the focus-checking variant from that thread risked adding
+/// main-thread contention on every tick — a plausible contributor to the
+/// beachball-on-pane-switch report.
+pub(crate) fn window_labels_and_titles<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String)> {
+    let mut labels: Vec<String> = app
+        .webview_windows()
         .keys()
         .filter(|label| is_content_window(label))
         .cloned()
@@ -136,8 +159,7 @@ pub(crate) fn window_entries<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Str
             } else {
                 format!("PaneCrew — Fenster {}", index + 1)
             };
-            let checked = focused_label.as_deref() == Some(label.as_str());
-            (label, title, checked)
+            (label, title)
         })
         .collect()
 }
@@ -207,6 +229,30 @@ impl ConfirmedCloseWindows {
     }
 }
 
+/// Project path to preload into slot 0 of a just-opened secondary window,
+/// keyed by that window's generated label — set by `window_open_new` when the
+/// caller supplies one (the grid-full "open in a new window" confirmation,
+/// `App.tsx`'s `pendingGridFullOpen`), consumed once by the new window's own
+/// startup effect (`take_pending_window_project`), mirroring `main`'s
+/// existing one-shot CLI-launch-path handoff (`get_launch_project`). An entry
+/// nobody ever claims (the window closes before mounting) just sits there
+/// harmlessly — process-lifetime only, never persisted.
+#[derive(Default)]
+pub struct PendingWindowProjects(Mutex<std::collections::HashMap<String, String>>);
+
+impl PendingWindowProjects {
+    fn set(&self, window_label: &str, project_path: String) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(window_label.to_string(), project_path);
+    }
+
+    fn take(&self, window_label: &str) -> Option<String> {
+        self.0.lock().unwrap().remove(window_label)
+    }
+}
+
 /// Remembers, per window, whether `QuittingFlag` was set at the moment its
 /// `CloseRequested` got halted for confirmation — captured there because
 /// `QuittingFlag` itself is cleared at that same moment (see its doc comment)
@@ -255,9 +301,22 @@ pub fn window_close_confirmed<R: Runtime>(
 /// grid. Returns the generated label so nothing else needs to — the new
 /// window bootstraps its own state client-side from its own `?window=`
 /// query param (`useWindowIdentity`), it is never driven from here.
+///
+/// `initial_project`, if given, is stashed in `PendingWindowProjects` for the
+/// new window to claim into its slot 0 on its own startup effect — the
+/// grid-full "open in a new window instead" confirmation (`App.tsx`) is the
+/// only caller that passes one; the "+"/Cmd+Shift+N/menu "Neues Fenster"
+/// paths all pass `None` and open an empty grid exactly as before.
 #[tauri::command]
-pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
+pub fn window_open_new<R: Runtime>(
+    app: AppHandle<R>,
+    initial_project: Option<String>,
+) -> Result<String, String> {
     let label = new_window_label();
+    if let Some(project_path) = initial_project {
+        app.state::<PendingWindowProjects>()
+            .set(&label, project_path);
+    }
 
     let opener = app.get_webview_window(MAIN).or_else(|| {
         app.webview_windows()
@@ -332,6 +391,19 @@ pub fn window_open_new<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     result
 }
 
+/// One-shot counterpart to `window_open_new`'s `initial_project`: called by
+/// every new window's own startup effect (not just ones that actually have a
+/// pending project — the common case is simply nobody set one, `None`, same
+/// cost as `main`'s existing `get_launch_project` check). Consumes the entry
+/// so a later re-mount (hot reload during development) doesn't reapply it.
+#[tauri::command]
+pub fn take_pending_window_project<R: Runtime>(
+    window: Window<R>,
+    pending: State<PendingWindowProjects>,
+) -> Option<String> {
+    pending.take(window.label())
+}
+
 /// Startup restore counterpart to `window_open_new` (Ticket 27): reopens one
 /// PREVIOUSLY persisted secondary window by its existing `label` instead of
 /// generating a fresh one — called once per non-"main" entry in
@@ -394,6 +466,13 @@ pub fn open_restored<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<(), 
 /// splash gate. A single window failing to restore is survivable (same
 /// "worst case: the picker" stance as a missing/corrupt session file
 /// elsewhere) and never aborts startup.
+/// Ticket 07 (perf audit): each restored window is queued as its own
+/// `run_on_main_thread` closure instead of being built inline in one loop —
+/// native window construction has main-thread affinity on macOS, so this
+/// can't make the underlying `build()` calls run concurrently, but it stops
+/// them from forming one uninterruptible block. Queued this way, the event
+/// loop gets to process other main-thread work (rendering, IPC) between each
+/// window instead of only after all of them finish.
 pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
     let Ok(dir) = app_data_dir(app) else {
         return;
@@ -405,8 +484,14 @@ pub fn restore_persisted_windows<R: Runtime>(app: &AppHandle<R>) {
         if window.label == MAIN {
             continue;
         }
-        if let Err(error) = open_restored(app, &window.label) {
-            log::warn!("restoring window failed: {error}");
+        let label = window.label.clone();
+        let handle = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            if let Err(error) = open_restored(&handle, &label) {
+                log::warn!("restoring window failed: {error}");
+            }
+        }) {
+            log::warn!("failed to queue restore for window {}: {error}", window.label);
         }
     }
 }
@@ -434,6 +519,36 @@ fn nanoid() -> String {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     format!("{nanos:x}")
+}
+
+/// Whether this close should preserve the window's `session.json` entry for
+/// the next launch's restore (a real app-wide quit) rather than drop it (a
+/// deliberate single-window close). Only trusts `DeferredQuitState`'s
+/// remembered value on an actually-confirmed retry — the one flow that state
+/// exists for. Any OTHER arrival here (`is_confirmed_retry == false`, i.e. the
+/// "nothing to lose, skip the gate" fast path) still clears whatever might be
+/// sitting in `deferred_quit` for this label, but does not trust it: a stale
+/// entry can only be left behind by an EARLIER close that was halted for
+/// confirmation and then never confirmed (dialog cancelled, or the running
+/// sessions were closed out individually instead) — reaching the fast path
+/// now means this is an unrelated, fresh close, and honoring that leftover
+/// value used to wrongly mark it "quitting" and skip dropping the session
+/// entry, leaving a ghost window that reappeared on next launch (2026-08-16
+/// perf/leak audit finding).
+fn resolve_quitting_close(
+    deferred_quit: &DeferredQuitState,
+    quitting_flag: &QuittingFlag,
+    window_label: &str,
+    is_confirmed_retry: bool,
+) -> bool {
+    if is_confirmed_retry {
+        deferred_quit
+            .recall(window_label)
+            .unwrap_or_else(|| quitting_flag.is_set())
+    } else {
+        deferred_quit.recall(window_label);
+        quitting_flag.is_set()
+    }
 }
 
 /// Window-close cleanup (Ticket 27, landmines 3 + 5): kills every PTY this
@@ -466,6 +581,17 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     // as a `CloseRequested` for this window — until the frontend confirms
     // losing whatever's still running in it. Nothing to lose (no PTYs
     // registered) skips straight through, same as an already-confirmed close.
+    //
+    // Known accepted gap (2026-08-17, perf audit ticket 02 review follow-up):
+    // this fast path never round-trips into the frontend, so a still-pending
+    // debounced session-layout write (SESSION_SAVE_DEBOUNCE_MS, App.tsx) has
+    // no chance to flush before the native window is torn down — unlike the
+    // branch below, which the frontend's confirmation dialog gives ample
+    // time to flush in. Deliberately not widening this gate to always pause:
+    // that would touch the same `quitting_flag`/`deferred_quit` bookkeeping
+    // this function's own doc comment calls out as landmine-prone (Ticket
+    // 27), for a window whose only cost is up to `SESSION_SAVE_DEBOUNCE_MS`
+    // of stale grid-layout metadata on next launch — not lost file content.
     let confirmed = app.state::<ConfirmedCloseWindows>();
     let is_confirmed_retry = confirmed.take(window.label());
     if !is_confirmed_retry && !registry.tab_ids_for_window(window.label()).is_empty() {
@@ -481,15 +607,10 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 
     log::info!("window closing: {}", window.label());
     pty_commands::kill_all_for_window(&pty_state, &registry, window.label());
+    window_state::remove_window(app, &app.state::<WindowStateStore>(), window.label());
 
-    // For a window that was deferred above, use the quitting-state captured
-    // back then, not the global flag's current value — it may have just been
-    // cleared by a sibling window's own, unrelated deferral. Everything else
-    // (nothing was ever running, so it never went through the gate) still
-    // reads the flag live, exactly as before this confirmation step existed.
-    let is_quitting_close = deferred_quit
-        .recall(window.label())
-        .unwrap_or_else(|| quitting_flag.is_set());
+    let is_quitting_close =
+        resolve_quitting_close(&deferred_quit, &quitting_flag, window.label(), is_confirmed_retry);
     if is_quitting_close {
         return;
     }
@@ -540,7 +661,10 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 /// cannot drift apart again unnoticed.
 #[cfg(test)]
 mod tests {
-    use super::{new_window_label, window_entries, ConfirmedCloseWindows, DeferredQuitState, MAIN};
+    use super::{
+        new_window_label, resolve_quitting_close, window_entries, ConfirmedCloseWindows,
+        DeferredQuitState, PendingWindowProjects, QuittingFlag, MAIN,
+    };
     use std::collections::BTreeSet;
 
     /// `WindowEvent::CloseRequested`'s `api` can only be constructed by the
@@ -571,6 +695,35 @@ mod tests {
         assert!(confirmed.take("main"));
     }
 
+    /// `window_open_new`'s handoff to a new window's own startup effect
+    /// (grid-full "open in a new window instead", `App.tsx`): set once, then
+    /// consumed exactly once, same one-shot contract as `ConfirmedCloseWindows`
+    /// above.
+    #[test]
+    fn pending_window_project_is_set_once_and_consumed_once() {
+        let pending = PendingWindowProjects::default();
+        assert_eq!(pending.take("window-2"), None, "nothing set yet");
+
+        pending.set("window-2", "/tmp/project-a".to_string());
+        assert_eq!(pending.take("window-2"), Some("/tmp/project-a".to_string()));
+        assert_eq!(
+            pending.take("window-2"),
+            None,
+            "a second claim by the same window must find nothing left"
+        );
+    }
+
+    /// Two windows opened with different initial projects must not cross-wire.
+    #[test]
+    fn pending_window_project_does_not_leak_across_windows() {
+        let pending = PendingWindowProjects::default();
+        pending.set("window-2", "/tmp/project-a".to_string());
+        pending.set("window-3", "/tmp/project-b".to_string());
+
+        assert_eq!(pending.take("window-3"), Some("/tmp/project-b".to_string()));
+        assert_eq!(pending.take("window-2"), Some("/tmp/project-a".to_string()));
+    }
+
     /// Pins the exact bug a cancelled Cmd+Q used to reintroduce: without
     /// remembering the quitting-state at defer time, a window that answers
     /// "close anyway" after the *global* flag was already cleared (by its own
@@ -599,6 +752,61 @@ mod tests {
             None,
             "a second recall must not still see the first deferral"
         );
+    }
+
+    /// Pins the 2026-08-16 ghost-window bug: a deferral left behind by an
+    /// earlier close that was halted for confirmation and then never
+    /// confirmed (the frontend dialog was cancelled, or the user closed all
+    /// running sessions individually instead) must not answer for a later,
+    /// unrelated, non-retry close of the same window — that close's own
+    /// live `QuittingFlag` state is authoritative, not the stale memory.
+    #[test]
+    fn a_stale_deferral_does_not_leak_into_an_unrelated_later_close() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+
+        // An earlier close was halted mid-quit and remembered "was quitting",
+        // then never confirmed (dialog cancelled).
+        deferred.remember("main", true);
+
+        // A fresh close arrives later, not as a confirmed retry, with no quit
+        // in progress this time.
+        assert!(
+            !resolve_quitting_close(&deferred, &quitting, "main", false),
+            "a non-retry close must read the LIVE quitting flag, not the stale deferral"
+        );
+        assert_eq!(
+            deferred.recall("main"),
+            None,
+            "the stale entry must be cleared, not left to leak into a later close too"
+        );
+    }
+
+    /// The legitimate path this state exists for: a confirmed retry recalls
+    /// exactly what was remembered when its own close was first halted.
+    #[test]
+    fn a_confirmed_retry_uses_its_own_remembered_quitting_state() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+        deferred.remember("main", true);
+
+        // The global flag having since been cleared (as `on_window_event`
+        // itself does right after remembering) must not matter here — only
+        // the remembered value does.
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", true));
+    }
+
+    /// The common case, unaffected by the fix above: nothing was ever
+    /// deferred for this window, so a close (retry or not) simply reads the
+    /// live flag.
+    #[test]
+    fn with_no_deferral_either_path_reads_the_live_flag() {
+        let deferred = DeferredQuitState::default();
+        let quitting = QuittingFlag::default();
+        quitting.set();
+
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", false));
+        assert!(resolve_quitting_close(&deferred, &quitting, "main", true));
     }
 
     /// `window_entries` on a freshly built mock app with no windows of its
