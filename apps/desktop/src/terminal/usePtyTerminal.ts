@@ -3,6 +3,8 @@ import type { RefObject } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import i18next from "../i18n";
 import { isMacPlatform } from "../shortcuts/platform";
 import {
@@ -792,6 +794,41 @@ export function usePtyTerminal(
       webglRef.current = null;
     }
   }, [active]);
+
+  // Cross-Monitor-DPR-Wechsel: WKWebView liefert das Signal, auf das xterms
+  // eigene interne DPR-Erkennung (CoreBrowserService: matchMedia auf
+  // "resolution" + ein "resize"-Listener -> RenderService.handleDevicePixel-
+  // RatioChange()) angewiesen ist, beim reinen Ziehen eines Fensters zwischen
+  // zwei unterschiedlich skalierten Displays nicht zuverlässig (keine
+  // Fenstergrößenänderung, also auch kein ResizeObserver-Trigger oben).
+  // Sichtbares Bild: verzerrte/kaputte Glyphen, weil WebGL-Textur-Atlas und
+  // Canvas-Pixelmaße noch für die alte devicePixelRatio berechnet sind.
+  // Tauris natives ScaleFactorChanged-Fensterereignis (lib.rs) kommt direkt
+  // vom Fenster-Server statt über WebKits eigene Event-Zustellung und ist
+  // deshalb der zuverlässigere Trigger. Fix: den WebGL-Kontext einfach neu
+  // aufbauen statt xterms internes Selbstheilen zu reparieren zu versuchen —
+  // ein frisch konstruierter WebglRenderer liest devicePixelRatio bei seiner
+  // eigenen Konstruktion live neu ein (unabhängig davon, ob xterms eigenes
+  // onDprChange je feuert). Nur relevant, wenn gerade ein WebGL-Kontext lebt
+  // (inaktive Tabs haben keinen, s. Effekt oben) — deren nächster
+  // Aktiv-Wechsel lädt ohnehin frisch.
+  useEffect(() => {
+    const unlistenPromise = listen(
+      "window:scale-factor-changed",
+      () => {
+        const terminal = terminalRef.current;
+        if (!terminal || !webglRef.current) return;
+        webglRef.current.dispose();
+        webglRef.current = loadAcceleratedRenderer(terminal, () => {
+          webglRef.current = null;
+        });
+      },
+      { target: getCurrentWindow().label },
+    );
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   // Ticket 05 (Settings-System, Live-Reload): ein Theme- ODER
   // Schriftgrößen-Wechsel setzt nur CSS-Custom-Properties neu — eine bereits

@@ -18,6 +18,20 @@ vi.mock("@tauri-apps/plugin-log", () => ({
   error: vi.fn(() => Promise.resolve()),
 }));
 
+// Dieselbe Begründung wie beim `plugin-log`-Mock oben: `usePtyTerminal.ts`
+// ruft `getCurrentWindow()`/`listen()` unbedingt bei jedem Pane-Mount auf
+// (Cross-Monitor-DPR-Fix), nicht nur etwas, das ein einzelner Testfall
+// gezielt anstößt. Ohne Bridge (`window.__TAURI_INTERNALS__`) existiert unter
+// jsdom nicht, `getCurrentWindow()` wirft sonst synchron. Ein Testfile mit
+// eigenem, reichhaltigerem Mock derselben Module (z. B. App.test.tsx, das
+// `listen`-Aufrufe selbst inspiziert) überschreibt diesen Default wie üblich.
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(vi.fn())),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: vi.fn(() => ({ label: "test-window" })),
+}));
+
 // Die Test-Suite selbst ist auf deutsche UI-Strings geschrieben (jede
 // Assertion erwartet z. B. "Kopiert", nicht "Copied") — unabhängig davon,
 // welche Sprache die App für einen frisch installierten Nutzer als DEFAULT

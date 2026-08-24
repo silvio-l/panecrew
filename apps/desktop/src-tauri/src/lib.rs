@@ -174,6 +174,22 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 explorer_watch::stop_for_window(window.app_handle(), window.label());
             }
+            // WKWebView doesn't reliably fire the matchMedia/resize signal
+            // xterm.js's own CoreBrowserService relies on internally to
+            // detect a devicePixelRatio change (observed: dragging a window
+            // between two differently-scaled displays leaves the WebGL
+            // texture atlas sized for the old DPR, rendering garbled
+            // glyphs). This native event comes straight from the window
+            // server instead of WebKit's own event delivery, so it's the
+            // reliable signal the frontend forces a WebGL renderer rebuild
+            // on (usePtyTerminal.ts).
+            if let tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } = event {
+                let _ = window.emit_to(
+                    window.label(),
+                    "window:scale-factor-changed",
+                    *scale_factor,
+                );
+            }
             // Hält die dynamische "Fenster"-Menüliste (menu.rs) aktuell:
             // ohne Rebuild bei jedem Fokuswechsel bliebe der Haken beim
             // zuletzt fokussierten Fenster hängen, und ein zerstörtes
