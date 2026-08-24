@@ -1,0 +1,18 @@
+---
+import { getEntry, render } from "astro:content";
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const entry = await getEntry("reference", "cli");
+if (!entry) {
+  throw new Error("docs/cli.md missing from the repo — regenerate it (see apps/desktop's docs)");
+}
+const { Content } = await render(entry);
+
+const title = "CLI Reference | PaneCrew Docs";
+const description = "Every PaneCrew command-line flag, generated directly from the app's own argument parser.";
+---
+<DocsLayout title={title} description={description} path="/docs/cli/" active="cli">
+  <article class="docs-md">
+    <Content />
+  </article>
+</DocsLayout>

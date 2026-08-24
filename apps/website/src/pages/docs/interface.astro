@@ -1,0 +1,413 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const title = "Interface Tour | PaneCrew Docs";
+const description =
+  "An annotated tour of the real PaneCrew window — hover, tap, or tab through the numbered markers to see what every part of the interface does.";
+
+// Hotspot rectangles are percentages of the 1996×1125 screenshot, measured
+// against the actual pixel content (frame borders, the amber focus ring,
+// text bands) rather than eyeballed. `dot` is the numbered marker's anchor
+// point, also in stage percentages. `body` may contain inline markup and is
+// rendered with set:html — authored here, not user input.
+interface Hotspot {
+  id: number;
+  title: string;
+  body: string;
+  rect: { l: number; t: number; w: number; h: number };
+  dot: { x: number; y: number };
+}
+
+const hotspots: Hotspot[] = [
+  {
+    id: 1,
+    title: "File explorer",
+    body: "Always shows the project tree of whichever pane currently has focus — not a fixed tree per pane. Here that's <code>website</code>, because the focused pane on the right is open in it.",
+    rect: { l: 0, t: 0, w: 21, h: 100 },
+    dot: { x: 8, y: 15 },
+  },
+  {
+    id: 2,
+    title: "Branch indicator",
+    body: "Git status for the focused project — the current branch, and how many commits it's ahead of the remote.",
+    rect: { l: 0, t: 18.5, w: 21, h: 4.8 },
+    dot: { x: 4.2, y: 20.6 },
+  },
+  {
+    id: 3,
+    title: "Pane toolbar",
+    body: "Pane count and position — 2 of 4 panes open, and this tells you which one currently has focus.",
+    rect: { l: 21.8, t: 8.4, w: 16.3, h: 4.9 },
+    dot: { x: 29.9, y: 10.9 },
+  },
+  {
+    id: 4,
+    title: "Grid layout picker",
+    body: "Choose how many panes are visible at once — from a single pane up to a dense grid.",
+    rect: { l: 82.9, t: 8.4, w: 16.5, h: 4.9 },
+    dot: { x: 91.2, y: 10.9 },
+  },
+  {
+    id: 5,
+    title: "Project tab",
+    body: "Each pane points at its own project folder, independent of the others.",
+    rect: { l: 21.9, t: 14.3, w: 8.6, h: 4.2 },
+    dot: { x: 26.3, y: 16.4 },
+  },
+  {
+    id: 6,
+    title: "Shell tab",
+    body: "Add more tabs per pane — each one is its own real terminal process, not a simulated one.",
+    rect: { l: 30.7, t: 14.3, w: 6.2, h: 4.2 },
+    dot: { x: 33.8, y: 16.4 },
+  },
+  {
+    id: 7,
+    title: "A real PTY",
+    body: "Any CLI tool runs here exactly as it would in a native terminal — Claude Code, Codex, Gemini CLI, or a plain shell.", // brandlint-ok: functional list of real CLI tools PaneCrew hosts, matches the tool-agnostic claim in CLAUDE.md
+    rect: { l: 21, t: 18.5, w: 39.1, h: 37 },
+    dot: { x: 40.6, y: 37 },
+  },
+  {
+    id: 8,
+    title: "The focus ring",
+    body: "This pane currently has keyboard focus — see the amber line running from the explorer straight into it? That's not decoration: it's showing you, live, which pane the explorer is currently following.",
+    rect: { l: 61.2, t: 56.5, w: 38.1, h: 42.3 },
+    dot: { x: 65, y: 58 },
+  },
+  {
+    id: 9,
+    title: "Live output",
+    body: "A real shell's output — scrollback, colors, and everything else a real terminal does.",
+    rect: { l: 61.2, t: 61.5, w: 38.1, h: 37.3 },
+    dot: { x: 80, y: 75 },
+  },
+];
+
+// The marker dot lives inside its hotspot button, so convert its
+// stage-relative anchor into button-relative percentages.
+const withDotOffsets = hotspots.map((h) => ({
+  ...h,
+  dotL: ((h.dot.x - h.rect.l) / h.rect.w) * 100,
+  dotT: ((h.dot.y - h.rect.t) / h.rect.h) * 100,
+  caretX: h.rect.l + h.rect.w / 2,
+}));
+---
+<DocsLayout title={title} description={description} path="/docs/interface/" active="interface">
+  <h1>Interface tour</h1>
+  <p class="lede">
+    One real PaneCrew window, straight from a live session. Hover, tap, or tab through the
+    numbered markers to see what each part of the interface does.
+  </p>
+
+  <div class="tour" id="tour">
+    <div class="tour-stage" id="tour-stage">
+      <img
+        src="/docs/interface-base.png"
+        width="1996"
+        height="1125"
+        alt="The PaneCrew window: a file explorer on the left showing the website project tree, a 2x2 pane grid with an empty panecrew shell top-left and two empty placeholder panes, and a focused website pane bottom-right — wrapped in an amber focus ring connected back to the explorer by a line."
+        decoding="async"
+      />
+      <div class="tour-clip" aria-hidden="true">
+        <div class="tour-lens" id="tour-lens"></div>
+      </div>
+      {withDotOffsets.map((h) => (
+        <button
+          class="hotspot"
+          type="button"
+          data-id={h.id}
+          data-l={h.rect.l}
+          data-t={h.rect.t}
+          data-w={h.rect.w}
+          data-h={h.rect.h}
+          data-cx={h.caretX}
+          aria-controls="tour-panel"
+          aria-expanded="false"
+          aria-label={`${h.id}. ${h.title}`}
+          style={`left:${h.rect.l}%;top:${h.rect.t}%;width:${h.rect.w}%;height:${h.rect.h}%;`}
+        >
+          <span class="dot" style={`left:${h.dotL}%;top:${h.dotT}%;`} aria-hidden="true">{h.id}</span>
+        </button>
+      ))}
+    </div>
+
+    <div class="tour-panel" id="tour-panel" role="region" aria-live="polite" aria-label="Interface region description">
+      <span class="tour-caret" id="tour-caret" aria-hidden="true"></span>
+      <div class="tour-panel-inner">
+        <div class="tour-entry tour-hint is-shown" data-id="0">
+          <p>Hover a numbered marker — or tap it, or press <kbd>Tab</kbd> — to see what that part of the window does.</p>
+        </div>
+        {hotspots.map((h) => (
+          <div class="tour-entry" data-id={h.id}>
+            <b><i aria-hidden="true">{h.id}</i>{h.title}</b>
+            <p set:html={h.body} />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</DocsLayout>
+
+<style>
+  .tour { margin-top: 6px; }
+
+  /* ---------- stage ---------- */
+  .tour-stage { position: relative; }
+  .tour-stage img {
+    display: block; width: 100%; max-width: 100%; height: auto;
+    border-radius: 12px; border: 1px solid var(--line-dark);
+  }
+
+  /* Clipping layer for the veil: the lens's huge box-shadow spread dims
+     everything around the active region, and this layer keeps that shadow
+     from flooding the rest of the page. */
+  .tour-clip {
+    position: absolute; inset: 1px; overflow: hidden;
+    border-radius: 11px; pointer-events: none; z-index: 1;
+  }
+  .tour-lens {
+    position: absolute; left: 40%; top: 30%; width: 20%; height: 40%;
+    border-radius: 10px; opacity: 0;
+    box-shadow:
+      0 0 0 2px rgba(229, 150, 86, 0.95),
+      0 0 26px 4px rgba(229, 150, 86, 0.35),
+      inset 0 0 22px rgba(229, 150, 86, 0.12),
+      0 0 0 200vmax rgba(14, 17, 36, 0.6);
+    transition:
+      opacity 0.28s ease,
+      left 0.38s cubic-bezier(0.3, 0.9, 0.3, 1),
+      top 0.38s cubic-bezier(0.3, 0.9, 0.3, 1),
+      width 0.38s cubic-bezier(0.3, 0.9, 0.3, 1),
+      height 0.38s cubic-bezier(0.3, 0.9, 0.3, 1);
+  }
+  .tour.has-active .tour-lens { opacity: 1; }
+
+  /* ---------- hotspots + markers ---------- */
+  .hotspot {
+    position: absolute; z-index: 2;
+    background: transparent; border: 0; padding: 0; margin: 0;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  /* The gliding lens outlines the exact same rect on focus (set via
+     focusin), so the default page outline would only double it up. */
+  .hotspot:focus-visible { outline: none; }
+  .hotspot:focus-visible .dot { outline: 2px solid var(--cream); outline-offset: 2px; }
+
+  .dot {
+    position: absolute; translate: -50% -50%;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 0.8125rem; font-weight: 700;
+    color: var(--amber); background: rgba(31, 37, 71, 0.88);
+    border: 1.5px solid var(--amber);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    transition: transform 0.18s ease, background var(--lift), color var(--lift), opacity 0.25s ease;
+  }
+  /* Idle breathing ring so the markers read as "touch me" affordances. */
+  .dot::after {
+    content: ""; position: absolute; inset: -1.5px; border-radius: 50%;
+    border: 1.5px solid var(--amber);
+    animation: dot-breathe 2.8s ease-out infinite;
+  }
+  @keyframes dot-breathe {
+    0% { transform: scale(1); opacity: 0.7; }
+    60%, 100% { transform: scale(1.9); opacity: 0; }
+  }
+  .hotspot:hover .dot, .hotspot.is-active .dot {
+    transform: scale(1.15);
+    background: var(--amber); color: var(--indigo-deep);
+  }
+  /* While one region is spotlit, quiet down every other marker (and its
+     breathing ring) so the veil actually reads as a spotlight. */
+  .tour.has-active .hotspot:not(.is-active) .dot { opacity: 0.35; }
+  .tour.has-active .dot::after, .hotspot.is-active .dot::after { animation: none; opacity: 0; }
+
+  /* ---------- callout panel ---------- */
+  .tour-panel {
+    position: relative; margin-top: 16px;
+    background: rgba(255, 253, 245, 0.05);
+    border: 1px solid var(--line-dark); border-radius: 12px;
+    padding: 16px 20px;
+  }
+  /* Caret slides along the panel's top edge to point at the active
+     hotspot's horizontal center — the anchor line between image and text.
+     Solid background approximates the panel's translucent cream over the
+     page's indigo gradient. */
+  .tour-caret {
+    position: absolute; top: -7px; left: 50%;
+    width: 12px; height: 12px; translate: -50% 0; rotate: 45deg;
+    background: #313860;
+    border-top: 1px solid var(--line-dark); border-left: 1px solid var(--line-dark);
+    opacity: 0;
+    transition: left 0.38s cubic-bezier(0.3, 0.9, 0.3, 1), opacity 0.28s ease;
+  }
+  .tour.has-active .tour-caret { opacity: 1; }
+
+  /* All entries share one grid cell, so the panel is always as tall as its
+     tallest entry — no layout jump when the active hotspot changes. */
+  .tour-panel-inner { display: grid; }
+  .tour-entry {
+    grid-area: 1 / 1;
+    opacity: 0; visibility: hidden; translate: 0 6px;
+    transition: opacity 0.25s ease, translate 0.25s ease, visibility 0.25s;
+  }
+  .tour-entry.is-shown { opacity: 1; visibility: visible; translate: 0 0; }
+  .tour-entry b {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--display); font-weight: 700; font-size: 1.0625rem;
+    color: var(--cream); margin-bottom: 4px;
+  }
+  .tour-entry b i {
+    font-style: normal; flex: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 0.75rem;
+    color: var(--indigo-deep); background: var(--amber);
+  }
+  .tour-entry p { color: rgba(255, 253, 245, 0.82); text-wrap: pretty; margin: 0; }
+  .tour-entry p :global(code) {
+    font-family: var(--mono); font-size: 0.875em;
+    background: rgba(255, 253, 245, 0.08); border-radius: 4px; padding: 0.1em 0.4em;
+  }
+  .tour-hint p { color: rgba(255, 253, 245, 0.6); font-size: 0.9375rem; }
+  .tour-hint kbd {
+    font-family: var(--mono); font-size: 0.8125em;
+    background: rgba(255, 253, 245, 0.08); border: 1px solid var(--line-dark);
+    border-radius: 4px; padding: 0.05em 0.4em;
+  }
+
+  /* ---------- no-JS fallback: plain numbered legend under the image ---------- */
+  .tour:not(.is-js) .hotspot { display: none; }
+  .tour:not(.is-js) .tour-clip { display: none; }
+  .tour:not(.is-js) .tour-caret { display: none; }
+  .tour:not(.is-js) .tour-hint { display: none; }
+  .tour:not(.is-js) .tour-panel-inner { display: block; }
+  .tour:not(.is-js) .tour-entry {
+    opacity: 1; visibility: visible; translate: 0 0; margin-bottom: 14px;
+  }
+  .tour:not(.is-js) .tour-entry:last-child { margin-bottom: 0; }
+
+  @media (max-width: 640px) {
+    .dot { width: 20px; height: 20px; font-size: 0.6875rem; }
+    .tour-panel { padding: 13px 15px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tour-lens, .tour-caret, .tour-entry, .dot { transition: none; }
+    .dot::after { animation: none; opacity: 0; }
+    .hotspot:hover .dot, .hotspot.is-active .dot { transform: none; }
+  }
+</style>
+
+<script>
+  const tour = document.getElementById("tour");
+  const stage = document.getElementById("tour-stage");
+  const lens = document.getElementById("tour-lens");
+  const caret = document.getElementById("tour-caret");
+
+  if (tour && stage && lens && caret) {
+    tour.classList.add("is-js");
+
+    const buttons = [...tour.querySelectorAll<HTMLButtonElement>(".hotspot")];
+    const entries = [...tour.querySelectorAll<HTMLElement>(".tour-entry")];
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    let activeId = 0; // 0 = nothing active, hint entry shown
+    let pinnedId = 0; // set by click/tap; survives pointer leaving the tour
+    let userTouched = false; // any real interaction cancels the intro highlight
+
+    function setActive(id: number): void {
+      activeId = id;
+      tour!.classList.toggle("has-active", id !== 0);
+      for (const b of buttons) {
+        const on = Number(b.dataset.id) === id;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-expanded", String(on));
+      }
+      for (const e of entries) {
+        e.classList.toggle("is-shown", Number(e.dataset.id ?? "0") === id);
+      }
+      const btn = buttons.find((b) => Number(b.dataset.id) === id);
+      if (btn) {
+        lens!.style.left = `${btn.dataset.l}%`;
+        lens!.style.top = `${btn.dataset.t}%`;
+        lens!.style.width = `${btn.dataset.w}%`;
+        lens!.style.height = `${btn.dataset.h}%`;
+        caret!.style.left = `${btn.dataset.cx}%`;
+      }
+    }
+
+    for (const b of buttons) {
+      const id = Number(b.dataset.id);
+      b.addEventListener("pointerenter", () => {
+        userTouched = true;
+        setActive(id);
+      });
+      b.addEventListener("focus", () => {
+        userTouched = true;
+        setActive(id);
+      });
+      b.addEventListener("click", () => {
+        userTouched = true;
+        if (pinnedId === id) {
+          pinnedId = 0;
+          setActive(0);
+        } else {
+          pinnedId = id;
+          setActive(id);
+        }
+      });
+    }
+
+    // Leaving the tour (image + panel) reverts to the pinned hotspot, or to
+    // the hint when nothing is pinned. The panel counts as inside so moving
+    // the pointer down to read the callout doesn't dismiss it.
+    tour.addEventListener("pointerleave", () => setActive(pinnedId));
+    tour.addEventListener("focusout", (ev) => {
+      const to = (ev as FocusEvent).relatedTarget;
+      if (!(to instanceof Node) || !tour.contains(to)) setActive(pinnedId);
+    });
+
+    // Tap/click on the bare screenshot or anywhere outside dismisses.
+    document.addEventListener("pointerdown", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof Node)) return;
+      const insideTour = tour.contains(t);
+      const onHotspot = t instanceof Element && t.closest(".hotspot") !== null;
+      if (!insideTour || (insideTour && stage.contains(t) && !onHotspot)) {
+        pinnedId = 0;
+        setActive(0);
+      }
+    });
+
+    tour.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") {
+        pinnedId = 0;
+        setActive(0);
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }
+    });
+
+    // One-time intro: when the stage scrolls into view, briefly spotlight
+    // the focus ring — the product's core differentiator — then let go.
+    // Skipped entirely under prefers-reduced-motion or after any interaction.
+    if (!reducedMotion.matches && "IntersectionObserver" in window) {
+      const io = new IntersectionObserver(
+        (obsEntries) => {
+          if (!obsEntries.some((e) => e.isIntersecting)) return;
+          io.disconnect();
+          window.setTimeout(() => {
+            if (userTouched) return;
+            setActive(8);
+            window.setTimeout(() => {
+              if (!userTouched && activeId === 8 && pinnedId === 0) setActive(0);
+            }, 2600);
+          }, 500);
+        },
+        { threshold: 0.45 },
+      );
+      io.observe(stage);
+    }
+  }
+</script>

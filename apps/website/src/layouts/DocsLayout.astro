@@ -1,35 +1,37 @@
 ---
-// Shared chrome (nav, footer, brand tokens) for guide/content pages.
-// The identical parts of the tokens/nav/footer CSS now live in
-// ../styles/site-chrome.css, shared with index.astro (performance-audit
-// ticket 11) — index.astro is pinned to the approved artifact prototype
-// (../../../.impeccable/direction-contract-website.md) and must stay
-// structurally untouched, but importing the same stylesheet doesn't touch
-// its structure. Only the values that genuinely differ per page (footer
-// glyph-tile color, footer icon border alpha, plus the guide-only prose
-// styles below) stay local here — see site-chrome.css's own header comment
-// for the split. .wrap/.nav/.foot used to redeclare a fixed max-width:
-// 1120px here instead of index.astro's fluid --span-wide, which made the
-// nav/footer visibly resize the instant you navigated between the
-// homepage and a guide page — fixed 2026-08-16 by promoting the shared
-// width to site-chrome.css instead of duplicating it here.
+// Shared chrome for the /docs/* reference section. Same head/nav/footer
+// markup and tokens as GuideLayout.astro (site-chrome.css) — kept as its
+// own file rather than wrapped around GuideLayout because this layout adds
+// a section sidebar GuideLayout has no slot for; GuideLayout was built for
+// a single long article and intentionally has no doc-tree nav. Duplicating
+// the head/nav/footer markup instead of abstracting it out matches the
+// existing split between index.astro and GuideLayout.astro (see that
+// file's header comment) — only the CSS is shared, not the markup.
 import "../styles/site-chrome.css";
 
 interface Props {
   title: string;
   description: string;
-  path: string; // e.g. "/guides/multiple-cli-agent-sessions/"
-  datePublished: string; // ISO date, e.g. "2026-08-13" — per-page, not hardcoded here
+  path: string; // e.g. "/docs/install/"
+  active: string; // nav item id to highlight, see navItems below
 }
-const { title, description, path, datePublished } = Astro.props;
+const { title, description, path, active } = Astro.props;
 const siteUrl = "https://panecrew.dev";
 const canonical = `${siteUrl}${path}`;
+
+const navItems = [
+  { id: "index", href: "/docs/", label: "Overview" },
+  { id: "interface", href: "/docs/interface/", label: "Interface tour" },
+  { id: "install", href: "/docs/install/", label: "Install & run" },
+  { id: "focus-following-explorer", href: "/docs/focus-following-explorer/", label: "Focus-following explorer" },
+  { id: "cli", href: "/docs/cli/", label: "CLI reference" },
+  { id: "shortcuts", href: "/docs/shortcuts/", label: "Keyboard shortcuts" },
+];
 
 const techArticleJsonLd = {
   "@context": "https://schema.org",
   "@type": "TechArticle",
   headline: title,
-  datePublished,
   author: { "@type": "Organization", name: "PaneCrew" },
   publisher: { "@id": "https://panecrew.dev/#organization" },
 };
@@ -57,13 +59,7 @@ const techArticleJsonLd = {
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" href="/favicon.png">
 <script type="application/ld+json" set:html={JSON.stringify(techArticleJsonLd)} />
-<slot name="head" />
 <style is:global>
-  /* nav/footer/token CSS (incl. .wrap/.nav/.foot width+margin+padding)
-     lives in ../styles/site-chrome.css (imported above) — only the
-     properties that genuinely differ from index.astro's copy stay here
-     (footer glyph-tile color, footer icon border alpha), plus the
-     guide-only prose styles below. */
   body {
     background:
       linear-gradient(180deg, var(--indigo-hi) 0%, var(--indigo) 16%, var(--indigo) 62%, #2a325f 88%, var(--indigo-hi) 100%);
@@ -74,40 +70,62 @@ const techArticleJsonLd = {
   .glyph-tile { display: inline-flex; background: var(--indigo-deep); }
   .foot-gh { border: 1px solid rgba(35, 40, 63, 0.16); }
 
-  /* ---------- guide/article content (new — homepage has no prose layout) ---------- */
-  .guide { padding: 56px 0 90px; }
-  .guide .eyebrow {
+  /* ---------- docs two-column layout ---------- */
+  .docs { padding: 48px 0 90px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 56px; }
+  @media (max-width: 760px) {
+    .docs { grid-template-columns: 1fr; gap: 28px; }
+  }
+
+  .docs-nav { font-size: 0.90625rem; }
+  .docs-nav .eyebrow {
     font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
     color: var(--amber); margin-bottom: 14px;
   }
-  .guide h1 {
-    font-family: var(--display); font-weight: 700; font-size: clamp(30px, 4vw, 44px);
-    line-height: 1.12; max-width: 780px; margin-bottom: 20px; text-wrap: balance;
+  .docs-nav ul { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+  .docs-nav a {
+    display: block; text-decoration: none; padding: 7px 10px; border-radius: 8px;
+    color: rgba(255, 253, 245, 0.72); transition: background var(--lift), color var(--lift);
   }
-  .guide .lede {
-    font-size: 1.125rem; color: rgba(255, 253, 245, 0.88); max-width: 680px;
-    margin-bottom: 34px; text-wrap: pretty;
+  .docs-nav a:hover { color: var(--cream); background: rgba(255, 253, 245, 0.06); }
+  .docs-nav a[aria-current="page"] {
+    color: var(--cream); background: rgba(229, 150, 86, 0.14);
+    box-shadow: inset 2px 0 0 var(--amber);
   }
-  .guide h2 {
-    font-family: var(--display); font-weight: 700; font-size: 1.5rem;
-    margin: 44px 0 14px; color: var(--cream);
+
+  .docs-content h1 {
+    font-family: var(--display); font-weight: 700; font-size: clamp(28px, 3.6vw, 40px);
+    line-height: 1.14; margin-bottom: 16px; text-wrap: balance;
   }
-  .guide p { max-width: 680px; color: rgba(255, 253, 245, 0.82); margin-bottom: 14px; text-wrap: pretty; }
-  .guide .faq-item { max-width: 680px; margin-bottom: 22px; }
-  .guide .faq-item h3 { font-size: 1.0625rem; font-weight: 700; color: var(--cream); margin-bottom: 6px; }
-  .guide .faq-item p { margin-bottom: 0; }
-  .guide .cta {
-    margin-top: 46px; padding: 22px 26px; max-width: 680px;
-    background: rgba(255, 253, 245, 0.06); border: 1px solid var(--line-dark); border-radius: 14px;
+  .docs-content .lede {
+    font-size: 1.0625rem; color: rgba(255, 253, 245, 0.88); max-width: 640px;
+    margin-bottom: 30px; text-wrap: pretty;
   }
-  .guide .cta a {
-    display: inline-block; margin-top: 10px; text-decoration: none;
-    font-family: var(--mono); font-size: 0.875rem; color: var(--indigo-deep);
-    background: var(--amber); border-radius: 999px; padding: 9px 20px;
-    transition: transform var(--lift);
+
+  /* prose rendering for the markdown-sourced reference pages (cli.md,
+     shortcuts.md) — no classes on the generated HTML, so styled by tag. */
+  .docs-md { max-width: 720px; }
+  .docs-md h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3.2vw, 36px); margin-bottom: 16px; }
+  .docs-md h2 { font-family: var(--display); font-weight: 700; font-size: 1.375rem; margin: 34px 0 12px; color: var(--cream); }
+  .docs-md h3, .docs-md h6 { font-size: 1rem; margin: 22px 0 8px; color: var(--cream); }
+  .docs-md p { color: rgba(255, 253, 245, 0.82); margin-bottom: 12px; text-wrap: pretty; }
+  .docs-md ul, .docs-md ol { color: rgba(255, 253, 245, 0.82); margin: 0 0 12px 1.2em; }
+  .docs-md li { margin-bottom: 4px; }
+  .docs-md a { color: var(--amber); }
+  .docs-md code {
+    font-family: var(--mono); font-size: 0.875em; background: rgba(255, 253, 245, 0.08);
+    border-radius: 4px; padding: 0.1em 0.4em;
   }
-  .guide .cta a:hover { transform: translateY(-2px); }
+  .docs-md pre {
+    background: var(--term); border: 1px solid var(--term-line); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; margin-bottom: 16px;
+  }
+  .docs-md pre code { background: none; padding: 0; }
+  .docs-md table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 0.9375rem; }
+  .docs-md th, .docs-md td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line-dark); }
+  .docs-md th { color: var(--cream); font-weight: 700; }
+  .docs-md td { color: rgba(255, 253, 245, 0.82); }
 </style>
+<slot name="head" />
 </head>
 <body>
 
@@ -143,7 +161,7 @@ const techArticleJsonLd = {
     <a href="/#crew">The crew</a>
     <a href="/#demo">Live demo</a>
     <a href="/guides/multiple-cli-agent-sessions/">Guides</a>
-    <a href="/docs/">Docs</a>
+    <a href="/docs/" aria-current={path.startsWith("/docs/") ? "page" : undefined}>Docs</a>
     <a href="/#oss">Open source</a>
     <a href="/#install">Install</a>
   </div>
@@ -159,7 +177,21 @@ const techArticleJsonLd = {
 </nav>
 
 <main>
-  <slot />
+  <div class="docs wrap">
+    <nav class="docs-nav" aria-label="Docs section">
+      <p class="eyebrow">Docs</p>
+      <ul>
+        {navItems.map((item) => (
+          <li>
+            <a href={item.href} aria-current={item.id === active ? "page" : undefined}>{item.label}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+    <div class="docs-content">
+      <slot />
+    </div>
+  </div>
 </main>
 
 <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
