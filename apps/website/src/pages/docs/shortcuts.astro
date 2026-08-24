@@ -1,0 +1,18 @@
+---
+import { getEntry, render } from "astro:content";
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const entry = await getEntry("reference", "shortcuts");
+if (!entry) {
+  throw new Error("docs/shortcuts.md missing from the repo — regenerate it (see apps/desktop's docs)");
+}
+const { Content } = await render(entry);
+
+const title = "Keyboard Shortcuts | PaneCrew Docs";
+const description = "The full PaneCrew keyboard shortcut list for panes, tabs, the explorer, and the whole interface, generated from the app's own shortcut registry.";
+---
+<DocsLayout title={title} description={description} path="/docs/shortcuts/" active="shortcuts">
+  <article class="docs-md">
+    <Content />
+  </article>
+</DocsLayout>

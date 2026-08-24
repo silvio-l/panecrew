@@ -1,0 +1,55 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const title = "Install & Run | PaneCrew Docs";
+const description =
+  "How to install prerequisites and run PaneCrew from source: pnpm, the Tauri 2 toolchain, pnpm tauri dev, and building a native unsigned binary.";
+---
+<DocsLayout title={title} description={description} path="/docs/install/" active="install">
+  <article class="docs-md">
+    <h1>Install &amp; run</h1>
+    <p>
+      PaneCrew is early and actively developed — there are no packaged builds yet, so running it
+      today means building from source. <!-- brandlint-ok: functional status claim, matches README "Status" section verbatim -->
+    </p>
+
+    <h2>Prerequisites</h2>
+    <ul>
+      <li><a href="https://pnpm.io/">pnpm</a></li>
+      <li>
+        The <a href="https://tauri.app/start/prerequisites/">Tauri 2 prerequisites</a> for your
+        platform — a Rust toolchain plus your platform's native webview dependencies.
+      </li>
+    </ul>
+
+    <h2>Clone and run</h2>
+    <pre><code>git clone https://github.com/silvio-l/panecrew.git
+cd panecrew/apps/desktop
+pnpm install
+pnpm tauri dev</code></pre>
+    <p>
+      <code>pnpm tauri dev</code> starts the real Tauri shell (Rust backend + native webview). Running
+      <code>pnpm dev</code> alone only starts the Vite frontend, without the native window — useful
+      for frontend-only iteration, not for actually using the app.
+    </p>
+
+    <h2>Building a binary</h2>
+    <pre><code>pnpm tauri build</code></pre>
+    <p>
+      Produces a native, unsigned build for your platform. Signed and notarized releases are
+      planned but not yet published. <!-- brandlint-ok: functional status claim, matches README verbatim -->
+    </p>
+
+    <h2>Opening a specific project</h2>
+    <p>
+      <code>panecrew [PROJECT_PATH]</code> opens directly with that project, skipping the picker.
+      See the full <a href="/docs/cli/">CLI reference</a> for every flag.
+    </p>
+
+    <h2>Platforms</h2>
+    <p>
+      macOS and Windows are the target platforms. Development and testing currently happen only
+      on macOS — Windows support is a stated goal, not yet verified on a real Windows machine. <!-- brandlint-ok: functional, honest status claim, matches PRODUCT.md -->
+    </p>
+  </article>
+</DocsLayout>

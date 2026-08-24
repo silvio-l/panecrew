@@ -1,0 +1,66 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const title = "Docs | PaneCrew";
+const description =
+  "PaneCrew documentation: install and run from source, how the focus-following explorer works, the CLI reference, and the full keyboard shortcut list.";
+
+const cards = [
+  {
+    href: "/docs/install/",
+    label: "Install & run",
+    blurb: "Prerequisites, cloning the repo, and running PaneCrew from source with pnpm and Tauri.",
+  },
+  {
+    href: "/docs/focus-following-explorer/",
+    label: "Focus-following explorer",
+    blurb: "How the file tree always tracks whichever pane has focus, and why that's PaneCrew's core mechanic.",
+  },
+  {
+    href: "/docs/cli/",
+    label: "CLI reference",
+    blurb: "Every command-line flag, generated straight from the app's own argument parser.",
+  },
+  {
+    href: "/docs/shortcuts/",
+    label: "Keyboard shortcuts",
+    blurb: "The full shortcut list for panes, tabs, the explorer, and the whole interface.",
+  },
+];
+---
+<DocsLayout title={title} description={description} path="/docs/" active="index">
+  <p class="eyebrow" style="font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); margin-bottom: 14px;">Docs</p>
+  <h1>PaneCrew Docs</h1>
+  <p class="lede">
+    Reference material for running PaneCrew and understanding how it works. For the product
+    pitch, see the <a href="/" style="color: var(--amber);">homepage</a>; for task-specific
+    write-ups (running several agents at once, multiple terminal windows, ...), see the <a
+      href="/guides/multiple-cli-agent-sessions/" style="color: var(--amber);">guides</a>.
+  </p>
+
+  <div class="docs-cards">
+    {cards.map((card) => (
+      <a class="docs-card" href={card.href}>
+        <b>{card.label}</b>
+        <span>{card.blurb}</span>
+      </a>
+    ))}
+  </div>
+</DocsLayout>
+
+<style>
+  .docs-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 720px; }
+  @media (max-width: 560px) { .docs-cards { grid-template-columns: 1fr; } }
+  .docs-card {
+    display: flex; flex-direction: column; gap: 6px; text-decoration: none;
+    padding: 18px 20px; border-radius: 12px;
+    background: rgba(255, 253, 245, 0.05); border: 1px solid var(--line-dark);
+    transition: transform var(--lift), background var(--lift), border-color var(--lift);
+  }
+  .docs-card:hover {
+    transform: translateY(-2px); background: rgba(255, 253, 245, 0.08);
+    border-color: rgba(255, 253, 245, 0.24);
+  }
+  .docs-card b { color: var(--cream); font-family: var(--display); font-weight: 700; font-size: 1.0625rem; }
+  .docs-card span { color: rgba(255, 253, 245, 0.78); font-size: 0.90625rem; }
+</style>
