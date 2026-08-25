@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -1888,7 +1888,7 @@ interface TreeRowProps {
 // Reine Darstellung einer einzelnen ausgerollten Zeile — seit der
 // Virtualisierung rekursiert hier nichts mehr, welche Zeilen es gibt,
 // entscheidet `flattenTree`.
-function TreeRow({
+const TreeRow = memo(function TreeRow({
   row,
   index,
   offset,
@@ -2164,7 +2164,7 @@ function TreeRow({
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
-}
+});
 
 // Dieselben drei Hairline-Bausteine wie zuvor inline in `TreeRow` — jetzt
 // eigene Komponente, weil `RenameField`-Zweig (s. o.) sie unverändert

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { memo, forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -46,7 +46,7 @@ import {
 // RENDER-ISOLATION (Ticket 05, Performance-Audit, 2026-08-14): die eigentliche
 // Eingabefläche (`EditorBuffer` unten) ist unkontrolliert statt an
 // `state.content` gebunden — Details/Begründung an `EditorBuffer` selbst.
-export function FileEditor({
+export const FileEditor = memo(function FileEditor({
   state,
   focused,
   maximized,
@@ -383,7 +383,7 @@ export function FileEditor({
       )}
     </section>
   );
-}
+});
 
 /** Wie viele zusätzliche Zeilen ober-/unterhalb des sichtbaren Ausschnitts
  * mitgerendert werden — reine Sicherheitsmarge gegen einen sichtbaren

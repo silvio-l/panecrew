@@ -1,0 +1,3 @@
+## 2026-08-25 - [React.memo in Virtualized Trees]
+**Learning:** Virtualized components (like `TreeRow` in ExplorerPanel and `FileEditor`) frequently re-render during scrolling, pane transitions, or text typing unless wrapped in `React.memo`. Because they sit inside larger virtualizer containers or panes that get re-rendered on layout shifts, they are prime candidates for memoization.
+**Action:** When working on rendering optimization for lists/trees or frequently updated sub-panes in React, wrap the row/item component and the main complex components with `React.memo` to prevent unnecessary re-renders when parent states change but props don't.
