@@ -47,21 +47,30 @@ describe("classifyKeystroke", () => {
     expect(classifyKeystroke("\x04")).toBe("abort");
   });
 
-  it("setzt den Anker bei druckbarer Eingabe und bei Escape-Sequenzen", () => {
+  it("setzt den Anker nur bei druckbarer Eingabe", () => {
     expect(classifyKeystroke("g")).toBe("arm");
     expect(classifyKeystroke("ä")).toBe("arm");
-    // Pfeil hoch: die Shell holt einen History-Eintrag in dieselbe Zeile, der
-    // Ankerpunkt gilt danach genauso.
-    expect(classifyKeystroke("\x1b[A")).toBe("arm");
   });
 
-  it("lässt den Anker bei Bearbeitungstasten unangetastet", () => {
+  it("lässt den Anker bei Escape-Sequenzen und Bearbeitungstasten unangetastet", () => {
     // Backspace, Tab (Shell-Completion), Ctrl+U, Ctrl+R — was sie am Text
     // ändern, steht danach auf dem Bildschirm und wird von dort gelesen.
     expect(classifyKeystroke("\x7f")).toBe("keep");
     expect(classifyKeystroke("\t")).toBe("keep");
     expect(classifyKeystroke("\x15")).toBe("keep");
     expect(classifyKeystroke("\x12")).toBe("keep");
+    // Pfeiltasten und andere Escape-Sequenzen bewaffnen KEINEN neuen Anker:
+    // ihre Parameter-/Schlussbytes ("[", "A", …) sehen für hasPrintable wie
+    // getippter Text aus, sind es aber nicht. Steht schon ein Anker (z. B.
+    // History-Recall mitten in einer echten Shell-Eingabe), bleibt er über
+    // "keep" unverändert stehen — identisch zum bisherigen No-op von
+    // `anchor ??= …`. Ohne bestehenden Anker wird keiner geraten: genau das
+    // war der gemeldete Fehler (Pfeiltaste in einem Ink-TUI im normalen
+    // Puffer setzte einen Anker an der zufälligen Cursorposition mitten im
+    // TUI-Text).
+    expect(classifyKeystroke("\x1b[A")).toBe("keep");
+    expect(classifyKeystroke("\x1b[C")).toBe("keep");
+    expect(classifyKeystroke("\x1b[D")).toBe("keep");
   });
 });
 

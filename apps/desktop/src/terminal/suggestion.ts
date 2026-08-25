@@ -43,7 +43,18 @@ export function classifyKeystroke(data: string): AnchorAction {
   // Ctrl+C verwirft die Zeile, Ctrl+D beendet die Shell — in beiden Fällen
   // gilt der bisherige Ankerpunkt nicht weiter.
   if (data === "\x03" || data === "\x04") return "abort";
-  if (data.startsWith("\x1b") || hasPrintable(data)) return "arm";
+  // Escape-Sequenzen (Pfeiltasten, Pos1/Ende, …) laufen unter "keep", nicht
+  // "arm" — geprüft VOR hasPrintable, weil deren Parameter-/Schlussbytes
+  // (z. B. "[" und "A" in "\x1b[A") selbst druckbare ASCII-Zeichen sind und
+  // hasPrintable sonst zuschlagen würde. Ein bestehender Anker bleibt dadurch
+  // unverändert stehen (identisch zum bisherigen No-op-Verhalten von
+  // `anchor ??= …`); ohne Anker wird keiner geraten. Genau das war der
+  // gemeldete Fehler: Pfeiltaste in einem Ink-basierten TUI (normaler
+  // Puffer, kein DECSET 1049, Alternate-Screen-Gate greift also nicht) setzte
+  // einen Anker an der zufälligen Cursorposition mitten im TUI-Text, wodurch
+  // dort Shell-History als Geistertext erschien.
+  if (data.startsWith("\x1b")) return "keep";
+  if (hasPrintable(data)) return "arm";
   return "keep";
 }
 

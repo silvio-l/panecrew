@@ -246,6 +246,30 @@ describe("attachInlineSuggestion", () => {
     expect(ghostText()).toBe("");
   });
 
+  it("bewaffnet keinen Anker aus einer Pfeiltaste ohne bestehende Eingabe", async () => {
+    // Der gemeldete Fehler: ein Ink-basiertes TUI (z. B. ein KI-Coding-Agent)
+    // bleibt im normalen Puffer (kein DECSET 1049), also greift das
+    // Alternate-Screen-Gate nicht. Bewegt der Nutzer den Cursor darin nur mit
+    // Pfeiltasten — ohne dass hier je eine echte Shell-Eingabe getippt wurde,
+    // also ohne Anker —, darf daraus keine Ergänzung entstehen. Die Zeile ist
+    // Prosa aus dem TUI, keine Kommandozeile.
+    await write("\r\nnotes: p should be reviewed");
+    await settle();
+    // Cursor auf Spalte 7 (0-indiziert), direkt vor dem "p".
+    await write("\x1b[8G");
+    await settle();
+    expect(ghostText()).toBe("");
+
+    // Rechte Pfeiltaste: reine Navigation, keine Eingabe.
+    terminal.input("\x1b[C", true);
+    // Das TUI selbst bewegt seinen (visuellen) Cursor einen Schritt weiter —
+    // wie ein Ink-Redraw, nicht wie eine Shell, die eine Taste zurückspiegelt.
+    await write("\x1b[1C");
+    await settle();
+
+    expect(ghostText()).toBe("");
+  });
+
   it("zeigt den cd-Vorschlag erst, wenn das Verzeichnis bestätigt ist", async () => {
     directories = ["apps"];
     unresolved = ["apps"];
