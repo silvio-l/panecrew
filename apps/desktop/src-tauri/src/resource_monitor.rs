@@ -245,9 +245,14 @@ pub fn start(app: AppHandle) {
             .unwrap_or(1.0);
         let mut cpu_history: VecDeque<f32> = VecDeque::with_capacity(CPU_SMOOTHING_WINDOW);
         let mut last_status: (Status, Status) = (Status::Normal, Status::Normal);
-        // Backdated so the very first tick logs an immediate baseline
-        // heartbeat instead of waiting a full interval after startup.
-        let mut last_heartbeat = Instant::now() - LOG_HEARTBEAT_INTERVAL;
+        // `None` so the very first tick logs an immediate baseline heartbeat
+        // instead of waiting a full interval after startup. Deliberately not
+        // `Instant::now() - LOG_HEARTBEAT_INTERVAL`: `Instant` is
+        // monotonic-since-boot on macOS, and subtracting from it panics if
+        // the app starts within the interval of boot (`Sub<Duration> for
+        // Instant` is a `checked_sub().expect(...)`), which would silently
+        // kill this whole sampler thread on an early-login-item launch.
+        let mut last_heartbeat: Option<Instant> = None;
 
         loop {
             let tick_start = Instant::now();
@@ -326,10 +331,10 @@ pub fn start(app: AppHandle) {
             if status_now.0 != last_status.0 || status_now.1 != last_status.1 {
                 log_resource_sample(&usage, system.used_memory(), total_memory, system.used_swap(), system.total_swap(), Some(last_status));
                 last_status = status_now;
-                last_heartbeat = tick_start;
-            } else if tick_start.duration_since(last_heartbeat) >= LOG_HEARTBEAT_INTERVAL {
+                last_heartbeat = Some(tick_start);
+            } else if last_heartbeat.is_none_or(|t| tick_start.duration_since(t) >= LOG_HEARTBEAT_INTERVAL) {
                 log_resource_sample(&usage, system.used_memory(), total_memory, system.used_swap(), system.total_swap(), None);
-                last_heartbeat = tick_start;
+                last_heartbeat = Some(tick_start);
             }
 
             // User-reported beachball-on-pane-switch (2026-08-16): no
