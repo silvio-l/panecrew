@@ -17,6 +17,16 @@ use crate::windows;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
+// How often a sample gets written to the persistent log even when nothing
+// changed — the live UI event above is the only place samples went before
+// (2026-08-26 incident: PaneCrew ran the machine's real memory into the
+// ground, the OS's own low-memory dialog reported ~85GB, and afterwards
+// there was no trail anywhere — not in the UI, which nobody was watching at
+// the time, and not on disk, since this sampler never wrote a single line).
+// A periodic heartbeat plus an immediate line on every threshold crossing
+// (below) means a postmortem always has *something* in `panecrew.log`.
+const LOG_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
+
 // 3 Samples * 5s = 15s gleitendes Fenster für die CPU-Zahl: eine einzelne
 // kurze Lastspitze (ein Compile-Burst, `git status`) soll nicht sofort in
 // den Warnzustand kippen. RAM braucht diese Glättung nicht — er baut sich
@@ -43,12 +53,33 @@ const CPU_CRITICAL_PERCENT: f32 = 60.0;
 
 pub const EVENT_NAME: &str = "resource-usage";
 
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Status {
     Normal,
     Warn,
     Critical,
+}
+
+impl Status {
+    fn label(self) -> &'static str {
+        match self {
+            Status::Normal => "normal",
+            Status::Warn => "warn",
+            Status::Critical => "critical",
+        }
+    }
+
+    /// Ordinal rank for "did this get worse", used only for choosing the log
+    /// level of a transition — `Status` itself intentionally has no `Ord`
+    /// (nothing outside logging needs to compare severity).
+    fn rank(self) -> u8 {
+        match self {
+            Status::Normal => 0,
+            Status::Warn => 1,
+            Status::Critical => 2,
+        }
+    }
 }
 
 /// Eine flache Liste statt bereits pro Pane gruppiert: welche Tabs zu welcher
@@ -99,6 +130,83 @@ struct ResourceUsage {
     windows: Vec<WindowInfo>,
 }
 
+fn format_gib(bytes: u64) -> String {
+    format!("{:.2}GiB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+}
+
+/// Logged whenever `mem_status`/`cpu_status` cross a threshold in either
+/// direction, and — regardless of any crossing — every `LOG_HEARTBEAT_INTERVAL`
+/// as a baseline. `sys_used_mem`/`sys_used_swap` (the whole machine, not just
+/// PaneCrew's tracked total) are the point: PaneCrew's own gauge only sums its
+/// own pid plus each PTY's recursive process tree (`resource_guard::tick_all`)
+/// — it cannot see memory in the separate WebKit XPC processes (WebContent,
+/// GPU, Networking) the OS spawns for the app's own webview, since those are
+/// children of launchd, not of PaneCrew or any PTY shell (verified via `ps
+/// -eo pid,ppid,comm` against a running instance). A leak there would leave
+/// `mem_bytes_total` looking perfectly normal while the machine chokes — the
+/// system-wide numbers are what would catch that case in the log even though
+/// the app's own total can't.
+/// Pure decision: what to write and at what level. Split out from
+/// `log_resource_sample` below so it's testable without touching the `log`
+/// crate's process-global logger state.
+fn resource_log_line(
+    usage: &ResourceUsage,
+    sys_used_mem: u64,
+    sys_total_mem: u64,
+    sys_used_swap: u64,
+    sys_total_swap: u64,
+    transition_from: Option<(Status, Status)>,
+) -> (log::Level, String) {
+    let mut top_tabs: Vec<&TabUsage> = usage.tabs.iter().collect();
+    top_tabs.sort_by_key(|t| std::cmp::Reverse(t.mem_bytes));
+    let top_tabs_summary = top_tabs
+        .iter()
+        .take(5)
+        .map(|t| format!("{}={}", t.tab_id, format_gib(t.mem_bytes)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let suffix = match transition_from {
+        Some((prev_mem, prev_cpu)) => format!(" (was mem={} cpu={})", prev_mem.label(), prev_cpu.label()),
+        None => " (heartbeat)".to_string(),
+    };
+    let message = format!(
+        "resource_monitor: mem={} cpu={:.1}% ({}) tracked_total={} | system: used={} total={} swap_used={} swap_total={} | top tabs: [{top_tabs_summary}]{suffix}",
+        usage.mem_status.label(),
+        usage.cpu_percent,
+        usage.cpu_status.label(),
+        format_gib(usage.mem_bytes_total),
+        format_gib(sys_used_mem),
+        format_gib(sys_total_mem),
+        format_gib(sys_used_swap),
+        format_gib(sys_total_swap),
+    );
+
+    // Getting worse is the case a postmortem needs most — always WARN so it
+    // survives a default log-level filter, never buried at INFO.
+    let worsened = matches!(
+        transition_from,
+        Some((prev_mem, prev_cpu))
+            if usage.mem_status.rank() > prev_mem.rank() || usage.cpu_status.rank() > prev_cpu.rank()
+    );
+    let level = if worsened { log::Level::Warn } else { log::Level::Info };
+    (level, message)
+}
+
+/// See `resource_log_line` for the message/level decision this writes out —
+/// kept as a thin wrapper so that function stays unit-testable.
+fn log_resource_sample(
+    usage: &ResourceUsage,
+    sys_used_mem: u64,
+    sys_total_mem: u64,
+    sys_used_swap: u64,
+    sys_total_swap: u64,
+    transition_from: Option<(Status, Status)>,
+) {
+    let (level, message) = resource_log_line(usage, sys_used_mem, sys_total_mem, sys_used_swap, sys_total_swap, transition_from);
+    log::log!(level, "{message}");
+}
+
 fn classify<T: PartialOrd>(value: T, warn: T, critical: T) -> Status {
     if value > critical {
         Status::Critical
@@ -136,6 +244,10 @@ pub fn start(app: AppHandle) {
             .map(|n| n.get() as f32)
             .unwrap_or(1.0);
         let mut cpu_history: VecDeque<f32> = VecDeque::with_capacity(CPU_SMOOTHING_WINDOW);
+        let mut last_status: (Status, Status) = (Status::Normal, Status::Normal);
+        // Backdated so the very first tick logs an immediate baseline
+        // heartbeat instead of waiting a full interval after startup.
+        let mut last_heartbeat = Instant::now() - LOG_HEARTBEAT_INTERVAL;
 
         loop {
             let tick_start = Instant::now();
@@ -210,6 +322,16 @@ pub fn start(app: AppHandle) {
             };
             let _ = app.emit(EVENT_NAME, &usage);
 
+            let status_now = (usage.mem_status, usage.cpu_status);
+            if status_now.0 != last_status.0 || status_now.1 != last_status.1 {
+                log_resource_sample(&usage, system.used_memory(), total_memory, system.used_swap(), system.total_swap(), Some(last_status));
+                last_status = status_now;
+                last_heartbeat = tick_start;
+            } else if tick_start.duration_since(last_heartbeat) >= LOG_HEARTBEAT_INTERVAL {
+                log_resource_sample(&usage, system.used_memory(), total_memory, system.used_swap(), system.total_swap(), None);
+                last_heartbeat = tick_start;
+            }
+
             // User-reported beachball-on-pane-switch (2026-08-16): no
             // reproduction was pinned down yet (this thread's own
             // `ProcessesToUpdate::All` scan measured ~3ms on a 440-process
@@ -274,6 +396,83 @@ mod tests {
         let (mem_bytes, cpu_raw) = aggregate_app_totals(100, 5.0, &samples);
         assert_eq!(mem_bytes, 600, "own process (100) + tab a (200) + tab b (300)");
         assert_eq!(cpu_raw, 35.0, "own process (5) + tab a (10) + tab b (20)");
+    }
+
+    fn sample_usage(mem_status: Status, cpu_status: Status) -> ResourceUsage {
+        ResourceUsage {
+            mem_percent: 10.0,
+            cpu_percent: 12.5,
+            mem_status,
+            cpu_status,
+            mem_bytes_total: 2 * 1024 * 1024 * 1024,
+            tabs: vec![
+                TabUsage {
+                    tab_id: "small".to_string(),
+                    mem_percent: 1.0,
+                    cpu_percent: 1.0,
+                    mem_bytes: 1024 * 1024 * 1024,
+                    window_label: None,
+                },
+                TabUsage {
+                    tab_id: "big".to_string(),
+                    mem_percent: 5.0,
+                    cpu_percent: 5.0,
+                    mem_bytes: 4 * 1024 * 1024 * 1024,
+                    window_label: None,
+                },
+            ],
+            windows: vec![],
+        }
+    }
+
+    /// The exact case behind the 2026-08-26 incident this logging exists for:
+    /// a status crossing into Critical must log at WARN, not INFO, so it
+    /// survives whatever level filter is active by default in production.
+    #[test]
+    fn worsening_transition_logs_at_warn() {
+        let usage = sample_usage(Status::Critical, Status::Normal);
+        let (level, message) = resource_log_line(&usage, 1, 2, 0, 0, Some((Status::Warn, Status::Normal)));
+        assert_eq!(level, log::Level::Warn);
+        assert!(message.contains("was mem=warn"), "message: {message}");
+    }
+
+    #[test]
+    fn improving_transition_logs_at_info_not_warn() {
+        let usage = sample_usage(Status::Normal, Status::Normal);
+        let (level, _message) = resource_log_line(&usage, 1, 2, 0, 0, Some((Status::Critical, Status::Normal)));
+        assert_eq!(level, log::Level::Info);
+    }
+
+    #[test]
+    fn heartbeat_with_no_transition_logs_at_info_and_is_labelled() {
+        let usage = sample_usage(Status::Normal, Status::Normal);
+        let (level, message) = resource_log_line(&usage, 1, 2, 0, 0, None);
+        assert_eq!(level, log::Level::Info);
+        assert!(message.contains("(heartbeat)"), "message: {message}");
+    }
+
+    /// The whole point of also logging system-wide RAM/swap alongside
+    /// PaneCrew's own tracked total: a leak in a process the app can't see
+    /// (the WebKit XPC helpers, see `resource_log_line`'s docstring) would
+    /// leave `tracked_total` looking fine while these numbers do not — so
+    /// they must actually be in the line, not silently dropped.
+    #[test]
+    fn message_carries_system_wide_memory_and_swap_not_just_the_tracked_total() {
+        let usage = sample_usage(Status::Critical, Status::Normal);
+        let (_level, message) = resource_log_line(&usage, 70 * 1024 * 1024 * 1024, 96 * 1024 * 1024 * 1024, 40 * 1024 * 1024 * 1024, 48 * 1024 * 1024 * 1024, None);
+        assert!(message.contains("used=70.00GiB"), "message: {message}");
+        assert!(message.contains("total=96.00GiB"), "message: {message}");
+        assert!(message.contains("swap_used=40.00GiB"), "message: {message}");
+        assert!(message.contains("swap_total=48.00GiB"), "message: {message}");
+    }
+
+    #[test]
+    fn message_ranks_top_tabs_by_memory_descending() {
+        let usage = sample_usage(Status::Normal, Status::Normal);
+        let (_level, message) = resource_log_line(&usage, 0, 0, 0, 0, None);
+        let big_pos = message.find("big=").expect("big tab should be in the message");
+        let small_pos = message.find("small=").expect("small tab should be in the message");
+        assert!(big_pos < small_pos, "the 4GiB tab should be listed before the 1GiB one: {message}");
     }
 
     /// Reproduces the reported bug against a REAL two-level process tree (a
