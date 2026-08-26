@@ -15,6 +15,7 @@ pub mod logging;
 pub mod menu;
 pub mod onboarding_store;
 pub mod path_probe;
+pub mod process_attribution;
 pub mod pty_commands;
 pub mod pty_manager;
 pub mod resource_guard;

@@ -14,7 +14,7 @@
     "zoomLevel": "Zoom level {{percent}}%",
     "dateTime": "Current date and time: {{dateTime}}",
     "resourceUsage": {
-      "tooltip": "Memory {{mem}}% / {{memBytes}} ({{memStatus}}) · CPU {{cpu}}% ({{cpuStatus}})",
+      "tooltip": "Memory {{mem}}% / {{memBytes}} ({{memStatus}}) · of which WebKit {{helperBytes}} · CPU {{cpu}}% ({{cpuStatus}})",
       "perTabRow": "{{name}}: memory {{mem}}% / {{memBytes}}, CPU {{cpu}}%",
       "columnMem": "RAM",
       "columnCpu": "CPU",

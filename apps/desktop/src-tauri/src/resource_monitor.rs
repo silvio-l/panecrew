@@ -4,13 +4,14 @@
 //! s. `resource_guard::tick_all`), auf niedrigem, festem Takt refresht —
 //! günstig genug, um über die gesamte Prozesslaufzeit mitzulaufen.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::process_attribution;
 use crate::pty_commands::{PtyState, WindowPtyRegistry};
 use crate::resource_guard::{self, ResourceGuardState};
 use crate::windows;
@@ -126,6 +127,16 @@ struct ResourceUsage {
     /// Prozentwert zu überlassen (bräuchte dort zusätzlich das
     /// System-Gesamt-RAM und würde Rundungsdrift einführen).
     mem_bytes_total: u64,
+    /// Anteil von `mem_bytes_total`, den macOS' eigene
+    /// `responsibility_get_pid_responsible_for_pid`-Zuordnung PaneCrew
+    /// zuschreibt, aber der weder der eigene Prozess noch ein PTY-Baum ist —
+    /// praktisch immer die WebKit-XPC-Hilfsprozesse der App-eigenen Webview
+    /// (WebContent/GPU/Networking), s. `process_attribution.rs`. `0` auf
+    /// Windows oder falls die Zuordnungsfunktion nicht auflösbar ist. Separat
+    /// mitgeschickt statt nur ins Gesamt gefaltet: genau dieser Anteil war
+    /// bis zum 2026-08-26-Vorfall für die eigene Anzeige unsichtbar, er soll
+    /// jetzt sichtbar bleiben, nicht in der Summe verschwinden.
+    helper_bytes: u64,
     tabs: Vec<TabUsage>,
     windows: Vec<WindowInfo>,
 }
@@ -136,16 +147,16 @@ fn format_gib(bytes: u64) -> String {
 
 /// Logged whenever `mem_status`/`cpu_status` cross a threshold in either
 /// direction, and — regardless of any crossing — every `LOG_HEARTBEAT_INTERVAL`
-/// as a baseline. `sys_used_mem`/`sys_used_swap` (the whole machine, not just
-/// PaneCrew's tracked total) are the point: PaneCrew's own gauge only sums its
-/// own pid plus each PTY's recursive process tree (`resource_guard::tick_all`)
-/// — it cannot see memory in the separate WebKit XPC processes (WebContent,
-/// GPU, Networking) the OS spawns for the app's own webview, since those are
-/// children of launchd, not of PaneCrew or any PTY shell (verified via `ps
-/// -eo pid,ppid,comm` against a running instance). A leak there would leave
-/// `mem_bytes_total` looking perfectly normal while the machine chokes — the
-/// system-wide numbers are what would catch that case in the log even though
-/// the app's own total can't.
+/// as a baseline. `mem_bytes_total` now includes `helper_bytes` (macOS's own
+/// WebKit XPC helpers, attributed via `process_attribution.rs` — previously
+/// invisible to both this gauge and the on-screen one, see that module's doc
+/// comment), so a leak specifically there now shows up here too, not only in
+/// `sys_used_mem`/`sys_used_swap`. Those system-wide figures stay in the line
+/// regardless, as a second, independent signal: they would still catch a
+/// leak in something this app has no attribution path to at all (e.g. a
+/// future macOS release changing how these helpers are grouped, or a leak in
+/// an entirely unrelated process on the machine) even if `mem_bytes_total`
+/// itself somehow stayed flat.
 /// Pure decision: what to write and at what level. Split out from
 /// `log_resource_sample` below so it's testable without touching the `log`
 /// crate's process-global logger state.
@@ -171,11 +182,12 @@ fn resource_log_line(
         None => " (heartbeat)".to_string(),
     };
     let message = format!(
-        "resource_monitor: mem={} cpu={:.1}% ({}) tracked_total={} | system: used={} total={} swap_used={} swap_total={} | top tabs: [{top_tabs_summary}]{suffix}",
+        "resource_monitor: mem={} cpu={:.1}% ({}) tracked_total={} (of which webkit_helpers={}) | system: used={} total={} swap_used={} swap_total={} | top tabs: [{top_tabs_summary}]{suffix}",
         usage.mem_status.label(),
         usage.cpu_percent,
         usage.cpu_status.label(),
         format_gib(usage.mem_bytes_total),
+        format_gib(usage.helper_bytes),
         format_gib(sys_used_mem),
         format_gib(sys_total_mem),
         format_gib(sys_used_swap),
@@ -280,12 +292,25 @@ pub fn start(app: AppHandle) {
                 cpu_cores,
             );
 
-            let (own_mem, own_cpu_raw) = sysinfo::get_current_pid()
-                .ok()
+            let own_pid = sysinfo::get_current_pid().ok();
+            let (own_mem, own_cpu_raw) = own_pid
                 .and_then(|pid| system.process(pid))
                 .map(|process| (process.memory(), process.cpu_usage()))
                 .unwrap_or((0, 0.0));
+
+            // Everything the recursive tree walk already reached (PaneCrew
+            // itself + every PTY tab's shell-and-descendants) — the boundary
+            // `process_attribution` needs so it adds macOS-attributed helper
+            // processes exactly once, never re-summing a pid this loop
+            // already counted through the real parent-pointer chain.
+            let mut already_counted: HashSet<Pid> = own_pid.into_iter().collect();
+            already_counted.extend(tab_samples.iter().flat_map(|s| s.member_pids.iter().copied()));
+            let helper_bytes = own_pid
+                .map(|pid| process_attribution::attributed_helper_memory(&system, pid, &already_counted).0)
+                .unwrap_or(0);
+
             let (mem_bytes, cpu_sum) = aggregate_app_totals(own_mem, own_cpu_raw, &tab_samples);
+            let mem_bytes = mem_bytes + helper_bytes;
 
             let total_memory = system.total_memory();
             let mem_percent = if total_memory == 0 {
@@ -313,6 +338,7 @@ pub fn start(app: AppHandle) {
                 mem_status: classify(mem_bytes, MEM_WARN_BYTES, MEM_CRITICAL_BYTES),
                 cpu_status: classify(cpu_percent, CPU_WARN_PERCENT, CPU_CRITICAL_PERCENT),
                 mem_bytes_total: mem_bytes,
+                helper_bytes,
                 tabs: tab_samples
                     .into_iter()
                     .map(|sample| TabUsage {
@@ -389,6 +415,7 @@ mod tests {
                 cpu_percent: 1.0,
                 mem_bytes: 200,
                 cpu_raw: 10.0,
+                member_pids: vec![],
             },
             resource_guard::TabResourceSample {
                 tab_id: "b".to_string(),
@@ -396,6 +423,7 @@ mod tests {
                 cpu_percent: 2.0,
                 mem_bytes: 300,
                 cpu_raw: 20.0,
+                member_pids: vec![],
             },
         ];
         let (mem_bytes, cpu_raw) = aggregate_app_totals(100, 5.0, &samples);
@@ -410,6 +438,7 @@ mod tests {
             mem_status,
             cpu_status,
             mem_bytes_total: 2 * 1024 * 1024 * 1024,
+            helper_bytes: 256 * 1024 * 1024,
             tabs: vec![
                 TabUsage {
                     tab_id: "small".to_string(),
@@ -469,6 +498,18 @@ mod tests {
         assert!(message.contains("total=96.00GiB"), "message: {message}");
         assert!(message.contains("swap_used=40.00GiB"), "message: {message}");
         assert!(message.contains("swap_total=48.00GiB"), "message: {message}");
+    }
+
+    /// `sample_usage`'s `helper_bytes` (256 MiB) must be visible in the
+    /// line on its own, not just folded silently into `tracked_total` — the
+    /// whole reason `process_attribution.rs` exists is so this figure is
+    /// distinguishable from PaneCrew's own process-tree memory in a
+    /// postmortem, not merged back into one opaque number.
+    #[test]
+    fn message_carries_the_webkit_helper_share_separately_from_the_tracked_total() {
+        let usage = sample_usage(Status::Normal, Status::Normal);
+        let (_level, message) = resource_log_line(&usage, 0, 0, 0, 0, None);
+        assert!(message.contains("webkit_helpers=0.25GiB"), "message: {message}");
     }
 
     #[test]
@@ -540,6 +581,7 @@ mod tests {
             cpu_percent: 0.0,
             mem_bytes: recursive_total,
             cpu_raw: 0.0,
+            member_pids: vec![],
         };
         let (fixed_total, _) = aggregate_app_totals(own_mem, own_cpu_raw, std::slice::from_ref(&sample));
         assert!(

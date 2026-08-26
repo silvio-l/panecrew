@@ -382,6 +382,13 @@ pub struct TabResourceSample {
     /// die App-weite CPU-Summe daraus aufbauen kann, statt sie aus dem schon
     /// normalisierten, schon gerundeten Prozentwert zurückzurechnen.
     pub cpu_raw: f32,
+    /// Every pid this tab's tree walk actually found (shell + all recursive
+    /// descendants). `process_attribution.rs` needs this union across all
+    /// tabs, plus PaneCrew's own pid, to exclude everything already counted
+    /// here before attributing macOS's separately-reparented WebKit helper
+    /// processes back to PaneCrew — without it, every PTY tab would be
+    /// double-counted (see that module's doc comment for why).
+    pub member_pids: Vec<Pid>,
 }
 
 /// Von `resource_monitor`s 5-Sekunden-Tick zusätzlich zu dessen eigener
@@ -438,6 +445,7 @@ pub fn tick_all(
             cpu_percent,
             mem_bytes: total_rss,
             cpu_raw: total_cpu_raw,
+            member_pids: members.iter().map(|(pid, _)| *pid).collect(),
         });
         let offender = members
             .iter()

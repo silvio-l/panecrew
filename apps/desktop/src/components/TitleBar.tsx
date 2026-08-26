@@ -474,6 +474,11 @@ interface ResourceUsagePayload {
   /** Rohe App-weite RSS-Summe in Bytes, s. `resource_monitor.rs`s
    * `ResourceUsage`-Kommentar (nicht aus `memPercent` zurückgerechnet). */
   memBytesTotal: number;
+  /** Anteil von `memBytesTotal`, den macOS' eigene Prozess-Verantwortlichkeits-
+   * Zuordnung PaneCrew zuschreibt, aber der weder der eigene Prozess noch ein
+   * PTY-Baum ist — praktisch immer die WebKit-XPC-Hilfsprozesse der
+   * App-eigenen Webview (s. `process_attribution.rs`). `0` auf Windows. */
+  helperBytes: number;
   /** Flache Liste über ALLE offenen Fenster hinweg (kein Pane-Bezug — der
    * lebt nur im jeweiligen Fenster-Grid-Store), eine Stichprobe pro noch
    * lebendem Tab (`resource_monitor.rs`, aus `resource_guard::tick_all`
@@ -573,6 +578,7 @@ function ResourceUsageReadout({
     mem: memPercent,
     cpu: cpuPercent,
     memBytes: formatMemoryBytes(usage.memBytesTotal),
+    helperBytes: formatMemoryBytes(usage.helperBytes),
     memStatus: memStatusLabel,
     cpuStatus: cpuStatusLabel,
   });
