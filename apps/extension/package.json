@@ -157,6 +157,11 @@
         {
           "id": "panecrew.explorerView",
           "name": "Explorer"
+        },
+        {
+          "id": "panecrew.crossRepoView",
+          "name": "Projects Overview",
+          "visibility": "collapsed"
         }
       ]
     },

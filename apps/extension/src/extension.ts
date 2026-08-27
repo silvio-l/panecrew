@@ -20,6 +20,9 @@ import {
 import { GridLayoutController } from "./grid/layoutController";
 import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, savePreset } from "./grid/presets";
 import { PaneCrewGitDecorationProvider } from "./explorer/gitDecorationProvider";
+import { PaneCrewCrossRepoViewProvider } from "./git/crossRepoView";
+import { formatStatusLabel, getProjectStatus } from "./git/projectStatus";
+import { isGhAvailable } from "./git/forgeStatus";
 import { registerFocusFollow } from "./explorer/focusFollow";
 import { PaneCrewTreeDataProvider, type FileSystemEntryItem, type ProjectTreeItem } from "./explorer/treeDataProvider";
 import {
@@ -82,10 +85,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   refreshGitDecorations();
 
+  // --- git forge status: branch/ahead-behind/dirty + GitHub PR/CI --------
+  // .scratch/git-forge-integration. `ghAvailable` is resolved once (`gh
+  // auth token` is a fixed, session-wide fact) rather than re-checked per
+  // project per refresh.
+  const crossRepoView = new PaneCrewCrossRepoViewProvider();
+  context.subscriptions.push(
+    vscode.window.createTreeView("panecrew.crossRepoView", { treeDataProvider: crossRepoView }),
+  );
+  let ghAvailable = false;
+  const refreshProjectStatuses = async () => {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    await Promise.all(
+      folders.map(async (folder) => {
+        const status = await getProjectStatus(folder.uri.fsPath, ghAvailable);
+        treeDataProvider.setRootDescription(folder.uri, status ? formatStatusLabel(status) : undefined);
+        crossRepoView.setStatus(folder.uri, status);
+      }),
+    );
+    treeDataProvider.refresh();
+    crossRepoView.refresh();
+  };
+  void isGhAvailable().then((available) => {
+    ghAvailable = available;
+    void refreshProjectStatuses();
+  });
+  void refreshProjectStatuses();
+  const projectStatusInterval = setInterval(() => { void refreshProjectStatuses(); }, 60_000);
+  context.subscriptions.push({ dispose: () => { clearInterval(projectStatusInterval); } });
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.focusProjectInExplorer", async (folder: vscode.WorkspaceFolder) => {
+      treeDataProvider.setActiveFolder(folder);
+      await vscode.commands.executeCommand("panecrew.explorerView.focus");
+    }),
+  );
+
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => { refreshGitDecorations(); }));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     treeDataProvider.refresh();
     refreshGitDecorations();
+    void refreshProjectStatuses();
   }));
 
   // `onDidSaveTextDocument` above only covers edits made through VS Code's
@@ -112,6 +151,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       externalRefreshCount++;
       treeDataProvider.refresh();
       refreshGitDecorations();
+      void refreshProjectStatuses();
     }, 300);
   };
   context.subscriptions.push(

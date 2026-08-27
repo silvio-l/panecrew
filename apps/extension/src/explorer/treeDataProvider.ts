@@ -98,6 +98,22 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
    * `getChildren` below rather than showing every root at once. */
   private activeFolder: vscode.WorkspaceFolder | undefined;
 
+  /** Per-project status line (branch, ahead/behind, dirty count, PR/CI —
+   * see `git/projectStatus.ts`), keyed by workspace folder URI. Set by
+   * extension.ts's periodic/event-driven refresh; `undefined`/missing means
+   * "not computed yet" or "not a git repo", both of which render as no
+   * description at all rather than an empty one. */
+  private readonly rootDescriptions = new Map<string, string>();
+
+  /** Doesn't fire a refresh itself — the caller updates every folder's
+   * description in a loop and fires one `refresh()` afterward, so a
+   * multi-project workspace doesn't re-render once per folder. */
+  setRootDescription(folderUri: vscode.Uri, description: string | undefined): void {
+    const key = folderUri.toString();
+    if (description) this.rootDescriptions.set(key, description);
+    else this.rootDescriptions.delete(key);
+  }
+
   /** Switches which project's tree is shown — called by `focusFollow.ts`.
    * No-ops (skips the refresh) when it's already the active folder, so a
    * focus event that doesn't actually change projects doesn't collapse and
@@ -116,6 +132,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
     if (element.kind === "root") {
       const item = new vscode.TreeItem(element.folder.name, vscode.TreeItemCollapsibleState.Expanded);
       item.resourceUri = element.folder.uri;
+      item.description = this.rootDescriptions.get(element.folder.uri.toString());
       // Deliberately distinct from a regular subfolder's "panecrew.folder":
       // a root is a workspace folder, not a plain directory — renaming or
       // deleting it would need vscode.workspace.updateWorkspaceFolders, not

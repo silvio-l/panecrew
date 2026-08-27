@@ -42,6 +42,7 @@ suite("PaneCrew extension", () => {
       "panecrew.openProjectInNewWindow",
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
+      "panecrew.focusProjectInExplorer",
     ]) {
       assert.ok(commands.includes(id), `command ${id} should be registered`);
     }
@@ -55,6 +56,31 @@ suite("PaneCrew extension", () => {
     assert.ok(containers.some((c) => c.id === "panecrew"));
     const views = contributes.views.panecrew;
     assert.ok(views.some((v) => v.id === "panecrew.explorerView"));
+    assert.ok(views.some((v) => v.id === "panecrew.crossRepoView"));
+  });
+
+  test("registers a real TreeView for the cross-repo overview", async () => {
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    // Same "must not throw when resolved" check as the explorer view above.
+    await vscode.commands.executeCommand("panecrew.crossRepoView.focus");
+  });
+
+  test("computes and surfaces this repo's own git status in the cross-repo overview", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder);
+    // The fixture workspace folder isn't a git repo, so this only checks
+    // that panecrew.focusProjectInExplorer (the cross-repo view's item
+    // command) runs without throwing and actually switches the explorer's
+    // active folder — the status-computation logic itself (branch parsing,
+    // CI aggregation, label formatting) is covered by unit tests in
+    // src/git/*.test.ts against real fixture strings.
+    await vscode.commands.executeCommand("panecrew.focusProjectInExplorer", folder);
   });
 
   test("registers a real TreeView for the explorer, not a webview", async () => {
