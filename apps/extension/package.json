@@ -190,6 +190,11 @@
           "group": "z_look@2"
         },
         {
+          "command": "panecrew.setDefaultProjectsFolder",
+          "when": "view == panecrew.explorerView",
+          "group": "z_settings@1"
+        },
+        {
           "command": "panecrew.savePreset",
           "when": "view == panecrew.explorerView",
           "group": "z_presets@1"
@@ -272,6 +277,18 @@
             "description": "Add one or more folders to a multi-root workspace and give each one its own terminal pane in the grid.\n[Add Folder to Grid](command:panecrew.addFolderToGrid)",
             "completionEvents": [
               "onCommand:panecrew.addFolderToGrid"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew mark"
+            }
+          },
+          {
+            "id": "setProjectsFolder",
+            "title": "Set your default projects folder",
+            "description": "Point the folder picker straight at where your projects live, so adding a new one to the grid is a single click away instead of navigating there by hand every time.\n[Set Default Projects Folder](command:panecrew.setDefaultProjectsFolder)",
+            "completionEvents": [
+              "onCommand:panecrew.setDefaultProjectsFolder"
             ],
             "media": {
               "svg": "media/panecrew-icon.svg",
