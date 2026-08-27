@@ -89,7 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     ...registerFocusFollow(
-      treeView,
+      treeDataProvider,
       {
         paneForTerminal: (t) => layoutController.paneForTerminal(t),
         paneForViewColumn: (c) => layoutController.paneForViewColumn(c),

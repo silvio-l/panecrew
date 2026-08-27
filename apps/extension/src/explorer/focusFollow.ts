@@ -1,5 +1,8 @@
 // The product's signature feature: whichever pane (terminal or tab) has
-// focus, the PaneCrew explorer reveals that pane's owning workspace folder.
+// focus, the PaneCrew explorer shows ONLY that pane's owning workspace
+// folder's tree — not all open projects at once (that's a regular VS Code
+// multi-root explorer; PaneCrew's whole point is narrowing to the one
+// project you're currently looking at).
 //
 // Primary mechanism: `vscode.window.tabGroups.activeTabGroup.viewColumn` —
 // VS Code always exposes which EDITOR GROUP is focused, regardless of what's
@@ -17,7 +20,13 @@
 // change), but the viewColumn path is what actually fixes the bug.
 import * as vscode from "vscode";
 import type { Pane } from "../grid/gridState";
-import type { FolderRootItem, ProjectTreeItem } from "./treeDataProvider";
+
+/** The minimal explorer surface focus-follow needs — kept separate from
+ * `PaneCrewTreeDataProvider`'s full interface so this module doesn't need
+ * to import the tree item types it never touches. */
+export interface ExplorerFocus {
+  setActiveFolder(folder: vscode.WorkspaceFolder): void;
+}
 
 /** The minimal grid-tracking surface `layoutController.ts`'s
  * `GridLayoutController` needs to expose for focus-follow to resolve "which
@@ -32,12 +41,11 @@ export interface PaneLookup {
   paneForViewColumn(viewColumn: number): Pane | null;
 }
 
-function rootItemForProjectPath(
+function folderForProjectPath(
   projectPath: string,
   folders: readonly vscode.WorkspaceFolder[],
-): FolderRootItem | null {
-  const folder = folders.find((f) => f.uri.fsPath === projectPath);
-  return folder ? { kind: "root", folder } : null;
+): vscode.WorkspaceFolder | null {
+  return folders.find((f) => f.uri.fsPath === projectPath) ?? null;
 }
 
 /** Wires up both focus sources. Returns the disposables the caller
@@ -49,22 +57,22 @@ function rootItemForProjectPath(
  * what makes "focus-follow doesn't work" hard to diagnose from a bug report
  * alone. */
 export function registerFocusFollow(
-  treeView: vscode.TreeView<ProjectTreeItem>,
+  explorer: ExplorerFocus,
   lookup: PaneLookup,
   log: (message: string) => void = () => { /* no-op default: caller opted out of diagnostics */ },
 ): vscode.Disposable[] {
-  const revealRootForPane = (pane: Pane, source: string): boolean => {
+  const showRootForPane = (pane: Pane, source: string): boolean => {
     const folders = vscode.workspace.workspaceFolders ?? [];
-    const root = rootItemForProjectPath(pane.projectPath, folders);
-    if (!root) {
+    const folder = folderForProjectPath(pane.projectPath, folders);
+    if (!folder) {
       log(
         `focus-follow: pane project path "${pane.projectPath}" matches no open workspace folder ` +
-          `(have: ${folders.map((f) => f.uri.fsPath).join(", ") || "none"}) — reveal skipped`,
+          `(have: ${folders.map((f) => f.uri.fsPath).join(", ") || "none"}) — switch skipped`,
       );
       return false;
     }
-    log(`focus-follow: revealing "${root.folder.name}" (${source})`);
-    void treeView.reveal(root, { select: true, focus: false, expand: true });
+    log(`focus-follow: showing "${folder.name}" (${source})`);
+    explorer.setActiveFolder(folder);
     return true;
   };
 
@@ -78,7 +86,7 @@ export function registerFocusFollow(
       log(`focus-follow: active editor group (viewColumn ${activeGroup.viewColumn}) has no assigned pane — ignoring`);
       return;
     }
-    revealRootForPane(pane, `active group, viewColumn ${activeGroup.viewColumn}`);
+    showRootForPane(pane, `active group, viewColumn ${activeGroup.viewColumn}`);
   };
 
   /** Secondary/fallback path: exact-terminal-identity lookup, for the rare
@@ -95,7 +103,7 @@ export function registerFocusFollow(
       revealForActiveGroup();
       return;
     }
-    revealRootForPane(pane, `terminal "${terminal.name}"`);
+    showRootForPane(pane, `terminal "${terminal.name}"`);
   };
 
   return [

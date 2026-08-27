@@ -90,6 +90,24 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
   /* eslint-enable @typescript-eslint/no-invalid-void-type */
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
+  /** The one project the explorer currently shows — the whole point of
+   * "focus-following": a grid of several open projects, but exactly one
+   * project tree visible at a time, matching whichever pane has focus.
+   * `undefined` means "no focus signal yet" (right after activation, before
+   * the first focus-follow event) — falls back to the first open folder in
+   * `getChildren` below rather than showing every root at once. */
+  private activeFolder: vscode.WorkspaceFolder | undefined;
+
+  /** Switches which project's tree is shown — called by `focusFollow.ts`.
+   * No-ops (skips the refresh) when it's already the active folder, so a
+   * focus event that doesn't actually change projects doesn't collapse and
+   * re-expand the tree the user is looking at. */
+  setActiveFolder(folder: vscode.WorkspaceFolder): void {
+    if (this.activeFolder?.uri.toString() === folder.uri.toString()) return;
+    this.activeFolder = folder;
+    this.refresh();
+  }
+
   refresh(item?: ProjectTreeItem): void {
     this.onDidChangeTreeDataEmitter.fire(item);
   }
@@ -127,7 +145,11 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
   async getChildren(element?: ProjectTreeItem): Promise<ProjectTreeItem[]> {
     if (!element) {
       const folders = vscode.workspace.workspaceFolders ?? [];
-      return folders.map((folder): FolderRootItem => ({ kind: "root", folder }));
+      const active = this.activeFolder
+        ? folders.find((f) => f.uri.toString() === this.activeFolder?.uri.toString())
+        : undefined;
+      const visible = active ? [active] : folders.slice(0, 1);
+      return visible.map((folder): FolderRootItem => ({ kind: "root", folder }));
     }
 
     const folder = element.kind === "root" ? element.folder : element.folder;
