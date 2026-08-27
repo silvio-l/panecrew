@@ -311,25 +311,25 @@ suite("PaneCrew extension", () => {
     assert.ok(!descriptionAfter?.startsWith("●"), "attention glyph should be gone after clearing");
   });
 
-  test("panecrew.configureCliToolNotifications previews and writes the Claude Code notify hook end-to-end", async function () {
-    this.timeout(10_000);
-    const ext = vscode.extensions.getExtension(EXTENSION_ID);
-    assert.ok(ext);
-    await ext.activate();
-
+  /** Drives the real `panecrew.configureCliToolNotifications` command's
+   * quick-pick -> diff-preview -> confirm -> write flow end-to-end, only
+   * substituting the two interactive prompts (a human's tool pick and their
+   * "Write Change" confirmation) — the actual read/compute/diff/write path
+   * is exactly what production code runs. Only ever used for project-scoped
+   * adapters (writes land inside the disposable fixture workspace, under
+   * `configDirName`); the user-scope Codex adapter is intentionally never
+   * driven this way, since that would mean writing to a real developer's
+   * own `~/.codex/config.toml`. */
+  async function verifyCliAdapterEndToEnd(options: {
+    toolLabel: string;
+    configDirName: string;
+    configFileName: string;
+    expectedSubstring: string;
+  }): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
-    const settingsUri = vscode.Uri.joinPath(folder.uri, ".claude", "settings.json");
+    const settingsUri = vscode.Uri.joinPath(folder.uri, options.configDirName, options.configFileName);
 
-    // Drives the real command's quick-pick -> diff-preview -> confirm -> write
-    // flow end-to-end, only substituting the two interactive prompts (a
-    // human's tool pick and their "Write Change" confirmation) — the actual
-    // read/compute/diff/write path below is exactly what production code
-    // runs. Deliberately exercises only the project-scoped Claude Code
-    // adapter (writes inside the disposable fixture workspace); the
-    // user-scope Codex adapter is intentionally never end-to-end tested
-    // this way, since that would mean writing to a real developer's
-    // `~/.codex/config.toml` on their own machine.
     const originalShowQuickPick = vscode.window.showQuickPick;
     const originalShowWarningMessage = vscode.window.showWarningMessage;
     let diffShown = false;
@@ -339,7 +339,7 @@ suite("PaneCrew extension", () => {
     try {
       // @ts-expect-error -- narrowing the real overloaded showQuickPick signature to this test's single call shape
       vscode.window.showQuickPick = (items: { label: string }[]) =>
-        Promise.resolve(items.find((item) => item.label === "Claude Code"));
+        Promise.resolve(items.find((item) => item.label === options.toolLabel));
       vscode.window.showWarningMessage = () => Promise.resolve("Write Change");
 
       await vscode.commands.executeCommand("panecrew.configureCliToolNotifications");
@@ -347,15 +347,44 @@ suite("PaneCrew extension", () => {
       assert.ok(diffShown, "the diff preview editor should have opened before the write");
       const written = new TextDecoder().decode(await vscode.workspace.fs.readFile(settingsUri));
       assert.ok(
-        written.includes("Claude Code needs your attention"),
-        "the written .claude/settings.json should contain PaneCrew's OSC notify hook",
+        written.includes(options.expectedSubstring),
+        `the written ${options.configDirName}/${options.configFileName} should contain PaneCrew's OSC notify hook`,
       );
     } finally {
       vscode.window.showQuickPick = originalShowQuickPick;
       vscode.window.showWarningMessage = originalShowWarningMessage;
       diffListener.dispose();
-      await vscode.workspace.fs.delete(vscode.Uri.joinPath(folder.uri, ".claude"), { recursive: true, useTrash: false });
+      await vscode.workspace.fs.delete(vscode.Uri.joinPath(folder.uri, options.configDirName), {
+        recursive: true,
+        useTrash: false,
+      });
     }
+  }
+
+  test("panecrew.configureCliToolNotifications previews and writes the Claude Code notify hook end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "Claude Code",
+      configDirName: ".claude",
+      configFileName: "settings.json",
+      expectedSubstring: "Claude Code needs your attention",
+    });
+  });
+
+  test("panecrew.configureCliToolNotifications previews and writes the Gemini CLI notify hook end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "Gemini CLI",
+      configDirName: ".gemini",
+      configFileName: "settings.json",
+      expectedSubstring: "Gemini CLI needs your attention",
+    });
   });
 
   test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
