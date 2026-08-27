@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { applyCompactLook, restoreLook, type CompactLookMemento } from "../compactLook";
+import { AttentionTracker } from "../terminal/attentionSignal";
+import { PaneCrewAttentionDecorationProvider } from "../explorer/attentionDecorationProvider";
 
 const EXTENSION_ID = "silvio-lindstedt.panecrew";
 
@@ -44,6 +46,9 @@ suite("PaneCrew extension", () => {
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
       "panecrew.focusProjectInExplorer",
+      "panecrew.removeProjectFromWorkspace",
+      "panecrew.toggleMaximizePane",
+      "panecrew.configureCliToolNotifications",
     ]) {
       assert.ok(commands.includes(id), `command ${id} should be registered`);
     }
@@ -217,6 +222,93 @@ suite("PaneCrew extension", () => {
     const gettingStarted = walkthroughs.find((w) => w.id === "panecrew.gettingStarted");
     assert.ok(gettingStarted, "getting-started walkthrough should be contributed");
     assert.ok(gettingStarted.steps.length >= 3, "walkthrough should have at least 3 real steps");
+    assert.ok(
+      gettingStarted.steps.some((s) => s.id === "configureCliNotifications"),
+      "walkthrough should offer the CLI tool attention adapter step",
+    );
+  });
+
+  test("panecrew.toggleMaximizePane delegates to the native maximize-editor-group command", async () => {
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    // Pure delegation (spec.md's Testing Decisions) — the meaningful
+    // assertion is that firing PaneCrew's own command resolves without
+    // throwing, i.e. it actually reaches VS Code's native command rather
+    // than a typo'd or unregistered one.
+    await vscode.commands.executeCommand("panecrew.toggleMaximizePane");
+    await vscode.commands.executeCommand("panecrew.toggleMaximizePane"); // toggle back
+  });
+
+  test("attention decoration provider badges a root with pending attention and clears it", () => {
+    // Same "registered FileDecorationProvider" tier as gitDecorationProvider —
+    // exercised directly against the real vscode.ThemeColor/FileDecoration
+    // types rather than through the full onDidStartTerminalShellExecution
+    // wiring, which needs a live terminal shell integration session
+    // .scratch/pane-attention-notifications ticket 02 has no headless way to
+    // simulate.
+    const tracker = new AttentionTracker();
+    const provider = new PaneCrewAttentionDecorationProvider(tracker);
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    assert.strictEqual(provider.provideFileDecoration(folder.uri), undefined);
+
+    tracker.markAttention(folder.uri.fsPath, { title: "Claude Code", body: "needs your attention" });
+    const decoration = provider.provideFileDecoration(folder.uri) as vscode.FileDecoration;
+    assert.strictEqual(decoration.badge, "●");
+    assert.strictEqual(decoration.propagate, false);
+    assert.ok(decoration.tooltip?.toString().includes("needs your attention"));
+
+    tracker.clearAttention(folder.uri.fsPath);
+    assert.strictEqual(provider.provideFileDecoration(folder.uri), undefined);
+  });
+
+  test("panecrew.configureCliToolNotifications previews and writes the Claude Code notify hook end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+    const settingsUri = vscode.Uri.joinPath(folder.uri, ".claude", "settings.json");
+
+    // Drives the real command's quick-pick -> diff-preview -> confirm -> write
+    // flow end-to-end, only substituting the two interactive prompts (a
+    // human's tool pick and their "Write Change" confirmation) — the actual
+    // read/compute/diff/write path below is exactly what production code
+    // runs. Deliberately exercises only the project-scoped Claude Code
+    // adapter (writes inside the disposable fixture workspace); the
+    // user-scope Codex adapter is intentionally never end-to-end tested
+    // this way, since that would mean writing to a real developer's
+    // `~/.codex/config.toml` on their own machine.
+    const originalShowQuickPick = vscode.window.showQuickPick;
+    const originalShowWarningMessage = vscode.window.showWarningMessage;
+    let diffShown = false;
+    const diffListener = vscode.workspace.onDidOpenTextDocument((doc) => {
+      if (doc.uri.scheme === "panecrew-cli-adapter-preview") diffShown = true;
+    });
+    try {
+      // @ts-expect-error -- narrowing the real overloaded showQuickPick signature to this test's single call shape
+      vscode.window.showQuickPick = (items: { label: string }[]) =>
+        Promise.resolve(items.find((item) => item.label === "Claude Code"));
+      vscode.window.showWarningMessage = () => Promise.resolve("Write Change");
+
+      await vscode.commands.executeCommand("panecrew.configureCliToolNotifications");
+
+      assert.ok(diffShown, "the diff preview editor should have opened before the write");
+      const written = new TextDecoder().decode(await vscode.workspace.fs.readFile(settingsUri));
+      assert.ok(
+        written.includes("Claude Code needs your attention"),
+        "the written .claude/settings.json should contain PaneCrew's OSC notify hook",
+      );
+    } finally {
+      vscode.window.showQuickPick = originalShowQuickPick;
+      vscode.window.showWarningMessage = originalShowWarningMessage;
+      diffListener.dispose();
+      await vscode.workspace.fs.delete(vscode.Uri.joinPath(folder.uri, ".claude"), { recursive: true, useTrash: false });
+    }
   });
 
   test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
