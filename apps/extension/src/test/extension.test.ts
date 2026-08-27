@@ -31,6 +31,10 @@ suite("PaneCrew extension", () => {
       "panecrew.insertSnippet",
       "panecrew.createSnippet",
       "panecrew.setGridTemplate",
+      "panecrew.renameEntry",
+      "panecrew.newFile",
+      "panecrew.newFolder",
+      "panecrew.deleteEntry",
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
     ]) {

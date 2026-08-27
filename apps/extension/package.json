@@ -81,6 +81,26 @@
         "icon": "$(layout)"
       },
       {
+        "command": "panecrew.renameEntry",
+        "title": "PaneCrew: Rename…",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "panecrew.newFile",
+        "title": "PaneCrew: New File…",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "panecrew.newFolder",
+        "title": "PaneCrew: New Folder…",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "panecrew.deleteEntry",
+        "title": "PaneCrew: Delete",
+        "icon": "$(trash)"
+      },
+      {
         "command": "panecrew.insertSnippet",
         "title": "PaneCrew: Insert Snippet…",
         "icon": "$(symbol-snippet)"
@@ -163,17 +183,37 @@
       "view/item/context": [
         {
           "command": "panecrew.searchInFolder",
-          "when": "view == panecrew.explorerView && viewItem == panecrew.folder",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.root)",
           "group": "navigation"
         },
         {
           "command": "revealFileInOS",
-          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file)",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "navigation"
         },
         {
-          "command": "copyFilePath",
+          "command": "panecrew.newFile",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
+          "group": "2_new@1"
+        },
+        {
+          "command": "panecrew.newFolder",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
+          "group": "2_new@2"
+        },
+        {
+          "command": "panecrew.renameEntry",
           "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file)",
+          "group": "4_modify@1"
+        },
+        {
+          "command": "panecrew.deleteEntry",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file)",
+          "group": "4_modify@2"
+        },
+        {
+          "command": "copyFilePath",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "6_copypath"
         }
       ]

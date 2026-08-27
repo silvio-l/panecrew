@@ -21,7 +21,15 @@ import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, sav
 import { PaneCrewGitDecorationProvider } from "./explorer/gitDecorationProvider";
 import { registerFocusFollow } from "./explorer/focusFollow";
 import { PaneCrewTreeDataProvider, type FileSystemEntryItem, type ProjectTreeItem } from "./explorer/treeDataProvider";
+import {
+  registerDeleteEntryCommand,
+  registerNewFileCommand,
+  registerNewFolderCommand,
+  registerRenameEntryCommand,
+} from "./explorer/fileOperations";
+import { PaneCrewDragAndDropController } from "./explorer/dragAndDrop";
 import { onboardingShouldComplete } from "./onboarding/onboardingState";
+import { maybeShowGridHint } from "./onboarding/gridHint";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
@@ -41,9 +49,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const treeDataProvider = new PaneCrewTreeDataProvider();
   const gitDecorationProvider = new PaneCrewGitDecorationProvider();
 
+  const refreshGitDecorations = () => {
+    const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("git.showDecorations", true);
+    gitDecorationProvider.setEnabled(enabled);
+    if (enabled) void gitDecorationProvider.refreshAll(vscode.workspace.workspaceFolders ?? []);
+  };
+
   const treeView = vscode.window.createTreeView<ProjectTreeItem>("panecrew.explorerView", {
     treeDataProvider,
     showCollapseAll: true,
+    dragAndDropController: new PaneCrewDragAndDropController(() => {
+      treeDataProvider.refresh();
+      refreshGitDecorations();
+    }),
   });
   context.subscriptions.push(treeView);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(gitDecorationProvider));
@@ -51,11 +69,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTerminalLinkProvider(new PaneCrewTerminalLinkProvider()),
   );
 
-  const refreshGitDecorations = () => {
-    const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("git.showDecorations", true);
-    gitDecorationProvider.setEnabled(enabled);
-    if (enabled) void gitDecorationProvider.refreshAll(vscode.workspace.workspaceFolders ?? []);
-  };
   refreshGitDecorations();
 
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => { refreshGitDecorations(); }));
@@ -115,6 +128,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider.refresh();
     refreshGitDecorations();
     persist();
+    void maybeShowGridHint(context.globalState, gridState);
   }
 
   // --- status bar: grid template picker + new-window shortcut ------------
@@ -199,6 +213,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         filesToInclude: relative,
       });
     }),
+  );
+
+  // --- file operations (rename, new file/folder, delete) -----------------
+  const onExplorerFilesChanged = () => { treeDataProvider.refresh(); refreshGitDecorations(); };
+  context.subscriptions.push(
+    registerRenameEntryCommand(onExplorerFilesChanged),
+    registerNewFileCommand(onExplorerFilesChanged),
+    registerNewFolderCommand(onExplorerFilesChanged),
+    registerDeleteEntryCommand(onExplorerFilesChanged),
   );
 
   // --- snippets ----------------------------------------------------------

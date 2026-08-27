@@ -98,7 +98,12 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
     if (element.kind === "root") {
       const item = new vscode.TreeItem(element.folder.name, vscode.TreeItemCollapsibleState.Expanded);
       item.resourceUri = element.folder.uri;
-      item.contextValue = "panecrew.folder";
+      // Deliberately distinct from a regular subfolder's "panecrew.folder":
+      // a root is a workspace folder, not a plain directory — renaming or
+      // deleting it would need vscode.workspace.updateWorkspaceFolders, not
+      // a filesystem rename/delete, so it must not match the same
+      // context-menu `when` clauses as an ordinary folder.
+      item.contextValue = "panecrew.root";
       item.iconPath = vscode.ThemeIcon.Folder;
       return item;
     }
