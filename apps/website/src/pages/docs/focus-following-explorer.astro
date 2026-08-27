@@ -22,7 +22,7 @@ const description =
       every open project's files into one long tree, or keep a single fixed explorer that doesn't
       know which of several open terminals you're currently looking at — you end up scrolling or
       manually re-selecting a folder to line the explorer back up with the pane you're actually
-      working in. <!-- brandlint-ok: functional description of a common editor pattern, no product named -->
+      working in.
       PaneCrew removes that step entirely: the explorer's context is derived from pane focus, not
       from a separate selection you have to maintain yourself.
     </p>
@@ -41,7 +41,7 @@ const description =
     <p>
       This behavior is treated as PaneCrew's central differentiator rather than a secondary
       convenience feature. It's also a real, still-open gap in VS Code itself — the very editor
-      PaneCrew runs inside — confirmed by a long-standing open issue in VS Code's own tracker (<a href="https://github.com/microsoft/vscode/issues/71641" target="_blank" rel="noopener">microsoft/vscode#71641</a>) asking for exactly this. PaneCrew's explorer is a real <code>TreeDataProvider</code>-based extension view, not a workaround — it closes a gap VS Code's own built-in Explorer still doesn't. <!-- brandlint-ok: factual reference to a real, verified public GitHub issue (microsoft/vscode#71641), used as competitive-gap evidence per docs/decisions.md -->
+      PaneCrew runs inside — confirmed by a long-standing open issue in VS Code's own tracker (<a href="https://github.com/microsoft/vscode/issues/71641" target="_blank" rel="noopener">microsoft/vscode#71641</a>) asking for exactly this. PaneCrew's explorer is a real <code>TreeDataProvider</code>-based extension view, not a workaround — it closes a gap VS Code's own built-in Explorer still doesn't.
     </p>
 
     <h2>What it doesn't do</h2>
@@ -49,7 +49,7 @@ const description =
       The explorer doesn't merge or stack multiple projects' files together, and it doesn't run
       any hidden automation (no automatic git worktrees, no background branching) to make this
       work — panes simply point at workspace folders you already have checked out, and the
-      explorer just follows which one is focused. <!-- brandlint-ok: functional product-principle claim, matches PRODUCT.md "no hidden automation" -->
+      explorer just follows which one is focused.
     </p>
   </article>
 </DocsLayout>

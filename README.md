@@ -15,7 +15,7 @@ PaneCrew is a VS Code extension. It turns a multi-root workspace into a grid of 
 panes — one per project — paired with a single file explorer that automatically follows whichever
 pane currently has focus.
 
-Tool-agnostic by design: hosts any CLI coding agent — Claude Code, Codex, Gemini CLI, or a plain <!-- brandlint-ok: functional list of supported CLI tools, not orientation -->
+Tool-agnostic by design: hosts any CLI coding agent — Claude Code, Codex, Gemini CLI, or a plain
 shell — equally well.
 
 ## Features

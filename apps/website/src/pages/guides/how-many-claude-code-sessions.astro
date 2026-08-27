@@ -1,21 +1,21 @@
 ---
 import GuideLayout from "../../layouts/GuideLayout.astro";
 
-const title = "How Many Claude Code Sessions to Run at Once | PaneCrew"; // brandlint-ok: literal confirmed search phrase, this guide's whole subject
+const title = "How Many Claude Code Sessions to Run at Once | PaneCrew";
 const description =
-  "Most people get real value from 3-4 simultaneous Claude Code sessions before context-switching costs outweigh the gains. Here's the honest, specific answer."; // brandlint-ok: functional product claim, shown verbatim in <meta description>
+  "Most people get real value from 3-4 simultaneous Claude Code sessions before context-switching costs outweigh the gains. Here's the honest, specific answer.";
 
 const faq = [
   {
-    q: "How many Claude Code sessions should I run at once?", // brandlint-ok: literal confirmed search query, answered verbatim per AEO practice
-    a: "Most people get real, sustained value out of three to four simultaneously visible Claude Code sessions. Past that, the cost of context-switching between them — remembering what each one is doing, catching the moment one needs input — starts to outweigh the parallelism you're gaining. That's a practical ceiling, not a technical one: Claude Code itself has no limit on how many instances you can run.", // brandlint-ok: functional FAQ answer, real supported tool
+    q: "How many Claude Code sessions should I run at once?",
+    a: "Most people get real, sustained value out of three to four simultaneously visible Claude Code sessions. Past that, the cost of context-switching between them — remembering what each one is doing, catching the moment one needs input — starts to outweigh the parallelism you're gaining. That's a practical ceiling, not a technical one: Claude Code itself has no limit on how many instances you can run.",
   },
   {
     q: "Why does PaneCrew's grid top out at four panes?",
     a: "It's not a coincidence — four is roughly where simultaneous visibility stops paying off for most people, so PaneCrew's fixed grid (2×2 today) matches the practical ceiling instead of offering an unbounded grid nobody could actually track at a glance.",
   },
   {
-    q: "Can I run more than four Claude Code sessions at once?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
+    q: "Can I run more than four Claude Code sessions at once?",
     a: "Yes — open a second VS Code window with its own workspace and grid, so you're never limited to one window's worth of sessions. Most people still find they only actively watch three to four sessions at a time even when more are running in the background.",
   },
 ];
@@ -30,16 +30,16 @@ const faqJsonLd = {
   })),
 };
 ---
-<GuideLayout title={title} description={description} path="/guides/how-many-claude-code-sessions/" datePublished="2026-08-16"><!-- brandlint-ok: functional URL slug, matches this guide's target search phrase -->
+<GuideLayout title={title} description={description} path="/guides/how-many-claude-code-sessions/" datePublished="2026-08-16">
   <Fragment slot="head">
     <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
   </Fragment>
 
   <section class="guide wrap">
     <p class="eyebrow">Guide</p>
-    <h1>How Many Claude Code Sessions Should You Run at Once?</h1><!-- brandlint-ok: functional page heading, matches this guide's target search phrase -->
+    <h1>How Many Claude Code Sessions Should You Run at Once?</h1>
     <p class="lede">
-      Most people find real value in three to four simultaneously visible Claude Code sessions — past that, the effort of tracking what each one is doing usually costs more than the extra parallelism gives back. PaneCrew's grid tops out at four panes for exactly that reason, with a file explorer that follows whichever pane has focus so tracking four sessions stays manageable instead of becoming its own task.<!-- brandlint-ok: functional product claim, real supported behavior -->
+      Most people find real value in three to four simultaneously visible Claude Code sessions — past that, the effort of tracking what each one is doing usually costs more than the extra parallelism gives back. PaneCrew's grid tops out at four panes for exactly that reason, with a file explorer that follows whichever pane has focus so tracking four sessions stays manageable instead of becoming its own task.
     </p>
 
     <h2>The honest answer, not "it depends"</h2>
@@ -53,7 +53,7 @@ const faqJsonLd = {
 
     <h2>Why the ceiling is about attention, not the tool</h2>
     <p>
-      Claude Code itself doesn't cap how many instances you can run — the ceiling is human, not<!-- brandlint-ok: functional product claim, real supported tool -->
+      Claude Code itself doesn't cap how many instances you can run — the ceiling is human, not
       technical. What actually limits how many sessions are worth running at once is how many you
       can keep genuinely visible and track without switching tabs or windows to check on them.
       That's the problem PaneCrew's grid is built around: a fixed 2×2 layout that matches the

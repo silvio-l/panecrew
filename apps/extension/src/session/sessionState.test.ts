@@ -62,13 +62,13 @@ describe("buildWindowState", () => {
       "/repo/storefront",
       "pane-1",
       "tab-1",
-      "claude", // brandlint-ok: canonical adapter id, functional
+      "claude",
     );
 
     const state = buildWindowState(LABEL, grid);
 
     expect(state.slots[2]).toMatchObject({
-      terminal_tabs: [{ id: "tab-1", adapter_id: "claude" }], // brandlint-ok: canonical adapter id, functional
+      terminal_tabs: [{ id: "tab-1", adapter_id: "claude" }],
     });
   });
 

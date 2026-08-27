@@ -1,14 +1,14 @@
 ---
 import GuideLayout from "../../layouts/GuideLayout.astro";
 
-const title = "Run Multiple Claude Code Sessions at Once | PaneCrew"; // brandlint-ok: literal confirmed search phrase, this ticket's retarget
+const title = "Run Multiple Claude Code Sessions at Once | PaneCrew";
 const description =
-  "Run several CLI coding agents — Claude Code, Codex, Gemini CLI — side by side in one terminal grid, each with its own pane and explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support), shown verbatim in <meta description>
+  "Run several CLI coding agents — Claude Code, Codex, Gemini CLI — side by side in one terminal grid, each with its own pane and explorer. Free & open source.";
 
 const faq = [
   {
-    q: "Can I run multiple Claude Code sessions at once?", // brandlint-ok: literal confirmed search query (Google autocomplete), answered verbatim per AEO practice
-    a: "Yes — Claude Code itself is a single CLI process per terminal, so running several sessions at once means running several terminal instances side by side. PaneCrew gives you a fixed grid of up to four real terminal panes for exactly that, and the same approach works for Codex, Gemini CLI, or any other CLI coding agent.", // brandlint-ok: functional product claim, real supported tools
+    q: "Can I run multiple Claude Code sessions at once?",
+    a: "Yes — Claude Code itself is a single CLI process per terminal, so running several sessions at once means running several terminal instances side by side. PaneCrew gives you a fixed grid of up to four real terminal panes for exactly that, and the same approach works for Codex, Gemini CLI, or any other CLI coding agent.",
   },
   {
     q: "How do I orchestrate multiple coding agent sessions across different projects?",
@@ -19,12 +19,12 @@ const faq = [
     a: "No — a multiplexer splits one terminal into panes you still navigate with keyboard shortcuts. PaneCrew keeps every pane simultaneously visible in a real window grid, so nothing is ever hidden behind a tab.",
   },
   {
-    q: "How do I manage multiple Claude Code sessions without losing track?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
-    a: "Keep every session visible instead of switching tabs — PaneCrew's grid shows all active Claude Code sessions at once, with a file explorer that follows whichever pane has focus.", // brandlint-ok: functional FAQ answer, real supported tool
+    q: "How do I manage multiple Claude Code sessions without losing track?",
+    a: "Keep every session visible instead of switching tabs — PaneCrew's grid shows all active Claude Code sessions at once, with a file explorer that follows whichever pane has focus.",
   },
   {
-    q: "Can I run multiple Claude Code sessions in VS Code?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
-    a: "Yes — VS Code's own integrated terminal supports multiple tabs, but only one is visible at a time. The PaneCrew extension arranges terminals across VS Code's editor-group layout instead, keeping up to four Claude Code sessions simultaneously visible in a real grid.", // brandlint-ok: functional FAQ answer, real comparison to a named competing feature
+    q: "Can I run multiple Claude Code sessions in VS Code?",
+    a: "Yes — VS Code's own integrated terminal supports multiple tabs, but only one is visible at a time. The PaneCrew extension arranges terminals across VS Code's editor-group layout instead, keeping up to four Claude Code sessions simultaneously visible in a real grid.",
   },
 ];
 
@@ -47,7 +47,7 @@ const faqJsonLd = {
     <p class="eyebrow">Guide</p>
     <h1>How to Run Multiple CLI Coding Agent Sessions at Once</h1>
     <p class="lede">
-      The most direct way to run multiple CLI coding agent sessions at once is a terminal grid app that keeps every session visible and running in parallel, instead of switching tabs or windows. PaneCrew does this natively: a fixed grid (2×2 today) of real, independent terminal panes, each running its own agent session — Claude Code, Codex, Gemini CLI, or a plain shell — with a file explorer that automatically follows whichever pane currently has focus. <!-- brandlint-ok: functional product claim, real supported tools -->
+      The most direct way to run multiple CLI coding agent sessions at once is a terminal grid app that keeps every session visible and running in parallel, instead of switching tabs or windows. PaneCrew does this natively: a fixed grid (2×2 today) of real, independent terminal panes, each running its own agent session — Claude Code, Codex, Gemini CLI, or a plain shell — with a file explorer that automatically follows whichever pane currently has focus.
     </p>
 
     <h2>Why tab-switching breaks down with multiple agent sessions</h2>
@@ -67,7 +67,7 @@ const faqJsonLd = {
       </div>
     ))}
 
-    <p>Running one agent session per project? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows instead of one grid. Not sure how many sessions is actually worth running at once? See <a href="/guides/how-many-claude-code-sessions/">how many Claude Code sessions to run at once</a>. Running several agents against the same repo? See <a href="/guides/prevent-agents-editing-same-files/">how to prevent multiple coding agents from editing the same files</a>.</p><!-- brandlint-ok: functional cross-links, target guides' own titles -->
+    <p>Running one agent session per project? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows instead of one grid. Not sure how many sessions is actually worth running at once? See <a href="/guides/how-many-claude-code-sessions/">how many Claude Code sessions to run at once</a>. Running several agents against the same repo? See <a href="/guides/prevent-agents-editing-same-files/">how to prevent multiple coding agents from editing the same files</a>.</p>
 
     <div class="cta">
       <p><b>PaneCrew</b> is a free, open-source (MIT) VS Code extension — a grid of real terminal

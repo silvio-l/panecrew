@@ -215,10 +215,10 @@ describe("gridState", () => {
       "/repo/storefront",
       "pane-1",
       "tab-1",
-      "codex", // brandlint-ok: canonical adapter id, functional
+      "codex",
     );
     expect(terminalTabs(next.slots[2] as Pane)).toEqual([
-      { kind: "terminal", tabId: "tab-1", label: null, adapterId: "codex" }, // brandlint-ok: canonical adapter id, functional
+      { kind: "terminal", tabId: "tab-1", label: null, adapterId: "codex" },
     ]);
   });
 
@@ -555,11 +555,11 @@ describe("gridState", () => {
         "pane-0",
         "tab-0",
       );
-      const next = openTerminalTab(withOne, "pane-0", "tab-1", "claude"); // brandlint-ok: canonical adapter id, functional
+      const next = openTerminalTab(withOne, "pane-0", "tab-1", "claude");
       const pane = next.slots[0] as Pane;
       expect(terminalTabs(pane)).toEqual([
         { kind: "terminal", tabId: "tab-0", label: null, adapterId: null },
-        { kind: "terminal", tabId: "tab-1", label: null, adapterId: "claude" }, // brandlint-ok: canonical adapter id, functional
+        { kind: "terminal", tabId: "tab-1", label: null, adapterId: "claude" },
       ]);
     });
 

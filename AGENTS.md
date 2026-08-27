@@ -3,16 +3,16 @@
 - **Language (2026-08-16, global rule, repeated here since this repo's existing comments/commits predate it and are German — new ones are not):** commit messages and code comments always English; chat with the user always German; changelogs/docs of a multi-language tool primarily English. Do not mass-rewrite existing German comments/commits just to comply — only new content follows this.
 - Dev loop: open `apps/extension` in VS Code and press F5 (`Run PaneCrew Extension` in `apps/extension/.vscode/launch.json`) to launch an Extension Development Host with the extension loaded — this is the primary way to run/debug it, not a terminal command.
 - Compile/typecheck: `pnpm --filter panecrew --dir apps/extension run compile` (runs `check-types` then esbuild). `pnpm --filter panecrew --dir apps/extension run watch` for incremental builds.
-- Test: `pnpm --filter panecrew --dir apps/extension run test:unit` (Vitest, pure-logic modules — grid state, terminal link detection, snippet matching, onboarding state, session state, git status parsing) and `pnpm --filter panecrew --dir apps/extension run test:integration` (`@vscode/test-electron` smoke test, activates the extension inside a real VS Code host). <!-- brandlint-ok: literal npm package name of a direct devDependency -->
+- Test: `pnpm --filter panecrew --dir apps/extension run test:unit` (Vitest, pure-logic modules — grid state, terminal link detection, snippet matching, onboarding state, session state, git status parsing) and `pnpm --filter panecrew --dir apps/extension run test:integration` (`@vscode/test-electron` smoke test, activates the extension inside a real VS Code host).
 - Package: `pnpm --filter panecrew --dir apps/extension run package` (typecheck + production esbuild + `vsce package`, produces the `.vsix`). Wired into `.github/workflows/extension-ci.yml` as a CI backstop against packaging regressions.
 - Regenerate brand icon assets from the master art: `assets/brand/generate-icons.sh`. The vector source of truth is `assets/brand/panecrew-mark.svg` — edit the SVG, not the PNGs, and rerun the script. Dormant since the 2026-08-27 VS Code extension pivot (it still shells out to the deleted Tauri app's `pnpm tauri icon` step) — see the script's own header before relying on it; it needs a plain rsvg-convert/magick export step for extension/Marketplace/website icon sizes in place of that step.
-- Parallel-agent worktrees: follow the global `agent-<slug>` convention (`~/.claude/infrastructure/multi-agent-worktrees.md`). Each worktree needs its own `pnpm install`; unlike the old Tauri app there's no shared dev-server port to worry about (`F5` launches an independent Extension Development Host per VS Code window). <!-- brandlint-ok: local filesystem path to the user's own tooling config, not a public reference -->
+- Parallel-agent worktrees: follow the global `agent-<slug>` convention (`~/.claude/infrastructure/multi-agent-worktrees.md`). Each worktree needs its own `pnpm install`; unlike the old Tauri app there's no shared dev-server port to worry about (`F5` launches an independent Extension Development Host per VS Code window).
 
 Planning is tracked as a **wayfinder map**: `.scratch/panecrew-v0.1-spec/map.md` (plus child tickets under `.scratch/panecrew-v0.1-spec/issues/`) — read it before making architectural/scope decisions, keeping in mind it predates the 2026-08-27 pivot from the Tauri desktop app to the VS Code extension (`apps/extension`) as PaneCrew's sole product; read it for historical rationale, not as a current build sequence. `docs/decisions.md` holds the earlier, broader planning record (rationale, rejected alternatives, full requirements) the map builds on, including the pivot decision itself; read both, decisions.md first.
 
 ## What PaneCrew is
 
-A VS Code extension for running multiple real, simultaneously visible terminal sessions across different projects at once — a grid of live panes, not a tab-switcher — paired with a single file explorer that automatically follows whichever pane currently has focus. Tool-agnostic: must host any CLI coding agent (Claude Code, Codex, Gemini CLI, plain shells) equally well, not just Anthropic's tooling. <!-- brandlint-ok: functional list of supported CLI tools, defines the tool-agnosticism requirement itself -->
+A VS Code extension for running multiple real, simultaneously visible terminal sessions across different projects at once — a grid of live panes, not a tab-switcher — paired with a single file explorer that automatically follows whichever pane currently has focus. Tool-agnostic: must host any CLI coding agent (Claude Code, Codex, Gemini CLI, plain shells) equally well, not just Anthropic's tooling.
 
 ## Brand
 
@@ -24,7 +24,7 @@ A VS Code extension for running multiple real, simultaneously visible terminal s
 
 - **VS Code extension** (`apps/extension`), TypeScript, esbuild-bundled — not a standalone native app with its own bundled runtime
 - **VS Code's own APIs** for everything the Tauri app used to build itself: `vscode.window.createTerminal` + editor-group layout commands for the terminal grid, `TreeDataProvider` for the focus-following explorer, `vscode.workspace` for git-status decorations, the color-theme API for PaneCrew's themes
-- Tool-agnostic: the terminal-hosting layer must never encode assumptions about which CLI agent runs inside it (no Claude-Code-specific parsing) <!-- brandlint-ok: defines the tool-agnosticism requirement itself, names what NOT to build -->
+- Tool-agnostic: the terminal-hosting layer must never encode assumptions about which CLI agent runs inside it (no Claude-Code-specific parsing)
 
 The explorer-follows-focused-pane behavior is the product's core differentiator (confirmed via research to be an unaddressed gap even in VS Code itself — see decisions.md) — treat it as first-class, not a bolt-on.
 
@@ -32,7 +32,7 @@ The explorer-follows-focused-pane behavior is the product's core differentiator 
 
 Read-only clones kept **outside** this repo, so they never enter its git index, licence surface, or `.ossallowlist`:
 
-- **VS Code** — `~/Documents/Projekte/reference-repos/vscode` (`https://github.com/microsoft/vscode`, shallow `--depth 1` clone). <!-- brandlint-ok: functional clone URL of the reference repo --> Useful for implementation patterns when extending `apps/extension` (TreeView, terminal, and theming API usage) and for theme-token questions alongside `docs/agents/editor-theming-research.md`. **Reference for patterns, not a source to copy from** — it's MIT-licensed, but its internals are wired into VS Code's own service/DI layer, not the extension API surface `apps/extension` actually consumes. Re-clone/refresh it yourself if it's missing — it's intentionally not vendored here.
+- **VS Code** — `~/Documents/Projekte/reference-repos/vscode` (`https://github.com/microsoft/vscode`, shallow `--depth 1` clone). Useful for implementation patterns when extending `apps/extension` (TreeView, terminal, and theming API usage) and for theme-token questions alongside `docs/agents/editor-theming-research.md`. **Reference for patterns, not a source to copy from** — it's MIT-licensed, but its internals are wired into VS Code's own service/DI layer, not the extension API surface `apps/extension` actually consumes. Re-clone/refresh it yourself if it's missing — it's intentionally not vendored here.
 
 ## Agent skills
 
