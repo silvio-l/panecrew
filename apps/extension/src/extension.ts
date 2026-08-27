@@ -294,7 +294,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await context.globalState.update("panecrew.walkthroughShown", true);
     void vscode.commands.executeCommand(
       "workbench.action.openWalkthrough",
-      "panecrew.panecrew#panecrew.gettingStarted",
+      "silvio-lindstedt.panecrew#panecrew.gettingStarted",
     );
   }
 }

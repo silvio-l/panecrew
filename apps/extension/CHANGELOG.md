@@ -2,7 +2,7 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-08-27
 
 Initial production release of the PaneCrew VS Code extension. This replaces
 the earlier Tauri desktop app (`apps/desktop`) as PaneCrew's primary product.

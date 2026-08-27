@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 
-const EXTENSION_ID = "panecrew.panecrew";
+const EXTENSION_ID = "silvio-lindstedt.panecrew";
 
 /** `vscode.Extension.packageJSON` is typed `any` by @types/vscode — this is
  * just the subset of `package.json`'s `contributes` block these tests read. */

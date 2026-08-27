@@ -24,14 +24,14 @@ about what's running inside a pane.
 
 ## Install
 
-**From the Marketplace** (once published): search for "PaneCrew" in the
+**From the Marketplace**: search for "PaneCrew" in the
 Extensions view, or run:
 
 ```
-ext install panecrew.panecrew
+ext install silvio-lindstedt.panecrew
 ```
 
-**From a `.vsix` file** (current):
+**From a `.vsix` file**:
 
 ```
 code --install-extension panecrew-0.1.0.vsix

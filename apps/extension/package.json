@@ -3,7 +3,7 @@
   "displayName": "PaneCrew",
   "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
   "version": "0.1.0",
-  "publisher": "panecrew",
+  "publisher": "silvio-lindstedt",
   "icon": "media/panecrew-icon-128.png",
   "license": "MIT",
   "repository": {
