@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { applyCompactLook, restoreLook, type CompactLookMemento } from "../compactLook";
 
 const EXTENSION_ID = "silvio-lindstedt.panecrew";
 
@@ -216,6 +217,37 @@ suite("PaneCrew extension", () => {
     const gettingStarted = walkthroughs.find((w) => w.id === "panecrew.gettingStarted");
     assert.ok(gettingStarted, "getting-started walkthrough should be contributed");
     assert.ok(gettingStarted.steps.length >= 3, "walkthrough should have at least 3 real steps");
+  });
+
+  test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
+    const store = new Map<string, unknown>();
+    const memento: CompactLookMemento = {
+      get: (key: string) => store.get(key),
+      update: (key: string, value: unknown) => {
+        store.set(key, value);
+        return Promise.resolve();
+      },
+    };
+
+    const config = vscode.workspace.getConfiguration();
+    const before = config.inspect<string>("chat.agentsControl.enabled")?.globalValue;
+    try {
+      await applyCompactLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().get<string>("chat.agentsControl.enabled"),
+        "hidden",
+        "Compact Look must hide the title bar chat/agent-status indicator",
+      );
+
+      await restoreLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().inspect<string>("chat.agentsControl.enabled")?.globalValue,
+        before,
+        "restoring Compact Look must bring the indicator back to its exact prior value",
+      );
+    } finally {
+      await config.update("chat.agentsControl.enabled", before, vscode.ConfigurationTarget.Global);
+    }
   });
 
   test("disables workbench.editor.closeEmptyGroups on activation, so a template's still-unfilled slots survive between folder adds", async () => {

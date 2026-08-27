@@ -10,6 +10,15 @@ import type { Memento as CompactLookMemento } from "./vscodeMemento";
 export type { CompactLookMemento };
 
 const SAVED_STATE_KEY = "panecrew.compactLook.previousValues";
+// `window.menuBarVisibility` isn't a registered configuration on native
+// macOS at all (VS Code only registers it for Windows/Linux/web — macOS
+// always uses the system's own global menu bar instead). Writing to it
+// there throws, and since every update below is awaited sequentially, that
+// throw silently aborted the ENTIRE rest of apply/restoreLook — layout
+// control, Copilot sign-in, "Open in Agents Window", and the chat/
+// agent-status indicator never actually got touched on macOS, which is why
+// the chat icon stayed visible in Compact Look there.
+const SUPPORTS_MENU_BAR_VISIBILITY = process.platform !== "darwin";
 
 interface SavedLookValues {
   statusBarVisible: boolean | undefined;
@@ -19,6 +28,7 @@ interface SavedLookValues {
   layoutControlEnabled: boolean | undefined;
   chatSignInEnabled: boolean | undefined;
   chatOpenInAgentsWindowEnabled: boolean | undefined;
+  chatAgentsControlEnabled: string | undefined;
 }
 
 export async function applyCompactLook(memento: CompactLookMemento): Promise<void> {
@@ -36,6 +46,7 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
     chatSignInEnabled: config.inspect<boolean>("chat.titleBar.signIn.enabled")?.globalValue,
     chatOpenInAgentsWindowEnabled: config.inspect<boolean>("chat.titleBar.openInAgentsWindow.enabled")
       ?.globalValue,
+    chatAgentsControlEnabled: config.inspect<string>("chat.agentsControl.enabled")?.globalValue,
   };
   await memento.update(SAVED_STATE_KEY, saved);
 
@@ -49,15 +60,19 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
   // "compact" reclaims the left-edge icon rail without losing access to it —
   // and collapses the native window menu bar down to a single icon.
   await config.update("workbench.activityBar.location", "top", vscode.ConfigurationTarget.Global);
-  await config.update("window.menuBarVisibility", "compact", vscode.ConfigurationTarget.Global);
-  // Clears the layout-picker/sidebar-toggle icon cluster and the Copilot
-  // sign-in button / "Open in Agents Window" icon out of the title bar —
-  // all secondary chrome the same way the status bar and minimap are. The
-  // command center (search pill + chat entry) stays — it's the closest
-  // analog to macOS's own title bar search, not chrome to strip.
+  if (SUPPORTS_MENU_BAR_VISIBILITY) {
+    await config.update("window.menuBarVisibility", "compact", vscode.ConfigurationTarget.Global);
+  }
+  // Clears the layout-picker/sidebar-toggle icon cluster, the Copilot
+  // sign-in button / "Open in Agents Window" icon, and the chat/agent-status
+  // indicator out of the title bar — all secondary chrome the same way the
+  // status bar and minimap are. The command center's search pill itself
+  // stays — it's the closest analog to macOS's own title bar search, not
+  // chrome to strip.
   await config.update("workbench.layoutControl.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.titleBar.signIn.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.titleBar.openInAgentsWindow.enabled", false, vscode.ConfigurationTarget.Global);
+  await config.update("chat.agentsControl.enabled", "hidden", vscode.ConfigurationTarget.Global);
   // The Chat/Copilot panel lives in the auxiliary (secondary) side bar, whose
   // visibility isn't a settings.json value — there's no config key for it,
   // only a command, so it can't be captured in SavedLookValues/restored to
@@ -86,11 +101,13 @@ export async function restoreLook(memento: CompactLookMemento): Promise<void> {
     saved?.activityBarLocation,
     vscode.ConfigurationTarget.Global,
   );
-  await config.update(
-    "window.menuBarVisibility",
-    saved?.menuBarVisibility,
-    vscode.ConfigurationTarget.Global,
-  );
+  if (SUPPORTS_MENU_BAR_VISIBILITY) {
+    await config.update(
+      "window.menuBarVisibility",
+      saved?.menuBarVisibility,
+      vscode.ConfigurationTarget.Global,
+    );
+  }
   await config.update(
     "workbench.layoutControl.enabled",
     saved?.layoutControlEnabled,
@@ -104,6 +121,11 @@ export async function restoreLook(memento: CompactLookMemento): Promise<void> {
   await config.update(
     "chat.titleBar.openInAgentsWindow.enabled",
     saved?.chatOpenInAgentsWindowEnabled,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "chat.agentsControl.enabled",
+    saved?.chatAgentsControlEnabled,
     vscode.ConfigurationTarget.Global,
   );
 }
