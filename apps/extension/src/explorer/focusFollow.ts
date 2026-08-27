@@ -1,23 +1,30 @@
-// The product's signature feature: whichever pane (terminal or tab) has
-// focus, the PaneCrew explorer shows ONLY that pane's owning workspace
-// folder's tree — not all open projects at once (that's a regular VS Code
-// multi-root explorer; PaneCrew's whole point is narrowing to the one
-// project you're currently looking at).
+// The product's signature feature: whichever TAB (terminal or editor) has
+// focus, the PaneCrew explorer shows ONLY that tab's own working directory's
+// tree — not all open projects at once (that's a regular VS Code multi-root
+// explorer; PaneCrew's whole point is narrowing to the one project you're
+// currently looking at).
 //
-// Primary mechanism: `vscode.window.tabGroups.activeTabGroup.viewColumn` —
-// VS Code always exposes which EDITOR GROUP is focused, regardless of what's
-// open inside it. Since `layoutController.ts` assigns each pane to exactly
-// one `ViewColumn`, mapping viewColumn -> pane resolves focus for ANY
-// terminal or tab in that group, not just the one PaneCrew's own
-// `ensureTerminal` created. That distinction matters in practice: PaneCrew's
-// whole purpose is hosting arbitrary CLI coding agents, so a second,
+// Focus hangs off the TAB, not the pane/editor-group. A pane's `viewColumn`
+// assignment only reflects which project `layoutController.ts` most recently
+// put there — it goes stale the moment a tab is dragged into a different
+// group (e.g. a terminal tab pulled from one pane into another pane's
+// group), because dragging a tab does not change that terminal's own cwd,
+// it only changes which group displays it. So resolution here always tries
+// the ACTIVE TAB's own identity first:
+//   - a terminal tab: resolve via `vscode.window.activeTerminal` (VS Code
+//     keeps this pointed at whichever terminal tab is actually focused,
+//     regardless of which group it lives in) + `paneForTerminal`, which
+//     looks up that exact terminal's own project path.
+//   - a file/notebook/custom-editor tab: resolve via
+//     `vscode.workspace.getWorkspaceFolder(uri)` on the tab's own URI —
+//     again the tab's own identity, not the group it happens to sit in.
+// The viewColumn -> pane lookup (`paneForViewColumn`) is kept only as a
+// last-resort fallback for tabs that carry no identity of their own (e.g. an
+// empty editor group, or a settings/webview tab) — it resolves focus for
+// ANY terminal or tab in that group, not just the one PaneCrew's own
+// `ensureTerminal` created, which still matters since a second,
 // user/agent-opened terminal living in the same group as the PaneCrew one is
-// the common case, not an edge case — and the previous terminal-identity-only
-// lookup (`paneForTerminal`) silently no-oped for exactly that terminal.
-// `onDidChangeActiveTerminal` + `paneForTerminal` is kept as a secondary
-// signal for the terminal-identity case (it fires in a couple of situations
-// tab-group events don't, e.g. terminal creation without a group-focus
-// change), but the viewColumn path is what actually fixes the bug.
+// the common case, not an edge case.
 import * as vscode from "vscode";
 import type { Pane } from "../grid/gridState";
 
@@ -61,6 +68,11 @@ export function registerFocusFollow(
   lookup: PaneLookup,
   log: (message: string) => void = () => { /* no-op default: caller opted out of diagnostics */ },
 ): vscode.Disposable[] {
+  const showFolder = (folder: vscode.WorkspaceFolder, source: string): void => {
+    log(`focus-follow: showing "${folder.name}" (${source})`);
+    explorer.setActiveFolder(folder);
+  };
+
   const showRootForPane = (pane: Pane, source: string): boolean => {
     const folders = vscode.workspace.workspaceFolders ?? [];
     const folder = folderForProjectPath(pane.projectPath, folders);
@@ -71,15 +83,16 @@ export function registerFocusFollow(
       );
       return false;
     }
-    log(`focus-follow: showing "${folder.name}" (${source})`);
-    explorer.setActiveFolder(folder);
+    showFolder(folder, source);
     return true;
   };
 
-  /** Primary path: resolve focus via the focused EDITOR GROUP, not the
-   * focused tab/terminal's identity — covers any terminal or tab living in
-   * that group, including ones PaneCrew didn't itself create. */
-  const revealForActiveGroup = () => {
+  /** Fallback path: resolve focus via the focused EDITOR GROUP's pane
+   * assignment — used only when the active tab itself carries no identity
+   * of its own (empty group, settings/webview tab, …). Covers any terminal
+   * or tab living in that group, including ones PaneCrew didn't itself
+   * create. */
+  const revealForActiveGroup = (): void => {
     const activeGroup = vscode.window.tabGroups.activeTabGroup;
     const pane = lookup.paneForViewColumn(activeGroup.viewColumn);
     if (!pane) {
@@ -89,27 +102,51 @@ export function registerFocusFollow(
     showRootForPane(pane, `active group, viewColumn ${activeGroup.viewColumn}`);
   };
 
-  /** Secondary/fallback path: exact-terminal-identity lookup, for the rare
-   * case `onDidChangeActiveTerminal` fires without an accompanying tab-group
-   * change event. */
-  const revealForTerminal = (terminal: vscode.Terminal | undefined) => {
-    if (!terminal) {
-      log("focus-follow: active terminal changed to none");
-      return;
-    }
-    const pane = lookup.paneForTerminal(terminal);
-    if (!pane) {
-      log(`focus-follow: terminal "${terminal.name}" has no owning pane by identity — falling back to active-group lookup`);
+  /** Primary path: resolve focus via the active TAB's own identity, not the
+   * editor group it currently happens to sit in — this is what keeps focus
+   * follow correct after a tab is dragged from one pane's group into
+   * another, since dragging a tab never changes that tab's own terminal cwd
+   * or file URI, only which group displays it. */
+  const revealForActiveTab = (): void => {
+    const activeGroup = vscode.window.tabGroups.activeTabGroup;
+    const activeTab = activeGroup.activeTab;
+
+    if (activeTab?.input instanceof vscode.TabInputTerminal) {
+      const terminal = vscode.window.activeTerminal;
+      if (terminal) {
+        const pane = lookup.paneForTerminal(terminal);
+        if (pane) {
+          showRootForPane(pane, `terminal tab "${terminal.name}"`);
+          return;
+        }
+        log(`focus-follow: active terminal tab "${terminal.name}" has no owning pane by identity — falling back to active-group lookup`);
+      }
       revealForActiveGroup();
       return;
     }
-    showRootForPane(pane, `terminal "${terminal.name}"`);
+
+    const uri =
+      activeTab?.input instanceof vscode.TabInputText ||
+      activeTab?.input instanceof vscode.TabInputNotebook ||
+      activeTab?.input instanceof vscode.TabInputCustom
+        ? activeTab.input.uri
+        : undefined;
+    if (uri) {
+      const folder = vscode.workspace.getWorkspaceFolder(uri);
+      if (folder) {
+        showFolder(folder, `file tab "${activeTab?.label}"`);
+        return;
+      }
+      log(`focus-follow: active file tab "${activeTab?.label}" (${uri.fsPath}) matches no open workspace folder — falling back to active-group lookup`);
+    }
+
+    revealForActiveGroup();
   };
 
   return [
-    vscode.window.onDidChangeActiveTerminal(revealForTerminal),
-    vscode.window.tabGroups.onDidChangeTabGroups(revealForActiveGroup),
-    vscode.window.tabGroups.onDidChangeTabs(revealForActiveGroup),
+    vscode.window.onDidChangeActiveTerminal(revealForActiveTab),
+    vscode.window.tabGroups.onDidChangeTabGroups(revealForActiveTab),
+    vscode.window.tabGroups.onDidChangeTabs(revealForActiveTab),
   ];
 }
 
