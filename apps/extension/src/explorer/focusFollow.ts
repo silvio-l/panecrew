@@ -84,10 +84,16 @@ export function registerFocusFollow(
   explorer: ExplorerFocus,
   lookup: PaneLookup,
   log: (message: string) => void = () => { /* no-op default: caller opted out of diagnostics */ },
+  // .scratch/pane-attention-notifications: a pane's attention badge clears
+  // the moment its project actually gains focus — same call site as
+  // `explorer.setActiveFolder`, since both react to exactly the same
+  // "this folder just became the focused one" event.
+  onFolderFocused: (folder: vscode.WorkspaceFolder) => void = () => { /* no-op default: caller doesn't track attention */ },
 ): vscode.Disposable[] {
   const showFolder = (folder: vscode.WorkspaceFolder, source: string): void => {
     log(`focus-follow: showing "${folder.name}" (${source})`);
     explorer.setActiveFolder(folder);
+    onFolderFocused(folder);
   };
 
   const showRootForPane = (pane: Pane, source: string): boolean => {

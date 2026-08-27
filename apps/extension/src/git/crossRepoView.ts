@@ -13,6 +13,13 @@ export class PaneCrewCrossRepoViewProvider implements vscode.TreeDataProvider<vs
 
   private readonly statusByFolder = new Map<string, ProjectStatus | undefined>();
 
+  // .scratch/pane-attention-notifications — same source of truth as the
+  // main explorer's PaneCrewAttentionDecorationProvider (extension.ts calls
+  // both from the same mark/clear call sites), just rendered as a text
+  // indicator prefixed onto the existing combined status label instead of a
+  // second display mechanism.
+  private readonly attentionByFolder = new Map<string, boolean>();
+
   /** Same "set everything, fire once" contract as
    * `treeDataProvider.ts`'s `setRootDescription` — returns whether the
    * status actually changed, so a poll that finds nothing new can skip the
@@ -29,14 +36,25 @@ export class PaneCrewCrossRepoViewProvider implements vscode.TreeDataProvider<vs
     return true;
   }
 
+  /** Returns whether the attention flag actually changed, same "skip the
+   * refresh if nothing changed" contract as `setStatus`. */
+  setAttention(folderUri: vscode.Uri, hasAttention: boolean): boolean {
+    const key = folderUri.toString();
+    if (this.attentionByFolder.get(key) === hasAttention) return false;
+    this.attentionByFolder.set(key, hasAttention);
+    return true;
+  }
+
   refresh(): void {
     this.onDidChangeTreeDataEmitter.fire();
   }
 
   getTreeItem(folder: vscode.WorkspaceFolder): vscode.TreeItem {
     const status = this.statusByFolder.get(folder.uri.toString());
+    const hasAttention = this.attentionByFolder.get(folder.uri.toString()) ?? false;
     const item = new vscode.TreeItem(folder.name, vscode.TreeItemCollapsibleState.None);
-    item.description = status ? formatStatusLabel(status) : undefined;
+    const statusLabel = status ? formatStatusLabel(status) : undefined;
+    item.description = hasAttention ? ["●", statusLabel].filter(Boolean).join(" ") : statusLabel;
     item.tooltip = status?.pr?.url;
     item.iconPath = new vscode.ThemeIcon(status ? "repo" : "circle-slash");
     item.contextValue = "panecrew.crossRepoProject";

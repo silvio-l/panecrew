@@ -38,9 +38,13 @@ import { PaneCrewDragAndDropController } from "./explorer/dragAndDrop";
 import { onboardingShouldComplete } from "./onboarding/onboardingState";
 import { maybeShowGridHint } from "./onboarding/gridHint";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
+import { maybeOfferAttentionAdapterConfig } from "./onboarding/attentionAdapterOffer";
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
+import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
+import { PaneCrewAttentionDecorationProvider } from "./explorer/attentionDecorationProvider";
+import { registerConfigureCliToolNotificationsCommand } from "./terminal/cliAdapters/configureNotifications";
 import {
   createGridTemplateStatusBarItem,
   createNewWindowStatusBarItem,
@@ -78,11 +82,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     .update("workbench.editor.closeEmptyGroups", false, vscode.ConfigurationTarget.Global);
   const treeDataProvider = new PaneCrewTreeDataProvider();
   const gitDecorationProvider = new PaneCrewGitDecorationProvider();
+  const attentionTracker = new AttentionTracker();
+  const attentionDecorationProvider = new PaneCrewAttentionDecorationProvider(attentionTracker);
 
   const refreshGitDecorations = () => {
     const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("git.showDecorations", true);
     gitDecorationProvider.setEnabled(enabled);
     if (enabled) void gitDecorationProvider.refreshAll(vscode.workspace.workspaceFolders ?? []);
+  };
+
+  const refreshAttentionBadgesEnabled = () => {
+    const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("attentionBadges.enabled", true);
+    attentionDecorationProvider.setEnabled(enabled);
   };
 
   const treeView = vscode.window.createTreeView<ProjectTreeItem>("panecrew.explorerView", {
@@ -95,11 +106,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(treeView);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(gitDecorationProvider));
+  context.subscriptions.push(vscode.window.registerFileDecorationProvider(attentionDecorationProvider));
   context.subscriptions.push(
     vscode.window.registerTerminalLinkProvider(new PaneCrewTerminalLinkProvider()),
   );
 
   refreshGitDecorations();
+  refreshAttentionBadgesEnabled();
 
   // --- git forge status: branch/ahead-behind/dirty + GitHub PR/CI --------
   // .scratch/git-forge-integration. `ghAvailable` is resolved once (`gh
@@ -109,6 +122,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.window.createTreeView("panecrew.crossRepoView", { treeDataProvider: crossRepoView }),
   );
+
+  const markAttention = (projectPath: string, notification?: AttentionNotification) => {
+    attentionTracker.markAttention(projectPath, notification);
+    attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
+    if (crossRepoView.setAttention(vscode.Uri.file(projectPath), true)) crossRepoView.refresh();
+  };
+  const clearAttention = (projectPath: string) => {
+    if (!attentionTracker.hasAttention(projectPath)) return;
+    attentionTracker.clearAttention(projectPath);
+    attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
+    if (crossRepoView.setAttention(vscode.Uri.file(projectPath), false)) crossRepoView.refresh();
+  };
+
   let ghAvailable = false;
   // Only fires the tree-refresh events when a status actually changed —
   // the periodic poll below runs every 60s regardless, and firing an
@@ -205,6 +231,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("panecrew.git.showDecorations")) refreshGitDecorations();
+      if (e.affectsConfiguration("panecrew.attentionBadges.enabled")) refreshAttentionBadgesEnabled();
+    }),
+  );
+
+  // --- pane attention notifications (.scratch/pane-attention-notifications,
+  // ticket 02) — scans each terminal's own output stream for an OSC 9 /
+  // OSC 777 "notify" escape sequence via the Terminal Shell Integration API,
+  // protocol-level and tool-agnostic (no heuristic text parsing). Buffered
+  // per-execution so a sequence split across output chunks is still caught.
+  context.subscriptions.push(
+    vscode.window.onDidStartTerminalShellExecution((e) => {
+      const pane = layoutController.paneForTerminal(e.terminal);
+      if (!pane) return;
+      const buffer = createAttentionSignalBuffer();
+      void (async () => {
+        for await (const chunk of e.execution.read()) {
+          for (const notification of buffer.feed(chunk)) {
+            markAttention(pane.projectPath, notification);
+          }
+        }
+      })();
     }),
   );
 
@@ -216,6 +263,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         paneForViewColumn: (c) => layoutController.paneForViewColumn(c),
       },
       (message) => { outputChannel.appendLine(message); },
+      (folder) => { clearAttention(folder.uri.fsPath); },
     ),
   );
 
@@ -352,6 +400,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       refreshGitDecorations();
       persist();
     }),
+    // Quick Pane Maximize Toggle (.scratch/pane-attention-notifications,
+    // ticket 01) — a thin wrapper around VS Code's own native command, shown
+    // only on terminal editor tabs (package.json's editor/title `when`).
+    vscode.commands.registerCommand("panecrew.toggleMaximizePane", () =>
+      vscode.commands.executeCommand("workbench.action.toggleMaximizeEditorGroup"),
+    ),
   );
 
   // --- compact look --------------------------------------------------------
@@ -435,6 +489,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(registerSetThemeCommand());
   void maybeOfferPaneCrewTheme(context.globalState);
 
+  // --- CLI tool attention adapters (.scratch/pane-attention-notifications,
+  // tickets 04-06) -----------------------------------------------------------
+  context.subscriptions.push(registerConfigureCliToolNotificationsCommand(context));
+  void maybeOfferAttentionAdapterConfig(context.globalState);
+
   // --- close-pane cleanup: forget disposed terminals so re-applying the
   // layout doesn't try to reuse a dead terminal handle -------------------
   context.subscriptions.push(
@@ -443,6 +502,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!pane) return;
       layoutController.forgetPane(pane.paneId);
       gridState = closePane(gridState, pane.paneId);
+      clearAttention(pane.projectPath);
       persist();
     }),
   );
