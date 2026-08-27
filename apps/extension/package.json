@@ -101,6 +101,11 @@
         "icon": "$(trash)"
       },
       {
+        "command": "panecrew.copyPath",
+        "title": "PaneCrew: Copy Path",
+        "icon": "$(copy)"
+      },
+      {
         "command": "panecrew.insertSnippet",
         "title": "PaneCrew: Insert Snippet…",
         "icon": "$(symbol-snippet)"
@@ -212,7 +217,7 @@
           "group": "4_modify@2"
         },
         {
-          "command": "copyFilePath",
+          "command": "panecrew.copyPath",
           "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "6_copypath"
         }

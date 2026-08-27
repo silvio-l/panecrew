@@ -22,6 +22,7 @@ import { PaneCrewGitDecorationProvider } from "./explorer/gitDecorationProvider"
 import { registerFocusFollow } from "./explorer/focusFollow";
 import { PaneCrewTreeDataProvider, type FileSystemEntryItem, type ProjectTreeItem } from "./explorer/treeDataProvider";
 import {
+  registerCopyPathCommand,
   registerDeleteEntryCommand,
   registerNewFileCommand,
   registerNewFolderCommand,
@@ -232,6 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerNewFileCommand(onExplorerFilesChanged),
     registerNewFolderCommand(onExplorerFilesChanged),
     registerDeleteEntryCommand(onExplorerFilesChanged),
+    registerCopyPathCommand(),
   );
 
   // --- snippets ----------------------------------------------------------

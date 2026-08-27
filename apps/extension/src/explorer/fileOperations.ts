@@ -69,3 +69,15 @@ export function registerDeleteEntryCommand(onChanged: () => void): vscode.Dispos
     onChanged();
   });
 }
+
+/** Own command instead of the built-in `copyFilePath` — that id isn't
+ * actually registered as a global command VS Code validates package.json
+ * menu contributions against (unlike e.g. `revealFileInOS`), which produced
+ * an "references a command which is not defined" activation warning. */
+export function registerCopyPathCommand(): vscode.Disposable {
+  return vscode.commands.registerCommand("panecrew.copyPath", async (item: ProjectTreeItem | undefined) => {
+    if (!item) return;
+    const uri = item.kind === "root" ? item.folder.uri : item.uri;
+    await vscode.env.clipboard.writeText(uri.fsPath);
+  });
+}
