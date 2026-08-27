@@ -58,6 +58,14 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
   await config.update("workbench.layoutControl.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.titleBar.signIn.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.titleBar.openInAgentsWindow.enabled", false, vscode.ConfigurationTarget.Global);
+  // The Chat/Copilot panel lives in the auxiliary (secondary) side bar, whose
+  // visibility isn't a settings.json value — there's no config key for it,
+  // only a command, so it can't be captured in SavedLookValues/restored to
+  // its exact prior state the way the settings above are. Closing it is
+  // idempotent (a no-op if already closed), so Compact Look always ends up
+  // with it closed; re-open it manually (View > Appearance > Secondary Side
+  // Bar, or the default Ctrl/Cmd+Alt+B) after Compact Look if wanted.
+  await vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
 }
 
 export async function restoreLook(memento: CompactLookMemento): Promise<void> {
