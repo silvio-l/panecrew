@@ -20,6 +20,7 @@ import {
 import { GridLayoutController } from "./grid/layoutController";
 import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, savePreset } from "./grid/presets";
 import { PaneCrewGitDecorationProvider } from "./explorer/gitDecorationProvider";
+import { isGitIndexNoise } from "./git/repoStatus";
 import { PaneCrewCrossRepoViewProvider } from "./git/crossRepoView";
 import { formatStatusLabel, getProjectStatus } from "./git/projectStatus";
 import { isGhAvailable } from "./git/forgeStatus";
@@ -144,7 +145,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // the watcher and fired a refresh, rather than trusting the wiring
   // untested — this is the one behavior `onDidSaveTextDocument` can't cover.
   let externalRefreshCount = 0;
-  const scheduleExternalRefresh = () => {
+  const scheduleExternalRefresh = (uri: vscode.Uri) => {
+    // `git status` itself rewrites `.git/index` (refreshing its cached stat
+    // info) even when nothing actually changed — without this guard, every
+    // refresh's own `git status` call (refreshGitDecorations,
+    // refreshProjectStatuses) re-triggers this exact watcher, which
+    // schedules another refresh, which runs `git status` again, forever:
+    // a self-sustaining loop that reads as the explorer constantly
+    // flickering/reloading. `.git/HEAD` and `.git/refs/**` (real commits,
+    // checkouts, branch switches) are deliberately NOT filtered — those
+    // still need to trigger a refresh, and don't change on a plain
+    // `git status` read.
+    if (isGitIndexNoise(uri.path)) return;
     if (externalChangeTimer) clearTimeout(externalChangeTimer);
     externalChangeTimer = setTimeout(() => {
       externalChangeTimer = undefined;

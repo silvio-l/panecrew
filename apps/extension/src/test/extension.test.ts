@@ -128,6 +128,51 @@ suite("PaneCrew extension", () => {
     }
   });
 
+  test("does not refresh the explorer when .git/index changes (git status side effect, not a real change)", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    const gitDir = path.join(folder.uri.fsPath, ".git");
+    const indexPath = path.join(gitDir, "index");
+    // Create `.git` and a first `index` file, and let that fully settle
+    // before measuring: creating a directory entry for the first time can
+    // itself surface as a (correctly, not-filtered) change on the `.git`
+    // directory. What real `git status` does on every run is rewrite an
+    // *already-existing* `index` file's content in place — that's the case
+    // under test below, not this initial setup.
+    fs.mkdirSync(gitDir, { recursive: true });
+    fs.writeFileSync(indexPath, "initial index");
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const countBefore = await vscode.commands.executeCommand<number>(
+      "panecrew._internal.getExternalRefreshCount",
+    );
+
+    // Simulates what `git status` itself does to `.git/index` on every run —
+    // this must NOT re-trigger a refresh, or a repo with an active PaneCrew
+    // git-status/cross-repo poll flickers forever (see isGitIndexNoise in
+    // git/repoStatus.ts).
+    fs.writeFileSync(indexPath, "not a real index, just watcher bait");
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // watcher debounce is 300ms
+      const countAfter = await vscode.commands.executeCommand<number>(
+        "panecrew._internal.getExternalRefreshCount",
+      );
+      assert.strictEqual(
+        countAfter,
+        countBefore,
+        `expected .git/index changes to be filtered out (before=${countBefore}, after=${countAfter})`,
+      );
+    } finally {
+      fs.rmSync(gitDir, { recursive: true, force: true });
+    }
+  });
+
   test("panecrew.copyPath writes the file's path to the clipboard", async () => {
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
     assert.ok(ext);
