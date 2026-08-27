@@ -145,6 +145,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => { refreshGitDecorations(); }));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     treeDataProvider.refresh();
+    // A removed folder never gets a fresh `getProjectStatus` call from
+    // `refreshProjectStatuses` (it only iterates *current* folders), so
+    // that alone wouldn't fire `crossRepoView.refresh()` — without this,
+    // a folder removed some other way than "Remove Project…" above (e.g.
+    // VS Code's own "Remove Folder from Workspace") would keep showing a
+    // stale row in Projects Overview until something unrelated changed.
+    crossRepoView.refresh();
     refreshGitDecorations();
     void refreshProjectStatuses();
   }));
@@ -316,6 +323,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("panecrew.toggleSidebar", () =>
       vscode.commands.executeCommand("workbench.action.toggleSidebarVisibility"),
     ),
+    // Projects Overview's context menu (.scratch/git-forge-integration) —
+    // the counterpart to "Add Folder to Grid…": closes the project's pane
+    // (if it has one) and drops the folder from the multi-root workspace.
+    // Never touches anything on disk.
+    vscode.commands.registerCommand("panecrew.removeProjectFromWorkspace", async (folder: vscode.WorkspaceFolder | undefined) => {
+      if (!folder) return;
+      const confirmed = await vscode.window.showWarningMessage(
+        `Remove "${folder.name}" from this PaneCrew workspace?`,
+        { modal: true, detail: "Its pane closes and the folder leaves the workspace — files on disk are untouched." },
+        "Remove",
+      );
+      if (confirmed !== "Remove") return;
+
+      const pane = gridState.slots.find((slot) => slot?.projectPath === folder.uri.fsPath);
+      if (pane) {
+        layoutController.disposeTerminalForPane(pane.paneId);
+        gridState = closePane(gridState, pane.paneId);
+        await layoutController.apply(gridState);
+      }
+
+      const existingFolders = vscode.workspace.workspaceFolders ?? [];
+      const index = existingFolders.findIndex((f) => f.uri.toString() === folder.uri.toString());
+      if (index !== -1) vscode.workspace.updateWorkspaceFolders(index, 1);
+
+      crossRepoView.refresh();
+      treeDataProvider.refresh();
+      refreshGitDecorations();
+      persist();
+    }),
   );
 
   // --- compact look --------------------------------------------------------

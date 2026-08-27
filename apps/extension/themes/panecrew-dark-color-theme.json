@@ -13,6 +13,7 @@
     "editor.background": "#121314",
     "editor.foreground": "#c5c8ca",
     "editorGroup.border": "#2a2b2c",
+    "editorGroup.focusedEmptyBorder": "#e59656",
     "editorGroupHeader.tabsBackground": "#121314",
     "editorGroupHeader.tabsBorder": "#2a2b2c",
     "editorWidget.background": "#191a1b",
@@ -24,6 +25,10 @@
     "tab.activeForeground": "#ededed",
     "tab.inactiveForeground": "#8c8c8c",
     "tab.activeBorder": "#e59656",
+    "tab.activeBorderTop": "#e59656",
+    "tab.unfocusedActiveBorder": "#e5965640",
+    "tab.unfocusedActiveBorderTop": "#00000000",
+    "tab.unfocusedActiveForeground": "#a8a8a8",
     "tab.border": "#2a2b2c",
     "tab.hoverBackground": "#ffffff14",
 

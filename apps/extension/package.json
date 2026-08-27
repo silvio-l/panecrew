@@ -146,6 +146,11 @@
       {
         "command": "panecrew.setPaneCrewTheme",
         "title": "PaneCrew: Set PaneCrew Theme…"
+      },
+      {
+        "command": "panecrew.removeProjectFromWorkspace",
+        "title": "PaneCrew: Remove Project from Workspace…",
+        "icon": "$(close)"
       }
     ],
     "viewsContainers": {
@@ -265,6 +270,16 @@
           "command": "panecrew.copyPath",
           "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "6_copypath"
+        },
+        {
+          "command": "panecrew.removeProjectFromWorkspace",
+          "when": "view == panecrew.crossRepoView && viewItem == panecrew.crossRepoProject",
+          "group": "inline"
+        },
+        {
+          "command": "panecrew.removeProjectFromWorkspace",
+          "when": "view == panecrew.crossRepoView && viewItem == panecrew.crossRepoProject",
+          "group": "4_modify"
         }
       ]
     },
