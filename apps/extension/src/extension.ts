@@ -27,6 +27,7 @@ import {
   registerNewFileCommand,
   registerNewFolderCommand,
   registerRenameEntryCommand,
+  registerRevealInOSCommand,
 } from "./explorer/fileOperations";
 import { PaneCrewDragAndDropController } from "./explorer/dragAndDrop";
 import { onboardingShouldComplete } from "./onboarding/onboardingState";
@@ -153,7 +154,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshGitDecorations();
     persist();
   });
-  context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem());
+  context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem(context));
 
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.addFolderToGrid", addFolderAndAssign),
@@ -234,6 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerNewFolderCommand(onExplorerFilesChanged),
     registerDeleteEntryCommand(onExplorerFilesChanged),
     registerCopyPathCommand(),
+    registerRevealInOSCommand(),
   );
 
   // --- snippets ----------------------------------------------------------

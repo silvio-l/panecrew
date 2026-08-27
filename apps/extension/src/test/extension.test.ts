@@ -36,6 +36,8 @@ suite("PaneCrew extension", () => {
       "panecrew.newFolder",
       "panecrew.deleteEntry",
       "panecrew.copyPath",
+      "panecrew.revealInOS",
+      "panecrew.openProjectInNewWindow",
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
     ]) {

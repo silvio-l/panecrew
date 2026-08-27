@@ -106,6 +106,16 @@
         "icon": "$(copy)"
       },
       {
+        "command": "panecrew.revealInOS",
+        "title": "PaneCrew: Reveal in File Explorer/Finder",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "panecrew.openProjectInNewWindow",
+        "title": "PaneCrew: Open Project in New Window…",
+        "icon": "$(empty-window)"
+      },
+      {
         "command": "panecrew.insertSnippet",
         "title": "PaneCrew: Insert Snippet…",
         "icon": "$(symbol-snippet)"
@@ -192,7 +202,7 @@
           "group": "navigation"
         },
         {
-          "command": "revealFileInOS",
+          "command": "panecrew.revealInOS",
           "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "navigation"
         },

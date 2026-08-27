@@ -72,14 +72,35 @@ export function createGridTemplateStatusBarItem(
   };
 }
 
-/** Shortcut to open a new VS Code window — the closest PaneCrew-styled
- * equivalent to the desktop app's title-bar "new window" affordance. */
-export function createNewWindowStatusBarItem(): vscode.Disposable {
+/** Shortcut to open another project in a new window — the closest
+ * PaneCrew-styled equivalent to the desktop app's title-bar "new window"
+ * affordance. Deliberately not bound to the bare `workbench.action.newWindow`
+ * (2026-08-27 fix): that opens a completely empty window with nothing but
+ * keyboard-shortcut hints, which isn't an actionable next step for a user —
+ * this instead prompts for a folder immediately and opens it in the new
+ * window in one step, mirroring `addFolderAndAssign`'s own folder picker. */
+export function createNewWindowStatusBarItem(context: vscode.ExtensionContext): vscode.Disposable {
+  const commandId = "panecrew.openProjectInNewWindow";
   const item = vscode.window.createStatusBarItem("panecrew.newWindow", vscode.StatusBarAlignment.Left, 99);
   item.name = "PaneCrew: New Window";
   item.text = "$(empty-window)";
-  item.tooltip = "PaneCrew: open a new window";
-  item.command = "workbench.action.newWindow";
+  item.tooltip = "PaneCrew: open a project in a new window";
+  item.command = commandId;
   item.show();
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(commandId, async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: "Open in New Window",
+      });
+      const folderUri = picked?.[0];
+      if (!folderUri) return;
+      await vscode.commands.executeCommand("vscode.openFolder", folderUri, { forceNewWindow: true });
+    }),
+  );
+
   return item;
 }

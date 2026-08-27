@@ -70,14 +70,28 @@ export function registerDeleteEntryCommand(onChanged: () => void): vscode.Dispos
   });
 }
 
-/** Own command instead of the built-in `copyFilePath` — that id isn't
- * actually registered as a global command VS Code validates package.json
- * menu contributions against (unlike e.g. `revealFileInOS`), which produced
- * an "references a command which is not defined" activation warning. */
+function itemUri(item: ProjectTreeItem): vscode.Uri {
+  return item.kind === "root" ? item.folder.uri : item.uri;
+}
+
+/** Own command instead of referencing the built-in `copyFilePath` directly —
+ * a custom TreeView's `view/item/context` menu contribution must reference a
+ * command declared in *this* extension's own `commands` section (VS Code's
+ * activation-time validator flags any other id there as "not defined",
+ * regardless of whether it happens to be a real, globally registered
+ * command — `revealFileInOS` below hit the exact same warning). */
 export function registerCopyPathCommand(): vscode.Disposable {
   return vscode.commands.registerCommand("panecrew.copyPath", async (item: ProjectTreeItem | undefined) => {
     if (!item) return;
-    const uri = item.kind === "root" ? item.folder.uri : item.uri;
-    await vscode.env.clipboard.writeText(uri.fsPath);
+    await vscode.env.clipboard.writeText(itemUri(item).fsPath);
+  });
+}
+
+/** Thin wrapper around the real built-in `revealFileInOS` — see
+ * `registerCopyPathCommand`'s comment for why a wrapper is needed at all. */
+export function registerRevealInOSCommand(): vscode.Disposable {
+  return vscode.commands.registerCommand("panecrew.revealInOS", async (item: ProjectTreeItem | undefined) => {
+    if (!item) return;
+    await vscode.commands.executeCommand("revealFileInOS", itemUri(item));
   });
 }
