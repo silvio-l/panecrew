@@ -49,7 +49,7 @@ ext install silvio-lindstedt.panecrew
 **From a `.vsix` file**:
 
 ```
-code --install-extension panecrew-0.1.0.vsix
+code --install-extension panecrew-0.1.1.vsix
 ```
 
 Or via the Extensions view: `···` menu → "Install from VSIX…".

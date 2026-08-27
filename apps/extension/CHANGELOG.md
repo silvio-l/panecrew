@@ -2,6 +2,15 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.1 — 2026-08-27
+
+### Changed
+
+- Added a FAQ section to the README (platform support, licensing, supported
+  CLI tools, where to file bugs/questions).
+- Reworded "Known limitations" to describe the extension's own constraints
+  directly, without assuming readers know the earlier desktop app.
+
 ## 0.1.0 — 2026-08-27
 
 Initial production release of the PaneCrew VS Code extension. This replaces
