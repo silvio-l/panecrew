@@ -264,6 +264,53 @@ suite("PaneCrew extension", () => {
     assert.strictEqual(provider.provideFileDecoration(folder.uri), undefined);
   });
 
+  test("marking/clearing attention updates both the main explorer and Projects Overview from one source of truth", async () => {
+    // Drives the real, production `markAttention`/`clearAttention` closures
+    // in extension.ts via the same undeclared-internal-command pattern as
+    // `panecrew._internal.getExternalRefreshCount` — this is the exact call
+    // site both `onDidStartTerminalShellExecution` (an OSC 9/777 signal
+    // arriving) and `focusFollow.ts`'s `onFolderFocused` (a pane gaining
+    // focus) invoke; only the live-terminal/live-focus *trigger* itself is
+    // substituted, not the mark/clear/badge/label logic under test, since
+    // automating a real terminal shell-integration session or a real
+    // terminal-focus transition headless is not reliable in
+    // @vscode/test-electron (spec.md's Testing Decisions already scope this
+    // feature's wiring tests to decoration-provider/command level, not live
+    // terminal simulation).
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    // Doesn't assert the description's exact/absent value at baseline — the
+    // fixture workspace folder lives inside this real repo's own working
+    // tree, so `refreshProjectStatuses` may have already populated a real
+    // git status label by the time this test runs; only the attention
+    // glyph's presence/absence is under test here.
+    const descriptionBefore = await vscode.commands.executeCommand<string | undefined>(
+      "panecrew._internal.crossRepoDescription",
+      folder.uri,
+    );
+    assert.ok(!descriptionBefore?.startsWith("●"), "no attention glyph expected before marking");
+
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+    assert.strictEqual(await vscode.commands.executeCommand("panecrew._internal.hasAttention", folder.uri.fsPath), true);
+    const descriptionWithAttention = await vscode.commands.executeCommand<string | undefined>(
+      "panecrew._internal.crossRepoDescription",
+      folder.uri,
+    );
+    assert.ok(descriptionWithAttention?.startsWith("●"), "Projects Overview label should be prefixed with the attention glyph");
+
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    assert.strictEqual(await vscode.commands.executeCommand("panecrew._internal.hasAttention", folder.uri.fsPath), false);
+    const descriptionAfter = await vscode.commands.executeCommand<string | undefined>(
+      "panecrew._internal.crossRepoDescription",
+      folder.uri,
+    );
+    assert.ok(!descriptionAfter?.startsWith("●"), "attention glyph should be gone after clearing");
+  });
+
   test("panecrew.configureCliToolNotifications previews and writes the Claude Code notify hook end-to-end", async function () {
     this.timeout(10_000);
     const ext = vscode.extensions.getExtension(EXTENSION_ID);

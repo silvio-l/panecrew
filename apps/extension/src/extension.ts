@@ -135,6 +135,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (crossRepoView.setAttention(vscode.Uri.file(projectPath), false)) crossRepoView.refresh();
   };
 
+  // Undeclared (not in package.json contributes, so never shown in the
+  // Command Palette) test-only commands, same pattern as
+  // `panecrew._internal.getExternalRefreshCount` above — let the
+  // integration suite drive the exact mark/clear call sites a real OSC 9/777
+  // signal reaches (.scratch/pane-attention-notifications ticket 02/03)
+  // without needing a live terminal shell-integration session, which is not
+  // reliably automatable headless.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew._internal.markAttention", (projectPath: string) => {
+      markAttention(projectPath);
+    }),
+    vscode.commands.registerCommand("panecrew._internal.clearAttention", (projectPath: string) => {
+      clearAttention(projectPath);
+    }),
+    vscode.commands.registerCommand("panecrew._internal.hasAttention", (projectPath: string) =>
+      attentionTracker.hasAttention(projectPath),
+    ),
+    vscode.commands.registerCommand("panecrew._internal.crossRepoDescription", (folderUri: vscode.Uri) => {
+      const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === folderUri.toString());
+      return folder ? crossRepoView.getTreeItem(folder).description : undefined;
+    }),
+  );
+
   let ghAvailable = false;
   // Only fires the tree-refresh events when a status actually changed —
   // the periodic poll below runs every 60s regardless, and firing an
