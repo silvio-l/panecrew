@@ -102,6 +102,33 @@ suite("PaneCrew extension", () => {
     }
   });
 
+  test("panecrew.copyPath writes the file's path to the clipboard", async () => {
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    const previousClipboard = await vscode.env.clipboard.readText();
+    try {
+      const fileUri = vscode.Uri.joinPath(folder.uri, "copy-path-target.txt");
+      // Matches the shape of a FileSystemEntryItem (treeDataProvider.ts) —
+      // the object VS Code hands the command when invoked from the
+      // explorer's context menu.
+      await vscode.commands.executeCommand("panecrew.copyPath", {
+        kind: "entry",
+        uri: fileUri,
+        type: vscode.FileType.File,
+        folder,
+      });
+      const clipboardText = await vscode.env.clipboard.readText();
+      assert.strictEqual(clipboardText, fileUri.fsPath);
+    } finally {
+      await vscode.env.clipboard.writeText(previousClipboard);
+    }
+  });
+
   test("ships both PaneCrew color themes", () => {
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
     assert.ok(ext);
