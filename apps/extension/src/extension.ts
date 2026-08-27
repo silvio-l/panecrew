@@ -87,6 +87,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider.refresh();
     refreshGitDecorations();
   }));
+
+  // `onDidSaveTextDocument` above only covers edits made through VS Code's
+  // own editor. Anything that touches the filesystem another way — a CLI
+  // agent running in a pane, `git commit`/`checkout` in a terminal, another
+  // process — needs a real filesystem watcher, or the explorer and git
+  // decorations only ever update on the next manual "Refresh Explorer".
+  // A bare glob string (rather than a RelativePattern) applies across every
+  // workspace folder and honors `files.watcherExclude` automatically, same
+  // as VS Code's own Explorer. Debounced because a single `git checkout` or
+  // bulk delete fires a burst of events for what is conceptually one change.
+  const fsWatcher = vscode.workspace.createFileSystemWatcher("**/*");
+  let externalChangeTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleExternalRefresh = () => {
+    if (externalChangeTimer) clearTimeout(externalChangeTimer);
+    externalChangeTimer = setTimeout(() => {
+      externalChangeTimer = undefined;
+      treeDataProvider.refresh();
+      refreshGitDecorations();
+    }, 300);
+  };
+  context.subscriptions.push(
+    fsWatcher,
+    fsWatcher.onDidCreate(scheduleExternalRefresh),
+    fsWatcher.onDidDelete(scheduleExternalRefresh),
+    fsWatcher.onDidChange(scheduleExternalRefresh),
+    { dispose: () => { if (externalChangeTimer) clearTimeout(externalChangeTimer); } },
+  );
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("panecrew.git.showDecorations")) refreshGitDecorations();
