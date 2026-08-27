@@ -3,7 +3,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Install & Run | PaneCrew Docs";
 const description =
-  "How to install the PaneCrew VS Code extension: from the Marketplace once it's published, or from a .vsix file today.";
+  "How to install the PaneCrew VS Code extension: from the Marketplace, or from a .vsix file.";
 ---
 <DocsLayout title={title} description={description} path="/docs/install/" active="install">
   <article class="docs-md">
@@ -13,18 +13,18 @@ const description =
       toolchain required. <!-- brandlint-ok: functional status claim, matches apps/extension/README.md verbatim -->
     </p>
 
-    <h2>From the Marketplace (once published)</h2>
+    <h2>From the Marketplace</h2>
     <p>
       Search for "PaneCrew" in the Extensions view (<code>⌘⇧X</code> / <code>Ctrl+Shift+X</code>),
       or run:
     </p>
     <pre><code>ext install silvio-lindstedt.panecrew</code></pre>
     <p>
-      The Marketplace listing isn't live yet — this is how it'll work once it is.
-      <!-- brandlint-ok: honest status claim, no live Marketplace URL exists to link -->
+      Or install directly from the
+      <a href="https://marketplace.visualstudio.com/items?itemName=silvio-lindstedt.panecrew">Marketplace listing</a>.
     </p>
 
-    <h2>From a .vsix file (current)</h2>
+    <h2>From a .vsix file</h2>
     <p>Build the extension from source:</p>
     <pre><code>git clone https://github.com/silvio-l/panecrew.git
 cd panecrew
