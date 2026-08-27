@@ -139,12 +139,15 @@ export interface VscodeLike {
       name: string;
       cwd: string;
       location: { viewColumn: number };
-    }): { show(preserveFocus?: boolean): void };
-    terminals: readonly { name: string }[];
+    }): ControllerTerminal;
+    terminals: readonly ControllerTerminal[];
   };
 }
 
-interface ControllerTerminal { show(preserveFocus?: boolean): void }
+interface ControllerTerminal {
+  name: string;
+  show(preserveFocus?: boolean): void;
+}
 
 export class GridLayoutController {
   /** paneId -> live terminal, so re-applying a layout (e.g. after adding a
@@ -183,8 +186,20 @@ export class GridLayoutController {
       this.paneByTerminal.set(existing, pane);
       return;
     }
-    const terminal = this.vscode.window.createTerminal({
-      name: paneTerminalName(pane),
+    // Adopt a live terminal with the exact expected name instead of always
+    // creating a new one (2026-08-27 fix): after a "Developer: Reload
+    // Window", or whenever the extension host restarts without its saved
+    // session having survived (unreliable for an unsaved multi-root
+    // workspace's `workspaceState`), this controller's in-memory maps start
+    // empty while VS Code itself may have kept the *terminal* alive across
+    // the reload — without adoption, every such restart spawned a second,
+    // duplicate terminal for the same pane instead of reusing the original.
+    const expectedName = paneTerminalName(pane);
+    const adopted = this.vscode.window.terminals.find(
+      (terminal) => terminal.name === expectedName && !this.paneByTerminal.has(terminal),
+    );
+    const terminal = adopted ?? this.vscode.window.createTerminal({
+      name: expectedName,
       cwd: pane.projectPath,
       location: { viewColumn },
     });

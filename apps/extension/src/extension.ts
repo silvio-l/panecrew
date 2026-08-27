@@ -98,18 +98,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
+  const persist = () => void saveSession(context.workspaceState, gridState);
+
   // --- session restore -------------------------------------------------
   const restored = loadSession(context.workspaceState);
-  if (restored && vscode.workspace.workspaceFolders?.length) {
-    gridState = { ...INITIAL_GRID_STATE, template: restored.template, splitRatios: restored.splitRatios };
-    restored.slots.forEach((slot, index) => {
-      if (!slot) return;
-      gridState = assignProjectToSlot(gridState, index, slot.project_path, makeId(), makeId());
-    });
+  const openFolders = vscode.workspace.workspaceFolders ?? [];
+  if (openFolders.length > 0) {
+    if (restored) {
+      gridState = { ...INITIAL_GRID_STATE, template: restored.template, splitRatios: restored.splitRatios };
+      restored.slots.forEach((slot, index) => {
+        if (!slot) return;
+        gridState = assignProjectToSlot(gridState, index, slot.project_path, makeId(), makeId());
+      });
+    }
+    // Backfill any open workspace folder the restored session doesn't
+    // already track (2026-08-27 fix): covers both "no session was ever
+    // saved" and "the session only partially restored" — an unsaved
+    // multi-root workspace's `workspaceState` isn't reliably persisted
+    // across a "Developer: Reload Window", so a folder that's genuinely
+    // already open must still end up with a tracked pane instead of
+    // silently falling outside the grid (which previously left
+    // focus-follow permanently unable to resolve it, and any later
+    // add-folder attempt spawning a duplicate terminal for it).
+    for (const folder of openFolders) {
+      const alreadyTracked = gridState.slots.some((slot) => slot?.projectPath === folder.uri.fsPath);
+      if (alreadyTracked) continue;
+      const slotIndex = firstEmptySlotIndex(gridState);
+      if (slotIndex === -1) break;
+      gridState = assignProjectToSlot(gridState, slotIndex, folder.uri.fsPath, makeId(), makeId());
+    }
     await layoutController.apply(gridState);
+    persist();
   }
-
-  const persist = () => void saveSession(context.workspaceState, gridState);
 
   // --- grid commands -----------------------------------------------------
   async function addFolderAndAssign(): Promise<void> {
