@@ -15,9 +15,13 @@
       * {
         box-sizing: border-box;
       }
+      /* dark ground matches the website's own --indigo-deep token
+         (apps/website/src/styles/site-chrome.css) so the video's
+         background reads as continuous with the page it's embedded in,
+         not an unrelated near-black. */
       body {
         margin: 0;
-        background: #0e0a17;
+        background: #1f2547;
         color: #f5f0ea;
         font-family: "Bricolage Grotesque", sans-serif;
       }
@@ -26,7 +30,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0e0a17;
+        background: #1f2547;
       }
       .clip {
         position: absolute;
@@ -59,15 +63,15 @@
         inset: 0;
         background: linear-gradient(
             to top,
-            rgba(9, 6, 16, 0.97) 0%,
-            rgba(9, 6, 16, 0.88) 24%,
-            rgba(9, 6, 16, 0.4) 46%,
-            rgba(9, 6, 16, 0) 64%
+            rgba(31, 37, 71, 0.97) 0%,
+            rgba(31, 37, 71, 0.88) 24%,
+            rgba(31, 37, 71, 0.4) 46%,
+            rgba(31, 37, 71, 0) 64%
           ),
           radial-gradient(
             ellipse 1000px 620px at 0% 100%,
-            rgba(9, 6, 16, 0.7) 0%,
-            rgba(9, 6, 16, 0) 72%
+            rgba(31, 37, 71, 0.7) 0%,
+            rgba(31, 37, 71, 0) 72%
           );
       }
       .scene .frame-border {
@@ -205,9 +209,9 @@
         inset: 0;
         background: radial-gradient(
           circle 420px at 368px 341px,
-          rgba(9, 6, 16, 0) 0px,
-          rgba(9, 6, 16, 0) 120px,
-          rgba(9, 6, 16, 0.62) 380px
+          rgba(31, 37, 71, 0) 0px,
+          rgba(31, 37, 71, 0) 120px,
+          rgba(31, 37, 71, 0.62) 380px
         );
         opacity: 0;
         pointer-events: none;
@@ -279,7 +283,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: radial-gradient(120% 140% at 50% 20%, #241a38 0%, #120e1b 55%, #0a0712 100%);
+        /* indigo family matched to the website's --indigo-hi/--indigo-deep
+           tokens - was a violet-leaning gradient (#241a38...) that read as
+           an off-brand purple against the site's blue-indigo background. */
+        background: radial-gradient(120% 140% at 50% 20%, #333c72 0%, #1f2547 55%, #12162b 100%);
         overflow: hidden;
       }
       /* diagonal hatch-stripe accent layer - adds a second depth plane behind
@@ -375,7 +382,7 @@
         font-size: 20px;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: #8a7fa0;
+        color: #8b93bd;
         margin: 6px 0 0 0;
         opacity: 0;
       }
