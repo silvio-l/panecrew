@@ -7,7 +7,8 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "--disable-extension=silvio-lindstedt.panecrew"
+        "--disable-extension=silvio-lindstedt.panecrew",
+        "--disable-extension=panecrew.panecrew"
       ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
       "preLaunchTask": "${defaultBuildTask}"
