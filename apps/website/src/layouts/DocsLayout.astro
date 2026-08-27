@@ -24,8 +24,7 @@ const navItems = [
   { id: "interface", href: "/docs/interface/", label: "Interface tour" },
   { id: "install", href: "/docs/install/", label: "Install & run" },
   { id: "focus-following-explorer", href: "/docs/focus-following-explorer/", label: "Focus-following explorer" },
-  { id: "cli", href: "/docs/cli/", label: "CLI reference" },
-  { id: "shortcuts", href: "/docs/shortcuts/", label: "Keyboard shortcuts" },
+  { id: "cli", href: "/docs/cli/", label: "Commands & settings" },
 ];
 
 const techArticleJsonLd = {
@@ -101,8 +100,8 @@ const techArticleJsonLd = {
     margin-bottom: 30px; text-wrap: pretty;
   }
 
-  /* prose rendering for the markdown-sourced reference pages (cli.md,
-     shortcuts.md) — no classes on the generated HTML, so styled by tag. */
+  /* prose rendering for the commands & settings reference page — plain
+     hand-authored HTML, no classes, so styled by tag. */
   .docs-md { max-width: 720px; }
   .docs-md h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3.2vw, 36px); margin-bottom: 16px; }
   .docs-md h2 { font-family: var(--display); font-weight: 700; font-size: 1.375rem; margin: 34px 0 12px; color: var(--cream); }

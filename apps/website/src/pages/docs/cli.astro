@@ -1,18 +1,91 @@
 ---
-import { getEntry, render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
 
-const entry = await getEntry("reference", "cli");
-if (!entry) {
-  throw new Error("docs/cli.md missing from the repo — regenerate it (see apps/desktop's docs)");
-}
-const { Content } = await render(entry);
+const title = "Commands & Settings | PaneCrew Docs";
+const description =
+  "Every panecrew.* command and setting the PaneCrew VS Code extension contributes, and how to bind your own keyboard shortcuts to them via VS Code's keybindings.json.";
 
-const title = "CLI Reference | PaneCrew Docs";
-const description = "Every PaneCrew command-line flag, generated directly from the app's own argument parser.";
+// Kept in sync by hand with apps/extension/package.json's own
+// contributes.commands / contributes.configuration — that package.json is
+// the single source of truth VS Code itself reads; this table is a reader-
+// friendly mirror of it, not a second registry.
+const commands = [
+  { id: "panecrew.openProjectGrid", title: "PaneCrew: Open Project Grid…" },
+  { id: "panecrew.addFolderToGrid", title: "PaneCrew: Add Folder to Grid…" },
+  { id: "panecrew.applyCompactLook", title: "PaneCrew: Apply Compact Look" },
+  { id: "panecrew.restoreLook", title: "PaneCrew: Restore Default VS Code Look" },
+  { id: "panecrew.savePreset", title: "PaneCrew: Save Current Grid as Preset…" },
+  { id: "panecrew.loadPreset", title: "PaneCrew: Load Grid Preset…" },
+  { id: "panecrew.deletePreset", title: "PaneCrew: Delete Grid Preset…" },
+  { id: "panecrew.searchInFolder", title: "PaneCrew: Search in Folder…" },
+  { id: "panecrew.insertSnippet", title: "PaneCrew: Insert Snippet…" },
+  { id: "panecrew.refreshExplorer", title: "PaneCrew: Refresh Explorer" },
+  { id: "panecrew.setPaneCrewTheme", title: "PaneCrew: Set PaneCrew Theme…" },
+];
+
+const settings = [
+  { key: "panecrew.grid.defaultColumns", default: "2", description: "Default column count for a new project grid." },
+  { key: "panecrew.grid.defaultRows", default: "2", description: "Default row count for a new project grid." },
+  { key: "panecrew.compactLook.hideStatusBar", default: "true", description: "Whether Compact Look hides the status bar." },
+  { key: "panecrew.compactLook.hideMinimap", default: "true", description: "Whether Compact Look hides the editor minimap." },
+  { key: "panecrew.git.showDecorations", default: "true", description: "Show git status badges/colors in the PaneCrew explorer." },
+  { key: "panecrew.snippets.defaultScope", default: "workspace", description: "Where newly saved snippets are stored by default (workspace or global)." },
+];
 ---
 <DocsLayout title={title} description={description} path="/docs/cli/" active="cli">
   <article class="docs-md">
-    <Content />
+    <h1>Commands &amp; settings</h1>
+    <p>
+      PaneCrew doesn't have its own CLI flags or a hardcoded shortcut registry — those were the
+      earlier Tauri desktop app's model. As a VS Code extension, it contributes ordinary VS Code
+      commands and settings instead, and keyboard shortcuts are bound the same way you'd bind any
+      other command: through VS Code's own <code>keybindings.json</code>.
+      <!-- brandlint-ok: functional status claim about the extension's real command/settings model -->
+    </p>
+
+    <h2>Commands</h2>
+    <p>
+      Every command below is available from the Command Palette (<code>⌘⇧P</code> /
+      <code>Ctrl+Shift+P</code>) by typing its title. To bind a keyboard shortcut to one, open the
+      Keyboard Shortcuts editor (<code>⌘K ⌘S</code> / <code>Ctrl+K Ctrl+S</code>), search for the
+      command title, and assign a key — or add an entry directly to <code>keybindings.json</code>:
+    </p>
+    <pre><code>{`{
+  "key": "ctrl+alt+g",
+  "command": "panecrew.openProjectGrid"
+}`}</code></pre>
+    <table>
+      <thead><tr><th>Command</th><th>Command ID</th></tr></thead>
+      <tbody>
+        {commands.map((c) => (
+          <tr>
+            <td>{c.title}</td>
+            <td><code>{c.id}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+
+    <h2>Settings</h2>
+    <p>
+      Configurable from the Settings editor (search "PaneCrew") or directly in
+      <code>settings.json</code>:
+    </p>
+    <table>
+      <thead><tr><th>Setting</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        {settings.map((s) => (
+          <tr>
+            <td><code>{s.key}</code></td>
+            <td><code>{s.default}</code></td>
+            <td>{s.description}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p>
+      Compact Look never hides the activity bar, regardless of settings — that row stays visible
+      in PaneCrew's standard look by design.
+    </p>
   </article>
 </DocsLayout>

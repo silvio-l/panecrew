@@ -3,15 +3,16 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Focus-Following Explorer | PaneCrew Docs";
 const description =
-  "How PaneCrew's file explorer automatically tracks whichever terminal pane currently has focus — and why that's the app's core mechanic, not a secondary feature.";
+  "How PaneCrew's VS Code sidebar explorer automatically tracks whichever terminal pane currently has focus — and why that's the extension's core mechanic, not a secondary feature.";
 ---
 <DocsLayout title={title} description={description} path="/docs/focus-following-explorer/" active="focus-following-explorer">
   <article class="docs-md">
     <h1>Focus-following explorer</h1>
     <p>
-      PaneCrew shows one file explorer for the whole window, not one per pane. That explorer
-      always displays the project tree of whichever pane currently has focus — click a different
-      pane, and the explorer switches with it, automatically.
+      PaneCrew shows one explorer, in its own activity-bar container, for the whole grid — not
+      one per pane. That explorer always displays the project tree of whichever pane currently has
+      focus — switch to a different terminal or editor tab, and the explorer switches with it,
+      automatically.
     </p>
 
     <h2>Why this exists</h2>
@@ -28,25 +29,27 @@ const description =
 
     <h2>What "focus" means here</h2>
     <p>
-      A pane gets focus the same way any window region does — click into its terminal, or move
-      focus to it via a <a href="/docs/shortcuts/">keyboard shortcut</a>. The moment a pane has
-      focus, the explorer re-targets to that pane's project root. Switching panes and switching
-      the visible file tree are the same action, not two separate ones.
+      A pane gets focus the same way any VS Code terminal or editor tab does — click into it, or
+      move focus to it with a keyboard shortcut bound in your own <code>keybindings.json</code>
+      (see the <a href="/docs/cli/">commands &amp; settings reference</a>). The moment a terminal
+      or editor tab has focus, the explorer re-targets to that pane's workspace-folder root.
+      Switching panes and switching the visible file tree are the same action, not two separate
+      ones.
     </p>
 
     <h2>Why it's the core mechanic, not a bolt-on</h2>
     <p>
       This behavior is treated as PaneCrew's central differentiator rather than a secondary
-      convenience feature. It's also a real, still-open gap in editors that already support
-      multiple simultaneously visible terminals or panes — confirmed by a long-standing open issue in the reference editor's own tracker (<a href="https://github.com/microsoft/vscode/issues/71641" target="_blank" rel="noopener">microsoft/vscode#71641</a>) asking for exactly this. <!-- brandlint-ok: factual reference to a real, verified public GitHub issue (microsoft/vscode#71641), used as competitive-gap evidence per docs/decisions.md -->
+      convenience feature. It's also a real, still-open gap in VS Code itself — the very editor
+      PaneCrew runs inside — confirmed by a long-standing open issue in VS Code's own tracker (<a href="https://github.com/microsoft/vscode/issues/71641" target="_blank" rel="noopener">microsoft/vscode#71641</a>) asking for exactly this. PaneCrew's explorer is a real <code>TreeDataProvider</code>-based extension view, not a workaround — it closes a gap VS Code's own built-in Explorer still doesn't. <!-- brandlint-ok: factual reference to a real, verified public GitHub issue (microsoft/vscode#71641), used as competitive-gap evidence per docs/decisions.md -->
     </p>
 
     <h2>What it doesn't do</h2>
     <p>
       The explorer doesn't merge or stack multiple projects' files together, and it doesn't run
       any hidden automation (no automatic git worktrees, no background branching) to make this
-      work — panes simply point at folders you already have checked out, and the explorer just
-      follows which one is focused. <!-- brandlint-ok: functional product-principle claim, matches PRODUCT.md "no hidden automation" -->
+      work — panes simply point at workspace folders you already have checked out, and the
+      explorer just follows which one is focused. <!-- brandlint-ok: functional product-principle claim, matches PRODUCT.md "no hidden automation" -->
     </p>
   </article>
 </DocsLayout>

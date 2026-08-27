@@ -16,7 +16,7 @@ const faq = [
   },
   {
     q: "Can I run more than four Claude Code sessions at once?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
-    a: "Yes — open a second PaneCrew window for another independent four-pane grid, so you're never limited to one window's worth of sessions. Most people still find they only actively watch three to four sessions at a time even when more are running in the background.",
+    a: "Yes — open a second VS Code window with its own workspace and grid, so you're never limited to one window's worth of sessions. Most people still find they only actively watch three to four sessions at a time even when more are running in the background.",
   },
 ];
 
@@ -81,9 +81,8 @@ const faqJsonLd = {
     <p>Running sessions across more than one grid? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows. Just getting started running several sessions in parallel? Start with <a href="/guides/multiple-cli-agent-sessions/">how to run multiple CLI coding agent sessions at once</a>. Running several agents against the same repo? See <a href="/guides/prevent-agents-editing-same-files/">how to prevent multiple coding agents from editing the same files</a>.</p>
 
     <div class="cta">
-      <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS today, with a
-      Windows build in progress — a grid of real terminal panes with a focus-following file
-      explorer.</p>
+      <p><b>PaneCrew</b> is a free, open-source (MIT) VS Code extension — a grid of real terminal
+      panes across a multi-root workspace, with a focus-following file explorer.</p>
       <a href="/#install">Get PaneCrew</a>
     </div>
   </section>

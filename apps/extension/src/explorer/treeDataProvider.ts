@@ -1,0 +1,162 @@
+// Real VS Code TreeDataProvider for the PaneCrew explorer — one subtree per
+// workspace folder, recursively listing files/directories via
+// `vscode.workspace.fs` (not a webview, and not a hand-rolled filesystem
+// walker: this closes the PoC's "no real tree" gap). Ignore handling is
+// intentionally shallow, matching the brief: respect `files.exclude` /
+// `search.exclude` the same way VS Code's own Explorer view reads them,
+// nothing more (no bespoke `.gitignore` parser).
+import * as vscode from "vscode";
+
+export type ProjectTreeItem = FolderRootItem | FileSystemEntryItem;
+
+export interface FolderRootItem {
+  kind: "root";
+  folder: vscode.WorkspaceFolder;
+}
+
+export interface FileSystemEntryItem {
+  kind: "entry";
+  uri: vscode.Uri;
+  type: vscode.FileType;
+  /** The workspace folder this entry lives under — needed to resolve
+   * relative exclude-glob matches and for the "search in folder" command. */
+  folder: vscode.WorkspaceFolder;
+}
+
+/** Merges `files.exclude` and `search.exclude` into one glob-pattern set —
+ * same two settings, same union behavior, VS Code's own Explorer uses for
+ * "should this path be hidden". Patterns with a `false` value (an explicit
+ * un-exclude, e.g. a glob for the .git folder set to false in a user
+ * override) are dropped rather than kept — that's the whole point of the
+ * boolean value. */
+function excludeGlobs(resource: vscode.Uri): string[] {
+  const config = vscode.workspace.getConfiguration(undefined, resource);
+  const merged: Record<string, boolean> = {
+    ...(config.get<Record<string, boolean>>("files.exclude") ?? {}),
+    ...(config.get<Record<string, boolean>>("search.exclude") ?? {}),
+  };
+  return Object.entries(merged)
+    .filter(([, enabled]) => enabled)
+    .map(([pattern]) => pattern);
+}
+
+/** Minimal glob matcher covering the patterns that actually show up in
+ * `files.exclude`/`search.exclude` defaults and common overrides:
+ * `**`/`*` segments and literal path segments. Delegates to
+ * `vscode.languages`-style matching isn't available outside an editor
+ * context, so this is a small hand-rolled matcher rather than pulling in a
+ * glob dependency for a handful of patterns. */
+function matchesGlob(relativePath: string, pattern: string): boolean {
+  const segments = relativePath.split("/");
+  const patternSegments = pattern.split("/");
+  return matchSegments(segments, patternSegments);
+}
+
+function matchSegments(segments: string[], pattern: string[]): boolean {
+  if (pattern.length === 0) return segments.length === 0;
+  const [head, ...restPattern] = pattern;
+  if (head === "**") {
+    if (restPattern.length === 0) return true;
+    for (let i = 0; i <= segments.length; i++) {
+      if (matchSegments(segments.slice(i), restPattern)) return true;
+    }
+    return false;
+  }
+  if (segments.length === 0) return false;
+  const [segment, ...restSegments] = segments;
+  if (!matchesSegmentGlob(segment, head)) return false;
+  return matchSegments(restSegments, restPattern);
+}
+
+function matchesSegmentGlob(segment: string, pattern: string): boolean {
+  if (pattern === "*") return true;
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`).test(segment);
+}
+
+function isExcluded(folder: vscode.WorkspaceFolder, uri: vscode.Uri): boolean {
+  const relative = vscode.workspace.asRelativePath(uri, false);
+  const patterns = excludeGlobs(uri);
+  return patterns.some((pattern) => matchesGlob(relative, pattern));
+}
+
+export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<ProjectTreeItem> {
+  // `| void` matches vscode.TreeDataProvider.onDidChangeTreeData's own
+  // required signature (`Event<T | undefined | null | void>`).
+  /* eslint-disable @typescript-eslint/no-invalid-void-type */
+  private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<
+    ProjectTreeItem | undefined | void
+  >();
+  /* eslint-enable @typescript-eslint/no-invalid-void-type */
+  readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+
+  refresh(item?: ProjectTreeItem): void {
+    this.onDidChangeTreeDataEmitter.fire(item);
+  }
+
+  getTreeItem(element: ProjectTreeItem): vscode.TreeItem {
+    if (element.kind === "root") {
+      const item = new vscode.TreeItem(element.folder.name, vscode.TreeItemCollapsibleState.Expanded);
+      item.resourceUri = element.folder.uri;
+      item.contextValue = "panecrew.folder";
+      item.iconPath = vscode.ThemeIcon.Folder;
+      return item;
+    }
+
+    const isDirectory = element.type === vscode.FileType.Directory;
+    const item = new vscode.TreeItem(
+      element.uri,
+      isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+    );
+    item.contextValue = isDirectory ? "panecrew.folder" : "panecrew.file";
+    if (!isDirectory) {
+      item.command = {
+        command: "vscode.open",
+        title: "Open File",
+        arguments: [element.uri],
+      };
+    }
+    return item;
+  }
+
+  async getChildren(element?: ProjectTreeItem): Promise<ProjectTreeItem[]> {
+    if (!element) {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      return folders.map((folder): FolderRootItem => ({ kind: "root", folder }));
+    }
+
+    const folder = element.kind === "root" ? element.folder : element.folder;
+    const dirUri = element.kind === "root" ? element.folder.uri : element.uri;
+
+    let entries: [string, vscode.FileType][];
+    try {
+      entries = await vscode.workspace.fs.readDirectory(dirUri);
+    } catch {
+      return [];
+    }
+
+    return entries
+      .map(([name, type]): FileSystemEntryItem => ({
+        kind: "entry",
+        uri: vscode.Uri.joinPath(dirUri, name),
+        type,
+        folder,
+      }))
+      .filter((entry) => !isExcluded(folder, entry.uri))
+      .sort((a, b) => {
+        const aDir = a.type === vscode.FileType.Directory;
+        const bDir = b.type === vscode.FileType.Directory;
+        if (aDir !== bDir) return aDir ? -1 : 1;
+        return a.uri.fsPath.localeCompare(b.uri.fsPath);
+      });
+  }
+
+  getParent(): vscode.ProviderResult<ProjectTreeItem> {
+    // Reveal only needs to walk from a root — VS Code's `TreeView.reveal`
+    // requires `getParent` to exist when revealing a non-root item, but
+    // focus-follow (`focusFollow.ts`) only ever reveals root items, so a
+    // trivial `undefined` is correct for those calls. A future "reveal the
+    // exact active file" enhancement would need real parent tracking.
+    return undefined;
+  }
+}

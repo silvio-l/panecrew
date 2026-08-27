@@ -3,18 +3,18 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Docs | PaneCrew";
 const description =
-  "PaneCrew documentation: an annotated interface tour, install and run from source, how the focus-following explorer works, the CLI reference, and the full keyboard shortcut list.";
+  "PaneCrew documentation: an interface overview, installing the VS Code extension, how the focus-following explorer works, and the full commands & settings reference.";
 
 const cards = [
   {
     href: "/docs/interface/",
     label: "Interface tour",
-    blurb: "An annotated screenshot of the real app — hover any part of the window to see what it does.",
+    blurb: "A tour of the grid and the PaneCrew explorer, inside VS Code's own activity bar and editor groups.",
   },
   {
     href: "/docs/install/",
     label: "Install & run",
-    blurb: "Prerequisites, cloning the repo, and running PaneCrew from source with pnpm and Tauri.",
+    blurb: "Installing the PaneCrew extension from the Marketplace or a .vsix file.",
   },
   {
     href: "/docs/focus-following-explorer/",
@@ -23,13 +23,8 @@ const cards = [
   },
   {
     href: "/docs/cli/",
-    label: "CLI reference",
-    blurb: "Every command-line flag, generated straight from the app's own argument parser.",
-  },
-  {
-    href: "/docs/shortcuts/",
-    label: "Keyboard shortcuts",
-    blurb: "The full shortcut list for panes, tabs, the explorer, and the whole interface.",
+    label: "Commands & settings",
+    blurb: "Every panecrew.* command and setting the extension contributes, and how to bind your own keys to them.",
   },
 ];
 ---

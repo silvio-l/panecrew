@@ -3,7 +3,10 @@
 // Direction contract: ../../../.impeccable/direction-contract-website.md
 // Ported verbatim from the approved artifact prototype; keep this
 // page's structure/copy/behavior in sync with that contract, not with
-// apps/desktop's own "no-glow"/theming rules (the website has its own).
+// apps/extension's own theming rules (the website has its own).
+// Content pivoted 2026-08-27 from the earlier Tauri desktop app to the
+// VS Code extension at apps/extension — see that package's README.md for
+// ground truth on what's actually shipped.
 // nav/footer/token CSS shared with the guide-page layout lives in
 // ../styles/site-chrome.css (performance-audit ticket 11) — see that
 // file's header comment for exactly what moved and what stayed local.
@@ -12,7 +15,7 @@ import "../styles/site-chrome.css";
 const siteUrl = "https://panecrew.dev";
 const title = "PaneCrew — Run Multiple AI Coding Agents at Once";
 const description =
-  "Run multiple CLI agent sessions, projects, and windows in one app — Claude Code, Codex, Gemini CLI — with a focus-following file explorer. Free & open source."; // brandlint-ok: functional product claim (tool-agnostic support, multi-project/multi-window), shown verbatim in <meta description>
+  "A free, open-source VS Code extension that grids your CLI agent sessions — Claude Code, Codex, Gemini CLI — across a multi-root workspace, with a focus-following file explorer."; // brandlint-ok: functional product claim (tool-agnostic support, multi-root workspace), shown verbatim in <meta description>
 ---
 
 <!doctype html>
@@ -56,8 +59,9 @@ const description =
       "@type": "SoftwareApplication",
       "name": "PaneCrew",
       "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "macOS",
-      "description": "A grid of real, simultaneously visible terminal sessions across different projects and independent windows, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
+      "applicationSubCategory": "BrowserExtension",
+      "operatingSystem": "Visual Studio Code (^1.90.0)",
+      "description": "A VS Code extension: a grid of real, simultaneously visible terminal panes across a multi-root workspace, with a focus-following file explorer. Tool-agnostic: hosts any CLI coding agent.",
       "url": "https://panecrew.dev",
       "offers": {
         "@type": "Offer",
@@ -338,13 +342,12 @@ const description =
   .field { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; }
 
   /* ---------- focus pin-header + circuit trace ----------
-     Shared signature with the desktop app's "Fokus-Leiterbahn": a pin per
-     open pane at the explorer/grid seam, one powered (amber) at a time, and
-     a chamfered bus-route trace that redraws itself to the newly focused
-     pane on every focus change. Geometry/timing constants (6px chamfer,
-     2px/ms signal speed, 180–350ms clamp) are ported verbatim from
-     apps/desktop/src/components/traceGeometry.ts so the motif reads as the
-     same brand mechanism, not a lookalike. */
+     A pin per open pane at the explorer/grid seam, one powered (amber) at a
+     time, and a chamfered bus-route trace that redraws itself to the newly
+     focused pane on every focus change — the same "Fokus-Leiterbahn" motif
+     the earlier Tauri desktop app used, kept as this site's own reusable
+     brand mechanism (geometry/timing constants: 6px chamfer, 2px/ms signal
+     speed, 180–350ms clamp) rather than pulled from any live app code. */
   .pin {
     width: 8px; height: 8px; flex: none; padding: 0; margin: 0;
     border: 1px solid var(--term-line); background: var(--term);
@@ -1027,7 +1030,7 @@ const description =
 <!-- film-grain overlay (static texture, see .grain in the stylesheet) -->
 <div class="grain" aria-hidden="true"></div>
 
-<!-- shared brand glyph (real geometry from apps/desktop/src-tauri/icons/source/panecrew-mark.svg) -->
+<!-- shared brand glyph (real geometry from panecrew-mark.svg, the vector source of truth for every rendered PaneCrew icon) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <radialGradient id="mkChev" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
@@ -1059,8 +1062,7 @@ const description =
       Tool-wall brand glyphs — path data verbatim from simple-icons/simple-icons
       (https://github.com/simple-icons/simple-icons, branch `develop`,
       `icons/<slug>.svg`), license CC0 1.0 Universal (no attribution required;
-      documented here for provenance, same convention as toolBadgeIcons.tsx in
-      apps/desktop). Rendered in the page's own text color (currentColor), not
+      documented here for provenance). Rendered in the page's own text color (currentColor), not
       the icons' brand colors — same monochrome treatment as the rest of the
       chrome. Two exceptions, neither in simple-icons, both still CC0: `tiPowerShell`
       is from devicons/devicon (icons/powershell/powershell-plain.svg, MIT
@@ -1157,7 +1159,7 @@ const description =
 
     <div class="wrap hero-grid">
       <!-- the assembly stage: panes fly in, explorer docks, focus cycles -->
-      <div class="app assemble" id="heroApp" data-vfx="tilt" data-tilt-max="4" aria-label="PaneCrew app window: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
+      <div class="app assemble" id="heroApp" data-vfx="tilt" data-tilt-max="4" aria-label="PaneCrew inside VS Code: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
         <div class="app-bar" aria-hidden="true">
           <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
           <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
@@ -1201,8 +1203,8 @@ const description =
               <div><span class="g">✓</span> no blockers</div>
             </div>
             <div class="hpane" data-p="3" data-title="panecrew — zsh" style="--fx:80%; --fy:90%; --fr:-8deg; --fd:0.55s" aria-hidden="true">
-              <div>$ pnpm tauri dev</div>
-              <div><span class="g">✓</span> ready in 412 ms</div>
+              <div>$ pnpm run watch</div>
+              <div><span class="g">✓</span> compiled in 412 ms</div>
               <div><span class="c">Info</span> watching…</div>
             </div>
           </div>
@@ -1217,11 +1219,11 @@ const description =
 
       <div class="hero-copy" data-vfx="par" data-par="24">
         <div class="pills reveal" style="--rd:0.35s">
-          <span class="tag">macOS</span><span class="tag">Windows</span><span class="tag">terminal-native</span>
+          <span class="tag">VS Code extension</span><span class="tag">any OS VS Code runs on</span><span class="tag">terminal-native</span>
         </div>
         <h1 class="kin" id="heroH1" style="--kd:0.12s"><span class="kw"><span class="kwi" style="--wi:0">A</span></span> <span class="kw"><span class="kwi am" style="--wi:1">pane</span></span> <span class="kw"><span class="kwi" style="--wi:2">for</span></span> <span class="kw"><span class="kwi" style="--wi:3">every</span></span> <span class="kw"><span class="kwi" style="--wi:4">agent.</span></span></h1>
-        <p class="reveal" style="--rd:0.45s">PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals, with a single file explorer that follows your focus around. Need a second grid for another project? Open another window — its own panes, projects, and position, remembered independently.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
-        <p class="avail reveal" style="--rd:0.55s">In development for macOS and Windows. Dogfooded daily.</p>
+        <p class="reveal" style="--rd:0.45s">PaneCrew puts your parallel CLI sessions — Claude Code, Codex, Gemini, plain shells — into one grid of real terminals across a multi-root VS Code workspace, with a single explorer that follows your focus around. Working on another project? Add another folder to the workspace — its own pane, its own project, gridded right alongside the rest.</p><!-- brandlint-ok: functional product claim, visible hero copy -->
+        <p class="avail reveal" style="--rd:0.55s">Install the VSIX today — VS Code Marketplace listing coming.</p>
         <div class="hero-ctas reveal" style="--rd:0.65s">
           <a class="btn" href="#install">Get PaneCrew</a>
           <a class="btn ghost" href="#demo">See it follow ↓</a>
@@ -1235,8 +1237,8 @@ const description =
   <section id="crew" aria-label="Features">
     <div class="sect-head" data-idx="01">
       <p class="eyebrow reveal">meet the crew</p>
-      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">app.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Eight</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
-      <p class="reveal" style="--rd:0.25s">These aren't plugins bolted on later — they're what PaneCrew is. Every card below is one facet of the same window.</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">extension.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Eight</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
+      <p class="reveal" style="--rd:0.25s">These aren't bolted on later — they're what PaneCrew is. Every card below is one facet of the same extension.</p>
     </div>
 
     <div class="wrap">
@@ -1247,7 +1249,7 @@ const description =
               <div class="mp amb"><b>orbit-api — claude</b><span class="g">✓</span> tests green<br><span class="w">›</span> <span class="cursor"></span></div><!-- brandlint-ok: functional demo pane, real supported tool -->
               <div class="mp"><b>dashboard — codex</b><span class="y">⚠</span> 2 type errors<br>fixing imports…</div><!-- brandlint-ok: functional demo pane, real supported tool -->
               <div class="mp"><b>cli-tools — gemini</b><span class="b">ℹ</span> reviewing 6 files</div><!-- brandlint-ok: functional demo pane, real supported tool -->
-              <div class="mp"><b>panecrew — zsh</b>$ pnpm tauri dev<br><span class="g">✓</span> ready</div>
+              <div class="mp"><b>panecrew — zsh</b>$ pnpm run watch<br><span class="g">✓</span> ready</div>
             </div>
           </div>
           <div class="card-body">
@@ -1256,7 +1258,7 @@ const description =
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>2×2</span>
               <span class="badge">real PTY</span>
             </div>
-            <p>Up to four real, PTY-backed terminals side by side across different projects — all visible at once. A grid, not a tab switcher.</p>
+            <p>Up to four real, PTY-backed terminals side by side across different workspace folders — all visible at once, arranged via VS Code's own editor-group layout. A grid, not a tab switcher.</p>
             <a class="more" href="/guides/multiple-cli-agent-sessions/">Running multiple agent sessions at once →</a>
             <a class="more" href="/guides/how-many-claude-code-sessions/" style="display:block; margin-top:4px;">How many sessions should you run? →</a><!-- brandlint-ok: functional cross-link, target guide's own title -->
           </div>
@@ -1276,7 +1278,7 @@ const description =
             <div class="pills">
               <span class="badge cy"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>follows focus</span>
             </div>
-            <p>One file explorer for the whole grid. Click a pane — the tree is already showing that project. View, edit, move on.</p>
+            <p>One PaneCrew explorer for the whole grid, in the activity bar. Switch panes — the tree is already showing that project. View, edit, move on.</p>
             <a class="more" href="/guides/prevent-agents-editing-same-files/">Running several agents on one repo? →</a>
           </div>
         </article>
@@ -1285,31 +1287,25 @@ const description =
       <div class="crew-row rev">
         <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
-            <div class="tabsvis" aria-hidden="true">
-              <div class="tabrow">
-                <span class="tab">&gt;_ terminal</span>
-                <span class="tab on">router.ts</span>
-              </div>
-              <div class="tabpane">
-                <span class="b">export</span> <span class="c">const</span> routes = [<br>
-                &nbsp;&nbsp;{'{'} path: <span class="g">"/usage"</span>, handler: usage {'}'},<br>
-                ];
-              </div>
+            <div class="mock" data-title="explorer — git status" aria-hidden="true">
+              <div><span class="tc">├─ </span><span class="y">M</span> router.ts</div>
+              <div><span class="tc">├─ </span><span class="g">A</span> handlers.ts</div>
+              <div><span class="tc">└─ </span><span class="c">U</span> notes.md</div>
             </div>
           </div>
           <div class="card-body">
-            <h3 class="sticker">Flip</h3>
+            <h3 class="sticker">Signal</h3>
             <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>terminal ⇄ file</span>
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>git status</span>
             </div>
-            <p>Mini-tabs flip a pane between its terminal and the file you just opened — no window juggling, no second editor.</p>
+            <p>Modified, added, and untracked files get badged and colored right in the tree, per workspace-folder root — a git status check without leaving the explorer.</p>
           </div>
         </article>
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
             <div class="mock" data-title="panecrew — restoring" aria-hidden="true">
-              <div>$ panecrew</div>
+              <div>reopening workspace…</div>
               <div><span class="g">✓</span> layout restored <span style="opacity:.5">(2×2)</span></div>
               <div><span class="g">✓</span> orbit-api · dashboard · cli-tools · panecrew</div>
               <div><span class="g">✓</span> 4 sessions back where you left them</div>
@@ -1321,7 +1317,7 @@ const description =
             <div class="pills">
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>session restore</span>
             </div>
-            <p>Quit, restart, continue. Projects, layout and sessions come back exactly the way you left them.</p>
+            <p>Close VS Code, reopen the workspace, continue. Grid layout and pane-to-folder assignments come back exactly the way you left them.</p>
           </div>
         </article>
       </div>
@@ -1331,29 +1327,25 @@ const description =
           <div class="card-vis">
             <div class="mock" data-title="settings — appearance" aria-hidden="true">
               <div class="swatches">
-                <span class="sw" style="background:linear-gradient(135deg,#121314,#e59656)"></span>
-                <span class="sw" style="background:linear-gradient(135deg,#1d1f21,#7ccb6e)"></span>
-                <span class="sw" style="background:linear-gradient(135deg,#272822,#e5c07b)"></span>
-                <span class="sw" style="background:linear-gradient(135deg,#002b36,#5acfd3)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#1c2039,#e59656)"></span>
+                <span class="sw" style="background:linear-gradient(135deg,#fdf6ea,#c98a3e)"></span>
               </div>
-              <div style="padding-top:8px">$ import theme from VS Code… <span class="g">✓</span></div><!-- brandlint-ok: functional demo, real shipped theme-import mechanism (JSON import, not a registry fetch) -->
-              <div>extensions: sandboxed · coming soon</div>
+              <div style="padding-top:8px">&gt; PaneCrew: Set PaneCrew Theme… <span class="g">✓</span></div>
             </div>
           </div>
           <div class="card-body">
             <h3 class="sticker">Wardrobe</h3>
             <div class="pills">
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>themes</span>
-              <span class="badge">extensions (soon)</span>
             </div>
-            <p>Bring your VS Code theme, imported straight from its JSON — built in today. A sandboxed extension system, with rights you confirm once at install, is next.</p><!-- brandlint-ok: functional product claim; theming is shipped, the extension runtime is roadmap, worded accordingly -->
+            <p>Two color themes — PaneCrew Dark and PaneCrew Light — tuned for terminal-heavy, multi-project work. Offered once on first activation, switchable anytime from the command palette.</p>
           </div>
         </article>
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
-            <div class="mock" data-title="zsh" aria-hidden="true">
-              <div>$ panecrew ~/code/orbit-api</div>
+            <div class="mock" data-title="command palette" aria-hidden="true">
+              <div>&gt; PaneCrew: Open Project Grid…</div>
               <div><span class="c">→</span> opening grid…</div>
               <div><span class="g">✓</span> pane 1: orbit-api</div>
               <div><span class="w">›</span> <span class="cursor"></span></div>
@@ -1362,9 +1354,9 @@ const description =
           <div class="card-body">
             <h3 class="sticker">Launch</h3>
             <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>CLI</span>
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>command palette</span>
             </div>
-            <p>Straight from your shell into a working grid. The project picker is there when you want it — optional when you don't.</p>
+            <p><code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">PaneCrew: Open Project Grid…</code> and <code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">PaneCrew: Add Folder to Grid…</code> get you from an empty workspace to a running grid without hand-arranging editor groups.</p>
           </div>
         </article>
       </div>
@@ -1372,40 +1364,39 @@ const description =
       <div class="crew-row rev">
         <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
-            <div class="mock" data-title="settings — appearance" aria-hidden="true">
-              <div>$ zoom 100% <span class="c">→</span> 115% <span class="g">✓</span></div>
-              <div>$ terminal font-size 13px <span class="g">✓</span></div>
-              <div>$ grid layout 2×2 <span class="c">→</span> 2×1 <span class="g">✓</span></div>
+            <div class="mock" data-title="command palette" aria-hidden="true">
+              <div>&gt; PaneCrew: Apply Compact Look</div>
+              <div><span class="g">✓</span> status bar hidden</div>
+              <div><span class="g">✓</span> minimap hidden</div>
               <div><span class="w">›</span> <span class="cursor"></span></div>
             </div>
           </div>
           <div class="card-body">
             <h3 class="sticker">Dial</h3>
             <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>zoom &amp; font</span>
-              <span class="badge">grid layout</span>
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>settings</span>
+              <span class="badge">compact look</span>
             </div>
-            <p>A dedicated settings window: zoom level and terminal font size adjust live, and the grid layout is picked by pictogram — no config file to hand-edit.</p>
+            <p>Ordinary <code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">panecrew.*</code> VS Code settings for grid defaults and git decorations, plus Compact Look, which hides secondary chrome (status bar, minimap) to make room for more panes — the activity bar always stays visible.</p>
           </div>
         </article>
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
-            <div class="mock" data-title="panecrew — window 2" aria-hidden="true">
-              <div>$ ⌘N</div>
-              <div><span class="g">✓</span> new window opened</div>
-              <div><span class="g">✓</span> position, size, projects: independent</div>
-              <div><span class="w">›</span> <span class="cursor"></span></div>
+            <div class="mock" data-title="command palette" aria-hidden="true">
+              <div>&gt; PaneCrew: Save Current Grid as Preset…</div>
+              <div><span class="g">✓</span> saved as "orbit-stack"</div>
+              <div>&gt; PaneCrew: Load Grid Preset…</div>
+              <div><span class="g">✓</span> "orbit-stack" restored</div>
             </div>
           </div>
           <div class="card-body">
-            <h3 class="sticker">Spawn</h3>
+            <h3 class="sticker">Preset</h3>
             <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>⌘N / Ctrl+N</span>
-              <span class="badge">independent windows</span>
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>named layouts</span>
             </div>
-            <p>Open another PaneCrew window for a second grid — its own position, size, and projects, remembered independently across a restart.</p>
-            <a class="more" href="/guides/multiple-terminal-windows/">Opening multiple terminal windows at once →</a>
+            <p>Save a grid layout as a named preset and reload it in any workspace — reusable across projects, not tied to one session.</p>
+            <a class="more" href="/guides/multiple-terminal-windows/">Working across more windows and projects →</a>
           </div>
         </article>
       </div>
@@ -1498,8 +1489,8 @@ const description =
                   <div><span class="g">✓</span> no blockers</div>
                 </button>
                 <button class="dpane" data-p="3" data-title="panecrew — zsh" aria-label="Focus pane: panecrew with zsh">
-                  <div>$ pnpm tauri dev</div>
-                  <div><span class="g">✓</span> ready in 412 ms</div>
+                  <div>$ pnpm run watch</div>
+                  <div><span class="g">✓</span> compiled in 412 ms</div>
                   <div><span class="c">Info</span> watching…</div>
                 </button>
               </div>
@@ -1514,8 +1505,8 @@ const description =
         </div>
         <div class="closer-copy">
           <h3>Try the follow.</h3>
-          <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In the app it works exactly like this, except the terminals are real.</p>
-          <p>That's the whole trick: focus a pane, and the files you need are already in front of you. No tool we tried gets this right — so we built it.</p>
+          <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In VS Code it works exactly like this, except the terminals are real.</p>
+          <p>That's the whole trick: focus a pane, and the files you need are already in front of you. Even VS Code's own Explorer doesn't do this out of the box — so we built an extension that does.</p>
           <p class="hint">↖ scroll the sequence — or hover a pane, click a pin</p>
         </div>
       </div>
@@ -1531,17 +1522,17 @@ const description =
               <span>panecrew — dev driver</span>
             </div>
             <div style="padding:14px 16px; font-family:var(--mono); font-size:11.5px; line-height:1.9; color:rgba(255,253,245,.62);">
-              <div>$ pnpm tauri dev</div>
+              <div>$ pnpm --filter panecrew --dir apps/extension run watch</div>
               <div><span class="c">Info</span> compiling panecrew v0.1</div>
-              <div><span class="g">✓</span> frontend ready in 412 ms</div>
-              <div><span class="g">✓</span> window up — grid restored</div>
+              <div><span class="g">✓</span> compiled in 412 ms</div>
+              <div><span class="g">✓</span> Extension Development Host ready — grid restored</div>
               <div><span class="w">›</span> <span style="opacity:.55">this page was written in here</span> <span class="cursor"></span></div>
             </div>
           </div>
         </div>
         <div class="closer-copy" data-vfx="par" data-par="16">
           <h3>Built inside itself.</h3>
-          <p>PaneCrew is developed in PaneCrew — a grid of agents building the app they run in, every day. Rough edges don't survive that arrangement for long.</p>
+          <p>PaneCrew is developed in PaneCrew — a grid of agents building the extension they run inside, every day. Rough edges don't survive that arrangement for long.</p>
           <p>No git magic, either: panes just <code style="font-family:var(--mono); font-size:0.875rem; color:var(--cyan-bright);">cd</code> into folders you already have checked out. Your repos stay yours.</p>
         </div>
       </div>
@@ -1553,7 +1544,7 @@ const description =
     <div class="sect-head" data-idx="03">
       <p class="eyebrow reveal">mit licensed</p>
       <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">We</span></span> <span class="kw"><span class="kwi" style="--wi:1"><span class="heart">♥</span></span></span> <span class="kw"><span class="kwi" style="--wi:2">open</span></span> <span class="kw"><span class="kwi" style="--wi:3">source.</span></span></h2>
-      <p class="reveal" style="--rd:0.25s">PaneCrew is MIT-licensed — the grid, the explorer, the extension host, all of it. No open-core split, no asterisks.</p>
+      <p class="reveal" style="--rd:0.25s">PaneCrew is MIT-licensed — the grid, the explorer, the git decorations, all of it. No open-core split, no asterisks.</p>
     </div>
 
     <div class="wrap oss-grid">
@@ -1576,18 +1567,18 @@ const description =
 
       <article class="card reveal" style="--rd:0.08s">
         <div class="card-vis">
-          <div class="mock" data-title="extension registry" aria-hidden="true">
-            <div>registry.json</div>
-            <div><span class="g">+</span> <span class="c">"your-extension"</span></div>
-            <div><span class="g">✓</span> reviewed → merged → listed</div>
+          <div class="mock" data-title="zsh" aria-hidden="true">
+            <div>$ gh issue list</div>
+            <div><span class="c">→</span> roadmap, decisions, all public</div>
+            <div><span class="w">›</span> <span class="cursor"></span></div>
           </div>
         </div>
         <div class="card-body">
           <h3 class="sticker">On GitHub</h3>
           <div class="pills">
-            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>extensions</span>
+            <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>roadmap</span>
           </div>
-          <p>The extension registry is a JSON file in a repo. Getting listed is a pull request; builds ship from authors' own releases. No marketplace middleman.</p>
+          <p>Planning, decisions, and issues live in the open repo, not a private roadmap doc. Contributions are pull requests, not a walled-off review queue.</p>
         </div>
       </article>
 
@@ -1604,7 +1595,7 @@ const description =
           <div class="pills">
             <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>public now</span>
           </div>
-          <p>The source is public today, pre-release. No star counts to show off yet — just an app that's dogfooded daily and decisions kept on the record.</p>
+          <p>The source is public today. No star counts to show off yet — just an extension that's dogfooded daily and decisions kept on the record.</p>
         </div>
       </article>
     </div>
@@ -1613,13 +1604,12 @@ const description =
   <!-- ================= INSTALL ================= -->
   <section class="install reveal" id="install" data-idx="04">
     <p class="eyebrow">shipping</p>
-    <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Nightly</span></span> <span class="kw"><span class="kwi" style="--wi:1">builds</span></span> <span class="kw"><span class="kwi" style="--wi:2">are</span></span> <span class="kw"><span class="kwi" style="--wi:3">live.</span></span></h2>
-    <p>Straight off dev, dogfooded daily — pre-release, not the stable v0.1 yet. macOS (Apple Silicon), dogfooded daily; a Windows build ships from the same CI but isn't verified on real hardware yet. Homebrew tap next.</p>
+    <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">Install</span></span> <span class="kw"><span class="kwi" style="--wi:1">it</span></span> <span class="kw"><span class="kwi" style="--wi:2">into</span></span> <span class="kw"><span class="kwi" style="--wi:3">VS</span></span> <span class="kw"><span class="kwi" style="--wi:4">Code.</span></span></h2>
+    <p>The VS Code Marketplace listing is coming — search "PaneCrew" in the Extensions view once it's live. Today, install the <code>.vsix</code> straight from the repo instead: <code>···</code> menu in the Extensions view → "Install from VSIX…".</p>
     <div class="install-ctas">
-      <a class="btn" href="https://github.com/silvio-l/panecrew/releases/tag/nightly-latest" target="_blank" rel="noopener">Download Nightly</a>
+      <a class="btn" href="https://github.com/silvio-l/panecrew/tree/main/apps/extension" target="_blank" rel="noopener">Build the .vsix</a>
       <span class="brew">
-        <span id="brewCmd">$ brew install panecrew</span>
-        <span class="soon">soon</span>
+        <span id="installCmd">$ code --install-extension panecrew-0.1.0.vsix</span>
       </span>
     </div>
   </section>
@@ -1655,7 +1645,7 @@ const description =
     { name: 'orbit-api', files: ['▸ node_modules', '▾ src', ['router.ts', true], ['handlers.ts', false], 'package.json', 'README.md'] },
     { name: 'dashboard', files: ['▸ node_modules', '▾ src/charts', ['usage.tsx', true], ['legend.tsx', false], 'vite.config.ts', 'index.html'] },
     { name: 'cli-tools', files: ['▾ bin', ['release.ts', true], ['publish.ts', false], '▸ test', 'justfile', 'deno.json'] },
-    { name: 'panecrew', files: ['▾ apps/desktop', ['src-tauri/', true], ['src/App.tsx', false], '▸ docs', 'CLAUDE.md', 'pnpm-lock.yaml'] } // brandlint-ok: self-referential demo (this repo's own real file tree)
+    { name: 'panecrew', files: ['▾ apps/extension', ['src/extension.ts', true], ['src/grid/', false], '▸ docs', 'CLAUDE.md', 'pnpm-lock.yaml'] } // brandlint-ok: self-referential demo (this repo's own real file tree)
   ];
 
   /* files is a flat list where a plain string starts a root-level node
@@ -1695,11 +1685,11 @@ const description =
   }
 
   /* ---- focus pin-header + circuit trace geometry ----
-     Ported from apps/desktop/src/components/traceGeometry.ts: same
-     45°-chamfered bus route, same 2px/ms signal-propagation speed clamped
-     to 180–350ms. Pure math, no framework — the site measures its own
-     fixed layout with getBoundingClientRect the same way the app measures
-     its live grid. */
+     Same 45°-chamfered bus route, same 2px/ms signal-propagation speed
+     clamped to 180–350ms, as the brand's pane-focus trace generally. Pure
+     math, no framework — the site measures its own fixed layout with
+     getBoundingClientRect the same way the extension measures its live
+     grid. */
   function simplifyPoints(points) {
     var deduped = [];
     for (var i = 0; i < points.length; i++) {
@@ -2436,39 +2426,39 @@ const description =
   }
   updateSeamCharge();
 
-  /* ---- install: the brew command types itself, once ----
+  /* ---- install: the install command types itself, once ----
      The one deliberate typing moment on the page (kinetic-type scope,
      2026-08-14 Auftrag) — it's a terminal command in a terminal-shaped
      pill, typed the way you'd actually enter it. Width is frozen first so
      the pill doesn't grow mid-type; reduced-motion/no-JS keep the full
      static text. */
-  var brewCmd = document.getElementById('brewCmd');
+  var installCmd = document.getElementById('installCmd');
   var installSec = document.getElementById('install');
-  if (brewCmd && installSec && !reduced && 'IntersectionObserver' in window) {
-    var brewTyped = false;
-    var brewObs = new IntersectionObserver(function (entries) {
+  if (installCmd && installSec && !reduced && 'IntersectionObserver' in window) {
+    var installTyped = false;
+    var installObs = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
-        if (!e.isIntersecting || brewTyped) return;
-        brewTyped = true;
-        brewObs.disconnect();
-        var full = brewCmd.textContent;
-        brewCmd.style.display = 'inline-block';
-        brewCmd.style.minWidth = brewCmd.getBoundingClientRect().width + 'px';
-        brewCmd.style.textAlign = 'left';
+        if (!e.isIntersecting || installTyped) return;
+        installTyped = true;
+        installObs.disconnect();
+        var full = installCmd.textContent;
+        installCmd.style.display = 'inline-block';
+        installCmd.style.minWidth = installCmd.getBoundingClientRect().width + 'px';
+        installCmd.style.textAlign = 'left';
         var pos = 0;
-        brewCmd.textContent = '';
+        installCmd.textContent = '';
         var caret = document.createElement('span');
         caret.className = 'cursor';
-        brewCmd.appendChild(caret);
+        installCmd.appendChild(caret);
         var timer = setInterval(function () {
           pos++;
-          brewCmd.textContent = full.slice(0, pos);
+          installCmd.textContent = full.slice(0, pos);
           if (pos >= full.length) { clearInterval(timer); return; }
-          brewCmd.appendChild(caret);
+          installCmd.appendChild(caret);
         }, 34);
       });
     }, { threshold: 0.45 });
-    brewObs.observe(installSec);
+    installObs.observe(installSec);
   }
 
   var resizeTimer = null;

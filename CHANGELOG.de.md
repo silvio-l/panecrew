@@ -1,5 +1,13 @@
 # Changelog
 
+**Gate ruht (2026-08-27, VS-Code-Extension-Pivot):** der unten beschriebene Mechanismus
+(`tools/changelog-gate/check.py`, gate für `app-v*`/`nightly-latest`-Tag-Pushes) war an die
+Release-CI der inzwischen gelöschten Tauri-Desktop-App gebunden (`release-stable.yml`,
+`release-nightly.yml`, beide entfernt). Er ist aktuell in keiner CI mehr verdrahtet — diese Datei
+ist bis auf Weiteres ein reines, handgepflegtes Changelog. Als historischer Kontext belassen statt
+umgeschrieben, da ein ähnlich gegateter Release-Prozess für Marketplace-Releases von
+`apps/extension` später wieder sinnvoll sein könnte.
+
 Jeder Eintrag hier ist **Voraussetzung fürs Release-CI**, nicht nur Doku: Ein
 Tag-Push (`app-v*` für Stable, der rollierende `nightly-latest` für Nightly)
 löst lokal `tools/changelog-gate/check.py` aus, das den Eintrag ganz oben

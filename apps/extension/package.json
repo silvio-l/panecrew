@@ -1,0 +1,308 @@
+{
+  "name": "panecrew",
+  "displayName": "PaneCrew",
+  "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
+  "version": "0.1.0",
+  "publisher": "panecrew",
+  "icon": "media/panecrew-icon-128.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/silvio-l/panecrew.git",
+    "directory": "apps/extension"
+  },
+  "bugs": {
+    "url": "https://github.com/silvio-l/panecrew/issues"
+  },
+  "homepage": "https://github.com/silvio-l/panecrew#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "terminal",
+    "explorer",
+    "multi-root",
+    "grid",
+    "productivity",
+    "theme",
+    "git"
+  ],
+  "galleryBanner": {
+    "color": "#1F243C",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "panecrew.openProjectGrid",
+        "title": "PaneCrew: Open Project Grid…",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "panecrew.addFolderToGrid",
+        "title": "PaneCrew: Add Folder to Grid…",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "panecrew.applyCompactLook",
+        "title": "PaneCrew: Apply Compact Look",
+        "icon": "$(paintcan)"
+      },
+      {
+        "command": "panecrew.restoreLook",
+        "title": "PaneCrew: Restore Default VS Code Look",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "panecrew.savePreset",
+        "title": "PaneCrew: Save Current Grid as Preset…",
+        "icon": "$(save)"
+      },
+      {
+        "command": "panecrew.loadPreset",
+        "title": "PaneCrew: Load Grid Preset…",
+        "icon": "$(history)"
+      },
+      {
+        "command": "panecrew.deletePreset",
+        "title": "PaneCrew: Delete Grid Preset…",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "panecrew.searchInFolder",
+        "title": "PaneCrew: Search in Folder…",
+        "icon": "$(search)"
+      },
+      {
+        "command": "panecrew.insertSnippet",
+        "title": "PaneCrew: Insert Snippet…",
+        "icon": "$(symbol-snippet)"
+      },
+      {
+        "command": "panecrew.refreshExplorer",
+        "title": "PaneCrew: Refresh Explorer",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "panecrew.setPaneCrewTheme",
+        "title": "PaneCrew: Set PaneCrew Theme…"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "panecrew",
+          "title": "PaneCrew",
+          "icon": "media/panecrew-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "panecrew": [
+        {
+          "id": "panecrew.explorerView",
+          "name": "Explorer"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "panecrew.openProjectGrid",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "panecrew.addFolderToGrid",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "panecrew.refreshExplorer",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "panecrew.applyCompactLook",
+          "when": "view == panecrew.explorerView",
+          "group": "z_look@1"
+        },
+        {
+          "command": "panecrew.restoreLook",
+          "when": "view == panecrew.explorerView",
+          "group": "z_look@2"
+        },
+        {
+          "command": "panecrew.savePreset",
+          "when": "view == panecrew.explorerView",
+          "group": "z_presets@1"
+        },
+        {
+          "command": "panecrew.loadPreset",
+          "when": "view == panecrew.explorerView",
+          "group": "z_presets@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "panecrew.searchInFolder",
+          "when": "view == panecrew.explorerView && viewItem == panecrew.folder",
+          "group": "navigation"
+        }
+      ]
+    },
+    "themes": [
+      {
+        "label": "PaneCrew Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/panecrew-dark-color-theme.json"
+      },
+      {
+        "label": "PaneCrew Light",
+        "uiTheme": "vs",
+        "path": "./themes/panecrew-light-color-theme.json"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "panecrew.gettingStarted",
+        "title": "Get started with PaneCrew",
+        "description": "Set up a grid of terminal panes across your projects, with an explorer that follows your focus.",
+        "steps": [
+          {
+            "id": "openGrid",
+            "title": "Open a project grid",
+            "description": "Add one or more folders to a multi-root workspace and give each one its own terminal.\n[Open Project Grid](command:panecrew.openProjectGrid)",
+            "completionEvents": [
+              "onCommand:panecrew.openProjectGrid"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew mark"
+            }
+          },
+          {
+            "id": "tourExplorer",
+            "title": "Tour the focus-following explorer",
+            "description": "The PaneCrew explorer in the activity bar shows one subtree per project and automatically reveals whichever project owns the terminal you're currently using.\n[Open PaneCrew View](command:panecrew.explorerView.focus)",
+            "completionEvents": [
+              "onView:panecrew.explorerView"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew explorer"
+            }
+          },
+          {
+            "id": "applyTheme",
+            "title": "Apply the PaneCrew theme",
+            "description": "PaneCrew ships two color themes tuned for terminal-heavy work.\n[Set PaneCrew Theme](command:panecrew.setPaneCrewTheme)",
+            "completionEvents": [
+              "onCommand:panecrew.setPaneCrewTheme"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew theme"
+            }
+          },
+          {
+            "id": "compactLook",
+            "title": "Apply the compact look",
+            "description": "Hide secondary chrome to make room for more panes — the activity bar stays visible.\n[Apply Compact Look](command:panecrew.applyCompactLook)",
+            "completionEvents": [
+              "onCommand:panecrew.applyCompactLook"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew compact look"
+            }
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "PaneCrew",
+      "properties": {
+        "panecrew.grid.defaultColumns": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Default number of columns for a new project grid."
+        },
+        "panecrew.grid.defaultRows": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Default number of rows for a new project grid."
+        },
+        "panecrew.compactLook.hideStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether Compact Look hides the status bar."
+        },
+        "panecrew.compactLook.hideMinimap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether Compact Look hides the editor minimap."
+        },
+        "panecrew.git.showDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show git status badges/colors on files and folders in the PaneCrew explorer."
+        },
+        "panecrew.snippets.defaultScope": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "global"
+          ],
+          "default": "workspace",
+          "description": "Where newly saved snippets are stored by default."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "knip": "knip",
+    "build:production": "npm run check-types && node esbuild.js --production",
+    "package": "npm run build:production && vsce package",
+    "vscode:prepublish": "npm run build:production",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest": "npm run compile && npm run compile-tests",
+    "test:unit": "vitest run",
+    "test:integration": "vscode-test",
+    "test": "npm run test:unit && npm run test:integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.2",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "knip": "^6.32.2",
+    "npm-run-all": "^4.1.5",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.10"
+  }
+}

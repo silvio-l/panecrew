@@ -24,7 +24,7 @@ const faq = [
   },
   {
     q: "Can I run multiple Claude Code sessions in VS Code?", // brandlint-ok: literal confirmed search intent, answered verbatim per AEO practice
-    a: "VS Code's integrated terminal supports multiple tabs, but only one is visible at a time. PaneCrew keeps up to four Claude Code sessions simultaneously visible in a real grid instead.", // brandlint-ok: functional FAQ answer, real comparison to a named competing feature
+    a: "Yes — VS Code's own integrated terminal supports multiple tabs, but only one is visible at a time. The PaneCrew extension arranges terminals across VS Code's editor-group layout instead, keeping up to four Claude Code sessions simultaneously visible in a real grid.", // brandlint-ok: functional FAQ answer, real comparison to a named competing feature
   },
 ];
 
@@ -70,9 +70,8 @@ const faqJsonLd = {
     <p>Running one agent session per project? See <a href="/guides/multiple-terminal-windows/">how to open multiple terminal windows at once</a> for spreading work across several independent PaneCrew windows instead of one grid. Not sure how many sessions is actually worth running at once? See <a href="/guides/how-many-claude-code-sessions/">how many Claude Code sessions to run at once</a>. Running several agents against the same repo? See <a href="/guides/prevent-agents-editing-same-files/">how to prevent multiple coding agents from editing the same files</a>.</p><!-- brandlint-ok: functional cross-links, target guides' own titles -->
 
     <div class="cta">
-      <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS today, with a
-      Windows build in progress — a grid of real terminal panes with a focus-following file
-      explorer.</p>
+      <p><b>PaneCrew</b> is a free, open-source (MIT) VS Code extension — a grid of real terminal
+      panes across a multi-root workspace, with a focus-following file explorer.</p>
       <a href="/#install">Get PaneCrew</a>
     </div>
   </section>

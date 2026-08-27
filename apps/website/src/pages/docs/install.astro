@@ -3,53 +3,67 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Install & Run | PaneCrew Docs";
 const description =
-  "How to install prerequisites and run PaneCrew from source: pnpm, the Tauri 2 toolchain, pnpm tauri dev, and building a native unsigned binary.";
+  "How to install the PaneCrew VS Code extension: from the Marketplace once it's published, or from a .vsix file today.";
 ---
 <DocsLayout title={title} description={description} path="/docs/install/" active="install">
   <article class="docs-md">
     <h1>Install &amp; run</h1>
     <p>
-      PaneCrew is early and actively developed — there are no packaged builds yet, so running it
-      today means building from source. <!-- brandlint-ok: functional status claim, matches README "Status" section verbatim -->
+      PaneCrew is a VS Code extension — install it into VS Code, no separate download or native
+      toolchain required. <!-- brandlint-ok: functional status claim, matches apps/extension/README.md verbatim -->
     </p>
 
-    <h2>Prerequisites</h2>
+    <h2>From the Marketplace (once published)</h2>
+    <p>
+      Search for "PaneCrew" in the Extensions view (<code>⌘⇧X</code> / <code>Ctrl+Shift+X</code>),
+      or run:
+    </p>
+    <pre><code>ext install panecrew.panecrew</code></pre>
+    <p>
+      The Marketplace listing isn't live yet — this is how it'll work once it is.
+      <!-- brandlint-ok: honest status claim, no live Marketplace URL exists to link -->
+    </p>
+
+    <h2>From a .vsix file (current)</h2>
+    <p>Build the extension from source:</p>
+    <pre><code>git clone https://github.com/silvio-l/panecrew.git
+cd panecrew
+pnpm install
+pnpm --filter panecrew --dir apps/extension run package</code></pre>
+    <p>
+      That produces <code>apps/extension/panecrew-0.1.0.vsix</code>. Install it with:
+    </p>
+    <pre><code>code --install-extension panecrew-0.1.0.vsix</code></pre>
+    <p>
+      Or via the Extensions view: the <code>···</code> menu → "Install from VSIX…".
+    </p>
+
+    <h2>Requirements</h2>
     <ul>
-      <li><a href="https://pnpm.io/">pnpm</a></li>
+      <li>VS Code <code>^1.90.0</code> or newer.</li>
       <li>
-        The <a href="https://tauri.app/start/prerequisites/">Tauri 2 prerequisites</a> for your
-        platform — a Rust toolchain plus your platform's native webview dependencies.
+        Any OS VS Code itself runs on — the extension has no native platform-specific code of its
+        own; it works entirely through VS Code's own APIs (terminals, the editor-group layout,
+        the tree view, git).
       </li>
     </ul>
 
-    <h2>Clone and run</h2>
-    <pre><code>git clone https://github.com/silvio-l/panecrew.git
-cd panecrew/apps/desktop
-pnpm install
-pnpm tauri dev</code></pre>
+    <h2>Using it</h2>
     <p>
-      <code>pnpm tauri dev</code> starts the real Tauri shell (Rust backend + native webview). Running
-      <code>pnpm dev</code> alone only starts the Vite frontend, without the native window — useful
-      for frontend-only iteration, not for actually using the app.
+      Open the PaneCrew icon in the activity bar, then <code>PaneCrew: Open Project Grid…</code>
+      or <code>PaneCrew: Add Folder to Grid…</code> from the Command Palette to add a workspace
+      folder and give it its own terminal pane. See the full
+      <a href="/docs/cli/">commands &amp; settings reference</a> for everything PaneCrew
+      contributes.
     </p>
 
-    <h2>Building a binary</h2>
-    <pre><code>pnpm tauri build</code></pre>
+    <h2>Developing PaneCrew itself</h2>
+    <pre><code>pnpm install
+pnpm --filter panecrew --dir apps/extension run compile</code></pre>
     <p>
-      Produces a native, unsigned build for your platform. Signed and notarized releases are
-      planned but not yet published. <!-- brandlint-ok: functional status claim, matches README verbatim -->
-    </p>
-
-    <h2>Opening a specific project</h2>
-    <p>
-      <code>panecrew [PROJECT_PATH]</code> opens directly with that project, skipping the picker.
-      See the full <a href="/docs/cli/">CLI reference</a> for every flag.
-    </p>
-
-    <h2>Platforms</h2>
-    <p>
-      macOS and Windows are the target platforms. Development and testing currently happen only
-      on macOS — Windows support is a stated goal, not yet verified on a real Windows machine. <!-- brandlint-ok: functional, honest status claim, matches PRODUCT.md -->
+      Press <code>F5</code> in VS Code (with <code>apps/extension</code> open) to launch an
+      Extension Development Host, or run
+      <code>pnpm --filter panecrew --dir apps/extension run watch</code> for incremental builds.
     </p>
   </article>
 </DocsLayout>

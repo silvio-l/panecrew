@@ -1,0 +1,50 @@
+name: Extension CI
+
+on:
+  push:
+    branches: [dev, main]
+    paths: ["apps/extension/**"]
+  pull_request:
+    branches: [main]
+    paths: ["apps/extension/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-test-package:
+    name: Typecheck, test, package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter panecrew --dir apps/extension run check-types
+
+      - name: Unit tests
+        run: pnpm --filter panecrew --dir apps/extension run test:unit
+
+      # @vscode/test-electron launches a real VS Code host, which needs a
+      # display even headless on Linux CI runners. brandlint-ok: literal npm package name of a direct devDependency
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Integration tests (Extension Development Host smoke test)
+        run: xvfb-run -a pnpm --filter panecrew --dir apps/extension run test:integration
+
+      # Regression guard for packaging: catches manifest/asset issues
+      # (missing files, invalid package.json fields) that check-types and
+      # the test suites don't exercise.
+      - name: Package (vsce, regression guard only — artifact not published)
+        run: pnpm --filter panecrew --dir apps/extension run package

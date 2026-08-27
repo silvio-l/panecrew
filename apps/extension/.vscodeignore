@@ -1,0 +1,23 @@
+.vscode/**
+.vscode-test/**
+out-test/**
+src/**
+dist/**/*.map
+.gitignore
+tsconfig.json
+tsconfig.test.json
+esbuild.js
+vitest.config.mts
+.vscode-test.mjs
+eslint.config.mjs
+knip.json
+node_modules/**
+
+# Ship only what dist/, themes/, media/ and the top-level docs actually need —
+# node_modules is fully excluded above (this extension bundles everything it
+# needs into dist/extension.js via esbuild, so no runtime node_modules is
+# required in the .vsix at all). See the PoC's own .vscodeignore for a
+# documented gotcha this repo already hit once: a directory-level exclude
+# blocks gitignore-style negation of files inside it, so "exclude all, then
+# un-exclude specific files" silently fails — this extension avoids that
+# entirely by not needing any node_modules files in the package.

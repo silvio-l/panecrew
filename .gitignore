@@ -29,7 +29,6 @@ tools/
 # Allowlist-Hash-Helper, Shortcuts-Doku-Generator, Driver-Install-Skript) --
 # nie public, Compliance-Cleanup 2026-08-14.
 /scripts/
-apps/desktop/scripts/
 
 # Secrets
 .env
@@ -40,12 +39,6 @@ node_modules/
 dist/
 dist-ssr/
 .astro/
-
-# Promo-Pipeline: Storyboard, das die Capture-Stage zur Laufzeit an den
-# Demo-Harness ausliefert (tools/promo-pipeline/capture.py) — generiert pro
-# Lauf, kein Quelltext.
-apps/desktop/public/harness-storyboards/*
-!apps/desktop/public/harness-storyboards/.gitkeep
 
 # OS
 .DS_Store
@@ -58,3 +51,15 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# apps/extension ships its own .vscode/launch.json + tasks.json (F5 debug
+# launch for the extension itself, same convention as the PoC it replaced) —
+# un-ignore just that one directory from the blanket .vscode/ rule above.
+!apps/extension/.vscode/
+!apps/extension/.vscode/*.json
+
+# apps/extension build/test artifacts — vsix packaging temp files, compiled
+# test output, and the @vscode/test-electron download cache.
+apps/extension/*.vsix
+apps/extension/out-test/
+apps/extension/.vscode-test/

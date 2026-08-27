@@ -3,24 +3,24 @@ import GuideLayout from "../../layouts/GuideLayout.astro";
 
 const title = "How to Open Multiple Terminal Windows at Once — PaneCrew";
 const description =
-  "Run several independent PaneCrew windows side by side, each with its own pane grid, projects, and window position remembered across restarts."; // brandlint-ok: functional product claim, shown verbatim in <meta description>
+  "Open several independent VS Code windows, each running its own PaneCrew grid, workspace, and terminal layout, restored automatically across restarts."; // brandlint-ok: functional product claim, shown verbatim in <meta description>
 
 const faq = [
   {
     q: "How do I open multiple terminal windows?", // brandlint-ok: literal confirmed search query, answered verbatim per AEO practice
-    a: "Press ⌘N (macOS) or Ctrl+N (Windows) inside PaneCrew to open another, fully independent window — its own grid of panes, its own open projects, positioned wherever you drag it. There's no limit beyond your screen space.",
+    a: "Press ⌘⇧N (macOS) or Ctrl+Shift+N (Windows/Linux) — VS Code's own New Window command — to open another, fully independent window. Add folders and a PaneCrew grid to it, and it's a completely separate grid, workspace, and terminal set from your first window.",
   },
   {
     q: "How do I manage multiple terminal windows without losing track of them?",
-    a: "Each PaneCrew window remembers its own position, size, and open projects across an app restart, so you don't have to re-arrange or re-open anything the next time you launch it — pick up exactly where each window left off, including which monitor it was on.",
+    a: "VS Code itself reopens each window's last workspace across a restart, and PaneCrew's own session persistence restores that window's grid layout and pane-to-folder assignments on top of it, so you pick up each window exactly where you left it.",
   },
   {
     q: "Do I need tmux to run multiple terminal windows?",
-    a: "No — tmux splits a single terminal into panes you still navigate one at a time. PaneCrew windows are real, separate OS windows you can place side by side or across monitors, each already showing a full grid of simultaneously visible panes.",
+    a: "No — tmux splits a single terminal into panes you still navigate one at a time. PaneCrew windows are real, separate VS Code windows you can place side by side or across monitors, each already showing a full grid of simultaneously visible panes.",
   },
   {
     q: "Can I open multiple terminal windows on macOS?",
-    a: "Yes — PaneCrew is a free, open-source (MIT) desktop app for macOS today, with a Windows build in progress. ⌘N opens as many independent windows as you need.", // brandlint-ok: functional product claim, real supported platform
+    a: "Yes — PaneCrew is a free, open-source (MIT) VS Code extension, so it works on any OS VS Code runs on, macOS included. VS Code's own New Window command (⌘⇧N / Ctrl+Shift+N) opens as many independent windows as you need.", // brandlint-ok: functional product claim, real supported platform
   },
 ];
 
@@ -43,18 +43,23 @@ const faqJsonLd = {
     <p class="eyebrow">Guide</p>
     <h1>How to Open Multiple Terminal Windows at Once</h1>
     <p class="lede">
-      The direct way to open multiple terminal windows at once is a dedicated shortcut for it: PaneCrew opens another fully independent window with ⌘N/Ctrl+N, each one carrying its own grid of real terminal panes, its own open projects, and its own remembered position — no window manager scripting, no re-arranging after every restart. <!-- brandlint-ok: functional product claim -->
+      The direct way to open multiple terminal windows at once is VS Code's own New Window
+      command: ⌘⇧N (macOS) or Ctrl+Shift+N (Windows/Linux) opens another fully independent window.
+      Add workspace folders and a PaneCrew grid to it, and each window carries its own layout,
+      folders, and terminals — restored automatically by PaneCrew's session persistence, no
+      window-manager scripting, no re-arranging after every restart. <!-- brandlint-ok: functional product claim -->
     </p>
 
     <h2>Windows vs. panes — why both</h2>
     <p>
-      A pane is a slot inside one grid; a window is a separate one, with its own grid inside
-      it. Most days, PaneCrew's fixed grid of up to four panes in a single window covers a full
-      working set. Multiple windows are for the days it doesn't — a second monitor, a
-      completely unrelated project you don't want mixed into today's grid, or simply more than
-      four things running at once. Within one pane, you can still stack several renamable
-      terminal tabs for closely related work — windows, panes, and tabs each solve a different
-      layer of "I have more than one thing running," none of them hidden behind the others.
+      A pane is a terminal slot inside one grid, inside one VS Code window; a window is a separate
+      one, with its own workspace and its own grid inside it. Most days, a single window's grid
+      (2×2 by default, and configurable) covers a full working set. Multiple windows are for the
+      days it doesn't — a second monitor, a completely unrelated project you don't want mixed into
+      today's workspace, or simply more going on than one grid's worth. Within one pane, you can
+      still open several terminal tabs — VS Code's own tab model — for closely related work:
+      windows, panes, and tabs each solve a different layer of "I have more than one thing
+      running," none of them hidden behind the others.
     </p>
 
     <h2>Frequently asked questions</h2>
@@ -66,9 +71,9 @@ const faqJsonLd = {
     ))}
 
     <div class="cta">
-      <p><b>PaneCrew</b> is a free, open-source (MIT) desktop app for macOS today, with a
-      Windows build in progress — a grid of real terminal panes with a focus-following file
-      explorer, and as many independent windows as you need.</p>
+      <p><b>PaneCrew</b> is a free, open-source (MIT) VS Code extension — a grid of real terminal
+      panes across a multi-root workspace, with a focus-following file explorer, in as many
+      independent VS Code windows as you need.</p>
       <a href="/#install">Get PaneCrew</a>
     </div>
   </section>

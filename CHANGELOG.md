@@ -1,5 +1,13 @@
 # Changelog
 
+**Dormant gate (2026-08-27, VS Code extension pivot):** the mechanism described below
+(`tools/changelog-gate/check.py` gating `app-v*`/`nightly-latest` tag pushes) was tied to the
+release CI workflows for the now-deleted Tauri desktop app (`release-stable.yml`,
+`release-nightly.yml`, both removed). It's no longer wired into any CI — this file is currently
+just a plain, hand-written changelog. Left in place as historical context rather than rewritten,
+since a similar coverage-gated release process may be worth re-adopting for `apps/extension`
+Marketplace releases later.
+
 Every entry here is a **prerequisite for the release CI**, not just docs: a
 tag push (`app-v*` for Stable, the rolling `nightly-latest` for Nightly)
 locally triggers `tools/changelog-gate/check.py`, which checks the topmost

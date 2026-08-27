@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1600">
+  <!-- VS Code activity-bar icon: theme-recolored monochrome silhouette
+       (single fill via currentColor, no gradient/glow), same convention as
+       built-in codicons. Geometry traced 1:1 from the two path definitions
+       and the interlock gap mask in the brand's single vector source of
+       truth, assets/brand/panecrew-mark.svg — same
+       chevron (`>`) + cursor-block (`_`) polygons, same diagonal-miter
+       interlock and the deliberately widened seam gap for small-size
+       legibility, just stripped of the amber/gold gradient fill and the
+       glow filter (both meaningless for a currentColor silhouette). Do not
+       hand-edit these path coordinates — regenerate from the master SVG if
+       the mark's geometry ever changes. -->
+  <mask id="pcMarkGapMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1600">
+    <rect width="1600" height="1600" fill="#ffffff"/>
+    <polygon points="569,1208 749,1218 555,1485 368,1485" fill="#000000"/>
+  </mask>
+  <g mask="url(#pcMarkGapMask)" fill="currentColor">
+    <path d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z"/>
+    <path d="M106 1208 L569 1208 L368 1485 L106 1485 Z"/>
+  </g>
+</svg>
