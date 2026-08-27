@@ -86,6 +86,11 @@
         "icon": "$(symbol-snippet)"
       },
       {
+        "command": "panecrew.createSnippet",
+        "title": "PaneCrew: Create Snippet…",
+        "icon": "$(add)"
+      },
+      {
         "command": "panecrew.refreshExplorer",
         "title": "PaneCrew: Refresh Explorer",
         "icon": "$(refresh)"
@@ -143,6 +148,16 @@
           "command": "panecrew.loadPreset",
           "when": "view == panecrew.explorerView",
           "group": "z_presets@2"
+        },
+        {
+          "command": "panecrew.insertSnippet",
+          "when": "view == panecrew.explorerView",
+          "group": "z_snippets@1"
+        },
+        {
+          "command": "panecrew.createSnippet",
+          "when": "view == panecrew.explorerView",
+          "group": "z_snippets@2"
         }
       ],
       "view/item/context": [
@@ -227,6 +242,18 @@
             "media": {
               "svg": "media/panecrew-icon.svg",
               "altText": "PaneCrew compact look"
+            }
+          },
+          {
+            "id": "createSnippet",
+            "title": "Create a terminal snippet",
+            "description": "Save a command you type often and bring it back with a quick pick instead of retyping it.\n[Create Snippet](command:panecrew.createSnippet)\n[Insert Snippet](command:panecrew.insertSnippet)",
+            "completionEvents": [
+              "onCommand:panecrew.createSnippet"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew snippets"
             }
           }
         ]

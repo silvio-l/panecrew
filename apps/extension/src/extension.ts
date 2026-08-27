@@ -25,7 +25,7 @@ import { onboardingShouldComplete } from "./onboarding/onboardingState";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
-import { registerInsertSnippetCommand } from "./terminal/snippets";
+import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
 import { createGridTemplateStatusBarItem, createNewWindowStatusBarItem } from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
@@ -202,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- snippets ----------------------------------------------------------
-  context.subscriptions.push(registerInsertSnippetCommand(context));
+  context.subscriptions.push(registerInsertSnippetCommand(context), registerCreateSnippetCommand(context));
 
   // --- theming -------------------------------------------------------------
   context.subscriptions.push(registerSetThemeCommand());

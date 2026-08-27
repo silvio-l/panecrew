@@ -29,6 +29,8 @@ suite("PaneCrew extension", () => {
       "panecrew.loadPreset",
       "panecrew.searchInFolder",
       "panecrew.insertSnippet",
+      "panecrew.createSnippet",
+      "panecrew.setGridTemplate",
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
     ]) {

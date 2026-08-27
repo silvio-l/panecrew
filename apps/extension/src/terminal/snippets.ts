@@ -38,6 +38,19 @@ function isSnippetArray(value: unknown): value is SnippetCandidate[] {
   );
 }
 
+async function writeWorkspaceSnippets(folder: vscode.WorkspaceFolder, snippets: SnippetCandidate[]): Promise<void> {
+  const uri = vscode.Uri.joinPath(folder.uri, WORKSPACE_SNIPPETS_RELATIVE_PATH);
+  const dirUri = vscode.Uri.joinPath(folder.uri, ".vscode");
+  try {
+    await vscode.workspace.fs.createDirectory(dirUri);
+  } catch {
+    // Already exists — createDirectory is idempotent in intent, VS Code's
+    // fs API just doesn't guarantee it never throws for "already there".
+  }
+  const bytes = Buffer.from(`${JSON.stringify(snippets, null, 2)}\n`, "utf8");
+  await vscode.workspace.fs.writeFile(uri, bytes);
+}
+
 async function readWorkspaceSnippets(folder: vscode.WorkspaceFolder): Promise<SnippetCandidate[]> {
   const uri = vscode.Uri.joinPath(folder.uri, WORKSPACE_SNIPPETS_RELATIVE_PATH);
   try {
@@ -122,5 +135,64 @@ export function registerInsertSnippetCommand(context: vscode.ExtensionContext): 
     });
     quickPick.onDidHide(() => { quickPick.dispose(); });
     quickPick.show();
+  });
+}
+
+/** Registers `panecrew.createSnippet`: the in-editor authoring path the
+ * quick pick above never had — previously the only way to add a snippet was
+ * hand-editing `.vscode/panecrew-snippets.json`, undiscoverable unless you
+ * already knew the file existed. Walks trigger → description → body → scope
+ * via a short sequence of input boxes/quick pick, then appends to whichever
+ * store the chosen scope uses. */
+export function registerCreateSnippetCommand(context: vscode.ExtensionContext): vscode.Disposable {
+  return vscode.commands.registerCommand("panecrew.createSnippet", async () => {
+    const trigger = await vscode.window.showInputBox({
+      prompt: "Trigger text (what you'll type after :// to bring this up)",
+      placeHolder: "e.g. deploy",
+      validateInput: (value) => (value.trim() ? undefined : "Trigger can't be empty."),
+    });
+    if (!trigger) return;
+
+    const description = await vscode.window.showInputBox({
+      prompt: "Short description (shown in the picker)",
+      placeHolder: "e.g. Run the deploy script",
+      validateInput: (value) => (value.trim() ? undefined : "Description can't be empty."),
+    });
+    if (!description) return;
+
+    const body = await vscode.window.showInputBox({
+      prompt: "Text to insert into the terminal",
+      placeHolder: "e.g. ./scripts/deploy.sh",
+      validateInput: (value) => (value.trim() ? undefined : "Snippet body can't be empty."),
+    });
+    if (!body) return;
+
+    const defaultScope = vscode.workspace
+      .getConfiguration("panecrew")
+      .get<SnippetScope>("snippets.defaultScope", "workspace");
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const scopePick = folder
+      ? await vscode.window.showQuickPick(
+          [
+            { label: "Workspace", description: WORKSPACE_SNIPPETS_RELATIVE_PATH, scope: "workspace" as const },
+            { label: "Global", description: "Available in every workspace", scope: "global" as const },
+          ],
+          { placeHolder: "Where should this snippet be saved?" },
+        )
+      : undefined;
+    const scope: SnippetScope = folder ? (scopePick?.scope ?? defaultScope) : "global";
+    if (folder && !scopePick) return;
+
+    const newSnippet: SnippetCandidate = { trigger: trigger.trim(), description: description.trim(), body, kind: "snippet" };
+
+    if (scope === "workspace" && folder) {
+      const existing = await readWorkspaceSnippets(folder);
+      await writeWorkspaceSnippets(folder, [...existing, newSnippet]);
+    } else {
+      const existing = readGlobalSnippets(context);
+      await context.globalState.update(GLOBAL_STATE_KEY, [...existing, newSnippet]);
+    }
+
+    void vscode.window.showInformationMessage(`PaneCrew: saved snippet "${trigger}" (${scope}).`);
   });
 }
