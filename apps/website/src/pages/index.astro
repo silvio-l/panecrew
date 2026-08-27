@@ -959,6 +959,17 @@ const description =
   .brew .soon {
     color: var(--amber); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
   }
+  .brew-copy {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; flex: none; padding: 0; margin: 0 -8px 0 2px;
+    background: none; border: none; border-radius: 6px; color: rgba(255, 253, 245, 0.6);
+    cursor: pointer; transition: color var(--lift), background var(--lift);
+  }
+  .brew-copy:hover, .brew-copy:focus-visible { color: var(--cream); background: rgba(255, 253, 245, 0.08); }
+  .brew-copy svg { width: 15px; height: 15px; }
+  .brew-copy .check { display: none; color: var(--amber); }
+  .brew-copy.copied svg:not(.check) { display: none; }
+  .brew-copy.copied .check { display: block; }
   .install-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
   /* ---------- wave + cream footer (nav/footer base rules + width shared,
@@ -1054,6 +1065,11 @@ const description =
       <rect x="9" y="9" width="6" height="6" rx="1.4"/>
     </g>
     <path id="mkGithub" fill-rule="evenodd" clip-rule="evenodd" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+    <g id="mkCopy">
+      <rect x="5" y="5" width="9" height="9" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M3.2 10.8H2.4A1.4 1.4 0 0 1 1 9.4V2.4A1.4 1.4 0 0 1 2.4 1h7A1.4 1.4 0 0 1 10.8 2.4v.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </g>
+    <path id="mkCheck" d="M2 8.4 6 12l8-8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
     <!-- mkX: verbatim from simple-icons/simple-icons, branch `develop`,
          icons/x.svg (https://github.com/simple-icons/simple-icons), license
          CC0 1.0 Universal — same provenance convention as mkGithub above. -->
@@ -1608,6 +1624,10 @@ const description =
       <a class="btn" href="https://marketplace.visualstudio.com/items?itemName=silvio-lindstedt.panecrew" target="_blank" rel="noopener">Get it on the Marketplace</a>
       <span class="brew">
         <span id="installCmd">$ ext install silvio-lindstedt.panecrew</span>
+        <button type="button" id="installCopy" class="brew-copy" aria-label="Copy install command">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#mkCopy"/></svg>
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="check"><use href="#mkCheck"/></svg>
+        </button>
       </span>
     </div>
   </section>
@@ -2476,6 +2496,22 @@ const description =
       if (!reduced) { updateVfx(); updateDemoScrub(); }
     }, 120);
   });
+
+  var installCopyBtn = document.getElementById('installCopy');
+  if (installCopyBtn && navigator.clipboard) {
+    var copyResetTimer = null;
+    installCopyBtn.addEventListener('click', function () {
+      navigator.clipboard.writeText('ext install silvio-lindstedt.panecrew').then(function () {
+        installCopyBtn.classList.add('copied');
+        installCopyBtn.setAttribute('aria-label', 'Copied');
+        clearTimeout(copyResetTimer);
+        copyResetTimer = setTimeout(function () {
+          installCopyBtn.classList.remove('copied');
+          installCopyBtn.setAttribute('aria-label', 'Copy install command');
+        }, 1600);
+      });
+    });
+  }
 })();
 </script>
 </body>

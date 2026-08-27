@@ -13,6 +13,7 @@ import {
   firstEmptySlotIndex,
   INITIAL_GRID_STATE,
   switchTemplate,
+  templateForDimensions,
   type GridState,
   type TemplateId,
 } from "./grid/gridState";
@@ -36,7 +37,7 @@ import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/t
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
-import { createGridTemplateStatusBarItem, createNewWindowStatusBarItem } from "./statusBar";
+import { createGridTemplateStatusBarItem, createNewWindowStatusBarItem, defaultProjectsFolderUri } from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
 
@@ -100,6 +101,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const persist = () => void saveSession(context.workspaceState, gridState);
 
+  // --- default template from settings -------------------------------------
+  // Only takes effect when there's no restored session below to override it
+  // — panecrew.grid.defaultColumns/defaultRows describe a *new* grid's
+  // starting shape, not a standing override of whatever was last saved.
+  const gridConfig = vscode.workspace.getConfiguration("panecrew.grid");
+  gridState = switchTemplate(
+    gridState,
+    templateForDimensions(gridConfig.get<number>("defaultColumns", 2), gridConfig.get<number>("defaultRows", 2)),
+  );
+
   // --- session restore -------------------------------------------------
   const restored = loadSession(context.workspaceState);
   const openFolders = vscode.workspace.workspaceFolders ?? [];
@@ -138,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       canSelectFiles: false,
       canSelectMany: false,
       openLabel: "Add to PaneCrew Grid",
+      defaultUri: defaultProjectsFolderUri(),
     });
     const folderUri = picked?.[0];
     if (!folderUri) return;

@@ -11,6 +11,15 @@ All notable changes to the PaneCrew extension are documented here.
   and gives it its own pane.
 - The PaneCrew explorer shows a welcome view with an "Open Project Grid…"
   button when no folder is open yet, instead of staying blank.
+- New `panecrew.grid.defaultProjectsFolder` setting: the folder the file
+  picker opens in for "Open Project Grid…", "Add Folder to Grid…", and
+  "Open Project in New Window…".
+
+### Fixed
+
+- `panecrew.grid.defaultColumns`/`defaultRows` are now actually applied when
+  a new grid is created — previously the grid always started as Quad (2×2)
+  regardless of these settings.
 
 ## 0.1.1 — 2026-08-27
 

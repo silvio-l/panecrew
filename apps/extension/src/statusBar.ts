@@ -10,6 +10,14 @@
 import * as vscode from "vscode";
 import { GRID_TEMPLATES, type GridTemplate, type TemplateId } from "./grid/gridState";
 
+/** `panecrew.grid.defaultProjectsFolder`, as the `defaultUri` every project
+ * folder picker opens in — empty setting means "let VS Code pick", same as
+ * omitting `defaultUri` entirely. */
+export function defaultProjectsFolderUri(): vscode.Uri | undefined {
+  const configured = vscode.workspace.getConfiguration("panecrew").get<string>("grid.defaultProjectsFolder", "");
+  return configured.trim() === "" ? undefined : vscode.Uri.file(configured);
+}
+
 const TEMPLATE_LABELS: Record<TemplateId, string> = {
   single: "Single",
   split: "Split (1×2)",
@@ -95,6 +103,7 @@ export function createNewWindowStatusBarItem(context: vscode.ExtensionContext): 
         canSelectFiles: false,
         canSelectMany: false,
         openLabel: "Open in New Window",
+        defaultUri: defaultProjectsFolderUri(),
       });
       const folderUri = picked?.[0];
       if (!folderUri) return;

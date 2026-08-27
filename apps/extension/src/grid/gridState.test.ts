@@ -30,6 +30,7 @@ import {
   switchTemplate,
   switchToFileTab,
   switchToTerminalTab,
+  templateForDimensions,
   terminalTabs,
   templateSwitchBlockReason,
   trackShape,
@@ -399,6 +400,24 @@ describe("gridState", () => {
         );
       });
       expect(firstEmptySlotIndex(state)).toBe(-1);
+    });
+  });
+
+  describe("templateForDimensions", () => {
+    it("matches a regular columns×rows template", () => {
+      expect(templateForDimensions(1, 1)).toBe("single");
+      expect(templateForDimensions(2, 1)).toBe("split");
+      expect(templateForDimensions(2, 2)).toBe("quad");
+      expect(templateForDimensions(4, 1)).toBe("row-4");
+    });
+
+    it("falls back to the default template for a shape with no regular match (e.g. 3×2)", () => {
+      expect(templateForDimensions(3, 2)).toBe(DEFAULT_TEMPLATE);
+    });
+
+    it("does not match two-over-one/one-over-two, which sit on a 2×2 track but only fill 3 cells", () => {
+      expect(templateForDimensions(2, 2)).not.toBe("two-over-one");
+      expect(templateForDimensions(2, 2)).not.toBe("one-over-two");
     });
   });
 

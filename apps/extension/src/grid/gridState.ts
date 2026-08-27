@@ -51,6 +51,20 @@ export const GRID_TEMPLATES: readonly GridTemplate[] = [
 
 export const DEFAULT_TEMPLATE: TemplateId = "quad";
 
+/** Maps `panecrew.grid.defaultColumns`/`defaultRows` to a `TemplateId`.
+ * Matched against a template's `columns`/`rows` AND `slotCount === columns *
+ * rows` — that last check excludes `two-over-one`/`one-over-two`, which sit
+ * on a 2×2 track but only fill 3 of its cells, so a plain columns×rows
+ * setting can't express them (those stay reachable via the explicit
+ * `Set Grid Template…` command). No match — e.g. 3×2, which has no regular
+ * template at all — falls back to `DEFAULT_TEMPLATE`. */
+export function templateForDimensions(columns: number, rows: number): TemplateId {
+  const match = GRID_TEMPLATES.find(
+    (t) => t.columns === columns && t.rows === rows && t.slotCount === columns * rows,
+  );
+  return match?.id ?? DEFAULT_TEMPLATE;
+}
+
 /** Ein Terminal-Tab einer Pane — je eine eigene PTY (Ticket 18). `tabId`
  * kommt wie `paneId` fertig von `useGrid.ts` (`crypto.randomUUID()`), dieses
  * Modul erzeugt keine IDs selbst (Kopfkommentar).

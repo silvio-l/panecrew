@@ -342,6 +342,11 @@
           "maximum": 4,
           "description": "Default number of rows for a new project grid."
         },
+        "panecrew.grid.defaultProjectsFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Folder the file picker opens in for \"Open Project Grid…\", \"Add Folder to Grid…\", and \"Open Project in New Window…\". Empty means VS Code's own default location."
+        },
         "panecrew.compactLook.hideStatusBar": {
           "type": "boolean",
           "default": false,

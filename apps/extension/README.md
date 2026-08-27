@@ -80,6 +80,7 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
 | --- | --- | --- |
 | `panecrew.grid.defaultColumns` | `2` | Default column count for a new project grid. |
 | `panecrew.grid.defaultRows` | `2` | Default row count for a new project grid. |
+| `panecrew.grid.defaultProjectsFolder` | `""` | Folder the file picker opens in for "Open Project Grid…", "Add Folder to Grid…", and "Open Project in New Window…". Empty means VS Code's own default location. |
 | `panecrew.compactLook.hideStatusBar` | `true` | Whether Compact Look hides the status bar. |
 | `panecrew.compactLook.hideMinimap` | `true` | Whether Compact Look hides the editor minimap. |
 | `panecrew.git.showDecorations` | `true` | Show git status badges/colors in the PaneCrew explorer. |
