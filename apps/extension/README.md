@@ -12,10 +12,11 @@ PaneCrew turns VS Code into a grid of simultaneously visible terminal panes —
 one per project — instead of a tab-switcher. Each pane is anchored to a
 workspace folder in a multi-root workspace, arranged via VS Code's own
 editor-group layout. A dedicated PaneCrew explorer in the activity bar shows
-one subtree per project and automatically reveals whichever project owns the
-terminal or editor tab you're currently focused on — PaneCrew's signature
-feature, and (per this project's own research) a gap even VS Code's built-in
-Explorer doesn't close on its own.
+exactly one project's file tree at a time — whichever project owns the
+terminal or editor tab you're currently focused on, switching automatically
+as your focus moves — PaneCrew's signature feature, and (per this project's
+own research) a gap even VS Code's built-in Explorer doesn't close on its
+own.
 
 Tool-agnostic by design: PaneCrew hosts any CLI tool in its terminals — shells,
 Claude Code, Codex, Gemini CLI, or anything else — it makes no assumptions <!-- brandlint-ok: functional list of supported CLI tools -->
