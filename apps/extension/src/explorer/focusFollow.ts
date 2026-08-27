@@ -55,6 +55,23 @@ function folderForProjectPath(
   return folders.find((f) => f.uri.fsPath === projectPath) ?? null;
 }
 
+/** Resolves a terminal PaneCrew didn't itself create (e.g. a task terminal,
+ * or one the user opened by hand) to a workspace folder via its own live
+ * cwd, instead of the group/viewColumn it happens to sit in — that group
+ * membership is frequently stale or was never tracked for such terminals
+ * (`paneByViewColumn` is only populated for panes the grid itself placed).
+ * `shellIntegration.cwd` reflects the terminal's actual current directory
+ * when shell integration is active; `creationOptions.cwd` is the fallback
+ * for terminals created with an explicit starting cwd. */
+function folderForTerminalCwd(terminal: vscode.Terminal): vscode.WorkspaceFolder | null {
+  const creationCwd =
+    "cwd" in terminal.creationOptions ? terminal.creationOptions.cwd : undefined;
+  const cwd = terminal.shellIntegration?.cwd ?? creationCwd;
+  if (!cwd) return null;
+  const uri = cwd instanceof vscode.Uri ? cwd : vscode.Uri.file(cwd);
+  return vscode.workspace.getWorkspaceFolder(uri) ?? null;
+}
+
 /** Wires up both focus sources. Returns the disposables the caller
  * (`extension.ts`) must add to `context.subscriptions`. `log` is optional
  * diagnostic output (an `OutputChannel.appendLine`-shaped function) — every
@@ -119,7 +136,12 @@ export function registerFocusFollow(
           showRootForPane(pane, `terminal tab "${terminal.name}"`);
           return;
         }
-        log(`focus-follow: active terminal tab "${terminal.name}" has no owning pane by identity — falling back to active-group lookup`);
+        const folder = folderForTerminalCwd(terminal);
+        if (folder) {
+          showFolder(folder, `terminal tab "${terminal.name}" (by cwd)`);
+          return;
+        }
+        log(`focus-follow: active terminal tab "${terminal.name}" has no owning pane and no resolvable cwd — falling back to active-group lookup`);
       }
       revealForActiveGroup();
       return;
