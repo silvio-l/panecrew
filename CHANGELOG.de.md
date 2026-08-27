@@ -53,6 +53,11 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.4] - 2026-08-27
+### Neu
+- Ein Umschalt-Button in der Titelleiste des PaneCrew-Explorers, um die
+  primäre Seitenleiste ein-/auszublenden.
+
 ## [0.1.3] - 2026-08-27
 ### Behoben
 - Der PaneCrew-Explorer konnte auf dem Ordner eines zuvor fokussierten

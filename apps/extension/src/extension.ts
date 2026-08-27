@@ -313,6 +313,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeDataProvider.refresh();
       refreshGitDecorations();
     }),
+    vscode.commands.registerCommand("panecrew.toggleSidebar", () =>
+      vscode.commands.executeCommand("workbench.action.toggleSidebarVisibility"),
+    ),
   );
 
   // --- compact look --------------------------------------------------------

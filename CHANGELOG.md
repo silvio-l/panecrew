@@ -50,6 +50,11 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.4] - 2026-08-27
+### Added
+- A toggle button in the PaneCrew explorer's title bar to show/hide the
+  primary side bar.
+
 ## [0.1.3] - 2026-08-27
 ### Fixed
 - The PaneCrew explorer could get stuck showing a previously focused

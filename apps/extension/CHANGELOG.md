@@ -2,6 +2,15 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.4 — 2026-08-27
+
+### Added
+
+- A toggle button in the PaneCrew explorer's title bar to show/hide VS
+  Code's primary side bar, the same behavior as
+  `workbench.action.toggleSidebarVisibility` but reachable with a click
+  instead of a keybinding or the command palette.
+
 ## 0.1.3 — 2026-08-27
 
 ### Fixed
