@@ -5,8 +5,7 @@
 //
 // Bewusst nur absolute Pfade (POSIX + Windows-Laufwerksbuchstabe), keine
 // relativen — PaneCrew kennt für alte Scrollback-Zeilen das damals gültige
-// Arbeitsverzeichnis der Pane nicht mehr und würde sonst falsch raten
-// (`.scratch/terminal-links-and-reveal/spec.md`, User Story 6).
+// Arbeitsverzeichnis der Pane nicht mehr und würde sonst falsch raten.
 
 type TerminalLinkType = "url" | "absolute-path";
 
