@@ -67,9 +67,11 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
   (`.vscode/panecrew-snippets.json`) or globally, and insert one into the
   active terminal via `PaneCrew: Insert Snippet…` (command palette).
 - **Compact Look**: `PaneCrew: Apply Compact Look` hides secondary chrome
-  (status bar, minimap by default) to make room for more panes. The activity
-  bar always stays visible — Compact Look never hides it. Restore the
-  previous look with `PaneCrew: Restore Default VS Code Look`.
+  (status bar, minimap by default), collapses the window menu bar, and moves
+  the activity bar above the explorer to make room for more panes. The
+  activity bar always stays reachable — Compact Look never fully hides it,
+  only relocates it. Restore the previous look with
+  `PaneCrew: Restore Default VS Code Look`.
 - **Onboarding walkthrough**: "Get started with PaneCrew" in the Welcome
   view walks through opening a grid, touring the explorer, applying the
   theme, and Compact Look.
@@ -86,8 +88,8 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
 | `panecrew.git.showDecorations` | `true` | Show git status badges/colors in the PaneCrew explorer. |
 | `panecrew.snippets.defaultScope` | `workspace` | Where newly saved snippets are stored by default (`workspace` or `global`). |
 
-Compact Look never hides the activity bar, regardless of settings — that row
-stays visible in PaneCrew's standard look by design.
+Compact Look never fully hides the activity bar, regardless of settings — it
+relocates to a row above the explorer instead of being hidden, by design.
 
 ## Known limitations
 
