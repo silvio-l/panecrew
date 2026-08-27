@@ -1003,13 +1003,26 @@ const description =
     </div>
 
     <div class="wrap hero-grid">
-      <!-- real capture: PaneCrew's 2x2 grid, four live terminals (Claude Code,
-           Codex, Gemini CLI, a plain pnpm watch), the PaneCrew explorer
-           docked in the activity bar and showing git decorations for the
-           focused pane's project. Captured on the Windows test rig, not a
-           CSS mock. -->
+      <!-- real capture: PaneCrew's promo video (VS Code chrome baked in by
+           the composition itself, not a browser frame here) walking through
+           the 2x2 grid, the focus-following explorer, and git decorations —
+           autoplay/muted/loop like a background clip, same pattern as
+           Charm's own crush.charm.land hero. poster is the video's own
+           first frame (not the 2x2-grid screenshot) so the pre-play frame
+           and the first played frame read as one continuous shot instead of
+           a jump cut. -->
       <div class="app assemble" id="heroApp" data-tilt-max="4">
-        <img src="/images/hero-grid.png" alt="PaneCrew inside VS Code: a 2x2 grid of four real terminals (Claude Code, Codex, Gemini CLI, and a pnpm watch), with the PaneCrew explorer docked in the activity bar showing the focused project's git changes" style="width:100%; height:auto; display:block; border-radius:12px;" />
+        <video
+          src="/videos/panecrew-promo.mp4"
+          poster="/images/promo-poster.jpg"
+          aria-label="PaneCrew promo: a 2x2 grid of four real terminals (Claude Code, Codex, Gemini CLI, and a pnpm watch), the PaneCrew explorer following focus between projects, and git status decorations in the explorer"
+          autoplay
+          muted
+          loop
+          playsinline
+          style="width:100%; height:auto; display:block; border-radius:12px;"
+        >
+        </video>
       </div>
 
       <div class="hero-copy" data-vfx="par" data-par="24">

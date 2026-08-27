@@ -15,9 +15,13 @@
       * {
         box-sizing: border-box;
       }
+      /* dark ground matches the website's own --indigo-deep token
+         (apps/website/src/styles/site-chrome.css) so the video's
+         background reads as continuous with the page it's embedded in,
+         not an unrelated near-black. */
       body {
         margin: 0;
-        background: #0e0a17;
+        background: #1f2547;
         color: #f5f0ea;
         font-family: "Bricolage Grotesque", sans-serif;
       }
@@ -26,7 +30,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0e0a17;
+        background: #1f2547;
       }
       .clip {
         position: absolute;
@@ -59,15 +63,15 @@
         inset: 0;
         background: linear-gradient(
             to top,
-            rgba(9, 6, 16, 0.97) 0%,
-            rgba(9, 6, 16, 0.88) 24%,
-            rgba(9, 6, 16, 0.4) 46%,
-            rgba(9, 6, 16, 0) 64%
+            rgba(31, 37, 71, 0.97) 0%,
+            rgba(31, 37, 71, 0.88) 24%,
+            rgba(31, 37, 71, 0.4) 46%,
+            rgba(31, 37, 71, 0) 64%
           ),
           radial-gradient(
             ellipse 1000px 620px at 0% 100%,
-            rgba(9, 6, 16, 0.7) 0%,
-            rgba(9, 6, 16, 0) 72%
+            rgba(31, 37, 71, 0.7) 0%,
+            rgba(31, 37, 71, 0) 72%
           );
       }
       .scene .frame-border {
@@ -196,6 +200,29 @@
         opacity: 0;
         pointer-events: none;
       }
+      /* spotlight iris for the git scene - darkens everything except the badge
+         area during the plunge, a per-scene accent replacing the light sweep.
+         Lives inside the rig so the clear hole stays glued to the badge pixels
+         through the camera move (center = badge center 368,341 in rig coords) */
+      .spotlight {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle 420px at 368px 341px,
+          rgba(31, 37, 71, 0) 0px,
+          rgba(31, 37, 71, 0) 120px,
+          rgba(31, 37, 71, 0.62) 380px
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+      .badge-ripple {
+        position: absolute;
+        border-radius: 50%;
+        border: 3px solid #fcad43;
+        opacity: 0;
+        pointer-events: none;
+      }
       .trace-dot {
         position: absolute;
         width: 16px;
@@ -256,7 +283,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: radial-gradient(120% 140% at 50% 20%, #241a38 0%, #120e1b 55%, #0a0712 100%);
+        /* indigo family matched to the website's --indigo-hi/--indigo-deep
+           tokens - was a violet-leaning gradient (#241a38...) that read as
+           an off-brand purple against the site's blue-indigo background. */
+        background: radial-gradient(120% 140% at 50% 20%, #333c72 0%, #1f2547 55%, #12162b 100%);
         overflow: hidden;
       }
       /* diagonal hatch-stripe accent layer - adds a second depth plane behind
@@ -352,7 +382,7 @@
         font-size: 20px;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: #8a7fa0;
+        color: #8b93bd;
         margin: 6px 0 0 0;
         opacity: 0;
       }
@@ -474,10 +504,12 @@
         <div class="shot-wrap">
           <div id="rig-git" class="shot-rig">
             <img id="shot-git" class="shot" src="assets/screenshots/git-status.png" alt="" />
+            <div id="spotlight-git" class="spotlight"></div>
             <!-- pop-in glow around the "M" git-status badge on index.js (badge center at 368,341 in the rig) -->
             <div id="badge-ring" class="badge-ring" style="left: 351px; top: 324px; width: 34px; height: 34px;"></div>
+            <div id="badge-ripple-1" class="badge-ripple" style="left: 351px; top: 324px; width: 34px; height: 34px;"></div>
+            <div id="badge-ripple-2" class="badge-ripple" style="left: 351px; top: 324px; width: 34px; height: 34px;"></div>
           </div>
-          <div id="sweep-git" class="sweep"></div>
         </div>
         <div class="vignette"></div>
         <div class="frame-border"></div>
@@ -576,69 +608,108 @@
 
       // ---- Scene 1: hero (3.8 - 11.3) ----
       // camera moves live on #rig-hero (image + rings together, so rings stay glued).
-      // pane-center pan targets at scale 1.45, clamped so the frame never leaves the shot:
-      // max pan at s=1.45 is +/-22.5 xPercent/yPercent.
-      tl.fromTo("#rig-hero", { scale: 1.16, xPercent: 0, yPercent: 0, rotate: -1.6 }, { scale: 1.03, rotate: 0, duration: 1.1, ease: "power2.out" }, 3.8);
+      // choreography idea: EDITING rhythm, not camera glide - four HARD SNAP CUTS
+      // (instant reframe + short landing settle) onto each pane in turn, then a
+      // snap back wide where all four rings blink together as the payoff.
+      // pan clamp at scale s is +/-(s-1)/2*100 xPercent/yPercent (25 at s=1.5).
+      tl.fromTo("#rig-hero", { scale: 1.18, xPercent: 0, yPercent: 0, rotate: -1.6 }, { scale: 1.04, rotate: 0, duration: 0.9, ease: "power3.out" }, 3.8);
       tl.to("#eyebrow-hero", { opacity: 1, duration: 0.4, ease: "power2.out" }, 4.05);
       tl.fromTo("#scene-hero .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 4.2);
-      // punch-in cycle: zoom onto each pane in turn (TL -> TR -> BR -> BL), ring pulses on arrival
-      tl.to("#rig-hero", { scale: 1.45, xPercent: 13.5, yPercent: 22.5, duration: 0.5, ease: "power3.inOut" }, 5.0);
-      tl.to("#ring-hero-1", { opacity: 1, duration: 0.16, ease: "power2.out" }, 5.4);
-      tl.to("#ring-hero-1", { opacity: 0, duration: 0.3, ease: "power1.in" }, 5.95);
-      tl.to("#rig-hero", { xPercent: -22.5, duration: 0.45, ease: "power2.inOut" }, 6.1);
-      tl.to("#ring-hero-2", { opacity: 1, duration: 0.16, ease: "power2.out" }, 6.45);
-      tl.to("#ring-hero-2", { opacity: 0, duration: 0.3, ease: "power1.in" }, 7.0);
-      tl.to("#rig-hero", { yPercent: -22.5, duration: 0.45, ease: "power2.inOut" }, 7.15);
-      tl.to("#ring-hero-4", { opacity: 1, duration: 0.16, ease: "power2.out" }, 7.5);
-      tl.to("#ring-hero-4", { opacity: 0, duration: 0.3, ease: "power1.in" }, 8.05);
-      tl.to("#rig-hero", { xPercent: 13.5, duration: 0.45, ease: "power2.inOut" }, 8.2);
-      tl.to("#ring-hero-3", { opacity: 1, duration: 0.16, ease: "power2.out" }, 8.55);
-      tl.to("#ring-hero-3", { opacity: 0, duration: 0.3, ease: "power1.in" }, 9.1);
-      // pull back wide, then keep a slow drift so the shot never sits still
-      tl.to("#rig-hero", { scale: 1.05, xPercent: 0, yPercent: 0, duration: 0.7, ease: "power3.inOut" }, 9.3);
-      tl.to("#rig-hero", { scale: 1.1, xPercent: -1.5, yPercent: -1.2, duration: 1.25, ease: "sine.inOut" }, 10.05);
+      // snap-cut cycle (TL -> TR -> BR -> BL); immediateRender:false makes each
+      // fromTo an instant jump at its own start time - a cut, not a pan
+      const heroCuts = [
+        { t: 5.3, x: 14, y: 25, ring: "#ring-hero-1" },
+        { t: 6.25, x: -25, y: 25, ring: "#ring-hero-2" },
+        { t: 7.2, x: -25, y: -25, ring: "#ring-hero-4" },
+        { t: 8.15, x: 14, y: -25, ring: "#ring-hero-3" },
+      ];
+      heroCuts.forEach((cut) => {
+        tl.fromTo(
+          "#rig-hero",
+          { scale: 1.58, xPercent: cut.x, yPercent: cut.y },
+          { scale: 1.5, xPercent: cut.x, yPercent: cut.y, duration: 0.35, ease: "power3.out", immediateRender: false },
+          cut.t
+        );
+        tl.fromTo(cut.ring, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power2.out", immediateRender: false }, cut.t + 0.02);
+        tl.to(cut.ring, { opacity: 0, duration: 0.2, ease: "power1.in" }, cut.t + 0.55);
+      });
+      // snap back wide (also a cut), then all four panes blink in unison
+      tl.fromTo(
+        "#rig-hero",
+        { scale: 1.02, xPercent: 0, yPercent: 0 },
+        { scale: 1.06, xPercent: 0, yPercent: 0, duration: 0.5, ease: "power2.out", immediateRender: false },
+        9.1
+      );
+      tl.fromTo(
+        ["#ring-hero-1", "#ring-hero-2", "#ring-hero-3", "#ring-hero-4"],
+        { opacity: 0 },
+        { opacity: 0.9, duration: 0.18, repeat: 3, yoyo: true, immediateRender: false },
+        9.45
+      );
+      tl.set(["#ring-hero-1", "#ring-hero-2", "#ring-hero-3", "#ring-hero-4"], { opacity: 0 }, 10.2);
+      tl.to("#rig-hero", { scale: 1.1, xPercent: -1.5, yPercent: -1.2, duration: 1.0, ease: "sine.inOut" }, 10.3);
       tl.to("#scene-hero", { opacity: 0, duration: 0.25, ease: "power1.in" }, 11.05);
 
       wipeAt(11.5, "#scene-follow");
-      tl.fromTo("#sweep-follow", { xPercent: -140 }, { xPercent: 900, duration: 0.5, ease: "power1.in" }, 11.9);
 
       // ---- Scene 2: focus-follow (11.7 - 19.2) ----
-      // open framed tight on the focused pane (top-right, "dashboard"), then the camera
-      // travels with the trace dot to the explorer tree, then pulls wide.
-      tl.fromTo("#rig-follow", { scale: 1.45, xPercent: -22.5, yPercent: 22.5, rotate: 1.8 }, { xPercent: -21, rotate: 0, duration: 1.2, ease: "sine.out" }, 11.7);
+      // choreography idea: the JUMP is the star. Open wide, zoom onto the focused
+      // pane, then one fast horizontal WHIP-PAN to the explorer tree - dot and a
+      // reversed (right-to-left) light sweep ride the whip - ending in an
+      // alternating call-and-response pulse between pane and tree.
+      tl.fromTo("#rig-follow", { scale: 1.12, xPercent: 0, yPercent: 0, rotate: 1.4 }, { scale: 1.05, rotate: 0, duration: 1.0, ease: "power2.out" }, 11.7);
       tl.to("#eyebrow-follow", { opacity: 1, duration: 0.4, ease: "power2.out" }, 11.95);
       tl.fromTo("#scene-follow .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.07 }, 12.1);
       tl.fromTo("#subline-follow", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 12.6);
-      // pane lights up, dot leaves it, camera pans left with the dot, tree lights up
-      tl.to("#ring-follow-pane", { opacity: 1, duration: 0.2 }, 12.1);
-      tl.to("#ring-follow-pane", { opacity: 0, duration: 0.3 }, 12.8);
-      tl.to("#rig-follow", { scale: 1.3, xPercent: 15, yPercent: 15, duration: 0.8, ease: "power2.inOut" }, 12.9);
-      tl.fromTo("#trace-dot", { opacity: 0, x: 0, y: 0 }, { opacity: 1, x: -1320, y: -30, duration: 0.7, ease: "power2.inOut" }, 12.75);
-      tl.to("#trace-dot", { opacity: 0, duration: 0.2 }, 13.5);
-      tl.to("#ring-follow-tree", { opacity: 1, duration: 0.25, ease: "power2.out" }, 13.45);
-      tl.to("#ring-follow-tree", { opacity: 0, duration: 0.4 }, 14.5);
-      // pull wide to reveal the whole layout, then both ends of the link pulse together
-      tl.to("#rig-follow", { scale: 1.03, xPercent: 0, yPercent: 0, duration: 0.8, ease: "power3.inOut" }, 14.8);
-      tl.to("#ring-follow-pane", { opacity: 0.9, duration: 0.3, repeat: 3, yoyo: true }, 16.2);
-      tl.to("#ring-follow-tree", { opacity: 0.9, duration: 0.3, repeat: 3, yoyo: true }, 16.2);
-      tl.set(["#ring-follow-pane", "#ring-follow-tree"], { opacity: 0 }, 17.45);
-      tl.to("#rig-follow", { scale: 1.09, xPercent: 1.4, yPercent: 1, duration: 3.3, ease: "sine.inOut" }, 15.7);
+      // zoom onto the focused pane (top-right, "dashboard"); its ring lights up
+      tl.to("#rig-follow", { scale: 1.45, xPercent: -22.5, yPercent: 22.5, duration: 0.6, ease: "power2.inOut" }, 13.0);
+      tl.to("#ring-follow-pane", { opacity: 1, duration: 0.2, ease: "power2.out" }, 13.5);
+      tl.to("#ring-follow-pane", { opacity: 0, duration: 0.15 }, 14.05);
+      // the whip: hard lateral camera throw pane -> tree, dot leads, sweep trails
+      tl.to("#rig-follow", { xPercent: 22.5, duration: 0.4, ease: "power4.inOut" }, 14.15);
+      tl.to("#rig-follow", { rotate: -1.1, duration: 0.18, ease: "power2.in" }, 14.15);
+      tl.to("#rig-follow", { rotate: 0, duration: 0.35, ease: "power2.out" }, 14.33);
+      tl.fromTo("#trace-dot", { opacity: 0, x: 0, y: 0 }, { opacity: 1, x: -1320, y: -30, duration: 0.45, ease: "power4.inOut", immediateRender: false }, 14.1);
+      tl.to("#trace-dot", { opacity: 0, duration: 0.2 }, 14.6);
+      tl.fromTo("#sweep-follow", { xPercent: 900 }, { xPercent: -140, duration: 0.4, ease: "power1.in" }, 14.15);
+      // tree ring lands with a pop as the whip settles
+      tl.fromTo("#ring-follow-tree", { opacity: 0, scale: 1.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2.5)", immediateRender: false }, 14.55);
+      tl.to("#ring-follow-tree", { opacity: 0, duration: 0.3 }, 15.4);
+      // pull wide, then pane and tree pulse ALTERNATELY - a visual call-and-response
+      tl.to("#rig-follow", { scale: 1.03, xPercent: 0, yPercent: 0, duration: 0.7, ease: "power3.inOut" }, 15.6);
+      tl.fromTo("#ring-follow-pane", { opacity: 0 }, { opacity: 0.9, duration: 0.18, immediateRender: false }, 16.5);
+      tl.to("#ring-follow-pane", { opacity: 0, duration: 0.18 }, 16.72);
+      tl.fromTo("#ring-follow-tree", { opacity: 0 }, { opacity: 0.9, duration: 0.18, immediateRender: false }, 16.9);
+      tl.to("#ring-follow-tree", { opacity: 0, duration: 0.18 }, 17.12);
+      tl.fromTo("#ring-follow-pane", { opacity: 0 }, { opacity: 0.9, duration: 0.18, immediateRender: false }, 17.3);
+      tl.to("#ring-follow-pane", { opacity: 0, duration: 0.18 }, 17.52);
+      tl.fromTo("#ring-follow-tree", { opacity: 0 }, { opacity: 0.9, duration: 0.18, immediateRender: false }, 17.7);
+      tl.to("#ring-follow-tree", { opacity: 0, duration: 0.18 }, 17.92);
+      tl.to("#rig-follow", { scale: 1.08, xPercent: 1.2, yPercent: 0.8, duration: 2.2, ease: "sine.inOut" }, 16.4);
       tl.to("#scene-follow", { opacity: 0, duration: 0.25, ease: "power1.in" }, 18.95);
 
       wipeAt(19.4, "#scene-git");
-      tl.fromTo("#sweep-git", { xPercent: -140 }, { xPercent: 900, duration: 0.5, ease: "power1.in" }, 19.8);
 
       // ---- Scene 3: git status (19.6 - 25.6) ----
-      // wide establish, hard punch-in on the "M" badge in the explorer, pull back out.
-      tl.fromTo("#rig-git", { scale: 1.14, xPercent: 0, yPercent: 0, rotate: -2 }, { scale: 1.05, rotate: 0, duration: 0.9, ease: "power2.out" }, 19.6);
+      // choreography idea: SLOW BURN then one deep plunge. A long anticipation
+      // creep toward the badge, a single expo-eased dive onto it, a spotlight
+      // iris isolating the badge plus concentric shockwave ripples - no sweep,
+      // the darkness-and-ripple accent belongs to this scene alone.
+      tl.fromTo("#rig-git", { scale: 1.0, xPercent: 0, yPercent: 0, rotate: 0 }, { scale: 1.16, xPercent: 6, yPercent: 5, duration: 1.9, ease: "sine.inOut" }, 19.6);
       tl.to("#eyebrow-git", { opacity: 1, duration: 0.4, ease: "power2.out" }, 19.85);
       tl.fromTo("#scene-git .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 20.0);
-      tl.to("#rig-git", { scale: 1.6, xPercent: 30, yPercent: 29.5, duration: 0.6, ease: "power3.inOut" }, 20.7);
-      tl.fromTo("#badge-ring", { opacity: 0, scale: 1.8 }, { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(3)" }, 21.35);
-      tl.to("#badge-ring", { scale: 1.35, opacity: 0.55, duration: 0.5, ease: "power1.inOut", repeat: 2, yoyo: true }, 21.75);
-      tl.to("#rig-git", { scale: 1.06, xPercent: 0, yPercent: 0, duration: 0.7, ease: "power3.inOut" }, 23.3);
-      tl.to("#badge-ring", { opacity: 0, duration: 0.3 }, 24.3);
-      tl.to("#rig-git", { scale: 1.1, xPercent: -1.2, yPercent: 1.2, duration: 1.5, ease: "sine.inOut" }, 24.05);
+      // the plunge: one continuous accelerating dive onto the badge
+      tl.to("#rig-git", { scale: 1.7, xPercent: 35, yPercent: 31.3, duration: 0.55, ease: "expo.inOut" }, 21.6);
+      tl.to("#spotlight-git", { opacity: 1, duration: 0.35, ease: "power2.out" }, 21.95);
+      tl.fromTo("#badge-ring", { opacity: 0, scale: 2.2 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(2)", immediateRender: false }, 22.15);
+      tl.fromTo("#badge-ripple-1", { opacity: 0.8, scale: 0.6 }, { opacity: 0, scale: 2.8, duration: 0.7, ease: "power2.out", immediateRender: false }, 22.2);
+      tl.fromTo("#badge-ripple-2", { opacity: 0.7, scale: 0.6 }, { opacity: 0, scale: 2.6, duration: 0.7, ease: "power2.out", immediateRender: false }, 23.0);
+      tl.to("#badge-ring", { scale: 1.25, opacity: 0.6, duration: 0.4, ease: "power1.inOut", repeat: 1, yoyo: true }, 22.7);
+      // release: spotlight lifts as the camera eases back out
+      tl.to("#spotlight-git", { opacity: 0, duration: 0.4, ease: "power1.in" }, 24.0);
+      tl.to("#rig-git", { scale: 1.06, xPercent: 0, yPercent: 0, duration: 0.8, ease: "power3.inOut" }, 24.0);
+      tl.to("#badge-ring", { opacity: 0, duration: 0.3 }, 24.2);
+      tl.to("#rig-git", { scale: 1.1, xPercent: -1.2, yPercent: 1.2, duration: 0.6, ease: "sine.inOut" }, 24.85);
       tl.to("#scene-git", { opacity: 0, duration: 0.25, ease: "power1.in" }, 25.35);
 
       wipeAt(25.8, "#scene-closing");
