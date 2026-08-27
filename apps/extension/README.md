@@ -4,11 +4,11 @@ A grid of live terminal panes across a multi-root VS Code workspace, paired
 with a file explorer that automatically follows whichever pane currently has
 focus.
 
-![Four live terminal panes with the PaneCrew explorer showing git status](../../assets/promo/real/hero-grid.png)
+![Four live terminal panes with the PaneCrew explorer showing git status](https://raw.githubusercontent.com/silvio-l/panecrew/main/assets/promo/real/hero-grid.png)
 
 *The explorer follows whichever pane has focus — click into the "dashboard" project and it switches automatically:*
 
-![PaneCrew explorer switched to the focused project's file tree](../../assets/promo/real/focus-follow-dashboard.png)
+![PaneCrew explorer switched to the focused project's file tree](https://raw.githubusercontent.com/silvio-l/panecrew/main/assets/promo/real/focus-follow-dashboard.png)
 
 ## What it does
 
