@@ -204,11 +204,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "panecrew.toggleSidebar",
-          "when": "view == panecrew.explorerView",
-          "group": "navigation@3"
-        },
-        {
           "command": "panecrew.applyCompactLook",
           "when": "view == panecrew.explorerView",
           "group": "z_look@1"
@@ -294,7 +289,7 @@
       "editor/title": [
         {
           "command": "panecrew.toggleMaximizePane",
-          "when": "resourceScheme == vscode-terminal",
+          "when": "resourceScheme == vscode-terminal && !editorPartMaximizedEditorGroup",
           "group": "navigation"
         }
       ]

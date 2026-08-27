@@ -48,6 +48,7 @@ import { registerConfigureCliToolNotificationsCommand } from "./terminal/cliAdap
 import {
   createGridTemplateStatusBarItem,
   createNewWindowStatusBarItem,
+  createToggleSidebarStatusBarItem,
   defaultProjectsFolderUri,
   registerSetDefaultProjectsFolderCommand,
 } from "./statusBar";
@@ -377,7 +378,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshGitDecorations();
     persist();
   });
-  context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem(context));
+  context.subscriptions.push(
+    gridTemplateStatusBarItem,
+    createNewWindowStatusBarItem(context),
+    createToggleSidebarStatusBarItem(),
+  );
   registerSetDefaultProjectsFolderCommand(context);
 
   context.subscriptions.push(
