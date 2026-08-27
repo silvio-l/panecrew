@@ -45,6 +45,9 @@ function makeId(): string {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const outputChannel = vscode.window.createOutputChannel("PaneCrew");
+  context.subscriptions.push(outputChannel);
+
   const layoutController = new GridLayoutController(vscode);
   const treeDataProvider = new PaneCrewTreeDataProvider();
   const gitDecorationProvider = new PaneCrewGitDecorationProvider();
@@ -83,7 +86,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    ...registerFocusFollow(treeView, { paneForTerminal: (t) => layoutController.paneForTerminal(t) }),
+    ...registerFocusFollow(
+      treeView,
+      {
+        paneForTerminal: (t) => layoutController.paneForTerminal(t),
+        paneForViewColumn: (c) => layoutController.paneForViewColumn(c),
+      },
+      (message) => { outputChannel.appendLine(message); },
+    ),
   );
 
   // --- session restore -------------------------------------------------

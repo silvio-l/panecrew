@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { assignProjectToSlot, GRID_TEMPLATES, INITIAL_GRID_STATE, switchTemplate } from "./gridState";
-import { computeApplyPlan, countLeafGroups, editorGroupLayoutForTemplate } from "./layoutController";
+import {
+  computeApplyPlan,
+  countLeafGroups,
+  editorGroupLayoutForTemplate,
+  GridLayoutController,
+  type VscodeLike,
+} from "./layoutController";
+
+/** A fake `VscodeLike` that hands out incrementing fake terminals, just
+ * enough for `GridLayoutController.apply` to run without a real VS Code
+ * host — this file stays vscode-import-free per this module's own
+ * pure/impure split (see the header comment in `layoutController.ts`). */
+function fakeVscode(): VscodeLike {
+  return {
+    commands: { executeCommand: () => Promise.resolve() },
+    window: {
+      createTerminal: () => ({ show: () => { /* no-op fake terminal */ } }),
+      terminals: [],
+    },
+  };
+}
 
 describe("editorGroupLayoutForTemplate", () => {
   it("produces exactly as many leaf groups as each template's slotCount", () => {
@@ -75,5 +95,46 @@ describe("computeApplyPlan", () => {
     );
     const plan = computeApplyPlan(grid);
     expect(plan.assignments.map((a) => a.slotIndex)).toEqual([0]);
+  });
+});
+
+describe("GridLayoutController.paneForViewColumn", () => {
+  // Regression test for the focus-follow bug (2026-08-27): the explorer
+  // failed to switch when a pane's editor group hosted a terminal PaneCrew
+  // itself didn't create (e.g. the user or an agent opening a second
+  // terminal, such as a CLI coding agent, inside that group) — a lookup
+  // keyed on `paneForTerminal`'s exact terminal identity silently no-oped
+  // for it. `paneForViewColumn` resolves by editor group instead, so it
+  // must return the right pane regardless of which terminal is focused.
+  it("resolves a pane by its assigned view column after apply()", async () => {
+    const controller = new GridLayoutController(fakeVscode());
+    const grid = assignProjectToSlot(
+      assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"),
+      2,
+      "/repo/b",
+      "pane-b",
+      "tab-b",
+    );
+    await controller.apply(grid);
+
+    expect(controller.paneForViewColumn(1)).toEqual(grid.slots[0]);
+    expect(controller.paneForViewColumn(3)).toEqual(grid.slots[2]);
+  });
+
+  it("returns null for a view column with no assigned pane", async () => {
+    const controller = new GridLayoutController(fakeVscode());
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(controller.paneForViewColumn(2)).toBeNull();
+  });
+
+  it("forgets a pane's view column when the pane is closed", async () => {
+    const controller = new GridLayoutController(fakeVscode());
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+    await controller.apply(grid);
+
+    controller.forgetPane("pane-a");
+
+    expect(controller.paneForViewColumn(1)).toBeNull();
   });
 });

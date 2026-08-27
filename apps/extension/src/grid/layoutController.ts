@@ -151,11 +151,19 @@ export class GridLayoutController {
    * folder) doesn't spawn a second terminal for a pane that already has
    * one. */
   private readonly terminalsByPaneId = new Map<string, ControllerTerminal>();
-  /** Reverse lookup by terminal object identity — `focusFollow.ts` uses this
-   * to resolve "which pane owns the terminal that just gained focus"
-   * (`vscode.window.onDidChangeActiveTerminal` hands back the exact same
-   * `vscode.Terminal` instance `createTerminal` returned). */
+  /** Reverse lookup by terminal object identity — kept as a fallback signal
+   * for the exact terminal PaneCrew itself created, but NOT the primary way
+   * `focusFollow.ts` resolves "which pane has focus": the user (or a CLI
+   * agent running inside a pane) routinely opens *another*
+   * terminal inside the same editor group, and that terminal is never in
+   * this map, yet focus-follow still needs to resolve it to the right pane.
+   * `paneByViewColumn` below is what actually covers that case. */
   private readonly paneByTerminal = new Map<ControllerTerminal, Pane>();
+  /** pane by its editor group (VS Code `ViewColumn` position) — resolves
+   * focus for ANY terminal or tab in that group, not just the one
+   * `ensureTerminal` created, since VS Code exposes which group is focused
+   * (`tabGroups.activeTabGroup.viewColumn`) independent of tab identity. */
+  private readonly paneByViewColumn = new Map<number, Pane>();
 
   constructor(private readonly vscode: VscodeLike) {}
 
@@ -163,6 +171,7 @@ export class GridLayoutController {
     const plan = computeApplyPlan(state);
     await this.vscode.commands.executeCommand("vscode.setEditorLayout", plan.layout);
     for (const { pane, viewColumn } of plan.assignments) {
+      this.paneByViewColumn.set(viewColumn, pane);
       this.ensureTerminal(pane, viewColumn);
     }
   }
@@ -192,12 +201,22 @@ export class GridLayoutController {
     const terminal = this.terminalsByPaneId.get(paneId);
     if (terminal) this.paneByTerminal.delete(terminal);
     this.terminalsByPaneId.delete(paneId);
+    for (const [viewColumn, pane] of this.paneByViewColumn) {
+      if (pane.paneId === paneId) this.paneByViewColumn.delete(viewColumn);
+    }
   }
 
   /** The pane that owns `terminal`, or `null` if it's not one PaneCrew
    * created (e.g. a terminal the user opened by hand outside the grid). */
   paneForTerminal(terminal: ControllerTerminal): Pane | null {
     return this.paneByTerminal.get(terminal) ?? null;
+  }
+
+  /** The pane assigned to a given editor group position, or `null` if that
+   * `ViewColumn` isn't currently occupied by a pane (e.g. an empty slot, or
+   * a group the user split open by hand outside the grid template). */
+  paneForViewColumn(viewColumn: number): Pane | null {
+    return this.paneByViewColumn.get(viewColumn) ?? null;
   }
 }
 
