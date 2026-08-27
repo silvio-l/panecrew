@@ -45,6 +45,10 @@
         "title": "PaneCrew: Open Project Grid…"
       },
       {
+        "command": "panecrew.setDefaultProjectsFolder",
+        "title": "PaneCrew: Set Default Projects Folder…"
+      },
+      {
         "command": "panecrew.addFolderToGrid",
         "title": "PaneCrew: Add Folder to Grid…",
         "icon": "$(new-folder)"
@@ -345,7 +349,7 @@
         "panecrew.grid.defaultProjectsFolder": {
           "type": "string",
           "default": "",
-          "description": "Folder the file picker opens in for \"Open Project Grid…\", \"Add Folder to Grid…\", and \"Open Project in New Window…\". Empty means VS Code's own default location."
+          "description": "Folder the file picker opens in for \"Open Project Grid…\", \"Add Folder to Grid…\", and \"Open Project in New Window…\". Empty means VS Code's own default location. Set it with a folder picker via the \"PaneCrew: Set Default Projects Folder…\" command instead of typing a path here."
         },
         "panecrew.compactLook.hideStatusBar": {
           "type": "boolean",

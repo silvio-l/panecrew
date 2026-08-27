@@ -18,6 +18,28 @@ export function defaultProjectsFolderUri(): vscode.Uri | undefined {
   return configured.trim() === "" ? undefined : vscode.Uri.file(configured);
 }
 
+/** `PaneCrew: Set Default Projects Folder…` — a folder picker for
+ * `panecrew.grid.defaultProjectsFolder`, since VS Code's Settings UI has no
+ * browse-for-folder widget for extension-contributed string settings. */
+export function registerSetDefaultProjectsFolderCommand(context: vscode.ExtensionContext): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.setDefaultProjectsFolder", async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: "Set as Default Projects Folder",
+        defaultUri: defaultProjectsFolderUri(),
+      });
+      const folderUri = picked?.[0];
+      if (!folderUri) return;
+      await vscode.workspace
+        .getConfiguration("panecrew")
+        .update("grid.defaultProjectsFolder", folderUri.fsPath, vscode.ConfigurationTarget.Global);
+    }),
+  );
+}
+
 const TEMPLATE_LABELS: Record<TemplateId, string> = {
   single: "Single",
   split: "Split (1×2)",

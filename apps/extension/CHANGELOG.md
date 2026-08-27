@@ -14,6 +14,8 @@ All notable changes to the PaneCrew extension are documented here.
 - New `panecrew.grid.defaultProjectsFolder` setting: the folder the file
   picker opens in for "Open Project Grid…", "Add Folder to Grid…", and
   "Open Project in New Window…".
+- `PaneCrew: Set Default Projects Folder…` command: sets that setting via a
+  real folder picker instead of typing a path into Settings by hand.
 
 ### Fixed
 

@@ -11,6 +11,7 @@ const description =
 // friendly mirror of it, not a second registry.
 const commands = [
   { id: "panecrew.openProjectGrid", title: "PaneCrew: Open Project Grid…" },
+  { id: "panecrew.setDefaultProjectsFolder", title: "PaneCrew: Set Default Projects Folder…" },
   { id: "panecrew.addFolderToGrid", title: "PaneCrew: Add Folder to Grid…" },
   { id: "panecrew.applyCompactLook", title: "PaneCrew: Apply Compact Look" },
   { id: "panecrew.restoreLook", title: "PaneCrew: Restore Default VS Code Look" },
@@ -26,7 +27,7 @@ const commands = [
 const settings = [
   { key: "panecrew.grid.defaultColumns", default: "2", description: "Default column count for a new project grid." },
   { key: "panecrew.grid.defaultRows", default: "2", description: "Default row count for a new project grid." },
-  { key: "panecrew.grid.defaultProjectsFolder", default: "\"\"", description: "Folder the file picker opens in for \"Open Project Grid…\", \"Add Folder to Grid…\", and \"Open Project in New Window…\". Empty means VS Code's own default location." },
+  { key: "panecrew.grid.defaultProjectsFolder", default: "\"\"", description: "Folder the file picker opens in for \"Open Project Grid…\", \"Add Folder to Grid…\", and \"Open Project in New Window…\". Empty means VS Code's own default location. Set it with a folder picker via the \"PaneCrew: Set Default Projects Folder…\" command instead of typing a path here." },
   { key: "panecrew.compactLook.hideStatusBar", default: "true", description: "Whether Compact Look hides the status bar." },
   { key: "panecrew.compactLook.hideMinimap", default: "true", description: "Whether Compact Look hides the editor minimap." },
   { key: "panecrew.git.showDecorations", default: "true", description: "Show git status badges/colors in the PaneCrew explorer." },

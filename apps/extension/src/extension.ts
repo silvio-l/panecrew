@@ -37,7 +37,12 @@ import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/t
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
-import { createGridTemplateStatusBarItem, createNewWindowStatusBarItem, defaultProjectsFolderUri } from "./statusBar";
+import {
+  createGridTemplateStatusBarItem,
+  createNewWindowStatusBarItem,
+  defaultProjectsFolderUri,
+  registerSetDefaultProjectsFolderCommand,
+} from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
 
@@ -187,6 +192,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     persist();
   });
   context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem(context));
+  registerSetDefaultProjectsFolderCommand(context);
 
   context.subscriptions.push(
     // Same handler as "Add Folder to Grid…" — "Open Project Grid…" is the
