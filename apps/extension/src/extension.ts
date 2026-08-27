@@ -115,7 +115,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("panecrew.openProjectGrid", addFolderAndAssign),
     vscode.commands.registerCommand("panecrew.addFolderToGrid", addFolderAndAssign),
     vscode.commands.registerCommand("panecrew.refreshExplorer", () => {
       treeDataProvider.refresh();
@@ -211,6 +210,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // real call site ported from the desktop app's own Aha-Moment tracking) --
   if (onboardingShouldComplete(gridState)) {
     await context.globalState.update("panecrew.onboardingComplete", true);
+  }
+
+  // --- surface the walkthrough on first activation --------------------
+  // The walkthrough is discoverable via VS Code's own Welcome page and the
+  // Command Palette, but neither is somewhere a first-time user reliably
+  // looks — opening it once, on the very first activation, is what actually
+  // gets it seen.
+  if (!context.globalState.get<boolean>("panecrew.walkthroughShown")) {
+    await context.globalState.update("panecrew.walkthroughShown", true);
+    void vscode.commands.executeCommand(
+      "workbench.action.openWalkthrough",
+      "panecrew.panecrew#panecrew.gettingStarted",
+    );
   }
 }
 

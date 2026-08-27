@@ -22,7 +22,6 @@ suite("PaneCrew extension", () => {
 
     const commands = await vscode.commands.getCommands(true);
     for (const id of [
-      "panecrew.openProjectGrid",
       "panecrew.addFolderToGrid",
       "panecrew.applyCompactLook",
       "panecrew.restoreLook",

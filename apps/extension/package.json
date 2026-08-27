@@ -41,11 +41,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "panecrew.openProjectGrid",
-        "title": "PaneCrew: Open Project Grid…",
-        "icon": "$(multiple-windows)"
-      },
-      {
         "command": "panecrew.addFolderToGrid",
         "title": "PaneCrew: Add Folder to Grid…",
         "icon": "$(new-folder)"
@@ -115,19 +110,14 @@
     "menus": {
       "view/title": [
         {
-          "command": "panecrew.openProjectGrid",
+          "command": "panecrew.addFolderToGrid",
           "when": "view == panecrew.explorerView",
           "group": "navigation@1"
         },
         {
-          "command": "panecrew.addFolderToGrid",
-          "when": "view == panecrew.explorerView",
-          "group": "navigation@2"
-        },
-        {
           "command": "panecrew.refreshExplorer",
           "when": "view == panecrew.explorerView",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "panecrew.applyCompactLook",
@@ -178,10 +168,10 @@
         "steps": [
           {
             "id": "openGrid",
-            "title": "Open a project grid",
-            "description": "Add one or more folders to a multi-root workspace and give each one its own terminal.\n[Open Project Grid](command:panecrew.openProjectGrid)",
+            "title": "Add a folder to your grid",
+            "description": "Add one or more folders to a multi-root workspace and give each one its own terminal pane in the grid.\n[Add Folder to Grid](command:panecrew.addFolderToGrid)",
             "completionEvents": [
-              "onCommand:panecrew.openProjectGrid"
+              "onCommand:panecrew.addFolderToGrid"
             ],
             "media": {
               "svg": "media/panecrew-icon.svg",
