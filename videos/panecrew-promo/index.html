@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>PaneCrew Promo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0e0a17;
+        color: #f5f0ea;
+        font-family: "Montserrat", sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0e0a17;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---- shared scene chrome ---- */
+      .scene {
+        display: block;
+      }
+      .scene .shot-wrap {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      .scene .shot {
+        position: absolute;
+        inset: -4%;
+        width: 108%;
+        height: 108%;
+        object-fit: cover;
+        will-change: transform;
+      }
+      .scene .vignette {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          to top,
+          rgba(9, 6, 16, 0.92) 0%,
+          rgba(9, 6, 16, 0.55) 22%,
+          rgba(9, 6, 16, 0) 46%
+        );
+      }
+      .scene .frame-border {
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 0 1px rgba(242, 166, 90, 0.18);
+        pointer-events: none;
+      }
+      .caption {
+        position: absolute;
+        left: 96px;
+        bottom: 96px;
+        max-width: 1200px;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #f2a65a;
+        margin: 0 0 22px 0;
+        opacity: 0;
+      }
+      .eyebrow::before {
+        content: "";
+        display: inline-block;
+        width: 34px;
+        height: 3px;
+        background: #f2a65a;
+        border-radius: 2px;
+      }
+      .headline {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 900;
+        font-size: 76px;
+        line-height: 1.08;
+        margin: 0 0 18px 0;
+        color: #f9f5ef;
+        text-shadow: 0 6px 30px rgba(0, 0, 0, 0.55);
+        opacity: 0;
+      }
+      .subline {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 400;
+        font-size: 26px;
+        color: #cfc6da;
+        margin: 0;
+        opacity: 0;
+      }
+
+      /* ---- closing brand card ---- */
+      #scene-closing {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(120% 140% at 50% 20%, #241a38 0%, #120e1b 55%, #0a0712 100%);
+      }
+      #scene-closing .glow {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -55%);
+        background: radial-gradient(circle, rgba(242, 166, 90, 0.28) 0%, rgba(242, 166, 90, 0) 62%);
+        filter: blur(2px);
+      }
+      #scene-closing .mark {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 30px;
+        opacity: 0;
+      }
+      #scene-closing .glyph {
+        width: 128px;
+        height: 128px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #scene-closing .wordmark {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 900;
+        font-size: 108px;
+        letter-spacing: -0.01em;
+        background: linear-gradient(180deg, #ffd9a0 0%, #f2a65a 55%, #d98a3d 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin: 0;
+      }
+      #scene-closing .tagline {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 400;
+        font-size: 30px;
+        color: #cfc6da;
+        margin: 0;
+        letter-spacing: 0.02em;
+      }
+      #scene-closing .meta {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 20px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #8a7fa0;
+        margin: 6px 0 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="35"
+    >
+      <!-- Scene 1: hero grid -->
+      <section
+        id="scene-hero"
+        class="clip scene"
+        data-start="0"
+        data-duration="9.5"
+        data-track-index="1"
+      >
+        <div class="shot-wrap">
+          <img id="shot-hero" class="shot" src="assets/screenshots/hero-grid.png" alt="" />
+        </div>
+        <div class="vignette"></div>
+        <div class="frame-border"></div>
+        <div class="caption">
+          <p id="eyebrow-hero" class="eyebrow">PaneCrew</p>
+          <h1 id="headline-hero" class="headline">Every project. Its own live terminal.</h1>
+        </div>
+      </section>
+
+      <!-- Scene 2: focus-following explorer -->
+      <section
+        id="scene-follow"
+        class="clip scene"
+        data-start="9"
+        data-duration="9.5"
+        data-track-index="2"
+      >
+        <div class="shot-wrap">
+          <img id="shot-follow" class="shot" src="assets/screenshots/focus-follow.png" alt="" />
+        </div>
+        <div class="vignette"></div>
+        <div class="frame-border"></div>
+        <div class="caption">
+          <p id="eyebrow-follow" class="eyebrow">Focus-following explorer</p>
+          <h1 id="headline-follow" class="headline">The explorer follows you.</h1>
+          <p id="subline-follow" class="subline">No manual switching between projects.</p>
+        </div>
+      </section>
+
+      <!-- Scene 3: git status -->
+      <section
+        id="scene-git"
+        class="clip scene"
+        data-start="18"
+        data-duration="9.5"
+        data-track-index="1"
+      >
+        <div class="shot-wrap">
+          <img id="shot-git" class="shot" src="assets/screenshots/git-status.png" alt="" />
+        </div>
+        <div class="vignette"></div>
+        <div class="frame-border"></div>
+        <div class="caption">
+          <p id="eyebrow-git" class="eyebrow">Git at a glance</p>
+          <h1 id="headline-git" class="headline">Know what's dirty — instantly.</h1>
+        </div>
+      </section>
+
+      <!-- Scene 4: closing brand card -->
+      <section
+        id="scene-closing"
+        class="clip"
+        data-start="27"
+        data-duration="8"
+        data-track-index="2"
+      >
+        <div class="glow"></div>
+        <div id="closing-mark" class="mark">
+          <svg class="glyph" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="markGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#ffd9a0" />
+                <stop offset="0.55" stop-color="#f2a65a" />
+                <stop offset="1" stop-color="#d98a3d" />
+              </linearGradient>
+            </defs>
+            <path d="M20 24 L64 64 L20 104" stroke="url(#markGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            <rect x="72" y="52" width="34" height="24" rx="4" fill="url(#markGrad)" />
+          </svg>
+          <h2 class="wordmark">PaneCrew</h2>
+          <p class="tagline">Terminals, in formation.</p>
+          <p class="meta">Free &middot; MIT-licensed &middot; VS Code Marketplace</p>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // ---- Scene 1: hero (0 - 9.5) ----
+      tl.fromTo("#shot-hero", { scale: 1.0, xPercent: 0, yPercent: 0 }, { scale: 1.08, xPercent: -1.5, yPercent: -1, duration: 9.5, ease: "none" }, 0);
+      tl.to("#eyebrow-hero", { opacity: 1, duration: 0.5, ease: "power2.out" }, 0.35);
+      tl.fromTo("#headline-hero", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "power3.out" }, 0.55);
+      tl.to("#scene-hero", { opacity: 0, duration: 0.5, ease: "power1.in" }, 9.0);
+
+      // ---- Scene 2: focus-follow (9 - 18.5), 0.5s crossfade in ----
+      tl.fromTo("#scene-follow", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 9.0);
+      tl.fromTo("#shot-follow", { scale: 1.05, xPercent: 1.5, yPercent: 1 }, { scale: 1.0, xPercent: 0, yPercent: 0, duration: 9.5, ease: "none" }, 9.0);
+      tl.to("#eyebrow-follow", { opacity: 1, duration: 0.5, ease: "power2.out" }, 9.35);
+      tl.fromTo("#headline-follow", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "power3.out" }, 9.55);
+      tl.fromTo("#subline-follow", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 9.95);
+      tl.to("#scene-follow", { opacity: 0, duration: 0.5, ease: "power1.in" }, 18.0);
+
+      // ---- Scene 3: git status (18 - 27.5), 0.5s crossfade in ----
+      tl.fromTo("#scene-git", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 18.0);
+      tl.fromTo("#shot-git", { scale: 1.0, xPercent: 0, yPercent: 0 }, { scale: 1.08, xPercent: -1, yPercent: 1.5, duration: 9.5, ease: "none" }, 18.0);
+      tl.to("#eyebrow-git", { opacity: 1, duration: 0.5, ease: "power2.out" }, 18.35);
+      tl.fromTo("#headline-git", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "power3.out" }, 18.55);
+      tl.to("#scene-git", { opacity: 0, duration: 0.5, ease: "power1.in" }, 27.0);
+
+      // ---- Scene 4: closing brand card (27 - 35), 0.5s crossfade in ----
+      tl.fromTo("#scene-closing", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 27.0);
+      tl.fromTo("#closing-mark", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 27.4);
+      tl.to("#scene-closing", { opacity: 0, duration: 0.4, ease: "power1.in" }, 34.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
