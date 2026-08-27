@@ -177,6 +177,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem(context));
 
   context.subscriptions.push(
+    // Same handler as "Add Folder to Grid…" — "Open Project Grid…" is the
+    // advertised first-run entry point (viewsWelcome, walkthrough, docs);
+    // once a grid exists, adding a folder *is* how you grow it further, so
+    // both titles map onto one implementation rather than diverging logic.
+    vscode.commands.registerCommand("panecrew.openProjectGrid", addFolderAndAssign),
     vscode.commands.registerCommand("panecrew.addFolderToGrid", addFolderAndAssign),
     vscode.commands.registerCommand("panecrew.refreshExplorer", () => {
       treeDataProvider.refresh();

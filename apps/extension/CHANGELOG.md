@@ -2,6 +2,16 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.2 — 2026-08-27
+
+### Added
+
+- `PaneCrew: Open Project Grid…` — a real command now, not just a documented
+  one. Same underlying action as `Add Folder to Grid…`: opens a folder picker
+  and gives it its own pane.
+- The PaneCrew explorer shows a welcome view with an "Open Project Grid…"
+  button when no folder is open yet, instead of staying blank.
+
 ## 0.1.1 — 2026-08-27
 
 ### Changed

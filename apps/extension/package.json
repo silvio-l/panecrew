@@ -2,7 +2,7 @@
   "name": "panecrew",
   "displayName": "PaneCrew",
   "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "silvio-lindstedt",
   "icon": "media/panecrew-icon-128.png",
   "license": "MIT",
@@ -40,6 +40,10 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "panecrew.openProjectGrid",
+        "title": "PaneCrew: Open Project Grid…"
+      },
       {
         "command": "panecrew.addFolderToGrid",
         "title": "PaneCrew: Add Folder to Grid…",
@@ -152,6 +156,13 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "panecrew.explorerView",
+        "contents": "No projects in this grid yet.\n[Open Project Grid…](command:panecrew.openProjectGrid)\nOpens a folder and gives it its own pane.",
+        "when": "workbenchState == empty"
+      }
+    ],
     "menus": {
       "view/title": [
         {
