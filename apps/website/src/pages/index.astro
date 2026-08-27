@@ -754,6 +754,7 @@ const description =
     position: relative; overflow: hidden;
     display: flex; align-items: stretch;
   }
+  .card-vis img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
   .card-body { padding: 16px 20px 20px; }
   .sticker {
     font-family: var(--display); font-weight: 700;
@@ -1172,63 +1173,13 @@ const description =
     </div>
 
     <div class="wrap hero-grid">
-      <!-- the assembly stage: panes fly in, explorer docks, focus cycles -->
-      <div class="app assemble" id="heroApp" data-vfx="tilt" data-tilt-max="4" aria-label="PaneCrew inside VS Code: four terminal panes assemble into a grid and a file explorer docks and follows the focused pane">
-        <div class="app-bar" aria-hidden="true">
-          <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
-          <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
-          <span>PaneCrew</span>
-          <span class="hud-readout"><span class="hb">2×2</span> · <span class="hud-idx" id="heroHudIdx">01</span><span class="hb">/04</span> · <span class="hud-name" id="heroHudName">orbit-api</span></span>
-        </div>
-        <div class="app-body">
-          <aside class="xpl" id="heroXpl" aria-hidden="true">
-            <p class="hd">explorer · follows focus</p>
-            <p class="proj">▾ orbit-api</p>
-            <ul>
-              <li><span class="tc">├─ </span>▸ node_modules</li>
-              <li><span class="tc">├─ </span>▾ src</li>
-              <li class="hl"><span class="tc">│  ├─ </span>router.ts</li>
-              <li><span class="tc">│  └─ </span>handlers.ts</li>
-              <li><span class="tc">├─ </span>package.json</li>
-              <li><span class="tc">└─ </span>README.md</li>
-            </ul>
-          </aside>
-          <div class="pinrail" aria-hidden="true">
-            <span class="pin" data-pin="0"></span>
-            <span class="pin" data-pin="1"></span>
-            <span class="pin" data-pin="2"></span>
-            <span class="pin" data-pin="3"></span>
-          </div>
-          <div class="field">
-            <div class="hpane" data-p="0" data-title="orbit-api — claude" style="--fx:-70%; --fy:-90%; --fr:-11deg; --fd:0.1s" aria-hidden="true">
-              <div>&gt; refactor the router</div>
-              <div><span class="g">●</span> editing <span class="c">src/router.ts</span></div>
-              <div><span class="g">✓</span> 14 tests passed</div>
-              <div><span class="w">›</span> <span class="cursor"></span></div>
-            </div>
-            <div class="hpane" data-p="1" data-title="dashboard — codex" style="--fx:75%; --fy:-80%; --fr:9deg; --fd:0.25s" aria-hidden="true">
-              <div>$ codex "usage chart"</div>
-              <div><span class="y">⚠</span> 2 type errors</div>
-              <div>fixing imports…</div>
-            </div>
-            <div class="hpane" data-p="2" data-title="cli-tools — gemini" style="--fx:-80%; --fy:85%; --fr:7deg; --fd:0.4s" aria-hidden="true">
-              <div>$ gemini review --staged</div>
-              <div><span class="b">ℹ</span> reviewing 6 files</div>
-              <div><span class="g">✓</span> no blockers</div>
-            </div>
-            <div class="hpane" data-p="3" data-title="panecrew — zsh" style="--fx:80%; --fy:90%; --fr:-8deg; --fd:0.55s" aria-hidden="true">
-              <div>$ pnpm run watch</div>
-              <div><span class="g">✓</span> compiled in 412 ms</div>
-              <div><span class="c">Info</span> watching…</div>
-            </div>
-          </div>
-          <svg class="trace-svg" aria-hidden="true">
-            <path id="heroTraceBase" class="trace-base"></path>
-            <path id="heroTracePath"></path>
-            <g id="heroTraceSparks" class="trace-sparks"></g>
-            <rect id="heroTracePad" width="8" height="4"></rect>
-          </svg>
-        </div>
+      <!-- real capture: PaneCrew's 2x2 grid, four live terminals (Claude Code,
+           Codex, Gemini CLI, a plain pnpm watch), the PaneCrew explorer
+           docked in the activity bar and showing git decorations for the
+           focused pane's project. Captured on the Windows test rig, not a
+           CSS mock. -->
+      <div class="app assemble" id="heroApp" data-tilt-max="4">
+        <img src="/images/hero-grid.png" alt="PaneCrew inside VS Code: a 2x2 grid of four real terminals (Claude Code, Codex, Gemini CLI, and a pnpm watch), with the PaneCrew explorer docked in the activity bar showing the focused project's git changes" style="width:100%; height:auto; display:block; border-radius:12px;" />
       </div>
 
       <div class="hero-copy" data-vfx="par" data-par="24">
@@ -1251,20 +1202,15 @@ const description =
   <section id="crew" aria-label="Features">
     <div class="sect-head" data-idx="01">
       <p class="eyebrow reveal">meet the crew</p>
-      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">extension.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Eight</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
-      <p class="reveal" style="--rd:0.25s">These aren't bolted on later — they're what PaneCrew is. Every card below is one facet of the same extension.</p>
+      <h2 class="kin"><span class="kw"><span class="kwi" style="--wi:0">One</span></span> <span class="kw"><span class="kwi" style="--wi:1">extension.</span></span> <span class="kw"><span class="kwi" style="--wi:2">Four</span></span> <span class="kw"><span class="kwi" style="--wi:3">crew</span></span> <span class="kw"><span class="kwi" style="--wi:4">members.</span></span></h2>
+      <p class="reveal" style="--rd:0.25s">Four cards, four real screenshots — everything below is something a standard VS Code install doesn't do out of the box. (We cut the cards that were really just VS Code's own git decorations, themes, or command palette wearing a PaneCrew label.)</p>
     </div>
 
     <div class="wrap">
       <div class="crew-row">
         <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
-            <div class="minigrid" aria-hidden="true">
-              <div class="mp amb"><b>orbit-api — claude</b><span class="g">✓</span> tests green<br><span class="w">›</span> <span class="cursor"></span></div>
-              <div class="mp"><b>dashboard — codex</b><span class="y">⚠</span> 2 type errors<br>fixing imports…</div>
-              <div class="mp"><b>cli-tools — gemini</b><span class="b">ℹ</span> reviewing 6 files</div>
-              <div class="mp"><b>panecrew — zsh</b>$ pnpm run watch<br><span class="g">✓</span> ready</div>
-            </div>
+            <img src="/images/crew/grid.png" alt="A 2x2 grid of four real VS Code terminals — Claude Code, Codex, Gemini CLI, and a pnpm watch — each running in its own workspace folder, with the PaneCrew explorer showing the focused project's git changes" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Grid</h3>
@@ -1272,7 +1218,7 @@ const description =
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>2×2</span>
               <span class="badge">real PTY</span>
             </div>
-            <p>Up to four real, PTY-backed terminals side by side across different workspace folders — all visible at once, arranged via VS Code's own editor-group layout. A grid, not a tab switcher.</p>
+            <p>Up to four real, PTY-backed terminals side by side across different workspace folders — all visible at once, arranged via VS Code's own editor-group layout. A grid, not a tab switcher: no alt-tabbing between agent sessions to see which one is stuck waiting on you.</p>
             <a class="more" href="/guides/multiple-cli-agent-sessions/">Running multiple agent sessions at once →</a>
             <a class="more" href="/guides/how-many-claude-code-sessions/" style="display:block; margin-top:4px;">How many sessions should you run? →</a>
           </div>
@@ -1280,19 +1226,14 @@ const description =
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
-            <div class="mock" data-title="explorer" aria-hidden="true">
-              <div><span class="c">▾ dashboard</span> <span style="opacity:.5">← focus moved</span></div>
-              <div><span class="tc">├─ </span>▾ src/charts</div>
-              <div><span class="tc">│  └─ </span><span class="w" style="background:rgba(90,207,211,.16); padding:0 4px;">usage.tsx</span></div>
-              <div><span class="tc">└─ </span>vite.config.ts</div>
-            </div>
+            <img src="/images/crew/sidekick.png" alt="The PaneCrew explorer in the activity bar switched to show the dashboard project's file tree, because the dashboard terminal pane is the one currently focused" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Sidekick</h3>
             <div class="pills">
               <span class="badge cy"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>follows focus</span>
             </div>
-            <p>One PaneCrew explorer for the whole grid, in the activity bar. Switch panes — the tree is already showing that project. View, edit, move on.</p>
+            <p>One PaneCrew explorer for the whole grid, docked in the activity bar. Click into a different pane and the tree underneath swaps to that pane's project on its own — no manual "reveal in explorer," no second click. This is the one thing we couldn't find anywhere else in VS Code itself: a multi-root workspace's built-in Explorer shows every folder stacked at once, not one folder that tracks whichever terminal has focus.</p>
             <a class="more" href="/guides/prevent-agents-editing-same-files/">Running several agents on one repo? →</a>
           </div>
         </article>
@@ -1301,115 +1242,27 @@ const description =
       <div class="crew-row rev">
         <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
-            <div class="mock" data-title="explorer — git status" aria-hidden="true">
-              <div><span class="tc">├─ </span><span class="y">M</span> router.ts</div>
-              <div><span class="tc">├─ </span><span class="g">A</span> handlers.ts</div>
-              <div><span class="tc">└─ </span><span class="c">U</span> notes.md</div>
-            </div>
-          </div>
-          <div class="card-body">
-            <h3 class="sticker">Signal</h3>
-            <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>git status</span>
-            </div>
-            <p>Modified, added, and untracked files get badged and colored right in the tree, per workspace-folder root — a git status check without leaving the explorer.</p>
-          </div>
-        </article>
-
-        <article class="card reveal" style="--rd:0.1s">
-          <div class="card-vis">
-            <div class="mock" data-title="panecrew — restoring" aria-hidden="true">
-              <div>reopening workspace…</div>
-              <div><span class="g">✓</span> layout restored <span style="opacity:.5">(2×2)</span></div>
-              <div><span class="g">✓</span> orbit-api · dashboard · cli-tools · panecrew</div>
-              <div><span class="g">✓</span> 4 sessions back where you left them</div>
-              <div><span class="w">›</span> <span class="cursor"></span></div>
-            </div>
-          </div>
-          <div class="card-body">
-            <h3 class="sticker">Recall</h3>
-            <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>session restore</span>
-            </div>
-            <p>Close VS Code, reopen the workspace, continue. Grid layout and pane-to-folder assignments come back exactly the way you left them.</p>
-          </div>
-        </article>
-      </div>
-
-      <div class="crew-row">
-        <article class="card reveal" style="--rd:0s">
-          <div class="card-vis">
-            <div class="mock" data-title="settings — appearance" aria-hidden="true">
-              <div class="swatches">
-                <span class="sw" style="background:linear-gradient(135deg,#1c2039,#e59656)"></span>
-                <span class="sw" style="background:linear-gradient(135deg,#fdf6ea,#c98a3e)"></span>
-              </div>
-              <div style="padding-top:8px">&gt; PaneCrew: Set PaneCrew Theme… <span class="g">✓</span></div>
-            </div>
-          </div>
-          <div class="card-body">
-            <h3 class="sticker">Wardrobe</h3>
-            <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>themes</span>
-            </div>
-            <p>Two color themes — PaneCrew Dark and PaneCrew Light — tuned for terminal-heavy, multi-project work. Offered once on first activation, switchable anytime from the command palette.</p>
-          </div>
-        </article>
-
-        <article class="card reveal" style="--rd:0.1s">
-          <div class="card-vis">
-            <div class="mock" data-title="command palette" aria-hidden="true">
-              <div>&gt; PaneCrew: Open Project Grid…</div>
-              <div><span class="c">→</span> opening grid…</div>
-              <div><span class="g">✓</span> pane 1: orbit-api</div>
-              <div><span class="w">›</span> <span class="cursor"></span></div>
-            </div>
-          </div>
-          <div class="card-body">
-            <h3 class="sticker">Launch</h3>
-            <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>command palette</span>
-            </div>
-            <p><code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">PaneCrew: Open Project Grid…</code> and <code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">PaneCrew: Add Folder to Grid…</code> get you from an empty workspace to a running grid without hand-arranging editor groups.</p>
-          </div>
-        </article>
-      </div>
-
-      <div class="crew-row rev">
-        <article class="card reveal" style="--rd:0s">
-          <div class="card-vis">
-            <div class="mock" data-title="command palette" aria-hidden="true">
-              <div>&gt; PaneCrew: Apply Compact Look</div>
-              <div><span class="g">✓</span> status bar hidden</div>
-              <div><span class="g">✓</span> minimap hidden</div>
-              <div><span class="w">›</span> <span class="cursor"></span></div>
-            </div>
+            <img src="/images/crew/dial.png" alt="The VS Code command palette open on 'PaneCrew: Apply Compact Look', which hides the status bar and minimap to make room for more panes" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Dial</h3>
             <div class="pills">
-              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>settings</span>
-              <span class="badge">compact look</span>
+              <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>compact look</span>
             </div>
-            <p>Ordinary <code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">panecrew.*</code> VS Code settings for grid defaults and git decorations, plus Compact Look, which hides secondary chrome (status bar, minimap) to make room for more panes — the activity bar always stays visible.</p>
+            <p><code style="font-family:var(--mono); font-size:0.875em; color:var(--amber-text);">PaneCrew: Apply Compact Look</code> hides the status bar and minimap in one command — chrome you don't need when four panes are already fighting for screen space — while leaving the activity bar (and PaneCrew's own icon in it) visible. One command, not five separate settings toggles.</p>
           </div>
         </article>
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
-            <div class="mock" data-title="command palette" aria-hidden="true">
-              <div>&gt; PaneCrew: Save Current Grid as Preset…</div>
-              <div><span class="g">✓</span> saved as "orbit-stack"</div>
-              <div>&gt; PaneCrew: Load Grid Preset…</div>
-              <div><span class="g">✓</span> "orbit-stack" restored</div>
-            </div>
+            <img src="/images/crew/preset.png" alt="The VS Code command palette open on 'PaneCrew: Save Current Grid as Preset...'" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Preset</h3>
             <div class="pills">
               <span class="badge"><svg viewBox="0 0 16 16" fill="currentColor"><use href="#mkPanes"/></svg>named layouts</span>
             </div>
-            <p>Save a grid layout as a named preset and reload it in any workspace — reusable across projects, not tied to one session.</p>
+            <p>Save the current grid — which folders, in which slots — as a named preset from the command palette, and load it again in any workspace later. Set up a "backend + frontend + tests" layout once, reuse it on the next repo instead of rebuilding it by hand.</p>
             <a class="more" href="/guides/multiple-terminal-windows/">Working across more windows and projects →</a>
           </div>
         </article>
@@ -1967,22 +1820,9 @@ const description =
     };
   }
 
-  /* ---- hero: auto focus-cycle after assembly ---- */
-  var heroApp = document.getElementById('heroApp');
-  var heroXpl = document.getElementById('heroXpl');
-  var heroPanes = Array.prototype.slice.call(heroApp.querySelectorAll('.hpane'));
-  var heroPins = Array.prototype.slice.call(heroApp.querySelectorAll('.pin'));
-  var heroDrawTrace = makeTraceDrawer(
-    heroApp.querySelector('.app-body'), heroPins, heroPanes,
-    document.getElementById('heroTracePath'), document.getElementById('heroTracePad'),
-    document.getElementById('heroTraceBase'), makeCometTrain(document.getElementById('heroTraceSparks'), traceCometOpts)
-  );
-  var heroIdx = 0, heroTimer = null, heroTraceReady = false;
-
-  /* one tiny helper for the app-bar HUD readouts (hero + demo): index +
-     focused project name, with the same tick entrance the nav readout
-     uses — every "instrument" on the page announces state changes the
-     same way. */
+  /* ---- hero: now a real screenshot (#heroApp), no assembly/focus-cycle
+     animation to drive — kept only the HUD helper below for the live demo
+     section further down the page. */
   function hudSet(idxEl, nameEl, idx, animate) {
     if (!idxEl || !nameEl) return;
     idxEl.textContent = String(idx + 1).padStart(2, '0');
@@ -1993,49 +1833,9 @@ const description =
       nameEl.classList.add('tick');
     }
   }
-  var heroHudIdx = document.getElementById('heroHudIdx');
-  var heroHudName = document.getElementById('heroHudName');
   var demoHudIdx = document.getElementById('demoHudIdx');
   var demoHudName = document.getElementById('demoHudName');
-
-  function heroFocus(idx, animate) {
-    heroIdx = idx;
-    heroPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
-    heroPins.forEach(function (p, i) { p.classList.toggle('on', i === idx); });
-    renderExplorer(heroXpl, idx, animate);
-    hudSet(heroHudIdx, heroHudName, idx, animate);
-    if (heroTraceReady) heroDrawTrace(idx, animate);
-  }
-
-  heroFocus(0, false);
-
-  if (!reduced) {
-    var startCycle = function () {
-      if (heroTimer) return;
-      // first activation: the assembly choreography is done by now, draw
-      // the trace instantly instead of animating from a mid-flight pane
-      if (!heroTraceReady) { heroTraceReady = true; heroDrawTrace(heroIdx, false); }
-      heroTimer = setInterval(function () {
-        heroFocus((heroIdx + 1) % 4, true);
-      }, 3400);
-    };
-    var stopCycle = function () {
-      if (heroTimer) { clearInterval(heroTimer); heroTimer = null; }
-    };
-    // wait for the assembly choreography before cycling
-    setTimeout(function () {
-      if ('IntersectionObserver' in window) {
-        new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) { e.isIntersecting ? startCycle() : stopCycle(); });
-        }, { threshold: 0.25 }).observe(heroApp);
-      } else {
-        startCycle();
-      }
-    }, 2300);
-  } else {
-    heroTraceReady = true;
-    heroDrawTrace(0, false);
-  }
+  var heroApp = document.getElementById('heroApp');
 
   /* ---- live demo: the visitor drives the focus ---- */
   var demoApp = document.getElementById('demoApp');
@@ -2483,7 +2283,6 @@ const description =
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      if (heroTraceReady) heroDrawTrace(heroIdx, false);
       var demoFocusedIdx = demoPanes.findIndex(function (p) { return p.classList.contains('focused'); });
       demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
       drawSeam();
