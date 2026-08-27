@@ -16,6 +16,9 @@ interface SavedLookValues {
   minimapEnabled: boolean | undefined;
   activityBarLocation: string | undefined;
   menuBarVisibility: string | undefined;
+  layoutControlEnabled: boolean | undefined;
+  chatSignInEnabled: boolean | undefined;
+  chatOpenInAgentsWindowEnabled: boolean | undefined;
 }
 
 export async function applyCompactLook(memento: CompactLookMemento): Promise<void> {
@@ -29,6 +32,10 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
     minimapEnabled: config.inspect<boolean>("editor.minimap.enabled")?.globalValue,
     activityBarLocation: config.inspect<string>("workbench.activityBar.location")?.globalValue,
     menuBarVisibility: config.inspect<string>("window.menuBarVisibility")?.globalValue,
+    layoutControlEnabled: config.inspect<boolean>("workbench.layoutControl.enabled")?.globalValue,
+    chatSignInEnabled: config.inspect<boolean>("chat.titleBar.signIn.enabled")?.globalValue,
+    chatOpenInAgentsWindowEnabled: config.inspect<boolean>("chat.titleBar.openInAgentsWindow.enabled")
+      ?.globalValue,
   };
   await memento.update(SAVED_STATE_KEY, saved);
 
@@ -43,6 +50,14 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
   // and collapses the native window menu bar down to a single icon.
   await config.update("workbench.activityBar.location", "top", vscode.ConfigurationTarget.Global);
   await config.update("window.menuBarVisibility", "compact", vscode.ConfigurationTarget.Global);
+  // Clears the layout-picker/sidebar-toggle icon cluster and the Copilot
+  // sign-in button / "Open in Agents Window" icon out of the title bar —
+  // all secondary chrome the same way the status bar and minimap are. The
+  // command center (search pill + chat entry) stays — it's the closest
+  // analog to macOS's own title bar search, not chrome to strip.
+  await config.update("workbench.layoutControl.enabled", false, vscode.ConfigurationTarget.Global);
+  await config.update("chat.titleBar.signIn.enabled", false, vscode.ConfigurationTarget.Global);
+  await config.update("chat.titleBar.openInAgentsWindow.enabled", false, vscode.ConfigurationTarget.Global);
 }
 
 export async function restoreLook(memento: CompactLookMemento): Promise<void> {
@@ -66,6 +81,21 @@ export async function restoreLook(memento: CompactLookMemento): Promise<void> {
   await config.update(
     "window.menuBarVisibility",
     saved?.menuBarVisibility,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "workbench.layoutControl.enabled",
+    saved?.layoutControlEnabled,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "chat.titleBar.signIn.enabled",
+    saved?.chatSignInEnabled,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "chat.titleBar.openInAgentsWindow.enabled",
+    saved?.chatOpenInAgentsWindowEnabled,
     vscode.ConfigurationTarget.Global,
   );
 }

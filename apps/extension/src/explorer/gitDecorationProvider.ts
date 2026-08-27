@@ -7,6 +7,18 @@
 import * as vscode from "vscode";
 import { BADGE_BY_STATUS, COLOR_ID_BY_STATUS, parsePorcelain, runGitStatus, type GitFileStatus } from "./gitStatus";
 
+function statusMapsEqual(
+  a: Map<string, GitFileStatus> | undefined,
+  b: Map<string, GitFileStatus>,
+): boolean {
+  if (!a) return false;
+  if (a.size !== b.size) return false;
+  for (const [path, status] of a) {
+    if (b.get(path) !== status) return false;
+  }
+  return true;
+}
+
 export class PaneCrewGitDecorationProvider implements vscode.FileDecorationProvider {
   private readonly onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
   readonly onDidChangeFileDecorations = this.onDidChangeEmitter.event;
@@ -22,8 +34,17 @@ export class PaneCrewGitDecorationProvider implements vscode.FileDecorationProvi
   async refresh(folder: vscode.WorkspaceFolder): Promise<void> {
     const root = folder.uri.fsPath.replace(/\\/g, "/");
     const output = await runGitStatus(folder.uri.fsPath);
-    this.statusByFolder.set(root, parsePorcelain(output, root));
-    this.onDidChangeEmitter.fire(undefined);
+    const next = parsePorcelain(output, root);
+    const previous = this.statusByFolder.get(root);
+    this.statusByFolder.set(root, next);
+    // Only fire when the parsed status actually differs — `git status` runs
+    // on every save/fs-watcher tick regardless of whether anything changed,
+    // and an unconditional fire repaints (and visibly flashes) every
+    // decorated item in every view exposing these resourceUris even when
+    // nothing did.
+    if (!statusMapsEqual(previous, next)) {
+      this.onDidChangeEmitter.fire(undefined);
+    }
   }
 
   async refreshAll(folders: readonly vscode.WorkspaceFolder[]): Promise<void> {
