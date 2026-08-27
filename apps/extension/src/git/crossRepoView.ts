@@ -14,9 +14,19 @@ export class PaneCrewCrossRepoViewProvider implements vscode.TreeDataProvider<vs
   private readonly statusByFolder = new Map<string, ProjectStatus | undefined>();
 
   /** Same "set everything, fire once" contract as
-   * `treeDataProvider.ts`'s `setRootDescription`. */
-  setStatus(folderUri: vscode.Uri, status: ProjectStatus | undefined): void {
-    this.statusByFolder.set(folderUri.toString(), status);
+   * `treeDataProvider.ts`'s `setRootDescription` — returns whether the
+   * status actually changed, so a poll that finds nothing new can skip the
+   * `refresh()` call. */
+  setStatus(folderUri: vscode.Uri, status: ProjectStatus | undefined): boolean {
+    const key = folderUri.toString();
+    const previous = this.statusByFolder.get(key);
+    if (previous === status) return false;
+    if (previous !== undefined && status !== undefined && formatStatusLabel(previous) === formatStatusLabel(status)) {
+      this.statusByFolder.set(key, status);
+      return false;
+    }
+    this.statusByFolder.set(key, status);
+    return true;
   }
 
   refresh(): void {

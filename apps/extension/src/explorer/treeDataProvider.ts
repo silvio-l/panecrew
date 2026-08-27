@@ -108,10 +108,17 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
   /** Doesn't fire a refresh itself — the caller updates every folder's
    * description in a loop and fires one `refresh()` afterward, so a
    * multi-project workspace doesn't re-render once per folder. */
-  setRootDescription(folderUri: vscode.Uri, description: string | undefined): void {
+  /** Returns whether the description actually changed, so callers that
+   * batch several of these before firing a single `refresh()` (e.g. the
+   * periodic project-status poll in extension.ts) can skip the refresh —
+   * and the tree's visible collapse/re-expand flash — when nothing did. */
+  setRootDescription(folderUri: vscode.Uri, description: string | undefined): boolean {
     const key = folderUri.toString();
+    const previous = this.rootDescriptions.get(key);
+    if (previous === description) return false;
     if (description) this.rootDescriptions.set(key, description);
     else this.rootDescriptions.delete(key);
+    return true;
   }
 
   /** Switches which project's tree is shown — called by `focusFollow.ts`.

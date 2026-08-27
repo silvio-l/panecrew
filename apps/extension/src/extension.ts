@@ -95,17 +95,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.createTreeView("panecrew.crossRepoView", { treeDataProvider: crossRepoView }),
   );
   let ghAvailable = false;
+  // Only fires the tree-refresh events when a status actually changed —
+  // the periodic poll below runs every 60s regardless, and firing an
+  // unconditional `refresh()` on every tick collapses/re-expands the
+  // visible tree even when nothing changed, which reads as the explorer
+  // flickering on its own.
   const refreshProjectStatuses = async () => {
     const folders = vscode.workspace.workspaceFolders ?? [];
-    await Promise.all(
+    const changedFlags = await Promise.all(
       folders.map(async (folder) => {
         const status = await getProjectStatus(folder.uri.fsPath, ghAvailable);
-        treeDataProvider.setRootDescription(folder.uri, status ? formatStatusLabel(status) : undefined);
-        crossRepoView.setStatus(folder.uri, status);
+        const treeChanged = treeDataProvider.setRootDescription(folder.uri, status ? formatStatusLabel(status) : undefined);
+        const crossRepoChanged = crossRepoView.setStatus(folder.uri, status);
+        return { treeChanged, crossRepoChanged };
       }),
     );
-    treeDataProvider.refresh();
-    crossRepoView.refresh();
+    if (changedFlags.some((f) => f.treeChanged)) treeDataProvider.refresh();
+    if (changedFlags.some((f) => f.crossRepoChanged)) crossRepoView.refresh();
   };
   void isGhAvailable().then((available) => {
     ghAvailable = available;
