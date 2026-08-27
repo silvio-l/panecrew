@@ -219,6 +219,21 @@
         background: radial-gradient(120% 140% at 50% 20%, #241a38 0%, #120e1b 55%, #0a0712 100%);
         overflow: hidden;
       }
+      /* diagonal hatch-stripe accent layer - adds a second depth plane behind
+         the glow/wordmark so the brand scenes read as layered rather than flat,
+         kept faint and on-palette (amber) rather than a decorative centerpiece */
+      .brand-scene .hatch {
+        position: absolute;
+        inset: -20%;
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(252, 173, 67, 0.07) 0px,
+          rgba(252, 173, 67, 0.07) 2px,
+          transparent 2px,
+          transparent 34px
+        );
+        opacity: 0;
+      }
       .brand-scene .glow {
         position: absolute;
         width: 900px;
@@ -322,6 +337,7 @@
       <!-- Scene 0: kinetic title open (0 - 3.8) -->
       <section id="scene-open" class="clip brand-scene" data-start="0" data-duration="3.8" data-track-index="1">
         <div id="scene-open-inner" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+          <div class="hatch"></div>
           <div class="glow"></div>
           <div class="mark">
             <svg class="glyph" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -420,6 +436,7 @@
 
       <!-- Scene 4: closing brand card (29.5 - 35) -->
       <section id="scene-closing" class="clip brand-scene" data-start="29.5" data-duration="5.5" data-track-index="1">
+        <div class="hatch"></div>
         <div class="glow"></div>
         <div class="mark">
           <svg class="glyph" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -456,6 +473,7 @@
       }
 
       // ---- Scene 0: kinetic title open (0 - 3.8) ----
+      tl.fromTo("#scene-open .hatch", { opacity: 0, xPercent: 0 }, { opacity: 1, xPercent: -4, duration: 3.6, ease: "sine.inOut" }, 0.05);
       tl.fromTo("#scene-open .glow", { xPercent: -50, yPercent: -55, scale: 0.6 }, { xPercent: -50, yPercent: -55, scale: 1, opacity: 1, duration: 1.2, ease: "power2.out" }, 0.05);
       tl.to("#scene-open .glyph", { opacity: 1, duration: 0.2 }, 0.15);
       tl.to("#scene-open .glyph .chevron", { strokeDashoffset: 0, duration: 0.65, ease: "power2.out" }, 0.2);
@@ -515,6 +533,7 @@
       wipeAt(29.3);
 
       // ---- Scene 4: closing brand card (29.5 - 35) ----
+      tl.fromTo("#scene-closing .hatch", { opacity: 0, xPercent: 0 }, { opacity: 1, xPercent: -5, duration: 5.2, ease: "sine.inOut" }, 29.55);
       tl.fromTo("#scene-closing .glow", { xPercent: -50, yPercent: -55, scale: 0.6 }, { xPercent: -50, yPercent: -55, scale: 1, opacity: 1, duration: 1.2, ease: "power2.out" }, 29.55);
       tl.to("#scene-closing .glyph", { opacity: 1, duration: 0.2 }, 29.65);
       tl.to("#scene-closing .glyph .chevron", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 29.7);
