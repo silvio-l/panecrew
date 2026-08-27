@@ -78,8 +78,7 @@ const description =
      PaneCrew landing prototype 6 — "Charmline"
      Warm, structured landing-page DNA translated into PaneCrew's
      indigo/amber/cyan/cream world. 25% Assembly DNA (pane fly-in,
-     explorer dock, calm narration). 5% new: a hands-on
-     focus-follow demo the visitor drives themselves.
+     explorer dock, calm narration).
      Self-contained, system fonts only.
      ============================================================ */
   /* Nav/footer/token CSS shared with the guide-page layout lives in
@@ -314,8 +313,6 @@ const description =
        letterbox, not an app window. */
     padding: 8px; height: clamp(350px, 26vw, 470px); position: relative;
   }
-  .pinrail { display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 6px 0; }
-
   .xpl {
     background: var(--term-xpl);
     border: 1px solid var(--term-line); border-radius: 8px;
@@ -339,59 +336,6 @@ const description =
   .xpl.swap { animation: xswap 0.28s ease; }
   @keyframes xswap { 0% { opacity: 0.25; transform: translateX(-5px); } 100% { opacity: 1; transform: none; } }
 
-  .field { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; }
-
-  /* ---------- focus pin-header + circuit trace ----------
-     A pin per open pane at the explorer/grid seam, one powered (amber) at a
-     time, and a chamfered bus-route trace that redraws itself to the newly
-     focused pane on every focus change — the same "Fokus-Leiterbahn" motif
-     the earlier Tauri desktop app used, kept as this site's own reusable
-     brand mechanism (geometry/timing constants: 6px chamfer, 2px/ms signal
-     speed, 180–350ms clamp) rather than pulled from any live app code. */
-  .pin {
-    width: 8px; height: 8px; flex: none; padding: 0; margin: 0;
-    border: 1px solid var(--term-line); background: var(--term);
-    transition: background var(--lift), border-color var(--lift);
-  }
-  .pin.on { background: var(--amber); border-color: var(--amber); }
-  /* 20px hit target around the 8px pad — the pad itself stays in connector
-     proportion, the button holds the minimum touch-target size (mirrors
-     FocusPinHeader.tsx's own size-4-around-size-2 comment). */
-  .pin-btn {
-    all: unset; box-sizing: border-box; width: 20px; height: 20px;
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
-  }
-  .pin-btn:hover .pin:not(.on) { border-color: var(--amber); }
-  .pin-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 2px; }
-  .trace-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
-  .trace-svg path { fill: none; stroke: var(--amber); stroke-width: 2.5; }
-  .trace-svg rect { fill: var(--amber); }
-  /* "Tron power lane" pass (2026-08-14, user: "wirkt noch nicht wie eine
-     tron strom lane") — same dashed-channel-under-solid-overlay language
-     already established for the page seam (#seamPath / .seam-live), plus
-     a genuinely moving element, since a focus-trace (unlike the seam) has
-     no continuous scroll signal to charge it — motion stands in for
-     "current is flowing". No blur/box-shadow anywhere — the no-glow rule
-     stays absolute; "energized" reads through motion and a hot-core color
-     step (amber conduit, cream spark), not a halo — a same-color dash on
-     top of the solid amber line would have been invisible.
-     Round 2 (2026-08-14, this pass's own follow-up, lost to a rebase and
-     restored 2026-08-15): a metronomic evenly-spaced dash march read as a
-     loading bar / distant road, not current — redesigned as an irregular
-     comet-shaped packet (hot short head, dimmer decaying tail) that fires
-     at randomized intervals with eased non-linear travel and an
-     occasional fast "spark" variant, rather than a constant train.
-     Perf pass (2026-08-14, performance-audit ticket 10, landed in
-     parallel with round 2 above): whichever shape chases the route, it
-     must never be a `stroke-dasharray`/`stroke-dashoffset` CSS animation
-     on the path itself — a paint-triggering SVG property, repainting the
-     whole stroke every frame for as long as the trace is on screen.
-     makeCometTrain (script below) drives a small pool of real elements
-     (head + shrinking/dimming tail) purely via WAAPI `transform`/
-     `opacity` keyframes sampled from the route's own geometry —
-     compositor-only, no repaint, and irregular/eased exactly like the
-     original round-2 design intended. */
-  .trace-svg path.trace-base { stroke-width: 1.5; stroke-opacity: 0.3; stroke-dasharray: 2 5; }
   /* comet coloring: hot cream core everywhere. On the page seam the tail
      is amber (energy trailing off into the conduit's own metal); on the
      mockup traces the route underneath is already SOLID amber, so amber
@@ -481,15 +425,6 @@ const description =
   }
   .hpane.focused { border-color: var(--amber); }
   .hpane.focused::before { color: var(--amber); }
-  .g { color: var(--ansi-green); } .y { color: var(--ansi-yellow); }
-  .c { color: var(--cyan-bright); } .b { color: var(--ansi-blue); }
-  .w { color: var(--cream); }
-  .cursor {
-    display: inline-block; width: 6px; height: 11px; vertical-align: -2px;
-    background: var(--amber); animation: blink 1.06s steps(1) infinite;
-  }
-  @keyframes blink { 50% { opacity: 0; } }
-
   /* assembly fly-in (load choreography, hero only) */
   .assemble .hpane {
     animation: flyin 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -628,42 +563,6 @@ const description =
      transform itself is still written by updateVfx() exactly as before. */
   [data-vfx].vfx-inview { will-change: transform; }
 
-  /* ---------- pinned demo sequence (scrollytelling) ----------
-     The live demo is the product's core argument, so it gets the page's
-     one pinned scrubbed moment: on desktop the demo window pins while
-     ~0.75 extra viewports of scroll drive focus across all four panes —
-     scrolling IS the focus-follow story. A genuinely fresh pane hover
-     still wins briefly (short grace window in updateDemoScrub) so the
-     "or hover a pane" affordance keeps working, but scroll always
-     reclaims control — 2026-08-14 fix: the previous guard suppressed
-     scrubbing for as long as the pointer merely sat anywhere inside the
-     (large, centered) demo window, which is exactly where a mouse tends
-     to rest while scrolling — scroll input landed but visibly did
-     nothing, reading as a stall. Trimmed from 230vh/~1.3 viewports at
-     the same time so the gaps between the four visible state changes
-     are shorter regardless.
-     Mobile and reduced-motion keep the plain in-flow layout. */
-  @media (min-width: 941px) and (prefers-reduced-motion: no-preference) {
-    /* the inner .closer-row's own margin-bottom: 90px (see below) never
-       actually spends scroll space here — it's inside .demo-sticky, whose
-       box is fully determined by the fixed-height .demo-stage wrapper
-       around it, so the next row began flush against this one with no
-       gap. Restore the same 90px rhythm on the wrapper itself. */
-    .demo-stage { height: 122vh; margin-bottom: 90px; }
-    /* -280px, was -230px: the demo window is taller on wide viewports now
-       (app-body clamps up to 440px), so the centering offset grows with it. */
-    .demo-stage .demo-sticky { position: sticky; top: max(48px, calc(50vh - 280px)); }
-  }
-  /* continuous scroll-progress fill under the demo title bar — without
-     it, the only visible feedback was the four discrete pane jumps,
-     which over the pinned span still reads as "nothing is happening"
-     in between. Tied 1:1 to scroll fraction (updateDemoScrub). */
-  #demoApp .app-bar { position: relative; }
-  .demo-progress {
-    position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
-    width: 0%; background: var(--amber); z-index: 1;
-  }
-
   /* generated companion plate to the hero atmosphere (same ComfyUI/SDXL
      pass, local-ai-srv) — much quieter, no bright cores, meant to keep the
      card-grid section from reading as flat indigo once the hero's own
@@ -724,9 +623,9 @@ const description =
       0 10px 26px rgba(10, 12, 26, 0.3);
     transition: transform var(--lift), box-shadow var(--lift);
   }
-  /* copper-edge hover: same "power up on approach" language as
-     .pin-btn:hover .pin:not(.on), applied to the card itself via an inset
-     top edge rather than a new border (no layout shift). */
+  /* copper-edge hover: "power up on approach" language, applied to the
+     card itself via an inset top edge rather than a new border (no
+     layout shift). */
   .card:hover {
     transform: translateY(-4px);
     box-shadow:
@@ -755,6 +654,12 @@ const description =
     display: flex; align-items: stretch;
   }
   .card-vis img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+  /* crops from the real captures are pre-cut to their card's exact ratio,
+     so object-fit: cover never trims them: the grid/sidekick crops are
+     2:1 (a 2x2 pane grid and a portrait-ish explorer need more height
+     than the 2.9:1 command-palette strips), the dial/preset crops match
+     the default 2.9:1 exactly. */
+  .card-vis.tall { aspect-ratio: 2 / 1; }
   .card-body { padding: 16px 20px 20px; }
   .sticker {
     font-family: var(--display); font-weight: 700;
@@ -780,47 +685,28 @@ const description =
   .card .more { display: inline-block; margin-top: 8px; font-size: 0.90625rem; font-weight: 600; color: var(--amber-text); text-decoration: none; transition: transform var(--lift); }
   .card .more:hover { text-decoration: underline; transform: translateX(3px); }
 
-  /* card visuals: small terminal mocks */
-  .mock {
-    font-family: var(--mono); font-size: 11px; line-height: 20px;
-    color: rgba(255, 253, 245, 0.62); padding: 30px 14px 10px; width: 100%;
-    position: relative;
+  /* OSS card visuals: real artifacts, not CSS fake-terminals (2026-08-27
+     sweep — the old .mock blocks staged synthetic shell sessions; these
+     plates show the repo's actual receipts instead: the real LICENSE
+     text, the real GitHub repo, real commit subjects from `git log`). */
+  .oss-vis { padding: 18px 20px 14px; width: 100%; overflow: hidden; }
+  .oss-doc {
+    font-family: var(--mono); font-size: 11px; line-height: 1.8;
+    color: rgba(255, 253, 245, 0.55); white-space: nowrap;
   }
-  .mock .tc { color: rgba(255, 253, 245, 0.32); }
-  .mock::before {
-    content: attr(data-title);
-    position: absolute; top: 0; left: 0; right: 0; height: 24px;
-    display: flex; align-items: center; padding: 0 12px;
-    background: var(--term-bar); border-bottom: 1px solid var(--term-line);
-    color: rgba(255, 253, 245, 0.66); font-size: 10px;
+  .oss-doc .hd { color: var(--amber); }
+  .oss-repo {
+    height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    color: rgba(255, 253, 245, 0.85); text-decoration: none;
+    transition: color var(--lift);
   }
-  .minigrid {
-    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-    gap: 6px; padding: 10px; width: 100%;
-  }
-  .minigrid .mp {
-    background: rgba(255, 253, 245, 0.045); border: 1px solid var(--term-line);
-    border-radius: 6px; padding: 6px 8px;
-    font-family: var(--mono); font-size: 9.5px; line-height: 1.7;
-    color: rgba(255, 253, 245, 0.55); overflow: hidden; white-space: nowrap;
-  }
-  .minigrid .mp b { display: block; font-weight: 400; color: rgba(255, 253, 245, 0.62); font-size: 8.5px; margin-bottom: 2px; }
-  .minigrid .mp.amb { border-color: rgba(229, 150, 86, 0.65); }
-  .tabsvis { padding: 12px; width: 100%; display: flex; flex-direction: column; gap: 0; }
-  .tabrow { display: flex; gap: 4px; }
-  .tab {
-    font-family: var(--mono); font-size: 10px; padding: 5px 12px;
-    border: 1px solid var(--term-line); border-bottom: none;
-    border-radius: 7px 7px 0 0; color: rgba(255, 253, 245, 0.45);
-  }
-  .tab.on { background: rgba(255, 253, 245, 0.07); color: var(--amber); border-color: rgba(229, 150, 86, 0.5); }
-  .tabpane {
-    border: 1px solid var(--term-line); border-radius: 0 7px 7px 7px;
-    background: rgba(255, 253, 245, 0.03); flex: 1; padding: 8px 10px;
-    font-family: var(--mono); font-size: 10px; line-height: 1.8; color: rgba(255, 253, 245, 0.6);
-  }
-  .swatches { display: flex; gap: 8px; padding: 8px 12px 0; }
-  .sw { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(255, 253, 245, 0.2); }
+  .oss-repo:hover { color: var(--cream); }
+  .oss-repo svg { width: 42px; height: 42px; fill: var(--amber); }
+  .oss-repo span { font-family: var(--mono); font-size: 12px; }
+  .oss-log { font-family: var(--mono); font-size: 11px; line-height: 1.9; white-space: nowrap; }
+  .oss-log .sha { color: var(--amber); opacity: 0.85; }
+  .oss-log div { color: rgba(255, 253, 245, 0.6); }
 
   /* ---------- tool wall (honest "industrial grade" slot) ---------- */
   .toolwall { text-align: center; padding: 30px 26px 10px; }
@@ -856,13 +742,11 @@ const description =
   }
   .closer-row.rev { grid-template-columns: minmax(320px, 500px) minmax(0, 1fr); }
   .closer-row.rev .closer-vis { order: 2; }
-  /* plain (non-demo) app-window mocks in a closer row: the visual column
-     is the growing 1fr span, so a five-line terminal stretched across it
-     read as a 5.6:1 banner (2026-08-15, user: mocks too wide). Cap the
-     window itself and give it real terminal height — the empty run below
-     the prompt is exactly what a freshly-started terminal looks like.
-     #demoApp keeps its own .app-body height clamp and full-width stage. */
-  .closer-vis > .app:not(.demo) { max-width: 640px; min-height: 300px; margin: 0 auto; }
+  /* the closer-row visual is a real pane crop now (2026-08-27 sweep, was
+     a CSS fake-terminal): cap the frame so the growing 1fr column doesn't
+     stretch the screenshot into a banner; the image's own aspect ratio
+     sets the height. */
+  .closer-vis > .app { max-width: 640px; margin: 0 auto; }
   /* the hero mockup (#heroApp, in .hero-grid's growing 1fr column) had no
      width cap at all and was never touched by the 2026-08-15 pass above —
      measured 1.95:1 at 1920px widening to 2.63:1 at 3440px, the same
@@ -882,54 +766,6 @@ const description =
   }
   .closer-copy p { color: rgba(255, 253, 245, 0.8); text-wrap: pretty; margin-bottom: 10px; }
   .closer-copy .hint { font-family: var(--mono); font-size: 0.875rem; color: var(--cyan-bright); letter-spacing: var(--label-track); }
-
-  /* the live demo (the 5% novelty) */
-  .demo {
-    background: var(--term);
-    border: 1px solid rgba(255, 253, 245, 0.14); border-radius: 14px;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 253, 245, 0.07),
-      0 1px 2px rgba(10, 12, 26, 0.45),
-      0 24px 60px rgba(10, 12, 26, 0.5);
-    overflow: hidden;
-    /* the 2026-08-15 closer-row fix above explicitly exempted #demoApp
-       ("keeps its own .app-body height clamp and full-width stage"),
-       reasoning the height clamp alone would be enough — measured wrong:
-       2.09:1 at 1920px widening to 2.82:1 at 3440px, same drift as the
-       plain closer-row mock it was excluded from. It sits in the same
-       .closer-vis growing column as that mock (not the hero), so it gets
-       the same treatment: capped + centered. Corrected 2026-08-16 (user:
-       still too wide/dominant even capped, same finding as #heroApp) —
-       tightened from 1020px/2.13:1 to 790px/~1.66:1, matching the hero's
-       revised ratio; unlike .hero-grid this sits centered via margin:0
-       auto already, so any leftover column slack splits evenly on both
-       sides instead of piling up as a single dead gap. */
-    max-width: 790px; margin: 0 auto;
-  }
-  .demo .app-body { height: clamp(330px, 24vw, 440px); }
-  .dpane {
-    all: unset; display: block; cursor: pointer;
-    background: var(--term); border: 1px solid var(--term-line); border-radius: 8px;
-    font-family: var(--mono); font-size: 10.5px; line-height: 1.8;
-    color: rgba(255, 253, 245, 0.62);
-    padding: 28px 10px 6px; overflow: hidden; position: relative;
-    transition: border-color 0.2s ease, transform var(--lift);
-    box-sizing: border-box; width: 100%; height: 100%;
-  }
-  .dpane::before {
-    content: attr(data-title);
-    position: absolute; top: 0; left: 0; right: 0; height: 22px;
-    display: flex; align-items: center; padding: 0 10px;
-    background: var(--term-bar); border-bottom: 1px solid var(--term-line);
-    color: rgba(255, 253, 245, 0.66); font-size: 9.5px; white-space: nowrap;
-  }
-  /* cyan preview on approach (explorer/focus context), distinct from the
-     amber .dpane.focused border — equal specificity, .focused wins by
-     source order, so hovering the already-focused pane stays amber. */
-  .dpane:hover { transform: translateY(-1px); border-color: var(--cyan); }
-  .dpane:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-  .dpane.focused { border-color: var(--amber); }
-  .dpane.focused::before { color: var(--amber); }
 
   /* ---------- open source ("we love open source" slot, honest version) ---------- */
   .oss-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -990,10 +826,10 @@ const description =
   /* ---------- reduced motion ---------- */
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .cursor, .spark { animation: none; }
+    .spark { animation: none; }
     .assemble .hpane, .assemble .xpl { animation: none; }
     .xpl.swap { animation: none; }
-    .card:hover, .btn:hover, .brew:hover, .nav-cta:hover, .dpane:hover { transform: none; }
+    .card:hover, .btn:hover, .brew:hover, .nav-cta:hover { transform: none; }
     .reveal, .reveal.in { opacity: 1; animation: none; }
     .seam-live { display: none; }
     /* cinematic layer: everything appears finished immediately */
@@ -1022,13 +858,8 @@ const description =
     .app-bar .hud-readout { display: none; }
     .app-body { grid-template-columns: 1fr; height: auto; }
     .xpl { display: none; }
-    .pinrail, .trace-svg { display: none; }
     .nav-pinrow, .seam-svg { display: none; }
-    .demo .app-body { height: auto; grid-template-columns: 1fr; }
-    .demo .xpl { display: block; }
-    .field { grid-template-rows: none; }
-    .hpane, .dpane { min-height: 110px; }
-    .demo .field { grid-template-columns: 1fr 1fr; }
+    .hpane { min-height: 110px; }
   }
 </style>
 <noscript><style>
@@ -1111,7 +942,6 @@ const description =
   </a>
   <div class="nav-links">
     <a href="#crew">The crew</a>
-    <a href="#demo">Live demo</a>
     <a href="/guides/multiple-cli-agent-sessions/">Guides</a>
     <a href="/docs/">Docs</a>
     <a href="#oss">Open source</a>
@@ -1191,7 +1021,6 @@ const description =
         <p class="avail reveal" style="--rd:0.55s">Now on the VS Code Marketplace.</p>
         <div class="hero-ctas reveal" style="--rd:0.65s">
           <a class="btn" href="#install">Get PaneCrew</a>
-          <a class="btn ghost" href="#demo">See it follow ↓</a>
         </div>
       </div>
     </div>
@@ -1209,8 +1038,8 @@ const description =
     <div class="wrap">
       <div class="crew-row">
         <article class="card reveal" style="--rd:0s">
-          <div class="card-vis">
-            <img src="/images/crew/grid.png" alt="A 2x2 grid of four real VS Code terminals — Claude Code, Codex, Gemini CLI, and a pnpm watch — each running in its own workspace folder, with the PaneCrew explorer showing the focused project's git changes" />
+          <div class="card-vis tall">
+            <img src="/images/crew/grid-crop.png" alt="A 2x2 grid of four real VS Code terminals — Claude Code, Codex, Gemini CLI, and a pnpm watch — each running in its own workspace folder" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Grid</h3>
@@ -1225,8 +1054,8 @@ const description =
         </article>
 
         <article class="card reveal" style="--rd:0.1s">
-          <div class="card-vis">
-            <img src="/images/crew/sidekick.png" alt="The PaneCrew explorer in the activity bar switched to show the dashboard project's file tree, because the dashboard terminal pane is the one currently focused" />
+          <div class="card-vis tall">
+            <img src="/images/crew/sidekick-crop.png" alt="The PaneCrew explorer in the activity bar switched to show the dashboard project's file tree, because the dashboard terminal pane is the one currently focused" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Sidekick</h3>
@@ -1242,7 +1071,7 @@ const description =
       <div class="crew-row rev">
         <article class="card reveal" style="--rd:0s">
           <div class="card-vis">
-            <img src="/images/crew/dial.png" alt="The VS Code command palette open on 'PaneCrew: Apply Compact Look', which hides the status bar and minimap to make room for more panes" />
+            <img src="/images/crew/dial-crop.png" alt="The VS Code command palette open on 'PaneCrew: Apply Compact Look', which hides the status bar and minimap to make room for more panes" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Dial</h3>
@@ -1255,7 +1084,7 @@ const description =
 
         <article class="card reveal" style="--rd:0.1s">
           <div class="card-vis">
-            <img src="/images/crew/preset.png" alt="The VS Code command palette open on 'PaneCrew: Save Current Grid as Preset...'" />
+            <img src="/images/crew/preset-crop.png" alt="The VS Code command palette open on 'PaneCrew: Save Current Grid as Preset...'" />
           </div>
           <div class="card-body">
             <h3 class="sticker">Preset</h3>
@@ -1304,97 +1133,13 @@ const description =
     </div>
 
     <div class="wrap">
-      <!-- 5% novelty: the visitor drives the focus-follow.
-           .demo-stage pins the row on desktop and lets ~0.75 extra viewports of
-           scroll scrub the focus through all four panes (see updateDemoScrub)
-           — the anchor/scroll-spy target #demo stays on the outer stage. -->
-      <div class="demo-stage" id="demo">
-      <div class="demo-sticky">
-      <div class="closer-row reveal">
-        <div class="closer-vis" data-vfx="tilt" data-tilt-max="3.5">
-          <div class="demo app" id="demoApp" aria-label="Interactive demo: choose a pane and the explorer follows">
-            <div class="app-bar" aria-hidden="true">
-              <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
-              <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
-              <span>PaneCrew — live demo</span>
-              <span class="hud-readout"><span class="hb">2×2</span> · <span class="hud-idx" id="demoHudIdx">01</span><span class="hb">/04</span> · <span class="hud-name" id="demoHudName">orbit-api</span></span>
-              <i class="demo-progress" id="demoProgress" aria-hidden="true"></i>
-            </div>
-            <div class="app-body">
-              <aside class="xpl" id="demoXpl">
-                <p class="hd">explorer · follows focus</p>
-                <p class="proj">▾ orbit-api</p>
-                <ul>
-                  <li><span class="tc">├─ </span>▸ node_modules</li>
-                  <li><span class="tc">├─ </span>▾ src</li>
-                  <li class="hl"><span class="tc">│  ├─ </span>router.ts</li>
-                  <li><span class="tc">│  └─ </span>handlers.ts</li>
-                  <li><span class="tc">├─ </span>package.json</li>
-                  <li><span class="tc">└─ </span>README.md</li>
-                </ul>
-              </aside>
-              <div class="pinrail" role="group" aria-label="Focus pins">
-                <button type="button" class="pin-btn" data-pin="0" aria-pressed="true" aria-label="Focus pin 1 — orbit-api"><span class="pin on" aria-hidden="true"></span></button>
-                <button type="button" class="pin-btn" data-pin="1" aria-pressed="false" aria-label="Focus pin 2 — dashboard"><span class="pin" aria-hidden="true"></span></button>
-                <button type="button" class="pin-btn" data-pin="2" aria-pressed="false" aria-label="Focus pin 3 — cli-tools"><span class="pin" aria-hidden="true"></span></button>
-                <button type="button" class="pin-btn" data-pin="3" aria-pressed="false" aria-label="Focus pin 4 — panecrew"><span class="pin" aria-hidden="true"></span></button>
-              </div>
-              <div class="field">
-                <button class="dpane focused" data-p="0" data-title="orbit-api — claude" aria-label="Focus pane: orbit-api with Claude Code">
-                  <div>&gt; refactor the router</div>
-                  <div><span class="g">●</span> editing <span class="c">src/router.ts</span></div>
-                  <div><span class="g">✓</span> 14 tests passed</div>
-                </button>
-                <button class="dpane" data-p="1" data-title="dashboard — codex" aria-label="Focus pane: dashboard with Codex">
-                  <div>$ codex "usage chart"</div>
-                  <div><span class="y">⚠</span> 2 type errors</div>
-                  <div>fixing imports…</div>
-                </button>
-                <button class="dpane" data-p="2" data-title="cli-tools — gemini" aria-label="Focus pane: cli-tools with Gemini CLI">
-                  <div>$ gemini review --staged</div>
-                  <div><span class="b">ℹ</span> reviewing 6 files</div>
-                  <div><span class="g">✓</span> no blockers</div>
-                </button>
-                <button class="dpane" data-p="3" data-title="panecrew — zsh" aria-label="Focus pane: panecrew with zsh">
-                  <div>$ pnpm run watch</div>
-                  <div><span class="g">✓</span> compiled in 412 ms</div>
-                  <div><span class="c">Info</span> watching…</div>
-                </button>
-              </div>
-              <svg class="trace-svg" aria-hidden="true">
-                <path id="demoTraceBase" class="trace-base"></path>
-                <path id="demoTracePath"></path>
-                <g id="demoTraceSparks" class="trace-sparks"></g>
-                <rect id="demoTracePad" width="8" height="4"></rect>
-              </svg>
-            </div>
-          </div>
-        </div>
-        <div class="closer-copy">
-          <h3>Try the follow.</h3>
-          <p>This one's live. Point at any pane — or tap it — and watch the explorer keep up. In VS Code it works exactly like this, except the terminals are real.</p>
-          <p>That's the whole trick: focus a pane, and the files you need are already in front of you. Even VS Code's own Explorer doesn't do this out of the box — so we built an extension that does.</p>
-          <p class="hint">↖ scroll the sequence — or hover a pane, click a pin</p>
-        </div>
-      </div>
-      </div>
-      </div>
-
       <div class="closer-row rev reveal">
         <div class="closer-vis" data-vfx="tilt" data-tilt-max="3.5">
-          <div class="app" aria-hidden="true">
-            <div class="app-bar">
-              <i class="tl r"></i><i class="tl y"></i><i class="tl g"></i>
-              <svg viewBox="0 0 1600 1600"><use href="#mkGlyph"/></svg>
-              <span>panecrew — dev driver</span>
-            </div>
-            <div style="padding:14px 16px; font-family:var(--mono); font-size:11.5px; line-height:1.9; color:rgba(255,253,245,.62);">
-              <div>$ pnpm --filter panecrew --dir apps/extension run watch</div>
-              <div><span class="c">Info</span> compiling panecrew v0.1</div>
-              <div><span class="g">✓</span> compiled in 412 ms</div>
-              <div><span class="g">✓</span> Extension Development Host ready — grid restored</div>
-              <div><span class="w">›</span> <span style="opacity:.55">this page was written in here</span> <span class="cursor"></span></div>
-            </div>
+          <!-- real capture, not a CSS mock: the panecrew pane from the 2x2
+               grid screenshot, running the extension's own dev watch inside
+               a PaneCrew terminal — dogfooding, photographed. -->
+          <div class="app">
+            <img src="/images/crew/dogfood-crop.png" alt="A real PaneCrew terminal pane titled 'PaneCrew: panecrew' running pnpm run watch on the extension's own source — PaneCrew being developed inside PaneCrew" style="width:100%; height:auto; display:block;" />
           </div>
         </div>
         <div class="closer-copy" data-vfx="par" data-par="16">
@@ -1417,10 +1162,14 @@ const description =
     <div class="wrap oss-grid">
       <article class="card reveal" style="--rd:0s">
         <div class="card-vis">
-          <div class="mock" data-title="LICENSE" aria-hidden="true">
-            <div>$ head -1 LICENSE</div>
-            <div><span class="w">MIT License</span></div>
-            <div><span class="w">›</span> <span class="cursor"></span></div>
+          <!-- verbatim opening of the repo's actual LICENSE file -->
+          <div class="oss-vis oss-doc" aria-hidden="true">
+            <div class="hd">MIT License</div>
+            <div>&nbsp;</div>
+            <div>Copyright (c) 2026 Silvio Lindstedt</div>
+            <div>&nbsp;</div>
+            <div>Permission is hereby granted, free of charge,</div>
+            <div>to any person obtaining a copy of this software…</div>
           </div>
         </div>
         <div class="card-body">
@@ -1434,11 +1183,10 @@ const description =
 
       <article class="card reveal" style="--rd:0.08s">
         <div class="card-vis">
-          <div class="mock" data-title="zsh" aria-hidden="true">
-            <div>$ gh issue list</div>
-            <div><span class="c">→</span> roadmap, decisions, all public</div>
-            <div><span class="w">›</span> <span class="cursor"></span></div>
-          </div>
+          <a class="oss-vis oss-repo" href="https://github.com/silvio-l/panecrew" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#mkGithub"/></svg>
+            <span>github.com/silvio-l/panecrew</span>
+          </a>
         </div>
         <div class="card-body">
           <h3 class="sticker">On GitHub</h3>
@@ -1451,10 +1199,12 @@ const description =
 
       <article class="card reveal" style="--rd:0.16s">
         <div class="card-vis">
-          <div class="mock" data-title="zsh" aria-hidden="true">
-            <div>$ git push origin main</div>
-            <div><span class="c">→</span> public today</div>
-            <div><span class="w">›</span> <span class="cursor"></span></div>
+          <!-- real commit subjects from this repo's own git log -->
+          <div class="oss-vis oss-log" aria-hidden="true">
+            <div><span class="sha">1c1b809</span> fix: hide title bar chat icon in Compact Look</div>
+            <div><span class="sha">4439a61</span> fix: stop collapsing the grid mid-fill</div>
+            <div><span class="sha">4e2316b</span> fix: explorer follows the active tab</div>
+            <div><span class="sha">51aa019</span> feat: extend Compact Look to title bar</div>
           </div>
         </div>
         <div class="card-body">
@@ -1512,49 +1262,6 @@ const description =
   'use strict';
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var projects = [
-    { name: 'orbit-api', files: ['▸ node_modules', '▾ src', ['router.ts', true], ['handlers.ts', false], 'package.json', 'README.md'] },
-    { name: 'dashboard', files: ['▸ node_modules', '▾ src/charts', ['usage.tsx', true], ['legend.tsx', false], 'vite.config.ts', 'index.html'] },
-    { name: 'cli-tools', files: ['▾ bin', ['release.ts', true], ['publish.ts', false], '▸ test', 'justfile', 'deno.json'] },
-    { name: 'panecrew', files: ['▾ apps/extension', ['src/extension.ts', true], ['src/grid/', false], '▸ docs', 'CLAUDE.md', 'pnpm-lock.yaml'] }
-  ];
-
-  /* files is a flat list where a plain string starts a root-level node
-     and any tuples immediately following it become that node's children
-     — reshape that into real tree nodes, then draw real box-drawing
-     connectors (├─/└─/│) off the shape, same idiom as `tree`/ls -R, not
-     the old fixed &nbsp;&nbsp; indent that couldn't tell first-of/last-of
-     a group apart. */
-  function renderExplorer(el, idx, animate) {
-    var p = projects[idx];
-    var nodes = [];
-    p.files.forEach(function (f) {
-      if (typeof f === 'string') {
-        nodes.push({ label: f, hl: false, children: [] });
-      } else if (nodes.length) {
-        nodes[nodes.length - 1].children.push({ label: f[0], hl: f[1] });
-      }
-    });
-    var html = '<p class="hd">explorer · follows focus</p>' +
-      '<p class="proj">▾ ' + p.name + '</p><ul>';
-    nodes.forEach(function (node, i) {
-      var lastRoot = i === nodes.length - 1;
-      html += '<li><span class="tc">' + (lastRoot ? '└─ ' : '├─ ') + '</span>' + node.label + '</li>';
-      node.children.forEach(function (child, j) {
-        var lastChild = j === node.children.length - 1;
-        var prefix = (lastRoot ? '   ' : '│  ') + (lastChild ? '└─ ' : '├─ ');
-        html += '<li' + (child.hl ? ' class="hl"' : '') + '><span class="tc">' + prefix + '</span>' + child.label + '</li>';
-      });
-    });
-    html += '</ul>';
-    el.innerHTML = html;
-    if (animate && !reduced) {
-      el.classList.remove('swap');
-      void el.offsetWidth;
-      el.classList.add('swap');
-    }
-  }
-
   /* ---- focus pin-header + circuit trace geometry ----
      Same 45°-chamfered bus route, same 2px/ms signal-propagation speed
      clamped to 180–350ms, as the brand's pane-focus trace generally. Pure
@@ -1605,17 +1312,6 @@ const description =
     return line.map(function (p, i) { return (i === 0 ? 'M ' : 'L ') + p.x.toFixed(2) + ' ' + p.y.toFixed(2); }).join(' ');
   }
 
-  function pathLength(points, chamfer) {
-    var line = chamferedLine(points, chamfer);
-    var total = 0;
-    for (var i = 1; i < line.length; i++) total += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y);
-    return total;
-  }
-
-  function traceDurationMs(len) {
-    return Math.round(Math.min(350, Math.max(180, len / 2)));
-  }
-
   function pointAtArc(line, cum, arc) {
     for (var i = 0; i < cum.length - 1; i++) {
       if (arc <= cum[i + 1] || i === cum.length - 2) {
@@ -1640,8 +1336,8 @@ const description =
      sweeps on stacked <path> layers (a paint-triggering SVG property).
      Ported onto the ticket-10 architecture instead: every circle moves
      via WAAPI `transform: translate()` + `opacity` keyframes sampled
-     from the route's own polyline vertices (pointAtArc/chamferedLine,
-     shared with makeTraceDrawer below) — compositor-only, no repaint,
+     from the route's own polyline vertices (pointAtArc/chamferedLine) —
+     compositor-only, no repaint,
      and idle (not just looping) between packets. Tail circles reuse the
      head's own keyframes but start `k * lag` ms later on the same
      duration, so they visibly trail the head by that time-distance
@@ -1774,12 +1470,6 @@ const description =
     }
     return { update: update, clear: clear };
   }
-  /* short trace, quick zips: a cream packet over the already-solid amber
-     conduit (an amber packet would be invisible there). Retuned
-     2026-08-15 (user: animation not visible): 650ms duration floor so a
-     flight on the short mockup routes is actually perceivable, and
-     tighter gaps so a visitor glancing at the mockup catches one. */
-  var traceCometOpts = { speed: 0.9, sparkChance: 0.35, minGap: 900, maxGap: 2600, minDur: 650, easing: 'cubic-bezier(0.55, 0, 0.3, 1)' };
   /* the page seam: a long route (thousands of px), so speed matters and
      the duration floor never binds — a packet takes a few seconds to run
      the page, passing whatever section is on screen. Easing is a power
@@ -1787,103 +1477,16 @@ const description =
      the terminus (2026-08-15 Tron pass). */
   var seamCometOpts = { speed: 1.1, sparkChance: 0.3, minGap: 1200, maxGap: 2800, minDur: 900, tailLag: 6, easing: 'cubic-bezier(0.16, 0.6, 0.55, 1)' };
 
-  function makeTraceDrawer(appBodyEl, pins, panes, pathEl, padEl, baseEl, cometTrain) {
-    return function draw(idx, animate) {
-      var pinEl = pins[idx], paneEl = panes[idx];
-      if (!appBodyEl || !pinEl || !paneEl || !pathEl || !padEl) return;
-      var origin = appBodyEl.getBoundingClientRect();
-      var pinRect = pinEl.getBoundingClientRect();
-      var paneRect = paneEl.getBoundingClientRect();
-      if (paneRect.width <= 0 || paneRect.height <= 0) return;
-      var pin = { x: pinRect.left + pinRect.width / 2 - origin.left, y: pinRect.top + pinRect.height / 2 - origin.top };
-      var paneLeft = paneRect.left - origin.left;
-      var paneTop = paneRect.top - origin.top;
-      var paneWidth = paneRect.width;
-      var channelY = paneTop - 4;
-      var padX = paneLeft + Math.min(16, paneWidth / 2);
-      var points = simplifyPoints([pin, { x: pin.x, y: channelY }, { x: padX, y: channelY }, { x: padX, y: paneTop }]);
-      var d = pathD(points, 6);
-      var len = pathLength(points, 6);
-      pathEl.setAttribute('d', d);
-      if (baseEl) baseEl.setAttribute('d', d);
-      if (cometTrain) cometTrain.update(points, 6);
-      padEl.setAttribute('x', String(padX - 4));
-      padEl.setAttribute('y', String(paneTop - 4));
-      pathEl.style.strokeDasharray = String(len);
-      pathEl.style.strokeDashoffset = '0';
-      if (animate && !reduced && len > 0 && typeof pathEl.animate === 'function') {
-        pathEl.animate(
-          [{ strokeDashoffset: String(len) }, { strokeDashoffset: '0' }],
-          { duration: traceDurationMs(len), easing: 'linear' }
-        );
-      }
-    };
-  }
-
   /* ---- hero: now a real screenshot (#heroApp), no assembly/focus-cycle
-     animation to drive — kept only the HUD helper below for the live demo
-     section further down the page. */
-  function hudSet(idxEl, nameEl, idx, animate) {
-    if (!idxEl || !nameEl) return;
-    idxEl.textContent = String(idx + 1).padStart(2, '0');
-    nameEl.textContent = projects[idx].name;
-    if (animate && !reduced) {
-      nameEl.classList.remove('tick');
-      void nameEl.offsetWidth;
-      nameEl.classList.add('tick');
-    }
-  }
-  var demoHudIdx = document.getElementById('demoHudIdx');
-  var demoHudName = document.getElementById('demoHudName');
+     animation to drive. */
   var heroApp = document.getElementById('heroApp');
-
-  /* ---- live demo: the visitor drives the focus ---- */
-  var demoApp = document.getElementById('demoApp');
-  var demoXpl = document.getElementById('demoXpl');
-  var demoPanes = Array.prototype.slice.call(document.querySelectorAll('.dpane'));
-  var demoPins = Array.prototype.slice.call(demoApp.querySelectorAll('.pin-btn'));
-  var demoDrawTrace = makeTraceDrawer(
-    demoApp.querySelector('.app-body'), demoPins, demoPanes,
-    document.getElementById('demoTracePath'), document.getElementById('demoTracePad'),
-    document.getElementById('demoTraceBase'), makeCometTrain(document.getElementById('demoTraceSparks'), traceCometOpts)
-  );
-
-  var demoCur = 0;
-  /* 2026-08-14 fix: a genuinely fresh pane hover holds off scroll-driven
-     scrubbing only for this short grace window, not indefinitely — see
-     the .demo-stage comment above for why the old whole-window flag
-     made scrolling feel dead. */
-  var demoHoverUntil = 0;
-  function demoFocus(idx) {
-    demoCur = idx;
-    demoPanes.forEach(function (p, i) { p.classList.toggle('focused', i === idx); });
-    demoPins.forEach(function (p, i) {
-      var on = i === idx;
-      p.setAttribute('aria-pressed', String(on));
-      var dot = p.querySelector('.pin');
-      if (dot) dot.classList.toggle('on', on);
-    });
-    renderExplorer(demoXpl, idx, true);
-    hudSet(demoHudIdx, demoHudName, idx, true);
-    demoDrawTrace(idx, true);
-  }
-
-  demoPanes.forEach(function (p, i) {
-    p.addEventListener('pointerenter', function () { demoHoverUntil = performance.now() + 600; demoFocus(i); });
-    p.addEventListener('click', function () { demoFocus(i); });
-    p.addEventListener('focus', function () { demoFocus(i); });
-  });
-  demoPins.forEach(function (p, i) {
-    p.addEventListener('click', function () { demoFocus(i); });
-  });
-  demoDrawTrace(0, false);
 
   /* ---- chrome: scroll-spy nav readout ----
      Which section currently crosses the viewport-center band, mirrored
      into the HUD readout as an index + label. State changes are plain
      text/class toggles (fine under reduced motion). */
-  var spyIds = ['crew', 'demo', 'oss', 'install'];
-  var spyLabels = ['CREW', 'DEMO', 'OSS', 'INSTALL'];
+  var spyIds = ['crew', 'oss', 'install'];
+  var spyLabels = ['CREW', 'OSS', 'INSTALL'];
   var spyTargets = spyIds.map(function (id) { return document.getElementById(id); });
   var navIdxEl = document.getElementById('navIdx');
   var navLabelEl = document.getElementById('navLabel');
@@ -2144,21 +1747,15 @@ const description =
     bokeh.style.transform = 'translateY(' + (window.scrollY * 0.08).toFixed(1) + 'px)';
   }
 
-  /* ---- cinematic layer: scroll-linked depth + pinned demo scrub + cue ----
+  /* ---- cinematic layer: scroll-linked depth + cue ----
      — updateVfx: every [data-vfx] element gets a transform from its offset
        to viewport center — "par" layers drift at depth-dependent speed,
        "tilt" layers pitch slightly in perspective and settle flat at
        center stage. Transform-only, offscreen elements skipped.
-     — updateDemoScrub: while the demo stage is pinned (CSS above), scroll
-       progress through the stage steps focus across the four panes — the
-       explorer-follows story told by the scroll itself. The pointer wins
-       while it's inside the demo window.
      — the hero scroll cue fades once scrolling starts.
      Desktop + motion-preference only; disabled state clears its own
      transforms so a resize across the breakpoint can't strand one. */
   var vfxEls = Array.prototype.slice.call(document.querySelectorAll('[data-vfx]'));
-  var demoStage = document.getElementById('demo');
-  var demoProgress = document.getElementById('demoProgress');
   var scrollCue = document.getElementById('scrollCue');
   var fxWide = matchMedia('(min-width: 941px)').matches;
 
@@ -2195,36 +1792,23 @@ const description =
     });
   }
 
-  function updateDemoScrub() {
-    if (!fxWide || !demoStage) return;
-    var r = demoStage.getBoundingClientRect();
-    var span = r.height - window.innerHeight;
-    if (span < 120) return; // stage isn't pinned at this size
-    var p = -r.top / span;
-    if (p < 0) p = 0; if (p > 1) p = 1;
-    if (demoProgress) demoProgress.style.width = (p * 100).toFixed(1) + '%';
-    if (performance.now() < demoHoverUntil) return; // let a just-hovered pane stand briefly
-    var idx = Math.min(3, Math.floor(p * 4));
-    if (idx !== demoCur) demoFocus(idx);
-  }
-
   function updateCue() {
     if (scrollCue) scrollCue.classList.toggle('gone', window.scrollY > 60);
   }
 
   /* ---- shared scroll ticker (performance-audit ticket 15) ----
-     The seam-charge, bokeh-parallax, and vfx/demo-scrub/cue effects above
-     used to run on three independent `scroll` listeners, each gated by
-     its own rAF "ticking" boolean — up to three separate scroll-event
-     dispatches and up to three separate rAF callbacks queued per actual
-     repaint opportunity. Consolidated into one listener + one rAF gate;
-     update order below (seam, bokeh, vfx, demo-scrub, cue) matches the
-     order the three independent listeners already ran in relative to
-     each other. Initial-call semantics are preserved exactly as before:
+     The seam-charge, bokeh-parallax, and vfx/cue effects above used to run
+     on three independent `scroll` listeners, each gated by its own rAF
+     "ticking" boolean — up to three separate scroll-event dispatches and
+     up to three separate rAF callbacks queued per actual repaint
+     opportunity. Consolidated into one listener + one rAF gate; update
+     order below (seam, bokeh, vfx, cue) matches the order the three
+     independent listeners already ran in relative to each other.
+     Initial-call semantics are preserved exactly as before:
      updateSeamCharge() always ran once regardless of motion preference
      (kept unconditional, below), bokeh never got an initial call outside
-     a scroll event, and vfx/demoScrub/cue only ran their first pass when
-     motion is not reduced (mirrors the old fxFrame() initial call). */
+     a scroll event, and vfx/cue only ran their first pass when motion is
+     not reduced (mirrors the old fxFrame() initial call). */
   if (!reduced) {
     var scrollTicking = false;
     var scrollFrame = function () {
@@ -2232,14 +1816,12 @@ const description =
       updateSeamCharge();
       updateBokeh();
       updateVfx();
-      updateDemoScrub();
       updateCue();
     };
     window.addEventListener('scroll', function () {
       if (!scrollTicking) { scrollTicking = true; requestAnimationFrame(scrollFrame); }
     }, { passive: true });
     updateVfx();
-    updateDemoScrub();
     updateCue();
   }
   updateSeamCharge();
@@ -2283,8 +1865,6 @@ const description =
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      var demoFocusedIdx = demoPanes.findIndex(function (p) { return p.classList.contains('focused'); });
-      demoDrawTrace(demoFocusedIdx < 0 ? 0 : demoFocusedIdx, false);
       drawSeam();
       updateSeamCharge();
       var nowWide = matchMedia('(min-width: 941px)').matches;
@@ -2292,7 +1872,7 @@ const description =
         fxWide = nowWide;
         if (!fxWide) vfxEls.forEach(function (el) { el.style.transform = ''; });
       }
-      if (!reduced) { updateVfx(); updateDemoScrub(); }
+      if (!reduced) { updateVfx(); }
     }, 120);
   });
 

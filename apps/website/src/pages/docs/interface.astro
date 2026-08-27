@@ -25,13 +25,13 @@ const stops = [
   {
     title: "The focus-following explorer, live",
     body: "Switch to a different terminal or editor tab and the PaneCrew explorer automatically selects, expands, and reveals that pane's owning workspace folder — no manual re-navigation.",
-    img: "/images/crew/sidekick.png",
+    img: "/images/crew/sidekick-crop.png",
     imgAlt: "The PaneCrew explorer switched to the dashboard project's file tree after the dashboard terminal pane was focused",
   },
   {
     title: "Compact Look",
     body: "<code>PaneCrew: Apply Compact Look</code> hides secondary chrome (status bar, minimap by default) to make room for more panes. The activity bar always stays visible, by design.",
-    img: "/images/crew/dial.png",
+    img: "/images/crew/dial-crop.png",
     imgAlt: "The command palette open on PaneCrew: Apply Compact Look",
   },
 ];
@@ -66,6 +66,12 @@ const stops = [
   </div>
 </DocsLayout>
 
+<noscript><style is:inline>
+  /* no-JS fallback: the observer below never runs, so nothing may start
+     hidden. is:inline keeps Astro from hoisting this out of the noscript. */
+  .shot, .stop { opacity: 1 !important; }
+</style></noscript>
+
 <style>
   .shot {
     display: block; width: 100%; max-width: 960px; height: auto;
@@ -78,21 +84,129 @@ const stops = [
     border: 1px solid var(--line-dark);
   }
 
-  .stops { display: flex; flex-direction: column; gap: 22px; max-width: 720px; }
+  /* tour rail: one thin amber route running through the stop numbers, so
+     the list reads as a path being walked, not six loose bullets. */
+  .stops { display: flex; flex-direction: column; gap: 22px; max-width: 720px; position: relative; }
+  .stops::before {
+    content: ""; position: absolute; left: 13px; top: 10px; bottom: 10px; width: 1px;
+    background: linear-gradient(180deg,
+      transparent 0%, rgba(229, 150, 86, 0.35) 7%,
+      rgba(229, 150, 86, 0.35) 93%, transparent 100%);
+  }
   .stop { display: flex; gap: 14px; }
   .stop-idx {
     flex: none; width: 26px; height: 26px; margin-top: 2px;
     display: grid; place-items: center; border-radius: 50%;
     font-family: var(--mono); font-size: 0.8125rem; font-weight: 700;
     color: var(--indigo-deep); background: var(--amber);
+    position: relative; z-index: 1;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
   }
   .stop h3 {
     font-family: var(--display); font-weight: 700; font-size: 1.0625rem;
     color: var(--cream); margin-bottom: 4px;
+    transition: color 0.25s ease;
   }
   .stop p { color: rgba(255, 253, 245, 0.82); text-wrap: pretty; margin: 0; }
   .stop p :global(code) {
     font-family: var(--mono); font-size: 0.875em;
     background: rgba(255, 253, 245, 0.08); border-radius: 4px; padding: 0.1em 0.4em;
   }
+
+  /* ---------- scroll choreography ----------
+     Same vocabulary as the landing page's .reveal pattern (fade + 14px
+     rise, shared cubic-bezier easing, per-element --rd stagger, animation
+     `backwards` so hover/transition styles take back over afterwards) —
+     reused here rather than inventing a second motion language. */
+  .shot, .stop { opacity: 0; }
+  .shot.in {
+    opacity: 1;
+    animation: shotIn 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  @keyframes shotIn {
+    from { opacity: 0; transform: translateY(14px) scale(1.015); }
+    to { opacity: 1; transform: none; }
+  }
+  .stop.in {
+    opacity: 1;
+    animation: stopIn 0.56s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: var(--rd, 0s);
+  }
+  @keyframes stopIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* the stop currently in the middle of the viewport gets a quiet amber
+     highlight — the tour's "you are here" marker. */
+  .stop.live .stop-idx {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 3px rgba(229, 150, 86, 0.25), 0 0 16px rgba(229, 150, 86, 0.3);
+  }
+  .stop.live h3 { color: var(--amber); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shot, .stop { opacity: 1; animation: none; }
+    .stop.live .stop-idx { transform: none; box-shadow: none; }
+    .stop.live h3 { color: var(--cream); }
+  }
 </style>
+
+<script>
+  // Scroll choreography for the tour. Mirrors the landing page's reveal
+  // engine: IntersectionObserver adds .in once per element, batch-staggered
+  // via --rd; a second observer with a narrow center band marks the stop
+  // the reader is currently at (.live). Reduced motion / no observer
+  // support falls back to everything visible immediately.
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const stops = Array.from(document.querySelectorAll<HTMLElement>(".stop"));
+  const shots = Array.from(document.querySelectorAll<HTMLElement>(".shot"));
+  const revealEls = [...shots, ...stops];
+
+  if (reduced || !("IntersectionObserver" in window)) {
+    revealEls.forEach((el) => el.classList.add("in"));
+  } else {
+    const revealObs = new IntersectionObserver(
+      (entries) => {
+        entries
+          .filter((e) => e.isIntersecting)
+          .forEach((e, batchIdx) => {
+            (e.target as HTMLElement).style.setProperty("--rd", `${(batchIdx * 0.08).toFixed(2)}s`);
+            e.target.classList.add("in");
+            revealObs.unobserve(e.target);
+          });
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -8% 0px" }
+    );
+    revealEls.forEach((el) => revealObs.observe(el));
+
+    // exactly one stop is "live" at a time — short stops can overlap the
+    // center band together, so pick the intersecting one closest to the
+    // viewport's vertical center instead of toggling each independently.
+    const inBand = new Set<Element>();
+    const applyLive = () => {
+      const mid = window.innerHeight / 2;
+      let best: Element | null = null;
+      let bestDist = Infinity;
+      inBand.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const dist = Math.abs(r.top + r.height / 2 - mid);
+        if (dist < bestDist) { bestDist = dist; best = el; }
+      });
+      stops.forEach((el) => el.classList.toggle("live", el === best));
+    };
+    const liveObs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) inBand.add(e.target);
+          else inBand.delete(e.target);
+        });
+        applyLive();
+      },
+      // only a slim band around the viewport's vertical center counts as
+      // "at this stop"
+      { rootMargin: "-42% 0px -42% 0px" }
+    );
+    stops.forEach((el) => liveObs.observe(el));
+  }
+</script>

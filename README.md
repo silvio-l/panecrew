@@ -18,6 +18,15 @@ pane currently has focus.
 Tool-agnostic by design: hosts any CLI coding agent — Claude Code, Codex, Gemini CLI, or a plain
 shell — equally well.
 
+![Four live terminal panes with the PaneCrew explorer showing git status](assets/promo/real/hero-grid.png)
+
+<p align="center">
+  <img src="apps/website/public/images/crew/grid.png" width="24%" alt="The 2x2 terminal grid" />
+  <img src="apps/website/public/images/crew/sidekick.png" width="24%" alt="The focus-following explorer" />
+  <img src="apps/website/public/images/crew/dial.png" width="24%" alt="Applying Compact Look from the command palette" />
+  <img src="apps/website/public/images/crew/preset.png" width="24%" alt="Saving the current grid as a named preset" />
+</p>
+
 ## Features
 
 - **Terminal grid:** each workspace folder gets its own terminal, arranged via VS Code's own
