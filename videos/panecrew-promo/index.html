@@ -145,6 +145,18 @@
         );
         pointer-events: none;
       }
+      /* chromatic-flash pulse at the peak of each cut - a quick amber/cyan
+         screen-blend hit for a punchier edit feel, on-palette like the
+         wordmark glitch rather than a colored re-theme */
+      #cut-flash {
+        position: absolute;
+        inset: 0;
+        z-index: 51;
+        pointer-events: none;
+        opacity: 0;
+        background: linear-gradient(115deg, rgba(94, 225, 230, 0.55) 0%, rgba(252, 173, 67, 0.55) 100%);
+        mix-blend-mode: screen;
+      }
 
       /* ---- reusable glow / highlight devices ---- */
       .glow-ring {
@@ -495,6 +507,7 @@
 
       <!-- diagonal accent-stripe wipe, reused at every scene cut -->
       <div id="wipe"></div>
+      <div id="cut-flash"></div>
     </div>
 
     <script>
@@ -503,10 +516,18 @@
 
       // #wipe sits above every scene; parked off-frame until the first cut.
       tl.set("#wipe", { xPercent: -135 }, 0);
-      function wipeAt(t) {
-        tl.to("#wipe", { xPercent: 0, duration: 0.22, ease: "power2.in" }, t);
-        tl.to("#wipe", { xPercent: 135, duration: 0.22, ease: "power2.out" }, t + 0.22);
-        tl.set("#wipe", { xPercent: -135 }, t + 0.44);
+      // wipeAt(t, incomingSel) - snappier stripe wipe + a quick chromatic
+      // flash at peak coverage + a punch-in zoom on the incoming scene as it
+      // lands, so cuts read as impacts rather than soft crossfades.
+      function wipeAt(t, incomingSel) {
+        tl.to("#wipe", { xPercent: 0, duration: 0.16, ease: "power2.in" }, t);
+        tl.to("#cut-flash", { opacity: 1, duration: 0.08, ease: "power1.in" }, t + 0.1);
+        tl.to("#cut-flash", { opacity: 0, duration: 0.14, ease: "power1.out" }, t + 0.18);
+        tl.to("#wipe", { xPercent: 135, duration: 0.16, ease: "power2.out" }, t + 0.16);
+        tl.set("#wipe", { xPercent: -135 }, t + 0.32);
+        if (incomingSel) {
+          tl.fromTo(incomingSel, { scale: 1.1, rotate: -1.2 }, { scale: 1, rotate: 0, duration: 0.4, ease: "power3.out" }, t + 0.16);
+        }
       }
 
       // ---- Scene 0: kinetic title open (0 - 3.8) ----
@@ -526,7 +547,7 @@
       tl.to("#scene-open-inner", { opacity: 0, duration: 0.3, ease: "power1.in" }, 3.5);
       tl.set("#scene-open-inner", { opacity: 0 }, 3.8);
 
-      wipeAt(3.6);
+      wipeAt(3.6, "#scene-hero");
 
       // ---- Scene 1: hero (3.8 - 11.3) ----
       // camera moves live on #rig-hero (image + rings together, so rings stay glued).
@@ -553,7 +574,7 @@
       tl.to("#rig-hero", { scale: 1.1, xPercent: -1.5, yPercent: -1.2, duration: 1.25, ease: "sine.inOut" }, 10.05);
       tl.to("#scene-hero", { opacity: 0, duration: 0.25, ease: "power1.in" }, 11.05);
 
-      wipeAt(11.5);
+      wipeAt(11.5, "#scene-follow");
 
       // ---- Scene 2: focus-follow (11.7 - 19.2) ----
       // open framed tight on the focused pane (top-right, "dashboard"), then the camera
@@ -578,7 +599,7 @@
       tl.to("#rig-follow", { scale: 1.09, xPercent: 1.4, yPercent: 1, duration: 3.3, ease: "sine.inOut" }, 15.7);
       tl.to("#scene-follow", { opacity: 0, duration: 0.25, ease: "power1.in" }, 18.95);
 
-      wipeAt(19.4);
+      wipeAt(19.4, "#scene-git");
 
       // ---- Scene 3: git status (19.6 - 25.6) ----
       // wide establish, hard punch-in on the "M" badge in the explorer, pull back out.
@@ -593,7 +614,7 @@
       tl.to("#rig-git", { scale: 1.1, xPercent: -1.2, yPercent: 1.2, duration: 1.5, ease: "sine.inOut" }, 24.05);
       tl.to("#scene-git", { opacity: 0, duration: 0.25, ease: "power1.in" }, 25.35);
 
-      wipeAt(25.8);
+      wipeAt(25.8, "#scene-closing");
 
       // ---- Scene 4: closing brand card (26.0 - 31.5) ----
       tl.fromTo("#scene-closing .hatch", { opacity: 0, xPercent: 0 }, { opacity: 1, xPercent: -5, duration: 5.2, ease: "sine.inOut" }, 26.05);
