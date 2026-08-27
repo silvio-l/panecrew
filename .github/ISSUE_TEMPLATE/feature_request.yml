@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest something PaneCrew should do that it doesn't today.
+labels: ["needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that PaneCrew doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Optional — how you imagine this working, if you have something in mind.
+    validations:
+      required: false

@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in PaneCrew doesn't work as expected.
+labels: ["needs-triage"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a multi-root workspace with ...
+        2. Run `PaneCrew: ...`
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: PaneCrew version
+      description: Extensions view → PaneCrew → gear icon, or `code --list-extensions --show-versions | grep panecrew`
+    validations:
+      required: true
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      description: Help → About
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. macOS 15, Windows 11, Ubuntu 24.04
+    validations:
+      required: true

@@ -90,23 +90,38 @@ stays visible in PaneCrew's standard look by design.
 
 ## Known limitations
 
-A few features from the earlier Tauri desktop app have no equivalent in the
-VS Code extension model and are intentionally not implemented:
+- **No per-pane resource usage or process control**: PaneCrew doesn't track
+  or suspend a pane's underlying OS process tree — VS Code extensions don't
+  have that level of access to a terminal's processes.
+- **No cross-window pane drag**: dragging a pane out into its own OS window
+  isn't possible — no VS Code extension API exposes that. VS Code's own
+  native tab drag between windows is the closest equivalent when terminals
+  are hosted as editor tabs.
+- **Snippet insertion is a quick pick, not an in-terminal popup**: `PaneCrew:
+  Insert Snippet…` opens a command-palette quick pick rather than an overlay
+  inside the terminal itself — extensions can't render into a terminal's
+  live content.
 
-- **Resource-usage / process-suspend guard**: the desktop app tracked and
-  could suspend each pane's OS process tree directly. A VS Code extension
-  does not own the terminal's process tree the way a native app hosting its
-  own PTYs did, so this isn't implementable here.
-- **Cross-window OS-level pane drag**: dragging a pane out into its own OS
-  window has no VS Code extension API. VS Code's own native tab drag between
-  windows is the closest equivalent when terminals are hosted as editor tabs.
-- **Custom auto-updater**: replaced entirely by the VS Code Marketplace's own
-  auto-update mechanism.
-- **Live in-terminal snippet popup**: the desktop app's `://` trigger opened
-  an overlay directly inside the terminal's own screen buffer. An extension
-  cannot render into a terminal's live content, so snippet insertion here is
-  a command-palette quick pick (`PaneCrew: Insert Snippet…`) instead — an
-  intentional UI adaptation, not a silent regression.
+## FAQ
+
+**Does it work on Windows and Linux, or just macOS?**
+Any OS VS Code itself runs on — PaneCrew has no native, platform-specific code.
+
+**Does it work with a single-folder workspace, or do I need multi-root?**
+The grid needs at least one workspace folder to anchor a pane to; add more
+folders (`File: Add Folder to Workspace…`) to grid multiple projects side by
+side. A single-folder workspace works too — you just get a one-pane grid.
+
+**Is it free?**
+Yes — MIT-licensed and free on the Marketplace, no paid tier.
+
+**Which CLI tools does it support?**
+Any of them. PaneCrew's terminals are plain VS Code terminals — Claude Code, Codex, Gemini CLI, a plain shell, or anything else that runs in a terminal. <!-- brandlint-ok: functional list of supported CLI tools -->
+
+
+**Where do I report a bug or ask a question?**
+[GitHub Issues](https://github.com/silvio-l/panecrew/issues) — pick the
+"Bug report" or "Question" template.
 
 ## Development
 
