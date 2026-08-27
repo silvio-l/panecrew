@@ -139,6 +139,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "panecrew.toggleSidebar",
+        "title": "PaneCrew: Toggle Primary Side Bar",
+        "icon": "$(layout-sidebar-left)"
+      },
+      {
         "command": "panecrew.setPaneCrewTheme",
         "title": "PaneCrew: Set PaneCrew Theme…"
       }
@@ -183,6 +188,11 @@
           "command": "panecrew.refreshExplorer",
           "when": "view == panecrew.explorerView",
           "group": "navigation@2"
+        },
+        {
+          "command": "panecrew.toggleSidebar",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@3"
         },
         {
           "command": "panecrew.applyCompactLook",
