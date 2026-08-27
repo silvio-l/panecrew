@@ -53,10 +53,35 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.5] - 2026-08-28
+### Neu
+- Pane-Attention-Benachrichtigungen: PaneCrew erkennt jetzt das
+  Standard-Terminal-„Notify"-Signal, das ein CLI-Tool sendet, wenn es
+  Aufmerksamkeit braucht (ein Berechtigungs-Prompt, eine Frage, ein
+  beendeter Durchlauf), und zeigt ein dauerhaftes Badge genau auf dem
+  Pane/Projekt, das es gesendet hat — sowohl im Haupt-Explorer als auch
+  in der Projects Overview —, bis dieses Pane fokussiert wird.
+- Ein-Klick-Setup für CLI-Benachrichtigungen: `PaneCrew: Configure CLI
+  Tool Notifications…` (auch beim Onboarding angeboten) zeigt eine
+  Vorschau und schreibt die Konfiguration, die für Claude Code, Codex CLI
+  und Gemini CLI benötigt wird.
+- Ein schneller Maximieren-Umschalter auf Terminal-Pane-Tabs, um ein Pane
+  vollflächig zu fokussieren, ohne das Grid-Layout zu verlassen.
+
+### Geändert
+- Der Umschalt-Button für die primäre Seitenleiste ist von der Titelleiste
+  des Explorers in die Statusleiste umgezogen, damit er auch erreichbar
+  bleibt, wenn die Seitenleiste selbst ausgeblendet ist.
+- Das Maximieren-Icon auf einem Terminal-Tab blendet sich jetzt selbst
+  aus, während diese Editor-Gruppe bereits maximiert ist — analog zu
+  VS Codes eigenem nativen Maximieren/Wiederherstellen-Control, statt
+  beide gleichzeitig anzuzeigen.
+
 ## [0.1.4] - 2026-08-27
 ### Neu
 - Ein Umschalt-Button in der Titelleiste des PaneCrew-Explorers, um die
-  primäre Seitenleiste ein-/auszublenden.
+  primäre Seitenleiste ein-/auszublenden (in 0.1.5 in die Statusleiste
+  umgezogen, siehe oben).
 
 ## [0.1.3] - 2026-08-27
 ### Behoben

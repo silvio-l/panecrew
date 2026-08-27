@@ -50,10 +50,32 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.5] - 2026-08-28
+### Added
+- Pane attention notifications: PaneCrew now listens for the standard
+  terminal "notify" signal a CLI tool sends when it wants your attention
+  (a permission prompt, a question, a finished turn) and shows a persistent
+  badge on exactly the pane/project that sent it, in both the main explorer
+  and the Projects Overview, until you focus that pane.
+- One-click CLI notification setup: `PaneCrew: Configure CLI Tool
+  Notifications…` (also offered during onboarding) previews and writes the
+  config needed to wire up attention notifications for Claude Code, Codex
+  CLI, and Gemini CLI.
+- A quick maximize toggle on terminal pane tabs, to focus one pane full-size
+  without leaving the grid layout.
+
+### Changed
+- The "toggle primary side bar" button moved from the explorer's title bar
+  to the status bar, so it stays reachable even while the side bar itself is
+  hidden.
+- The maximize-pane icon on a terminal tab now hides itself while that
+  editor group is already maximized, matching VS Code's own native
+  maximize/restore control instead of showing both at once.
+
 ## [0.1.4] - 2026-08-27
 ### Added
 - A toggle button in the PaneCrew explorer's title bar to show/hide the
-  primary side bar.
+  primary side bar (moved to the status bar in 0.1.5, see above).
 
 ## [0.1.3] - 2026-08-27
 ### Fixed
