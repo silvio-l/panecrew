@@ -76,6 +76,11 @@
         "icon": "$(search)"
       },
       {
+        "command": "panecrew.setGridTemplate",
+        "title": "PaneCrew: Set Grid Template…",
+        "icon": "$(layout)"
+      },
+      {
         "command": "panecrew.insertSnippet",
         "title": "PaneCrew: Insert Snippet…",
         "icon": "$(symbol-snippet)"
@@ -145,6 +150,16 @@
           "command": "panecrew.searchInFolder",
           "when": "view == panecrew.explorerView && viewItem == panecrew.folder",
           "group": "navigation"
+        },
+        {
+          "command": "revealFileInOS",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file)",
+          "group": "navigation"
+        },
+        {
+          "command": "copyFilePath",
+          "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file)",
+          "group": "6_copypath"
         }
       ]
     },
@@ -236,8 +251,8 @@
         },
         "panecrew.compactLook.hideStatusBar": {
           "type": "boolean",
-          "default": true,
-          "description": "Whether Compact Look hides the status bar."
+          "default": false,
+          "description": "Whether Compact Look hides the status bar. Off by default — the status bar is where PaneCrew's own grid-template and new-window controls live."
         },
         "panecrew.compactLook.hideMinimap": {
           "type": "boolean",

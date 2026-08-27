@@ -12,7 +12,9 @@ import {
   closePane,
   firstEmptySlotIndex,
   INITIAL_GRID_STATE,
+  switchTemplate,
   type GridState,
+  type TemplateId,
 } from "./grid/gridState";
 import { GridLayoutController } from "./grid/layoutController";
 import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, savePreset } from "./grid/presets";
@@ -24,6 +26,7 @@ import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/t
 import { loadSession, saveSession } from "./session/persistence";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerInsertSnippetCommand } from "./terminal/snippets";
+import { createGridTemplateStatusBarItem, createNewWindowStatusBarItem } from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
 
@@ -113,6 +116,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshGitDecorations();
     persist();
   }
+
+  // --- status bar: grid template picker + new-window shortcut ------------
+  // Stand-in for the title-bar controls the old desktop app had — an
+  // extension has no API to add anything to VS Code's native title bar.
+  const gridTemplateStatusBarItem = createGridTemplateStatusBarItem(context, gridState.template, (template: TemplateId) => {
+    gridState = switchTemplate(gridState, template);
+    gridTemplateStatusBarItem.setTemplate(gridState.template);
+    void layoutController.apply(gridState);
+    treeDataProvider.refresh();
+    refreshGitDecorations();
+    persist();
+  });
+  context.subscriptions.push(gridTemplateStatusBarItem, createNewWindowStatusBarItem());
 
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.addFolderToGrid", addFolderAndAssign),

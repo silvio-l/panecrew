@@ -18,7 +18,7 @@ interface SavedLookValues {
 export async function applyCompactLook(memento: CompactLookMemento): Promise<void> {
   const config = vscode.workspace.getConfiguration();
   const panecrewConfig = vscode.workspace.getConfiguration("panecrew");
-  const hideStatusBar = panecrewConfig.get<boolean>("compactLook.hideStatusBar", true);
+  const hideStatusBar = panecrewConfig.get<boolean>("compactLook.hideStatusBar", false);
   const hideMinimap = panecrewConfig.get<boolean>("compactLook.hideMinimap", true);
 
   const saved: SavedLookValues = {
