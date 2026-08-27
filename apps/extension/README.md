@@ -4,7 +4,11 @@ A grid of live terminal panes across a multi-root VS Code workspace, paired
 with a file explorer that automatically follows whichever pane currently has
 focus.
 
-<!-- TODO: screenshot -->
+![Four live terminal panes with the PaneCrew explorer showing git status](../../assets/promo/panecrew-hero-grid.png)
+
+*The explorer follows whichever pane has focus — click into the "website" project and it switches automatically:*
+
+![PaneCrew explorer switched to the focused project's file tree](../../assets/promo/panecrew-focus-follow.png)
 
 ## What it does
 
