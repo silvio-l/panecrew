@@ -46,6 +46,8 @@ const settings = [
     </p>
 
     <h2>Commands</h2>
+    <img class="shot" src="/images/crew/preset.png" alt="The VS Code command palette open on 'PaneCrew: Save Current Grid as Preset...', one of the commands from the table below" />
+    <p class="cap">Every command in this table shows up the same way: type its title into the Command Palette.</p>
     <p>
       Every command below is available from the Command Palette (<code>⌘⇧P</code> /
       <code>Ctrl+Shift+P</code>) by typing its title. To bind a keyboard shortcut to one, open the
@@ -89,5 +91,15 @@ const settings = [
       Compact Look never hides the activity bar, regardless of settings — that row stays visible
       in PaneCrew's standard look by design.
     </p>
+    <img class="shot" src="/images/crew/dial.png" alt="The command palette open on 'PaneCrew: Apply Compact Look', with panecrew.compactLook.hideStatusBar and panecrew.compactLook.hideMinimap controlling what it hides" />
+    <p class="cap">Compact Look in action — the two settings above control exactly what it hides.</p>
   </article>
 </DocsLayout>
+
+<style>
+  .shot {
+    display: block; width: 100%; max-width: 720px; height: auto;
+    margin: 8px 0 6px; border-radius: 10px; border: 1px solid var(--line-dark);
+  }
+  .cap { font-size: 0.875rem; color: rgba(255, 253, 245, 0.6); margin-top: -2px; }
+</style>
