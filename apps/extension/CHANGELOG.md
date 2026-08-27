@@ -2,6 +2,16 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.3 — 2026-08-27
+
+### Fixed
+
+- The PaneCrew explorer could get stuck showing a previously focused
+  project's folder and never switch back — happened when focus moved to a
+  terminal PaneCrew's own grid didn't create (e.g. a task terminal), which
+  had no way to resolve which project it belonged to. It's now resolved via
+  the terminal's own working directory.
+
 ## 0.1.2 — 2026-08-27
 
 ### Added

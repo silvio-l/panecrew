@@ -1,29 +1,28 @@
 # Changelog
 
-**Dormant gate (2026-08-27, VS Code extension pivot):** the mechanism described below
-(`tools/changelog-gate/check.py` gating `app-v*`/`nightly-latest` tag pushes) was tied to the
-release CI workflows for the now-deleted Tauri desktop app (`release-stable.yml`,
-`release-nightly.yml`, both removed). It's no longer wired into any CI — this file is currently
-just a plain, hand-written changelog. Left in place as historical context rather than rewritten,
-since a similar coverage-gated release process may be worth re-adopting for `apps/extension`
-Marketplace releases later.
+**Reworked 2026-08-27 for the VS Code extension pivot:** this file and the
+gate that reads it originally covered the Tauri desktop app's Stable +
+Nightly auto-update channels (`app-v*`/`nightly-latest` tags,
+`release-stable.yml`/`release-nightly.yml`). Both the app and those workflows
+are gone. The mechanism now covers `apps/extension`'s single release channel
+— the VS Code Marketplace — tagged `ext-v{X.Y.Z}`. There is no nightly
+channel for the extension, so that half of the old scheme was dropped
+outright rather than renamed.
 
-Every entry here is a **prerequisite for the release CI**, not just docs: a
-tag push (`app-v*` for Stable, the rolling `nightly-latest` for Nightly)
-locally triggers `tools/changelog-gate/check.py`, which checks the topmost
-entry against the real `git diff` since the last channel tag — if the
-coverage list is missing an affected module, or the diff hash no longer
-matches the actual diff (because new code landed since), the release push
-fails. Not an autogenerator: the prose has to be written by hand, with real
-content. Mechanism and rationale: `docs/decisions.md` →
-"Auto-Update via GitHub Releases", point 5.
+Every entry here is a **prerequisite for the release push**, not just docs: a
+`git push origin ext-v{X.Y.Z}` locally runs the `.githooks/pre-push` hook,
+which invokes `tools/changelog-gate/check.py`. That checks the topmost entry
+against the real `git diff` since the last `ext-v*` tag — if the coverage
+list is missing an affected module, or the diff hash no longer matches the
+actual diff (because new code landed since), the push is blocked. Not an
+autogenerator: the prose has to be written by hand, with real content. The
+gate itself (`tools/changelog-gate/`) is local-only tooling — gitignored,
+never reaches GitHub — so it enforces discipline on this machine, not in CI.
 
 This file deliberately contains **only the human-written part** — short,
 user-facing, no file paths. The metadata the gate needs mechanically
-(coverage list per version, diff hash, last released commit per channel)
-lives exclusively in `tools/changelog-gate/release-state.json` (`tools/` is
-entirely gitignored — that state never reaches GitHub, see
-`docs/decisions.md`).
+(coverage list per version, diff hash, last released commit) lives
+exclusively in `tools/changelog-gate/release-state.json`.
 
 **Bilingual since 2026-08-14**: this file (`CHANGELOG.md`) is the English
 edition, `CHANGELOG.de.md` the German one — identical in content, and the
@@ -39,30 +38,23 @@ be added to both files, with the same version heading.
 
 - Newest version goes on top (reverse chronological); the gate only reads
   the file's **first** `## [...]` version heading and looks up the matching
-  coverage/hash record for it in `release-state.json`.
+  coverage/hash record for it in `release-state.json`. The version heading
+  is the extension's own `apps/extension/package.json` version — `ext-v`
+  is only the tag prefix, not part of the version string itself.
 
-**Nightly version numbers (2026-08-20, replaces the earlier hand-counted
-`0.1.0-nightly.N` scheme):** the heading must be the exact version the build
-will actually carry — `0.1.<commit count>`, no `-nightly` suffix, with
-` (Nightly)` appended after the date outside the brackets, e.g.
-`## [0.1.394] - 2026-08-20 (Nightly)`. This is the same
-`MAJOR.MINOR.<git rev-list --count HEAD>` the release workflow computes for
-`CFBundleShortVersionString`/the in-app About dialog (see
-`release-nightly.yml` → "Nightly-Pseudoversion setzen") — before this,
-the changelog carried its own, unrelated hand-counted number that never
-matched what the app itself reported. Since the changelog commit is always
-the last commit before the tag push (existing convention), the number is
-`git rev-list --count HEAD` *before* that commit, plus 1. Stable headings
-are unaffected — `app-v{X.Y.Z}` tags already are the real version.
+**Extension-scoped prose**: this changelog is user-facing release notes for
+the VS Code extension specifically. `apps/website` commits (marketing site
+copy, SEO, guides, layout) don't get a bullet here, even though the gate
+still requires `website` in the release's `coverage` list whenever the diff
+touches it (the gate checks module coverage mechanically, not prose — the
+module still has to be accounted for, it's just never described in the
+human-facing text).
 
-**App-only prose (2026-08-16)**: this changelog ships inside the desktop app
-(the updater points users at the GitHub release, which links here) and is
-read as "what changed in the app I'm about to install" — it is not a
-project-wide changelog. `apps/website` commits (marketing site copy, SEO,
-guides, layout) never get a bullet here, even though the gate still requires
-`website` in the release's `coverage` list whenever the diff touches it (the
-gate checks module coverage mechanically, not prose — the module still has
-to be accounted for, it's just never described in the human-facing text).
+## [0.1.3] - 2026-08-27
+### Fixed
+- The PaneCrew explorer could get stuck showing a previously focused
+  project's folder and not switch back when focus moved to a terminal
+  PaneCrew's own grid didn't create (e.g. a task terminal).
 
 ## [0.1.407] - 2026-08-21 (Nightly)
 ### Added
