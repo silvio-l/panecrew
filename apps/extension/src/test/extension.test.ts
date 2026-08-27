@@ -1,4 +1,6 @@
 import * as assert from "node:assert";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 const EXTENSION_ID = "silvio-lindstedt.panecrew";
@@ -66,6 +68,38 @@ suite("PaneCrew extension", () => {
     // `contributes.views` shape above (no `"type": "webview"` field) plus
     // this call not throwing.
     await vscode.commands.executeCommand("panecrew.refreshExplorer");
+  });
+
+  test("refreshes the explorer when a file changes on disk outside the editor", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    const countBefore = await vscode.commands.executeCommand<number>(
+      "panecrew._internal.getExternalRefreshCount",
+    );
+
+    // Written with plain node:fs, not vscode.workspace.fs / an editor save —
+    // this is what a CLI agent, `git`, or any other process does, and is
+    // exactly the case `onDidSaveTextDocument` alone cannot catch.
+    const filePath = path.join(folder.uri.fsPath, `external-change-${Date.now()}.txt`);
+    fs.writeFileSync(filePath, "external change");
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // watcher debounce is 300ms
+      const countAfter = await vscode.commands.executeCommand<number>(
+        "panecrew._internal.getExternalRefreshCount",
+      );
+      assert.ok(
+        countAfter > countBefore,
+        `expected the filesystem watcher to trigger a refresh (before=${countBefore}, after=${countAfter})`,
+      );
+    } finally {
+      fs.rmSync(filePath, { force: true });
+    }
   });
 
   test("ships both PaneCrew color themes", () => {

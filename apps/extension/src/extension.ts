@@ -99,10 +99,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // bulk delete fires a burst of events for what is conceptually one change.
   const fsWatcher = vscode.workspace.createFileSystemWatcher("**/*");
   let externalChangeTimer: ReturnType<typeof setTimeout> | undefined;
+  // Exposed only via an undeclared (not in package.json contributes, so it
+  // never shows in the Command Palette) command so the integration test
+  // suite can observe that an external filesystem change actually reached
+  // the watcher and fired a refresh, rather than trusting the wiring
+  // untested — this is the one behavior `onDidSaveTextDocument` can't cover.
+  let externalRefreshCount = 0;
   const scheduleExternalRefresh = () => {
     if (externalChangeTimer) clearTimeout(externalChangeTimer);
     externalChangeTimer = setTimeout(() => {
       externalChangeTimer = undefined;
+      externalRefreshCount++;
       treeDataProvider.refresh();
       refreshGitDecorations();
     }, 300);
@@ -113,6 +120,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     fsWatcher.onDidDelete(scheduleExternalRefresh),
     fsWatcher.onDidChange(scheduleExternalRefresh),
     { dispose: () => { if (externalChangeTimer) clearTimeout(externalChangeTimer); } },
+    vscode.commands.registerCommand("panecrew._internal.getExternalRefreshCount", () => externalRefreshCount),
   );
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
