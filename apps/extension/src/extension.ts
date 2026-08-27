@@ -61,6 +61,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(outputChannel);
 
   const layoutController = new GridLayoutController(vscode);
+  // PaneCrew pre-builds a template's full editor-group tree (e.g. quad's
+  // 2x2) up front and fills slots in one at a time as the user adds
+  // folders — so most slots sit genuinely empty between adds. VS Code's own
+  // `workbench.editor.closeEmptyGroups` (default true) auto-removes empty
+  // groups it thinks the user no longer wants, which silently prunes those
+  // still-unfilled slots and collapses the grid toward a flatter shape
+  // (reproduced headless: a real 2x2 degrades to a mix of leaves/splits
+  // after a few sequential adds — see
+  // `src/test/gridLayoutRepro.test.ts`). PaneCrew's whole premise depends on
+  // deliberately-empty groups surviving until filled, so it must own this
+  // setting globally rather than leave VS Code's editing-focused default in
+  // place.
+  await vscode.workspace
+    .getConfiguration()
+    .update("workbench.editor.closeEmptyGroups", false, vscode.ConfigurationTarget.Global);
   const treeDataProvider = new PaneCrewTreeDataProvider();
   const gitDecorationProvider = new PaneCrewGitDecorationProvider();
 

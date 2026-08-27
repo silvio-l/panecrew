@@ -217,4 +217,30 @@ suite("PaneCrew extension", () => {
     assert.ok(gettingStarted, "getting-started walkthrough should be contributed");
     assert.ok(gettingStarted.steps.length >= 3, "walkthrough should have at least 3 real steps");
   });
+
+  test("disables workbench.editor.closeEmptyGroups on activation, so a template's still-unfilled slots survive between folder adds", async () => {
+    // Root cause of the "Quad (2x2) renders as 4-in-a-row" bug: PaneCrew
+    // pre-builds a template's full editor-group tree up front and fills
+    // slots one at a time as folders are added, so unfilled slots are
+    // genuinely empty groups for a while. VS Code's own
+    // `workbench.editor.closeEmptyGroups` (default true) treats any empty
+    // group as user clutter and prunes it, which collapses the grid toward
+    // a flatter shape well before every slot is filled — reproduced
+    // headless via a real `GridLayoutController` driving 4 sequential
+    // `apply()` calls against the real editor-group engine (see
+    // `gridLayoutRepro.test.ts` history / commit message for the full
+    // before/after `vscode.getEditorLayout()` trace).
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+
+    const closeEmptyGroups = vscode.workspace
+      .getConfiguration("workbench.editor")
+      .get<boolean>("closeEmptyGroups");
+    assert.strictEqual(
+      closeEmptyGroups,
+      false,
+      "PaneCrew must turn this off — its own pre-built empty grid slots are not the clutter this setting is meant to clean up",
+    );
+  });
 });
