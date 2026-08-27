@@ -275,6 +275,14 @@
         background-clip: text;
         color: transparent;
       }
+      /* brief RGB-split flicker on the wordmark's arrival - a quick nod to the
+         glitchy neon reveal treatments common in this genre, kept short and
+         on-palette (amber/cyan) so it reads as a flourish, not a re-theme */
+      .brand-scene .wordmark.glitch {
+        text-shadow:
+          -3px 0 #5ee1e6,
+          3px 0 #f2a65a;
+      }
       .brand-scene .tagline {
         font-family: "JetBrains Mono", monospace;
         font-weight: 400;
@@ -425,7 +433,7 @@
             <path class="chevron" d="M20 24 L64 64 L20 104" stroke="url(#markGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
             <rect class="block" x="72" y="52" width="34" height="24" rx="4" fill="url(#markGrad)" />
           </svg>
-          <h2 class="wordmark">PaneCrew</h2>
+          <h2 class="wordmark" id="wordmark-closing">PaneCrew</h2>
           <p class="tagline">Terminals, in formation.</p>
           <p class="meta">Free &middot; MIT-licensed &middot; VS Code Marketplace</p>
         </div>
@@ -453,6 +461,12 @@
       tl.to("#scene-open .glyph .chevron", { strokeDashoffset: 0, duration: 0.65, ease: "power2.out" }, 0.2);
       tl.fromTo("#scene-open .glyph .block", { scale: 0 }, { scale: 1, duration: 0.4, ease: "back.out(2.6)" }, 0.75);
       tl.fromTo("#scene-open .wordmark .letter", { yPercent: 120 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.045 }, 0.95);
+      // quick RGB-split glitch flicker as the wordmark lands
+      tl.set("#wordmark-open", { className: "wordmark glitch" }, 1.42);
+      tl.to("#wordmark-open", { x: -4, duration: 0.04 }, 1.44);
+      tl.to("#wordmark-open", { x: 3, duration: 0.04 }, 1.48);
+      tl.to("#wordmark-open", { x: 0, duration: 0.04 }, 1.52);
+      tl.set("#wordmark-open", { className: "wordmark" }, 1.58);
       tl.to("#tagline-open", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.75);
       tl.to("#scene-open-inner", { opacity: 0, duration: 0.3, ease: "power1.in" }, 3.5);
       tl.set("#scene-open-inner", { opacity: 0 }, 3.8);
@@ -506,6 +520,11 @@
       tl.to("#scene-closing .glyph .chevron", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 29.7);
       tl.fromTo("#scene-closing .glyph .block", { scale: 0 }, { scale: 1, duration: 0.4, ease: "back.out(2.6)" }, 30.2);
       tl.fromTo("#scene-closing .wordmark", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 30.4);
+      tl.set("#wordmark-closing", { className: "wordmark glitch" }, 30.87);
+      tl.to("#wordmark-closing", { x: -4, duration: 0.04 }, 30.89);
+      tl.to("#wordmark-closing", { x: 3, duration: 0.04 }, 30.93);
+      tl.to("#wordmark-closing", { x: 0, duration: 0.04 }, 30.97);
+      tl.set("#wordmark-closing", { className: "wordmark" }, 31.03);
       tl.to("#scene-closing .tagline", { opacity: 1, duration: 0.4 }, 30.9);
       tl.to("#scene-closing .meta", { opacity: 1, duration: 0.4 }, 31.15);
       tl.to("#scene-closing .glow", { xPercent: -50, yPercent: -55, scale: 1.08, duration: 1.4, ease: "sine.inOut", repeat: 2, yoyo: true }, 31.4);
