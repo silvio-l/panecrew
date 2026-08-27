@@ -266,13 +266,12 @@
         align-items: center;
         justify-content: center;
         opacity: 0;
+        perspective: 700px;
       }
-      .brand-scene .glyph .chevron {
-        stroke-dasharray: 190;
-        stroke-dashoffset: 190;
-      }
+      .brand-scene .glyph .chevron,
       .brand-scene .glyph .block {
-        transform-origin: 89px 64px;
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
       }
       .brand-scene .wordmark {
         font-family: "Bricolage Grotesque", sans-serif;
@@ -347,16 +346,30 @@
           <div class="hatch"></div>
           <div class="glow"></div>
           <div class="mark">
-            <svg class="glyph" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- real brand mark geometry, ported from assets/brand/panecrew-mark.svg -
+                 the interlocked chevron + cursor-block, not a placeholder glyph -->
+            <svg class="glyph" viewBox="0 0 1600 1600" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="markGradOpen" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#ffd9a0" />
-                  <stop offset="0.55" stop-color="#f2a65a" />
-                  <stop offset="1" stop-color="#d98a3d" />
+                <radialGradient id="pcChevronOpen" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
+                  <stop offset="0" stop-color="#FEF2DE" />
+                  <stop offset="0.15" stop-color="#FEF0D8" />
+                  <stop offset="0.35" stop-color="#FFE9C8" />
+                  <stop offset="0.56" stop-color="#FFD394" />
+                  <stop offset="0.67" stop-color="#FFCE8C" />
+                  <stop offset="0.8" stop-color="#FEBE63" />
+                  <stop offset="0.88" stop-color="#FDB14B" />
+                  <stop offset="1" stop-color="#FCAD43" />
+                </radialGradient>
+                <linearGradient id="pcBlockOpen" gradientUnits="userSpaceOnUse" x1="106" y1="0" x2="569" y2="0">
+                  <stop offset="0" stop-color="#FBB84E" />
+                  <stop offset="0.15" stop-color="#FEBE64" />
+                  <stop offset="0.5" stop-color="#FEE0B6" />
+                  <stop offset="0.82" stop-color="#FFF2DE" />
+                  <stop offset="1" stop-color="#FFF5E2" />
                 </linearGradient>
               </defs>
-              <path class="chevron" d="M20 24 L64 64 L20 104" stroke="url(#markGradOpen)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-              <rect class="block" x="72" y="52" width="34" height="24" rx="4" fill="url(#markGradOpen)" />
+              <path class="chevron" fill="url(#pcChevronOpen)" d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z" />
+              <path class="block" fill="url(#pcBlockOpen)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
             </svg>
             <h2 class="wordmark" id="wordmark-open">
               <span class="letter-mask"><span class="letter">P</span></span><span class="letter-mask"><span class="letter">a</span></span><span class="letter-mask"><span class="letter">n</span></span><span class="letter-mask"><span class="letter">e</span></span><span class="letter-mask"><span class="letter">C</span></span><span class="letter-mask"><span class="letter">r</span></span><span class="letter-mask"><span class="letter">e</span></span><span class="letter-mask"><span class="letter">w</span></span>
@@ -450,16 +463,29 @@
         <div class="hatch"></div>
         <div class="glow"></div>
         <div class="mark">
-          <svg class="glyph" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- real brand mark geometry, ported from assets/brand/panecrew-mark.svg -->
+          <svg class="glyph" viewBox="0 0 1600 1600" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="markGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#ffd9a0" />
-                <stop offset="0.55" stop-color="#f2a65a" />
-                <stop offset="1" stop-color="#d98a3d" />
+              <radialGradient id="pcChevronClosing" gradientUnits="userSpaceOnUse" cx="1330" cy="780" r="900">
+                <stop offset="0" stop-color="#FEF2DE" />
+                <stop offset="0.15" stop-color="#FEF0D8" />
+                <stop offset="0.35" stop-color="#FFE9C8" />
+                <stop offset="0.56" stop-color="#FFD394" />
+                <stop offset="0.67" stop-color="#FFCE8C" />
+                <stop offset="0.8" stop-color="#FEBE63" />
+                <stop offset="0.88" stop-color="#FDB14B" />
+                <stop offset="1" stop-color="#FCAD43" />
+              </radialGradient>
+              <linearGradient id="pcBlockClosing" gradientUnits="userSpaceOnUse" x1="106" y1="0" x2="569" y2="0">
+                <stop offset="0" stop-color="#FBB84E" />
+                <stop offset="0.15" stop-color="#FEBE64" />
+                <stop offset="0.5" stop-color="#FEE0B6" />
+                <stop offset="0.82" stop-color="#FFF2DE" />
+                <stop offset="1" stop-color="#FFF5E2" />
               </linearGradient>
             </defs>
-            <path class="chevron" d="M20 24 L64 64 L20 104" stroke="url(#markGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-            <rect class="block" x="72" y="52" width="34" height="24" rx="4" fill="url(#markGrad)" />
+            <path class="chevron" fill="url(#pcChevronClosing)" d="M800 115 L1494 810 L819 1485 L555 1485 L749 1218 L1157 810 L632 283 Z" />
+            <path class="block" fill="url(#pcBlockClosing)" d="M106 1208 L569 1208 L368 1485 L106 1485 Z" />
           </svg>
           <h2 class="wordmark" id="wordmark-closing">PaneCrew</h2>
           <p class="tagline">Terminals, in formation.</p>
@@ -487,8 +513,8 @@
       tl.fromTo("#scene-open .hatch", { opacity: 0, xPercent: 0 }, { opacity: 1, xPercent: -4, duration: 3.6, ease: "sine.inOut" }, 0.05);
       tl.fromTo("#scene-open .glow", { xPercent: -50, yPercent: -55, scale: 0.6 }, { xPercent: -50, yPercent: -55, scale: 1, opacity: 1, duration: 1.2, ease: "power2.out" }, 0.05);
       tl.to("#scene-open .glyph", { opacity: 1, duration: 0.2 }, 0.15);
-      tl.to("#scene-open .glyph .chevron", { strokeDashoffset: 0, duration: 0.65, ease: "power2.out" }, 0.2);
-      tl.fromTo("#scene-open .glyph .block", { scale: 0 }, { scale: 1, duration: 0.4, ease: "back.out(2.6)" }, 0.75);
+      tl.fromTo("#scene-open .glyph .chevron", { opacity: 0, scale: 0.6, rotateY: -50, rotateX: 12 }, { opacity: 1, scale: 1, rotateY: 0, rotateX: 0, duration: 0.65, ease: "power2.out" }, 0.2);
+      tl.fromTo("#scene-open .glyph .block", { scale: 0, rotateY: -50 }, { scale: 1, rotateY: 0, duration: 0.4, ease: "back.out(2.6)" }, 0.75);
       tl.fromTo("#scene-open .wordmark .letter", { yPercent: 120 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.045 }, 0.95);
       // quick RGB-split glitch flicker as the wordmark lands
       tl.set("#wordmark-open", { className: "wordmark glitch" }, 1.42);
@@ -506,7 +532,7 @@
       // camera moves live on #rig-hero (image + rings together, so rings stay glued).
       // pane-center pan targets at scale 1.45, clamped so the frame never leaves the shot:
       // max pan at s=1.45 is +/-22.5 xPercent/yPercent.
-      tl.fromTo("#rig-hero", { scale: 1.16, xPercent: 0, yPercent: 0 }, { scale: 1.03, duration: 1.1, ease: "power2.out" }, 3.8);
+      tl.fromTo("#rig-hero", { scale: 1.16, xPercent: 0, yPercent: 0, rotate: -1.6 }, { scale: 1.03, rotate: 0, duration: 1.1, ease: "power2.out" }, 3.8);
       tl.to("#eyebrow-hero", { opacity: 1, duration: 0.4, ease: "power2.out" }, 4.05);
       tl.fromTo("#scene-hero .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 4.2);
       // punch-in cycle: zoom onto each pane in turn (TL -> TR -> BR -> BL), ring pulses on arrival
@@ -532,7 +558,7 @@
       // ---- Scene 2: focus-follow (11.7 - 19.2) ----
       // open framed tight on the focused pane (top-right, "dashboard"), then the camera
       // travels with the trace dot to the explorer tree, then pulls wide.
-      tl.fromTo("#rig-follow", { scale: 1.45, xPercent: -22.5, yPercent: 22.5 }, { xPercent: -21, duration: 1.2, ease: "sine.out" }, 11.7);
+      tl.fromTo("#rig-follow", { scale: 1.45, xPercent: -22.5, yPercent: 22.5, rotate: 1.8 }, { xPercent: -21, rotate: 0, duration: 1.2, ease: "sine.out" }, 11.7);
       tl.to("#eyebrow-follow", { opacity: 1, duration: 0.4, ease: "power2.out" }, 11.95);
       tl.fromTo("#scene-follow .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.07 }, 12.1);
       tl.fromTo("#subline-follow", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 12.6);
@@ -556,7 +582,7 @@
 
       // ---- Scene 3: git status (19.6 - 25.6) ----
       // wide establish, hard punch-in on the "M" badge in the explorer, pull back out.
-      tl.fromTo("#rig-git", { scale: 1.14, xPercent: 0, yPercent: 0 }, { scale: 1.05, duration: 0.9, ease: "power2.out" }, 19.6);
+      tl.fromTo("#rig-git", { scale: 1.14, xPercent: 0, yPercent: 0, rotate: -2 }, { scale: 1.05, rotate: 0, duration: 0.9, ease: "power2.out" }, 19.6);
       tl.to("#eyebrow-git", { opacity: 1, duration: 0.4, ease: "power2.out" }, 19.85);
       tl.fromTo("#scene-git .word", { yPercent: 115 }, { yPercent: 0, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 20.0);
       tl.to("#rig-git", { scale: 1.6, xPercent: 30, yPercent: 29.5, duration: 0.6, ease: "power3.inOut" }, 20.7);
@@ -573,8 +599,8 @@
       tl.fromTo("#scene-closing .hatch", { opacity: 0, xPercent: 0 }, { opacity: 1, xPercent: -5, duration: 5.2, ease: "sine.inOut" }, 26.05);
       tl.fromTo("#scene-closing .glow", { xPercent: -50, yPercent: -55, scale: 0.6 }, { xPercent: -50, yPercent: -55, scale: 1, opacity: 1, duration: 1.2, ease: "power2.out" }, 26.05);
       tl.to("#scene-closing .glyph", { opacity: 1, duration: 0.2 }, 26.15);
-      tl.to("#scene-closing .glyph .chevron", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 26.2);
-      tl.fromTo("#scene-closing .glyph .block", { scale: 0 }, { scale: 1, duration: 0.4, ease: "back.out(2.6)" }, 26.7);
+      tl.fromTo("#scene-closing .glyph .chevron", { opacity: 0, scale: 0.6, rotateY: 50, rotateX: -12 }, { opacity: 1, scale: 1, rotateY: 0, rotateX: 0, duration: 0.6, ease: "power2.out" }, 26.2);
+      tl.fromTo("#scene-closing .glyph .block", { scale: 0, rotateY: 50 }, { scale: 1, rotateY: 0, duration: 0.4, ease: "back.out(2.6)" }, 26.7);
       tl.fromTo("#scene-closing .wordmark", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 26.9);
       tl.set("#wordmark-closing", { className: "wordmark glitch" }, 27.37);
       tl.to("#wordmark-closing", { x: -4, duration: 0.04 }, 27.39);
