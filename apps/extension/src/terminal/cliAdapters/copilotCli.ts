@@ -8,6 +8,8 @@
 // merging into a shared one — no merge/idempotency logic needed beyond a
 // whole-file compare, unlike `jsonHookPatch.ts`.
 
+import { NOTIFY_REDIRECT_TARGET } from "./notifyTarget";
+
 export interface PatchResult {
   text: string;
   changed: boolean;
@@ -18,14 +20,15 @@ export interface PatchResult {
  * hook, which fires when the CLI emits a system notification — e.g. a
  * permission prompt. `2>/dev/null || true` keeps this a no-op (not a hook
  * error) when there's no controlling terminal to write to, e.g. a
- * headless/background session with no /dev/tty. */
+ * headless/background session with no /dev/tty (see `notifyTarget.ts` for
+ * the Windows case). */
 const COPILOT_CLI_NOTIFY_COMMAND =
-  "printf '\\033]9;GitHub Copilot needs your attention\\007' > /dev/tty 2>/dev/null || true";
+  `printf '\\033]9;GitHub Copilot needs your attention\\007' > ${NOTIFY_REDIRECT_TARGET} 2>/dev/null || true`;
 
 /** Same OSC 9 emit, wired to Copilot CLI's `agentStop` hook — fires when
  * the main agent finishes a turn, mirroring Claude Code's `Stop` hook. */
 const COPILOT_CLI_STOP_COMMAND =
-  "printf '\\033]9;GitHub Copilot is done\\007' > /dev/tty 2>/dev/null || true";
+  `printf '\\033]9;GitHub Copilot is done\\007' > ${NOTIFY_REDIRECT_TARGET} 2>/dev/null || true`;
 
 export const COPILOT_CLI_HOOKS_CONFIG = `${JSON.stringify(
   {

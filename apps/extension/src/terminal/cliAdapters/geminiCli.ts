@@ -6,14 +6,15 @@
 // as Claude Code's settings.json, so this delegates to the same
 // jsonHookPatch.ts merge logic rather than duplicating it.
 import { patchNotificationHook, type PatchResult } from "./jsonHookPatch";
+import { NOTIFY_REDIRECT_TARGET } from "./notifyTarget";
 
 export type { PatchResult };
 
 // `2>/dev/null || true` keeps this a no-op (not a hook error) when there's
 // no controlling terminal to write to, e.g. a headless/background session
-// with no /dev/tty.
+// with no /dev/tty (see `notifyTarget.ts` for the Windows case).
 export const GEMINI_CLI_NOTIFY_COMMAND =
-  "printf '\\033]9;Gemini CLI needs your attention\\007' > /dev/tty 2>/dev/null || true";
+  `printf '\\033]9;Gemini CLI needs your attention\\007' > ${NOTIFY_REDIRECT_TARGET} 2>/dev/null || true`;
 
 export function computePatchedConfig(existingConfigText: string | undefined): PatchResult {
   return patchNotificationHook(

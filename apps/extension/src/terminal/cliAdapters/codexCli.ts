@@ -7,6 +7,8 @@
 // parser: a small hand-rolled line/bracket scanner is enough for the one
 // key this needs to find, same "no bespoke general-purpose parser for a
 // narrow need" call as treeDataProvider.ts's exclude-glob matcher.
+import { NOTIFY_REDIRECT_TARGET } from "./notifyTarget";
+
 export interface PatchResult {
   text: string;
   changed: boolean;
@@ -20,9 +22,10 @@ export interface PatchResult {
  * `printf` untouched instead of TOML trying to interpret them as its own
  * (invalid) escape sequences. `2>/dev/null || true` keeps this a no-op (not
  * a notify error) when there's no controlling terminal to write to, e.g. a
- * headless/background session with no /dev/tty. */
+ * headless/background session with no /dev/tty (see `notifyTarget.ts` for
+ * the Windows case). */
 export const CODEX_NOTIFY_LINE =
-  'notify = ["sh", "-c", \'printf "\\033]9;Codex needs your attention\\007" > /dev/tty 2>/dev/null || true\']';
+  `notify = ["sh", "-c", 'printf "\\033]9;Codex needs your attention\\007" > ${NOTIFY_REDIRECT_TARGET} 2>/dev/null || true']`;
 
 const NOTIFY_KEY_PATTERN = /^notify\s*=/;
 
