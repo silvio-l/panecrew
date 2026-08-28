@@ -387,6 +387,32 @@ suite("PaneCrew extension", () => {
     });
   });
 
+  test("panecrew.configureCliToolNotifications previews and writes the GitHub Copilot CLI hooks file end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "GitHub Copilot CLI",
+      configDirName: ".github/hooks",
+      configFileName: "panecrew-attention.json",
+      expectedSubstring: "GitHub Copilot needs your attention",
+    });
+  });
+
+  test("panecrew.configureCliToolNotifications previews and writes the OpenCode plugin file end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "OpenCode",
+      configDirName: ".opencode/plugins",
+      configFileName: "panecrew-attention.js",
+      expectedSubstring: "OpenCode needs your attention",
+    });
+  });
+
   test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
     const store = new Map<string, unknown>();
     const memento: CompactLookMemento = {

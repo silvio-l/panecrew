@@ -387,7 +387,7 @@
           {
             "id": "configureCliNotifications",
             "title": "Get notified when a pane needs you",
-            "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
+            "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI, GitHub Copilot CLI, OpenCode) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
             "completionEvents": [
               "onCommand:panecrew.configureCliToolNotifications"
             ],

@@ -15,7 +15,7 @@ export async function maybeOfferAttentionAdapterConfig(memento: GlobalMemento): 
   await memento.update(OFFERED_KEY, true);
 
   const choice = await vscode.window.showInformationMessage(
-    "PaneCrew can show a badge when a background pane's CLI agent needs your attention. Configure it for Claude Code, Codex CLI, or Gemini CLI now?",
+    "PaneCrew can show a badge when a background pane's CLI agent needs your attention. Configure it for Claude Code, Codex CLI, Gemini CLI, GitHub Copilot CLI, or OpenCode now?",
     "Configure…",
     "Not now",
   );

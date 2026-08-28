@@ -11,6 +11,8 @@ import * as os from "node:os";
 import { computePatchedConfig as computeClaudeCodeConfig } from "./claudeCode";
 import { computePatchedConfig as computeCodexConfig } from "./codexCli";
 import { computePatchedConfig as computeGeminiCliConfig } from "./geminiCli";
+import { computePatchedConfig as computeCopilotCliConfig } from "./copilotCli";
+import { computePatchedConfig as computeOpenCodeConfig } from "./openCode";
 import type { PatchResult } from "./jsonHookPatch";
 
 interface BaseTool {
@@ -69,6 +71,24 @@ const TOOLS: CliAdapterTool[] = [
     displayPath: ".gemini/settings.json",
     computePatchedConfig: computeGeminiCliConfig,
     configUri: (folder) => vscode.Uri.joinPath(folder.uri, ".gemini", "settings.json"),
+  },
+  {
+    id: "copilot-cli",
+    label: "GitHub Copilot CLI",
+    supported: true,
+    scope: "project",
+    displayPath: ".github/hooks/panecrew-attention.json",
+    computePatchedConfig: computeCopilotCliConfig,
+    configUri: (folder) => vscode.Uri.joinPath(folder.uri, ".github", "hooks", "panecrew-attention.json"),
+  },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    supported: true,
+    scope: "project",
+    displayPath: ".opencode/plugins/panecrew-attention.js",
+    computePatchedConfig: computeOpenCodeConfig,
+    configUri: (folder) => vscode.Uri.joinPath(folder.uri, ".opencode", "plugins", "panecrew-attention.js"),
   },
 ];
 
