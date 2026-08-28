@@ -2,6 +2,42 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.6 — 2026-08-28
+
+### Added
+
+- Attention badges now also fire from Claude Code's Stop hook, and from new
+  GitHub Copilot CLI and OpenCode notification adapters.
+- A stronger Projects Overview icon and a VS Code toast for attention events.
+- An actionable toast for adopted panes lacking automatic attention
+  recovery, with a one-click restart.
+- A per-tab restart icon and a terminal right-click "Restart" entry for
+  multi-terminal panes.
+
+### Fixed
+
+- The attention-signal buffer no longer grows unbounded when it never finds
+  a terminator (e.g. stray bytes in raw/binary terminal output), fixing a
+  memory-growth issue in long-running panes.
+- Attention-notify hooks now reach the terminal on Windows.
+- Adopted terminals track and expose a safe recovery path.
+- CLI attention notify commands are resilient to a missing `/dev/tty`.
+- PaneCrew no longer reopens closed panes or duplicates terminals on reload.
+
+## 0.1.5 — 2026-08-28
+
+### Added
+
+- Pane attention notifications (OSC 9 / OSC 777 notify) and a maximize
+  pane toggle.
+- A "Remove Project from Workspace" command, active-tab theming, and
+  proper terminal disposal.
+
+### Fixed
+
+- The sidebar toggle moved to the status bar, and the maximize icon now
+  hides when a pane is already maximized.
+
 ## 0.1.4 — 2026-08-27
 
 ### Added
