@@ -2,6 +2,14 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.7 — 2026-08-28
+
+### Added
+
+- Grid presets now support an optional per-pane startup command (e.g.
+  `claude`), sent once into the terminal right after a preset creates it —
+  never into a terminal the preset merely reconnects to.
+
 ## 0.1.6 — 2026-08-28
 
 ### Added

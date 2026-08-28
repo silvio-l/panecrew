@@ -169,6 +169,7 @@ export interface ControllerTerminal {
    * by the time `ensureTerminal` runs. */
   shellIntegration?: { cwd?: { fsPath: string } };
   show(preserveFocus?: boolean): void;
+  sendText(text: string, addNewLine?: boolean): void;
   dispose?(): void;
 }
 
@@ -225,12 +226,23 @@ export class GridLayoutController {
    * it. */
   private readonly lastAdoptedPaneIds = new Set<string>();
 
+  /** Panes whose terminal was genuinely freshly created (neither adopted
+   * from an already-running terminal nor already tracked) during the most
+   * recent `apply()` call — the mirror image of `lastAdoptedPaneIds`. Used
+   * by preset-driven applies (`panecrew.loadPreset`) to know which panes it
+   * is safe to send a one-shot startup command into: an adopted or
+   * already-tracked terminal may have something else running in it already,
+   * and blindly typing a command into that would be exactly the kind of
+   * silent, unexpected write this project's guardrails rule out. */
+  private readonly lastCreatedPaneIds = new Set<string>();
+
   constructor(private readonly vscode: VscodeLike) {}
 
   async apply(state: GridState): Promise<void> {
     const plan = computeApplyPlan(state);
     await this.vscode.commands.executeCommand("vscode.setEditorLayout", plan.layout);
     this.lastAdoptedPaneIds.clear();
+    this.lastCreatedPaneIds.clear();
     for (const { pane, viewColumn } of plan.assignments) {
       this.paneByViewColumn.set(viewColumn, pane);
       this.ensureTerminal(pane, viewColumn);
@@ -241,6 +253,20 @@ export class GridLayoutController {
    * see `lastAdoptedPaneIds` for why this matters for attention tracking. */
   adoptedPaneIds(): readonly string[] {
     return [...this.lastAdoptedPaneIds];
+  }
+
+  /** Panes whose terminal was freshly created by the most recent `apply()`
+   * call — see `lastCreatedPaneIds`. */
+  createdPaneIds(): readonly string[] {
+    return [...this.lastCreatedPaneIds];
+  }
+
+  /** Sends a one-shot command into a pane's terminal (e.g. a preset's
+   * startup command) — a thin wrapper around `Terminal.sendText`, no-op if
+   * the pane has no tracked terminal. Callers are expected to only target
+   * panes from `createdPaneIds()` (see that method's comment for why). */
+  sendText(paneId: string, command: string): void {
+    this.terminalsByPaneId.get(paneId)?.sendText(command, true);
   }
 
   private ensureTerminal(pane: Pane, viewColumn: number): void {
@@ -277,7 +303,11 @@ export class GridLayoutController {
       if (cwd !== undefined) return normalizeCwd(cwd) === expectedCwd;
       return terminal.name === expectedName;
     });
-    if (adopted) this.lastAdoptedPaneIds.add(pane.paneId);
+    if (adopted) {
+      this.lastAdoptedPaneIds.add(pane.paneId);
+    } else {
+      this.lastCreatedPaneIds.add(pane.paneId);
+    }
     const terminal = adopted ?? this.vscode.window.createTerminal({
       name: expectedName,
       cwd: pane.projectPath,

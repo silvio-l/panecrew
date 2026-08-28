@@ -50,6 +50,12 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.7] - 2026-08-28
+### Added
+- Grid presets can now save an optional startup command per pane (e.g.
+  `claude`), automatically sent into the terminal the moment the preset
+  creates it.
+
 ## [0.1.6] - 2026-08-28
 ### Added
 - Attention badges now also fire from Claude Code's own Stop hook, and from
