@@ -8,7 +8,7 @@ const description =
 const faq = [
   {
     q: "Can I run multiple Claude Code sessions at once?",
-    a: "Yes — Claude Code itself is a single CLI process per terminal, so running several sessions at once means running several terminal instances side by side. PaneCrew gives you a fixed grid of up to four real terminal panes for exactly that, and the same approach works for Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or any other CLI coding agent.",
+    a: "Yes — Claude Code itself is a single CLI process per terminal, so running several sessions at once means running several terminal instances side by side. PaneCrew gives you a grid of up to four real terminal panes for exactly that — pick from several layouts (2×2, a row of three or four, and more) from the status bar — and the same approach works for Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or any other CLI coding agent.",
   },
   {
     q: "How do I orchestrate multiple coding agent sessions across different projects?",
@@ -47,7 +47,7 @@ const faqJsonLd = {
     <p class="eyebrow">Guide</p>
     <h1>How to Run Multiple CLI Coding Agent Sessions at Once</h1>
     <p class="lede">
-      The most direct way to run multiple CLI coding agent sessions at once is a terminal grid app that keeps every session visible and running in parallel, instead of switching tabs or windows. PaneCrew does this natively: a fixed grid (2×2 today) of real, independent terminal panes, each running its own agent session — Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or a plain shell — with a file explorer that automatically follows whichever pane currently has focus.
+      The most direct way to run multiple CLI coding agent sessions at once is a terminal grid app that keeps every session visible and running in parallel, instead of switching tabs or windows. PaneCrew does this natively: a grid of up to four real, independent terminal panes — pick the layout that fits (2×2, a row of three or four, one pane split off larger than the rest, and more) with one click in the status bar — each running its own agent session — Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or a plain shell — with a file explorer that automatically follows whichever pane currently has focus.
     </p>
 
     <img class="shot" src="/images/hero-grid.png" alt="A real 2x2 PaneCrew grid running four different CLI agent sessions at once — Claude Code, Codex, Gemini CLI, and a plain pnpm watch — each in its own terminal pane" />

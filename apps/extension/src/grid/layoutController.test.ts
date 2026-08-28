@@ -179,6 +179,33 @@ describe("GridLayoutController.paneForViewColumn", () => {
   });
 });
 
+describe("GridLayoutController.adoptForeignTerminal", () => {
+  // Regression test for the "native + button" bug (2026-08-28): a second
+  // terminal opened directly inside a pane's editor group (e.g. via the
+  // terminal tab bar's own "+" button) never goes through `ensureTerminal`
+  // at all, so `paneForTerminal` returned `null` for it forever — the
+  // attention-notification hook explicitly no-ops for exactly that case
+  // (see `extension.ts`'s "ignoring shell execution on untracked terminal"
+  // log line), silently breaking hook-based monitoring for any command run
+  // in that terminal. `adoptForeignTerminal` is what `extension.ts` calls,
+  // resolved by editor-group `ViewColumn`, once it observes such a terminal
+  // becoming active.
+  it("makes paneForTerminal resolve a terminal registered after the fact", async () => {
+    const controller = new GridLayoutController(fakeVscode().vscode);
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+    await controller.apply(grid);
+
+    const foreignTerminal = { name: "zsh", show: () => { /* no-op fake terminal */ } };
+    expect(controller.paneForTerminal(foreignTerminal)).toBeNull();
+
+    const pane = controller.paneForViewColumn(1);
+    if (pane === null) throw new Error("expected pane-a to occupy view column 1");
+    controller.adoptForeignTerminal(foreignTerminal, pane);
+
+    expect(controller.paneForTerminal(foreignTerminal)).toEqual(pane);
+  });
+});
+
 describe("GridLayoutController terminal adoption", () => {
   // Regression test for the duplicate-terminal bug (2026-08-27): after a
   // "Developer: Reload Window" (or any extension-host restart whose saved

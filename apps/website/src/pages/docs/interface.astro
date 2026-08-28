@@ -19,6 +19,13 @@ const stops = [
     body: "<code>PaneCrew: Open Project Grid…</code> and <code>PaneCrew: Add Folder to Grid…</code> add a workspace folder and give it its own terminal, arranged automatically via VS Code's editor-group layout.",
   },
   {
+    title: "Layouts",
+    body: "The grid isn't stuck at 2×2 — click the layout item in the status bar (or run <code>PaneCrew: Set Grid Template…</code>) to switch between seven arrangements, from a single full-width pane up to a 2×2 quad or a row of four. Save any arrangement as a named preset to reload later.",
+    img: "/images/crew/template-picker-crop.png",
+    imgAlt: "PaneCrew's status bar showing the current grid layout, 'Quad (2×2)', click to change it",
+    imgWidth: 220,
+  },
+  {
     title: "A real terminal",
     body: "Every pane is a real, PTY-backed VS Code terminal. Any CLI tool runs here exactly as it would in your own shell — Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or a plain shell.",
   },
@@ -58,7 +65,7 @@ const stops = [
           <h3>{s.title}</h3>
           <p set:html={s.body} />
           {s.img && (
-            <img class="stop-shot" src={s.img} alt={s.imgAlt} />
+            <img class="stop-shot" src={s.img} alt={s.imgAlt} style={s.imgWidth ? `max-width:${s.imgWidth}px` : undefined} />
           )}
         </div>
       </div>

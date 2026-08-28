@@ -144,7 +144,7 @@ export interface VscodeLike {
   };
 }
 
-interface ControllerTerminal {
+export interface ControllerTerminal {
   name: string;
   /** Present on every real `vscode.Terminal` as `TerminalOptions |
    * ExtensionTerminalOptions`. Confirmed via live instrumentation
@@ -335,6 +335,22 @@ export class GridLayoutController {
    * created (e.g. a terminal the user opened by hand outside the grid). */
   paneForTerminal(terminal: ControllerTerminal): Pane | null {
     return this.paneByTerminal.get(terminal) ?? null;
+  }
+
+  /** Registers `terminal` as belonging to `pane` without creating it —
+   * unlike `ensureTerminal`'s adoption (which only runs during `apply()`
+   * and only recreates PaneCrew's own one terminal per pane), this covers a
+   * SECOND terminal opened directly inside a pane's editor group outside
+   * `ensureTerminal` entirely (e.g. via the terminal tab bar's native "+"
+   * button). Without this, such a terminal is permanently invisible to
+   * `paneForTerminal` — no `apply()` call ever revisits it — so features
+   * keyed on that lookup (the attention-notification hook, `focusFollow`'s
+   * primary path) silently treat it as foreign forever. The caller
+   * (`extension.ts`) resolves which pane by editor-group `ViewColumn`
+   * (`vscode.window.tabGroups.activeTabGroup.viewColumn` at the moment the
+   * new terminal becomes active) and passes it in here. */
+  adoptForeignTerminal(terminal: ControllerTerminal, pane: Pane): void {
+    this.paneByTerminal.set(terminal, pane);
   }
 
   /** The pane assigned to a given editor group position, or `null` if that
