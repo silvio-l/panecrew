@@ -379,10 +379,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // command. This is deliberately just a log line, not a user-facing prompt:
   // proactively warning on every reload would be noisy, and the pane's
   // content/scrollback is still intact and usable even without attention
-  // tracking. `panecrew.restartPaneTerminal` (below) is the actual fix for a
-  // pane whose attention notifications stay stuck after adoption -- it ends
-  // the old command and starts a fresh one, which VS Code's shell
-  // integration does see as a new start.
+  // tracking. `panecrew.restartPaneTerminal` is the actual fix for a pane
+  // whose attention notifications stay stuck after adoption -- it ends the
+  // old command and starts a fresh one, which VS Code's shell integration
+  // does see as a new start. Since adoption breaks tracking in the *common*
+  // case, not a rare one (confirmed 2026-08-28), this is surfaced as an
+  // actionable toast with a one-click restart button rather than only a log
+  // line -- the user asked specifically not to need the Command Palette or a
+  // keybinding for this. One toast per activation, listing every adopted
+  // pane; dismissing it (no click) leaves everything as-is, same as before.
   function logAdoptedPanes(adoptedPaneIds: readonly string[]): void {
     if (adoptedPaneIds.length === 0) return;
     const adoptedPanes = gridState.slots.filter(
@@ -391,6 +396,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     for (const pane of adoptedPanes) {
       outputChannel.appendLine(`attention: adopted (revived) terminal for "${pane.projectPath}" on this activation`);
     }
+    const plural = adoptedPanes.length === 1 ? "pane" : "panes";
+    void vscode.window
+      .showWarningMessage(
+        `PaneCrew: attention notifications won't fire for ${adoptedPanes.length} restored ${plural} until its terminal is restarted.`,
+        "Restart Terminal(s)",
+      )
+      .then((choice) => {
+        if (choice !== "Restart Terminal(s)") return;
+        for (const pane of adoptedPanes) restartPaneTerminal(pane);
+      });
   }
 
   function restartPaneTerminal(pane: Pane): void {
