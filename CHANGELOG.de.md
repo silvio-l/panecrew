@@ -53,6 +53,32 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.6] - 2026-08-28
+### Neu
+- Attention-Badges werden jetzt auch über Claude Codes eigenen Stop-Hook
+  ausgelöst, sowie über zwei neue Adapter: GitHub Copilot CLI und OpenCode.
+- Ein VS-Code-Toast und ein deutlicheres Projects-Overview-Icon machen
+  Attention-Events besser sichtbar.
+- Panes, die PaneCrew übernommen (statt selbst erzeugt) hat und deren
+  Attention-Tracking sich nicht von selbst erholt, bekommen jetzt einen
+  aktionsfähigen Toast mit Ein-Klick-Neustart.
+- Ein Pro-Tab-Neustart-Icon und ein Terminal-Rechtsklick-Eintrag „Restart"
+  erlauben es, einen einzelnen Terminal-Tab innerhalb eines
+  Mehr-Terminal-Panes neu zu starten, ohne das ganze Pane zu schließen.
+
+### Behoben
+- Der Attention-Signal-Puffer wächst nicht mehr unbegrenzt, wenn er nie
+  ein Terminator-Zeichen findet (z. B. verirrte Escape-Bytes in
+  Roh-/Binär-Terminalausgabe) — das war ein Speicherleck bei
+  lang laufenden Panes.
+- Attention-Notify-Hooks erreichen das Terminal jetzt auch unter Windows.
+- Übernommene Terminals tracken und liefern jetzt einen sicheren
+  Recovery-Pfad, statt Attention-Tracking stillschweigend zu verlieren.
+- CLI-Attention-Notify-Kommandos schlagen nicht mehr fehl, wenn
+  `/dev/tty` nicht verfügbar ist.
+- PaneCrew öffnet geschlossene Panes nicht mehr erneut und dupliziert
+  beim Reload keine Terminals mehr.
+
 ## [0.1.5] - 2026-08-28
 ### Neu
 - Pane-Attention-Benachrichtigungen: PaneCrew erkennt jetzt das

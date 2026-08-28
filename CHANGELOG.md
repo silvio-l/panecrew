@@ -50,6 +50,31 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.6] - 2026-08-28
+### Added
+- Attention badges now also fire from Claude Code's own Stop hook, and from
+  two new adapters: GitHub Copilot CLI and OpenCode.
+- A VS Code toast and a stronger Projects Overview icon call out attention
+  events more clearly.
+- Panes PaneCrew adopted (rather than created itself) that can't recover
+  attention tracking on their own now get an actionable toast with a
+  one-click restart.
+- A per-tab restart icon and a terminal right-click "Restart" entry make it
+  possible to restart a single terminal tab inside a multi-terminal pane
+  without closing the whole pane.
+
+### Fixed
+- The attention-signal buffer no longer grows without bound when it never
+  finds a terminator (e.g. stray escape bytes inside raw/binary terminal
+  output) — this was an unbounded-memory-growth bug in long-running panes.
+- Attention-notify hooks now reach the terminal on Windows.
+- Adopted terminals track and expose a safe recovery path instead of
+  silently losing attention tracking.
+- CLI attention notify commands no longer fail when `/dev/tty` is
+  unavailable.
+- PaneCrew no longer reopens closed panes or duplicates terminals on
+  reload.
+
 ## [0.1.5] - 2026-08-28
 ### Added
 - Pane attention notifications: PaneCrew now listens for the standard
