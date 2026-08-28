@@ -16,6 +16,7 @@ describe("session persistence", () => {
       template: "quad",
       slots: [null, null, null, null],
       splitRatios: [],
+      closedProjectPaths: [],
     });
   });
 

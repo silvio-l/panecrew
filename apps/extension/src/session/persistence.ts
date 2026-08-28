@@ -12,7 +12,14 @@
 // logical "window" per VS Code workspace — no multi-window concept the way
 // the desktop app has).
 import type { GridState } from "../grid/gridState";
-import { buildWindowState, restoredSlots, restoredSplitRatios, restoredTemplate, type SessionState } from "./sessionState";
+import {
+  buildWindowState,
+  restoredClosedProjectPaths,
+  restoredSlots,
+  restoredSplitRatios,
+  restoredTemplate,
+  type SessionState,
+} from "./sessionState";
 import type { Memento as WorkspaceMemento } from "../vscodeMemento";
 export type { WorkspaceMemento };
 
@@ -31,9 +38,13 @@ function readRaw(memento: WorkspaceMemento): SessionState | undefined {
 /** Persists the live grid (template, slots, split ratios, maximized pane) —
  * mirrors `buildWindowState` exactly, just written to `workspaceState`
  * instead of invoking a Tauri command. */
-export async function saveSession(memento: WorkspaceMemento, grid: GridState): Promise<void> {
+export async function saveSession(
+  memento: WorkspaceMemento,
+  grid: GridState,
+  closedProjectPaths: readonly string[] = [],
+): Promise<void> {
   const existing = readRaw(memento);
-  const window = buildWindowState(WINDOW_LABEL, grid);
+  const window = buildWindowState(WINDOW_LABEL, grid, closedProjectPaths);
   const next: SessionState = {
     ...(existing ?? { windows: [] }),
     windows: [window],
@@ -45,6 +56,7 @@ export interface RestoredSession {
   template: GridState["template"];
   slots: ReturnType<typeof restoredSlots>;
   splitRatios: number[];
+  closedProjectPaths: string[];
 }
 
 /** `null` when no session was ever saved for this workspace — callers should
@@ -57,6 +69,7 @@ export function loadSession(memento: WorkspaceMemento): RestoredSession | null {
     template: restoredTemplate(session, WINDOW_LABEL),
     slots: restoredSlots(session, WINDOW_LABEL),
     splitRatios: restoredSplitRatios(session, WINDOW_LABEL),
+    closedProjectPaths: restoredClosedProjectPaths(session, WINDOW_LABEL),
   };
 }
 

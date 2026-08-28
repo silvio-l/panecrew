@@ -40,6 +40,7 @@ import { maybeShowGridHint } from "./onboarding/gridHint";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
 import { maybeOfferAttentionAdapterConfig } from "./onboarding/attentionAdapterOffer";
 import { loadSession, saveSession } from "./session/persistence";
+import { restoreGridState } from "./session/restoreSession";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
 import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
@@ -54,6 +55,9 @@ import {
 } from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
+/** Project paths whose pane the user deliberately closed while the folder
+ * stayed part of the workspace — see `session/restoreSession.ts`. */
+let closedProjectPaths = new Set<string>();
 
 function makeId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -291,7 +295,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
-  const persist = () => void saveSession(context.workspaceState, gridState);
+  const persist = () => void saveSession(context.workspaceState, gridState, [...closedProjectPaths]);
 
   // --- default template from settings -------------------------------------
   // Only takes effect when there's no restored session below to override it
@@ -307,29 +311,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const restored = loadSession(context.workspaceState);
   const openFolders = vscode.workspace.workspaceFolders ?? [];
   if (openFolders.length > 0) {
-    if (restored) {
-      gridState = { ...INITIAL_GRID_STATE, template: restored.template, splitRatios: restored.splitRatios };
-      restored.slots.forEach((slot, index) => {
-        if (!slot) return;
-        gridState = assignProjectToSlot(gridState, index, slot.project_path, makeId(), makeId());
-      });
-    }
-    // Backfill any open workspace folder the restored session doesn't
-    // already track (2026-08-27 fix): covers both "no session was ever
-    // saved" and "the session only partially restored" — an unsaved
-    // multi-root workspace's `workspaceState` isn't reliably persisted
-    // across a "Developer: Reload Window", so a folder that's genuinely
-    // already open must still end up with a tracked pane instead of
-    // silently falling outside the grid (which previously left
-    // focus-follow permanently unable to resolve it, and any later
-    // add-folder attempt spawning a duplicate terminal for it).
-    for (const folder of openFolders) {
-      const alreadyTracked = gridState.slots.some((slot) => slot?.projectPath === folder.uri.fsPath);
-      if (alreadyTracked) continue;
-      const slotIndex = firstEmptySlotIndex(gridState);
-      if (slotIndex === -1) break;
-      gridState = assignProjectToSlot(gridState, slotIndex, folder.uri.fsPath, makeId(), makeId());
-    }
+    const result = restoreGridState(
+      restored,
+      openFolders.map((f) => f.uri.fsPath),
+      makeId,
+    );
+    gridState = result.gridState;
+    closedProjectPaths = result.closedProjectPaths;
     await layoutController.apply(gridState);
     persist();
   }
@@ -360,6 +348,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     gridState = assignProjectToSlot(gridState, slotIndex, folderUri.fsPath, makeId(), makeId());
+    closedProjectPaths.delete(folderUri.fsPath);
     await layoutController.apply(gridState);
     treeDataProvider.refresh();
     refreshGitDecorations();
@@ -418,6 +407,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         gridState = closePane(gridState, pane.paneId);
         await layoutController.apply(gridState);
       }
+      // Leaving the workspace entirely, not merely closing its pane — this
+      // folder won't be in `openFolders` on the next activation either way,
+      // so it shouldn't linger in `closedProjectPaths`.
+      closedProjectPaths.delete(folder.uri.fsPath);
 
       const existingFolders = vscode.workspace.workspaceFolders ?? [];
       const index = existingFolders.findIndex((f) => f.uri.toString() === folder.uri.toString());
@@ -530,6 +523,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!pane) return;
       layoutController.forgetPane(pane.paneId);
       gridState = closePane(gridState, pane.paneId);
+      closedProjectPaths.add(pane.projectPath);
       clearAttention(pane.projectPath);
       persist();
     }),
