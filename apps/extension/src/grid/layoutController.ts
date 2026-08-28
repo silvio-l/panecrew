@@ -208,15 +208,21 @@ export class GridLayoutController {
 
   /** Panes whose terminal was adopted (revived from a persisted VS Code
    * session, e.g. after "Developer: Reload Window") during the most recent
-   * `apply()` call, rather than freshly created by this controller. In the
-   * common case attention tracking (`onDidStartTerminalShellExecution`)
-   * recovers on its own for these once a new command runs -- VS Code's
-   * shell-integration plumbing re-subscribes to every existing terminal on
-   * each extension host restart -- so this is logged (see `extension.ts`'s
-   * `logAdoptedPanes`) rather than acted on automatically. Kept around so
-   * `panecrew.restartPaneTerminal` has a record of which panes were adopted,
-   * for the rare case one's tracking genuinely stays stuck and the user
-   * explicitly asks to restart it. */
+   * `apply()` call, rather than freshly created by this controller.
+   * Attention tracking does NOT recover on its own for these in the common
+   * case (verified 2026-08-28, correcting an earlier, over-optimistic
+   * assumption): the pane's foreground command (e.g. a CLI agent's own
+   * process) is still the one, already-running shell command from before
+   * the reload, and `onDidStartTerminalShellExecution` only fires for a NEW
+   * command start -- more input into that still-running process never fires
+   * it again, and VS Code's stable API has no way to attach to an
+   * already-started command's live output. This is logged (see
+   * `extension.ts`'s `logAdoptedPanes`) rather than acted on automatically,
+   * since ending the command to restart tracking is destructive and should
+   * stay an explicit choice. Kept around so `panecrew.restartPaneTerminal`
+   * has a record of which panes were adopted, for when the user notices a
+   * specific pane's attention notifications stay stuck and asks to restart
+   * it. */
   private readonly lastAdoptedPaneIds = new Set<string>();
 
   constructor(private readonly vscode: VscodeLike) {}

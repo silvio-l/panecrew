@@ -366,18 +366,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // Terminals VS Code revives from a persisted session (e.g. after
-  // "Developer: Reload Window") come back with their content intact, and in
-  // the normal case attention tracking recovers on its own: VS Code's own
-  // shell-integration plumbing re-subscribes to every existing terminal's
-  // command-detection capability on each extension host restart (confirmed
-  // by reading `MainThreadTerminalShellIntegration` upstream), so the next
-  // real command run in a revived pane should fire
-  // `onDidStartTerminalShellExecution` again with no action needed -- no
-  // terminal restart, no lost content. This is deliberately just a log line,
-  // not a user-facing prompt: proactively warning on every reload would be a
-  // false alarm in the common case. `panecrew.restartPaneTerminal` (below)
-  // exists as an explicit, opt-in fallback for the rare case a specific
-  // pane's attention notifications genuinely stay stuck.
+  // "Developer: Reload Window") come back with their content intact, but
+  // attention tracking does NOT recover on its own in the common case: a CLI
+  // agent's own foreground process (e.g. `claude`) is still the one,
+  // already-running shell command from before the reload, and
+  // `onDidStartTerminalShellExecution` only fires for a NEW command start --
+  // typing more input into that still-running TUI never fires it again. VS
+  // Code's stable extension API has no way to attach to an already-started
+  // command's live output (the old proposed `onDidWriteTerminalData` API was
+  // never stabilized, for terminal-secrets reasons), so there is no
+  // API-level way to regain tracking without ending and restarting that
+  // command. This is deliberately just a log line, not a user-facing prompt:
+  // proactively warning on every reload would be noisy, and the pane's
+  // content/scrollback is still intact and usable even without attention
+  // tracking. `panecrew.restartPaneTerminal` (below) is the actual fix for a
+  // pane whose attention notifications stay stuck after adoption -- it ends
+  // the old command and starts a fresh one, which VS Code's shell
+  // integration does see as a new start.
   function logAdoptedPanes(adoptedPaneIds: readonly string[]): void {
     if (adoptedPaneIds.length === 0) return;
     const adoptedPanes = gridState.slots.filter(
