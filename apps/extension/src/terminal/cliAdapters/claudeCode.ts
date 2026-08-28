@@ -11,9 +11,12 @@ const MALFORMED_MESSAGE =
 
 /** Emits the OSC 9 notify sequence `attentionSignal.ts` listens for,
  * straight to the terminal's own tty — not stdout, since a hook's stdout is
- * captured by Claude Code itself rather than forwarded to the terminal. */
+ * captured by Claude Code itself rather than forwarded to the terminal.
+ * `2>/dev/null || true` keeps this a no-op (not a hook error) when there's
+ * no controlling terminal to write to, e.g. a headless/background session
+ * with no /dev/tty. */
 export const CLAUDE_CODE_NOTIFY_COMMAND =
-  "printf '\\033]9;Claude Code needs your attention\\007' > /dev/tty";
+  "printf '\\033]9;Claude Code needs your attention\\007' > /dev/tty 2>/dev/null || true";
 
 /** Same OSC 9 emit, wired to the `Stop` hook — fires when Claude Code
  * finishes a turn, not just when it's waiting on a permission/idle prompt.
@@ -21,7 +24,7 @@ export const CLAUDE_CODE_NOTIFY_COMMAND =
  * attention badge even though the user's turn (human-in-the-loop) has
  * come. */
 export const CLAUDE_CODE_STOP_COMMAND =
-  "printf '\\033]9;Claude Code is done\\007' > /dev/tty";
+  "printf '\\033]9;Claude Code is done\\007' > /dev/tty 2>/dev/null || true";
 
 export function computePatchedConfig(existingConfigText: string | undefined): PatchResult {
   const afterNotification = patchNotificationHook(existingConfigText, CLAUDE_CODE_NOTIFY_COMMAND, MALFORMED_MESSAGE);

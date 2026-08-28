@@ -18,9 +18,11 @@ export interface PatchResult {
  * single) specifically so this whole line can be written as a single-line
  * TOML *literal* string (`'...'`), which passes `\033`/`\007` through to
  * `printf` untouched instead of TOML trying to interpret them as its own
- * (invalid) escape sequences. */
+ * (invalid) escape sequences. `2>/dev/null || true` keeps this a no-op (not
+ * a notify error) when there's no controlling terminal to write to, e.g. a
+ * headless/background session with no /dev/tty. */
 export const CODEX_NOTIFY_LINE =
-  'notify = ["sh", "-c", \'printf "\\033]9;Codex needs your attention\\007" > /dev/tty\']';
+  'notify = ["sh", "-c", \'printf "\\033]9;Codex needs your attention\\007" > /dev/tty 2>/dev/null || true\']';
 
 const NOTIFY_KEY_PATTERN = /^notify\s*=/;
 

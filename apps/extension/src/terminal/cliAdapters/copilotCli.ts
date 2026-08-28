@@ -16,12 +16,16 @@ export interface PatchResult {
 /** Emits the OSC 9 notify sequence `attentionSignal.ts` listens for,
  * straight to the terminal's own tty. Wired to Copilot CLI's `notification`
  * hook, which fires when the CLI emits a system notification — e.g. a
- * permission prompt. */
-const COPILOT_CLI_NOTIFY_COMMAND = "printf '\\033]9;GitHub Copilot needs your attention\\007' > /dev/tty";
+ * permission prompt. `2>/dev/null || true` keeps this a no-op (not a hook
+ * error) when there's no controlling terminal to write to, e.g. a
+ * headless/background session with no /dev/tty. */
+const COPILOT_CLI_NOTIFY_COMMAND =
+  "printf '\\033]9;GitHub Copilot needs your attention\\007' > /dev/tty 2>/dev/null || true";
 
 /** Same OSC 9 emit, wired to Copilot CLI's `agentStop` hook — fires when
  * the main agent finishes a turn, mirroring Claude Code's `Stop` hook. */
-const COPILOT_CLI_STOP_COMMAND = "printf '\\033]9;GitHub Copilot is done\\007' > /dev/tty";
+const COPILOT_CLI_STOP_COMMAND =
+  "printf '\\033]9;GitHub Copilot is done\\007' > /dev/tty 2>/dev/null || true";
 
 export const COPILOT_CLI_HOOKS_CONFIG = `${JSON.stringify(
   {
