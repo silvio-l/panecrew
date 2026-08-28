@@ -23,8 +23,8 @@ own research) a gap even VS Code's built-in Explorer doesn't close on its
 own.
 
 Tool-agnostic by design: PaneCrew hosts any CLI tool in its terminals — shells,
-Claude Code, Codex, Gemini CLI, or anything else — it makes no assumptions
-about what's running inside a pane.
+Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, or anything
+else — it makes no assumptions about what's running inside a pane.
 
 ## Install
 
@@ -125,7 +125,7 @@ side. A single-folder workspace works too — you just get a one-pane grid.
 Yes — MIT-licensed and free on the Marketplace, no paid tier.
 
 **Which CLI tools does it support?**
-Any of them. PaneCrew's terminals are plain VS Code terminals — Claude Code, Codex, Gemini CLI, a plain shell, or anything else that runs in a terminal.
+Any of them. PaneCrew's terminals are plain VS Code terminals — Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode, a plain shell, or anything else that runs in a terminal.
 
 
 **Where do I report a bug or ask a question?**

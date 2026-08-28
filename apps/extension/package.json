@@ -2,7 +2,7 @@
   "name": "panecrew",
   "displayName": "PaneCrew",
   "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "silvio-lindstedt",
   "icon": "media/panecrew-icon-128.png",
   "license": "MIT",
@@ -160,6 +160,19 @@
       {
         "command": "panecrew.configureCliToolNotifications",
         "title": "PaneCrew: Configure CLI Tool Notifications…"
+      },
+      {
+        "command": "panecrew.restartPaneTerminal",
+        "title": "PaneCrew: Restart Pane Terminal…"
+      },
+      {
+        "command": "panecrew.restartActivePaneTerminal",
+        "title": "PaneCrew: Restart Active Terminal Tab (ends what's running there -- if this pane has more than one terminal tab, only the currently active one is restarted)",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "panecrew.restartPaneTerminalInstance",
+        "title": "PaneCrew: Restart This Terminal"
       }
     ],
     "viewsContainers": {
@@ -291,6 +304,17 @@
           "command": "panecrew.toggleMaximizePane",
           "when": "resourceScheme == vscode-terminal && !editorPartMaximizedEditorGroup",
           "group": "navigation"
+        },
+        {
+          "command": "panecrew.restartActivePaneTerminal",
+          "when": "resourceScheme == vscode-terminal",
+          "group": "navigation"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "panecrew.restartPaneTerminalInstance",
+          "group": "z_panecrew"
         }
       ]
     },
@@ -387,7 +411,7 @@
           {
             "id": "configureCliNotifications",
             "title": "Get notified when a pane needs you",
-            "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
+            "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI, GitHub Copilot CLI, OpenCode) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
             "completionEvents": [
               "onCommand:panecrew.configureCliToolNotifications"
             ],

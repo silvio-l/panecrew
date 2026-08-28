@@ -146,8 +146,45 @@ export interface VscodeLike {
 
 interface ControllerTerminal {
   name: string;
+  /** Present on every real `vscode.Terminal` as `TerminalOptions |
+   * ExtensionTerminalOptions`. Confirmed via live instrumentation
+   * (2026-08-28) to come back EMPTY for a terminal VS Code revives from a
+   * persisted session across a full Extension Development Host restart —
+   * unlike a same-process "just reload the webview" reload, revival
+   * apparently doesn't replay the original launch config's `cwd` into
+   * `creationOptions` at all, only `terminalCwd`'s `shellIntegration.cwd`
+   * fallback below actually carries it. Kept as the first-choice source
+   * anyway since it's synchronously available for a terminal PaneCrew just
+   * created in the very same session (no shell-integration handshake delay
+   * needed yet). Typed `unknown` (read via `terminalCwd`) because the real
+   * union's `ExtensionTerminalOptions` branch shares no properties with a
+   * `{ cwd }` shape, which TS's weak-type check rejects outright — and
+   * because `TerminalOptions.cwd` itself is `string | Uri`, not worth
+   * importing `vscode.Uri` into this vscode-import-free file for. */
+  creationOptions?: unknown;
+  /** Shell-integration-reported live cwd (`vscode.TerminalShellIntegration`)
+   * — `undefined` until the shell finishes its integration handshake, which
+   * for a terminal that's been alive since before this extension activated
+   * (the exact revived-terminal case above) has normally already happened
+   * by the time `ensureTerminal` runs. */
+  shellIntegration?: { cwd?: { fsPath: string } };
   show(preserveFocus?: boolean): void;
   dispose?(): void;
+}
+
+/** Reads a terminal's cwd as a plain string — `creationOptions.cwd` first
+ * (see its type comment for why that's empty for a revived terminal), then
+ * `shellIntegration.cwd`. `undefined` if neither is available yet. */
+function terminalCwd(terminal: ControllerTerminal): string | undefined {
+  const options = terminal.creationOptions;
+  if (typeof options === "object" && options !== null && "cwd" in options) {
+    const cwd = (options as { cwd?: unknown }).cwd;
+    if (typeof cwd === "string") return cwd;
+    if (typeof cwd === "object" && cwd !== null && "fsPath" in cwd && typeof cwd.fsPath === "string") {
+      return cwd.fsPath;
+    }
+  }
+  return terminal.shellIntegration?.cwd?.fsPath;
 }
 
 export class GridLayoutController {
@@ -169,15 +206,41 @@ export class GridLayoutController {
    * (`tabGroups.activeTabGroup.viewColumn`) independent of tab identity. */
   private readonly paneByViewColumn = new Map<number, Pane>();
 
+  /** Panes whose terminal was adopted (revived from a persisted VS Code
+   * session, e.g. after "Developer: Reload Window") during the most recent
+   * `apply()` call, rather than freshly created by this controller.
+   * Attention tracking does NOT recover on its own for these in the common
+   * case (verified 2026-08-28, correcting an earlier, over-optimistic
+   * assumption): the pane's foreground command (e.g. a CLI agent's own
+   * process) is still the one, already-running shell command from before
+   * the reload, and `onDidStartTerminalShellExecution` only fires for a NEW
+   * command start -- more input into that still-running process never fires
+   * it again, and VS Code's stable API has no way to attach to an
+   * already-started command's live output. This is logged (see
+   * `extension.ts`'s `logAdoptedPanes`) rather than acted on automatically,
+   * since ending the command to restart tracking is destructive and should
+   * stay an explicit choice. Kept around so `panecrew.restartPaneTerminal`
+   * has a record of which panes were adopted, for when the user notices a
+   * specific pane's attention notifications stay stuck and asks to restart
+   * it. */
+  private readonly lastAdoptedPaneIds = new Set<string>();
+
   constructor(private readonly vscode: VscodeLike) {}
 
   async apply(state: GridState): Promise<void> {
     const plan = computeApplyPlan(state);
     await this.vscode.commands.executeCommand("vscode.setEditorLayout", plan.layout);
+    this.lastAdoptedPaneIds.clear();
     for (const { pane, viewColumn } of plan.assignments) {
       this.paneByViewColumn.set(viewColumn, pane);
       this.ensureTerminal(pane, viewColumn);
     }
+  }
+
+  /** Panes adopted (not freshly created) by the most recent `apply()` call —
+   * see `lastAdoptedPaneIds` for why this matters for attention tracking. */
+  adoptedPaneIds(): readonly string[] {
+    return [...this.lastAdoptedPaneIds];
   }
 
   private ensureTerminal(pane: Pane, viewColumn: number): void {
@@ -187,18 +250,34 @@ export class GridLayoutController {
       this.paneByTerminal.set(existing, pane);
       return;
     }
-    // Adopt a live terminal with the exact expected name instead of always
-    // creating a new one (2026-08-27 fix): after a "Developer: Reload
+    // Adopt a live terminal for this pane instead of always creating a new
+    // one (2026-08-27 fix, revised 2026-08-28): after a "Developer: Reload
     // Window", or whenever the extension host restarts without its saved
     // session having survived (unreliable for an unsaved multi-root
     // workspace's `workspaceState`), this controller's in-memory maps start
     // empty while VS Code itself may have kept the *terminal* alive across
     // the reload — without adoption, every such restart spawned a second,
     // duplicate terminal for the same pane instead of reusing the original.
+    //
+    // Match by `cwd` first, not by name: a terminal VS Code revives from a
+    // persisted session comes back with a generic shell-derived name (e.g.
+    // "zsh") — the `name` this controller originally passed to
+    // `createTerminal` does NOT survive revival — while `creationOptions.cwd`
+    // does. Matching on name alone (the original 2026-08-27 fix) therefore
+    // never found the revived terminal and created a second one for every
+    // still-open pane on every reload (bug reported 2026-08-28). Name match
+    // stays as a fallback for terminals that aren't revived-from-persistence
+    // (e.g. created earlier in the very same session), where `cwd` may not
+    // be reported.
     const expectedName = paneTerminalName(pane);
-    const adopted = this.vscode.window.terminals.find(
-      (terminal) => terminal.name === expectedName && !this.paneByTerminal.has(terminal),
-    );
+    const expectedCwd = normalizeCwd(pane.projectPath);
+    const adopted = this.vscode.window.terminals.find((terminal) => {
+      if (this.paneByTerminal.has(terminal)) return false;
+      const cwd = terminalCwd(terminal);
+      if (cwd !== undefined) return normalizeCwd(cwd) === expectedCwd;
+      return terminal.name === expectedName;
+    });
+    if (adopted) this.lastAdoptedPaneIds.add(pane.paneId);
     const terminal = adopted ?? this.vscode.window.createTerminal({
       name: expectedName,
       cwd: pane.projectPath,
@@ -231,6 +310,27 @@ export class GridLayoutController {
     this.forgetPane(paneId);
   }
 
+  /** Explicitly closes and recreates the terminal for one pane — used for
+   * the user-facing "restart terminal" action offered for adopted/revived
+   * panes (see `lastAdoptedPaneIds`) whose attention tracking doesn't work.
+   * Unlike `ensureTerminal`'s normal path this always creates a fresh
+   * terminal rather than adopting one, since the whole point is to replace
+   * the one whose shell-integration tracking is broken. Destructive by
+   * design — only ever called from an explicit user action, never
+   * automatically, since it kills whatever is running in that pane. */
+  restartTerminalForPane(pane: Pane, viewColumn: number): void {
+    this.disposeTerminalForPane(pane.paneId);
+    const terminal = this.vscode.window.createTerminal({
+      name: paneTerminalName(pane),
+      cwd: pane.projectPath,
+      location: { viewColumn },
+    });
+    this.terminalsByPaneId.set(pane.paneId, terminal);
+    this.paneByTerminal.set(terminal, pane);
+    this.paneByViewColumn.set(viewColumn, pane);
+    terminal.show(true);
+  }
+
   /** The pane that owns `terminal`, or `null` if it's not one PaneCrew
    * created (e.g. a terminal the user opened by hand outside the grid). */
   paneForTerminal(terminal: ControllerTerminal): Pane | null {
@@ -248,4 +348,12 @@ export class GridLayoutController {
 function paneTerminalName(pane: Pane): string {
   const base = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
   return `PaneCrew: ${base}`;
+}
+
+/** Strips a trailing path separator so `"/repo/a"` and `"/repo/a/"` compare
+ * equal — the only normalization actually needed here, since a revived
+ * terminal's `creationOptions.cwd` round-trips the exact string this
+ * controller originally passed to `createTerminal`. */
+function normalizeCwd(cwd: string): string {
+  return cwd.replace(/[\\/]+$/, "");
 }

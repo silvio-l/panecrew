@@ -4,6 +4,7 @@ out-test/**
 src/**
 dist/**/*.map
 .gitignore
+.impeccable/**
 tsconfig.json
 tsconfig.test.json
 esbuild.js

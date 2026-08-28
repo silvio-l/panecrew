@@ -32,6 +32,7 @@ describe("buildWindowState", () => {
       slots: [null, null, null, null],
       split_ratios: [],
       maximized_pane_id: null,
+      closed_project_paths: [],
     });
   });
 

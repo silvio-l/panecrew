@@ -8,6 +8,18 @@ import { PaneCrewAttentionDecorationProvider } from "../explorer/attentionDecora
 
 const EXTENSION_ID = "silvio-lindstedt.panecrew";
 
+/** Polls `check` until it returns `true` or `timeoutMs` elapses — used to
+ * wait on async, real-pipeline side effects (terminal creation,
+ * shell-integration output) that have no single event to await. */
+async function waitUntil(check: () => boolean | Promise<boolean>, timeoutMs: number, intervalMs = 200): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await check()) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
 /** `vscode.Extension.packageJSON` is typed `any` by @types/vscode — this is
  * just the subset of `package.json`'s `contributes` block these tests read. */
 interface PaneCrewPackageJSON {
@@ -311,6 +323,47 @@ suite("PaneCrew extension", () => {
     assert.ok(!descriptionAfter?.startsWith("●"), "attention glyph should be gone after clearing");
   });
 
+  test("a real OSC 9 escape sequence written by a pane's own terminal is detected by the live attention pipeline (no internal shortcut command)", async function () {
+    // 2026-08-28: the "marking/clearing attention" test above only proves
+    // the mark/clear/badge/label logic once a notification is already
+    // detected — it substitutes the actual trigger
+    // (`onDidStartTerminalShellExecution` seeing a real OSC 9/777 sequence)
+    // with the internal `markAttention` command. This test drives the real
+    // trigger instead: a real, `layoutController`-tracked pane terminal
+    // (created via the same `assignFolderToGrid` the folder-picker command
+    // uses, just without the modal picker) runs the exact shell command a
+    // real CLI hook runs (`printf '\033]9;...\007' > /dev/tty`), and the
+    // test polls the real `attentionTracker` state via
+    // `panecrew._internal.hasAttention` — no shortcut command bypasses the
+    // shell-integration/OSC-parsing layer under test here.
+    this.timeout(30_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    await vscode.commands.executeCommand("panecrew._internal.addProjectToGrid", folder.uri.fsPath);
+
+    const expectedName = `PaneCrew: ${path.basename(folder.uri.fsPath)}`;
+    const paneCreated = await waitUntil(() => vscode.window.terminals.some((t) => t.name === expectedName), 10_000);
+    assert.ok(paneCreated, `addProjectToGrid should have created a real terminal named "${expectedName}"`);
+    const paneTerminal = vscode.window.terminals.find((t) => t.name === expectedName);
+    assert.ok(paneTerminal);
+
+    paneTerminal.sendText("printf '\\033]9;end-to-end attention test\\007' > /dev/tty 2>/dev/null || true", true);
+
+    const gotAttention = await waitUntil(
+      async () => (await vscode.commands.executeCommand("panecrew._internal.hasAttention", folder.uri.fsPath)) === true,
+      20_000,
+    );
+    assert.ok(
+      gotAttention,
+      "the real onDidStartTerminalShellExecution -> attentionSignal -> markAttention pipeline should have detected the OSC 9 sequence the pane's own terminal wrote to /dev/tty",
+    );
+  });
+
   /** Drives the real `panecrew.configureCliToolNotifications` command's
    * quick-pick -> diff-preview -> confirm -> write flow end-to-end, only
    * substituting the two interactive prompts (a human's tool pick and their
@@ -387,10 +440,36 @@ suite("PaneCrew extension", () => {
     });
   });
 
+  test("panecrew.configureCliToolNotifications previews and writes the GitHub Copilot CLI hooks file end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "GitHub Copilot CLI",
+      configDirName: ".github/hooks",
+      configFileName: "panecrew-attention.json",
+      expectedSubstring: "GitHub Copilot needs your attention",
+    });
+  });
+
+  test("panecrew.configureCliToolNotifications previews and writes the OpenCode plugin file end-to-end", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await verifyCliAdapterEndToEnd({
+      toolLabel: "OpenCode",
+      configDirName: ".opencode/plugins",
+      configFileName: "panecrew-attention.js",
+      expectedSubstring: "OpenCode needs your attention",
+    });
+  });
+
   test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
     const store = new Map<string, unknown>();
     const memento: CompactLookMemento = {
-      get: (key: string) => store.get(key),
+      get: ((key: string) => store.get(key)) as CompactLookMemento["get"],
       update: (key: string, value: unknown) => {
         store.set(key, value);
         return Promise.resolve();

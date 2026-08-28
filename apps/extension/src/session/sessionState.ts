@@ -86,6 +86,15 @@ export interface PersistedWindow {
    * Topologie. Leer heißt "Template-Default verwenden". */
   split_ratios?: number[];
   maximized_pane_id?: string | null;
+  /** Workspace-folder paths whose pane was deliberately closed by the user
+   * (terminal closed, or `closePane` otherwise triggered) while the folder
+   * itself stayed part of the multi-root workspace. `slots` alone can't
+   * represent this — a closed slot is just `null`, indistinguishable from
+   * "this folder was never tracked at all". Without this list, activation's
+   * open-folder backfill (`restoreSession.ts`) can't tell "user closed this
+   * on purpose" apart from "folder is genuinely new" and re-opens a pane for
+   * every open folder on every reload (bug: 2026-08-28). */
+  closed_project_paths?: string[];
 }
 
 export interface SessionState {
@@ -147,6 +156,7 @@ export function withoutRecentProject(
 export function buildWindowState(
   label: string,
   grid: GridState,
+  closedProjectPaths: readonly string[] = [],
 ): PersistedWindow {
   return {
     label,
@@ -168,6 +178,7 @@ export function buildWindowState(
     }),
     split_ratios: [...grid.splitRatios],
     maximized_pane_id: grid.maximizedPaneId,
+    closed_project_paths: [...closedProjectPaths],
   };
 }
 
@@ -209,4 +220,10 @@ export function restoredSlots(session: SessionState, label: string): (PersistedP
  * `GRID_TEMPLATES`. */
 export function restoredSplitRatios(session: SessionState, label: string): number[] {
   return restoredWindow(session, label)?.split_ratios ?? [];
+}
+
+/** Workspace-folder paths the user deliberately closed the pane for while
+ * the folder stayed open — see `PersistedWindow.closed_project_paths`. */
+export function restoredClosedProjectPaths(session: SessionState, label: string): string[] {
+  return restoredWindow(session, label)?.closed_project_paths ?? [];
 }

@@ -5,6 +5,7 @@
 // settings (9). Kept as one file (rather than split further) because its
 // entire job IS the wiring — every piece of actual logic lives in the
 // modules it imports, each independently unit-tested.
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { applyCompactLook, restoreLook } from "./compactLook";
 import {
@@ -15,6 +16,7 @@ import {
   switchTemplate,
   templateForDimensions,
   type GridState,
+  type Pane,
   type TemplateId,
 } from "./grid/gridState";
 import { GridLayoutController } from "./grid/layoutController";
@@ -40,6 +42,7 @@ import { maybeShowGridHint } from "./onboarding/gridHint";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
 import { maybeOfferAttentionAdapterConfig } from "./onboarding/attentionAdapterOffer";
 import { loadSession, saveSession } from "./session/persistence";
+import { restoreGridState } from "./session/restoreSession";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
 import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
@@ -54,6 +57,9 @@ import {
 } from "./statusBar";
 
 let gridState: GridState = INITIAL_GRID_STATE;
+/** Project paths whose pane the user deliberately closed while the folder
+ * stayed part of the workspace — see `session/restoreSession.ts`. */
+let closedProjectPaths = new Set<string>();
 
 function makeId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -124,10 +130,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.createTreeView("panecrew.crossRepoView", { treeDataProvider: crossRepoView }),
   );
 
+  // The near-invisible explorer/Projects-Overview badges alone weren't
+  // enough of a signal (.scratch/pane-attention-notifications follow-up,
+  // 2026-08-28) — a VS Code toast is the "at least visible within VS Code"
+  // floor the badges can't guarantee on their own. Gated by the same
+  // `attentionBadges.enabled` setting as the main-explorer badge, since it's
+  // the umbrella toggle for this whole feature.
+  const showAttentionToast = (projectPath: string, notification?: AttentionNotification) => {
+    const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("attentionBadges.enabled", true);
+    if (!enabled) return;
+    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(projectPath));
+    const projectName = folder?.name ?? path.basename(projectPath);
+    const message = `${projectName}: ${notification?.body ?? notification?.title ?? "needs your attention"}`;
+    void vscode.window.showWarningMessage(message, "Reveal").then((selection) => {
+      if (selection === "Reveal" && folder) {
+        void vscode.commands.executeCommand("panecrew.focusProjectInExplorer", folder);
+      }
+    });
+  };
+
   const markAttention = (projectPath: string, notification?: AttentionNotification) => {
     attentionTracker.markAttention(projectPath, notification);
     attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
     if (crossRepoView.setAttention(vscode.Uri.file(projectPath), true)) crossRepoView.refresh();
+    showAttentionToast(projectPath, notification);
   };
   const clearAttention = (projectPath: string) => {
     if (!attentionTracker.hasAttention(projectPath)) return;
@@ -156,6 +182,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("panecrew._internal.crossRepoDescription", (folderUri: vscode.Uri) => {
       const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === folderUri.toString());
       return folder ? crossRepoView.getTreeItem(folder).description : undefined;
+    }),
+    // Same "test-only, bypasses the picker" purpose as the commands above —
+    // `addFolderAndAssign`'s real entry points (`panecrew.openProjectGrid` /
+    // `panecrew.addFolderToGrid`) start with a modal `showOpenDialog`, which
+    // an automated `@vscode/test-electron` run can't drive. This calls the
+    // same `assignFolderToGrid` the picker calls, so the test exercises a
+    // real, `layoutController`-tracked pane/terminal — not a bypass of the
+    // attention pipeline itself, only of the folder picker.
+    vscode.commands.registerCommand("panecrew._internal.addProjectToGrid", async (folderPath: string) => {
+      await assignFolderToGrid(vscode.Uri.file(folderPath));
     }),
   );
 
@@ -267,11 +303,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.window.onDidStartTerminalShellExecution((e) => {
       const pane = layoutController.paneForTerminal(e.terminal);
-      if (!pane) return;
+      // A shell command run in a terminal PaneCrew never assigned to a pane
+      // (e.g. one the user opened by hand, outside "Add Folder to Grid…")
+      // can never surface an attention signal — logged so a report of "no
+      // toast appeared" can be told apart from a real detection bug (see
+      // the "real OSC 9 escape sequence..." integration test, which proves
+      // the parse/mark path itself works once a terminal IS a tracked pane).
+      if (!pane) {
+        outputChannel.appendLine(`attention: ignoring shell execution on untracked terminal "${e.terminal.name}"`);
+        return;
+      }
       const buffer = createAttentionSignalBuffer();
       void (async () => {
         for await (const chunk of e.execution.read()) {
           for (const notification of buffer.feed(chunk)) {
+            outputChannel.appendLine(`attention: notification detected for "${pane.projectPath}"`);
             markAttention(pane.projectPath, notification);
           }
         }
@@ -291,7 +337,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
-  const persist = () => void saveSession(context.workspaceState, gridState);
+  const persist = () => void saveSession(context.workspaceState, gridState, [...closedProjectPaths]);
 
   // --- default template from settings -------------------------------------
   // Only takes effect when there's no restored session below to override it
@@ -307,45 +353,139 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const restored = loadSession(context.workspaceState);
   const openFolders = vscode.workspace.workspaceFolders ?? [];
   if (openFolders.length > 0) {
-    if (restored) {
-      gridState = { ...INITIAL_GRID_STATE, template: restored.template, splitRatios: restored.splitRatios };
-      restored.slots.forEach((slot, index) => {
-        if (!slot) return;
-        gridState = assignProjectToSlot(gridState, index, slot.project_path, makeId(), makeId());
-      });
-    }
-    // Backfill any open workspace folder the restored session doesn't
-    // already track (2026-08-27 fix): covers both "no session was ever
-    // saved" and "the session only partially restored" — an unsaved
-    // multi-root workspace's `workspaceState` isn't reliably persisted
-    // across a "Developer: Reload Window", so a folder that's genuinely
-    // already open must still end up with a tracked pane instead of
-    // silently falling outside the grid (which previously left
-    // focus-follow permanently unable to resolve it, and any later
-    // add-folder attempt spawning a duplicate terminal for it).
-    for (const folder of openFolders) {
-      const alreadyTracked = gridState.slots.some((slot) => slot?.projectPath === folder.uri.fsPath);
-      if (alreadyTracked) continue;
-      const slotIndex = firstEmptySlotIndex(gridState);
-      if (slotIndex === -1) break;
-      gridState = assignProjectToSlot(gridState, slotIndex, folder.uri.fsPath, makeId(), makeId());
-    }
+    const result = restoreGridState(
+      restored,
+      openFolders.map((f) => f.uri.fsPath),
+      makeId,
+    );
+    gridState = result.gridState;
+    closedProjectPaths = result.closedProjectPaths;
     await layoutController.apply(gridState);
     persist();
+    logAdoptedPanes(layoutController.adoptedPaneIds());
   }
 
-  // --- grid commands -----------------------------------------------------
-  async function addFolderAndAssign(): Promise<void> {
-    const picked = await vscode.window.showOpenDialog({
-      canSelectFolders: true,
-      canSelectFiles: false,
-      canSelectMany: false,
-      openLabel: "Add to PaneCrew Grid",
-      defaultUri: defaultProjectsFolderUri(),
-    });
-    const folderUri = picked?.[0];
-    if (!folderUri) return;
+  // Terminals VS Code revives from a persisted session (e.g. after
+  // "Developer: Reload Window") come back with their content intact, but
+  // attention tracking does NOT recover on its own in the common case: a CLI
+  // agent's own foreground process (e.g. `claude`) is still the one,
+  // already-running shell command from before the reload, and
+  // `onDidStartTerminalShellExecution` only fires for a NEW command start --
+  // typing more input into that still-running TUI never fires it again. VS
+  // Code's stable extension API has no way to attach to an already-started
+  // command's live output (the old proposed `onDidWriteTerminalData` API was
+  // never stabilized, for terminal-secrets reasons), so there is no
+  // API-level way to regain tracking without ending and restarting that
+  // command. This is deliberately just a log line, not a user-facing prompt:
+  // proactively warning on every reload would be noisy, and the pane's
+  // content/scrollback is still intact and usable even without attention
+  // tracking. `panecrew.restartPaneTerminal` is the actual fix for a pane
+  // whose attention notifications stay stuck after adoption -- it ends the
+  // old command and starts a fresh one, which VS Code's shell integration
+  // does see as a new start. Since adoption breaks tracking in the *common*
+  // case, not a rare one (confirmed 2026-08-28), this is surfaced as an
+  // actionable toast with a one-click restart button rather than only a log
+  // line -- the user asked specifically not to need the Command Palette or a
+  // keybinding for this. One toast per activation, listing every adopted
+  // pane; dismissing it (no click) leaves everything as-is, same as before.
+  function logAdoptedPanes(adoptedPaneIds: readonly string[]): void {
+    if (adoptedPaneIds.length === 0) return;
+    const adoptedPanes = gridState.slots.filter(
+      (pane): pane is Pane => pane !== null && adoptedPaneIds.includes(pane.paneId),
+    );
+    for (const pane of adoptedPanes) {
+      outputChannel.appendLine(`attention: adopted (revived) terminal for "${pane.projectPath}" on this activation`);
+    }
+    const plural = adoptedPanes.length === 1 ? "pane" : "panes";
+    void vscode.window
+      .showWarningMessage(
+        `PaneCrew: attention notifications won't fire for ${adoptedPanes.length} restored ${plural} until its terminal is fully restarted -- this ends whatever's currently running there (e.g. an in-progress CLI agent session) and starts a clean shell.`,
+        "Restart Terminal(s)",
+      )
+      .then((choice) => {
+        if (choice !== "Restart Terminal(s)") return;
+        for (const pane of adoptedPanes) restartPaneTerminal(pane);
+      });
+  }
 
+  function restartPaneTerminal(pane: Pane): void {
+    const slotIndex = gridState.slots.findIndex((slot) => slot?.paneId === pane.paneId);
+    if (slotIndex === -1) return;
+    layoutController.restartTerminalForPane(pane, slotIndex + 1);
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartPaneTerminal", async () => {
+      const panes = gridState.slots.filter((pane): pane is Pane => pane !== null);
+      if (panes.length === 0) return;
+      const label = (pane: Pane) => pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
+      const picks = await vscode.window.showQuickPick(
+        panes.map((pane) => ({ label: label(pane), description: pane.projectPath, pane })),
+        {
+          canPickMany: true,
+          placeHolder: "Select panes to fully restart (ends whatever's currently running there and starts a clean shell)",
+        },
+      );
+      if (!picks || picks.length === 0) return;
+      for (const pick of picks) restartPaneTerminal(pick.pane);
+    }),
+  );
+
+  // Shared by both single-terminal restart entry points below: resolves the
+  // pane for a given terminal, confirms, then restarts it. A pane's editor
+  // group can hold more than one terminal tab (e.g. the user split/added an
+  // extra one by hand -- PaneCrew's grid itself only ever tracks one
+  // terminal per pane, see `terminalsByPaneId`), so `paneForTerminal`
+  // returning `null` for an untracked terminal is the correct, safe outcome
+  // here, not a bug -- it means "not a PaneCrew pane terminal", not "no
+  // pane found for this pane".
+  async function confirmAndRestart(terminal: vscode.Terminal | undefined): Promise<void> {
+    const pane = terminal ? layoutController.paneForTerminal(terminal) : null;
+    if (!pane) {
+      void vscode.window.showWarningMessage("PaneCrew: this isn't a PaneCrew pane terminal.");
+      return;
+    }
+    const label = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
+    const choice = await vscode.window.showWarningMessage(
+      `Restart the terminal for "${label}"? This ends whatever's currently running there and starts a clean shell.`,
+      { modal: true },
+      "Restart",
+    );
+    if (choice !== "Restart") return;
+    restartPaneTerminal(pane);
+  }
+
+  // Editor-tab icon (visible on the pane's own tab, next to "Toggle Maximize
+  // Pane" -- see the matching `editor/title` entry in package.json), so
+  // restarting one specific pane's terminal never needs the Command Palette
+  // or the multi-select quick pick above. Resolves the target pane from
+  // `vscode.window.activeTerminal` since editor-tab terminals (this grid's
+  // `location: { viewColumn }` terminals) don't carry a `resource` URI the
+  // way file editors do -- the icon only shows on a terminal tab in the
+  // first place (`resourceScheme == vscode-terminal`), and that tab being
+  // active is what makes it the active terminal. When a pane has more than
+  // one terminal tab, this acts on whichever one is currently focused/shown
+  // -- `panecrew.restartPaneTerminalInstance` (below) is the alternative for
+  // targeting one specific terminal directly, active or not.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartActivePaneTerminal", () =>
+      confirmAndRestart(vscode.window.activeTerminal),
+    ),
+  );
+
+  // Right-click-inside-the-terminal context menu entry (see `terminal/context`
+  // in package.json) -- VS Code passes the exact terminal instance the user
+  // clicked as the argument here (not just "whichever tab is active"), so
+  // this is the reliable way to target one specific terminal when a pane
+  // has several terminal tabs open side by side.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartPaneTerminalInstance", (terminal?: vscode.Terminal) =>
+      confirmAndRestart(terminal ?? vscode.window.activeTerminal),
+    ),
+  );
+
+  // --- grid commands -----------------------------------------------------
+  async function assignFolderToGrid(folderUri: vscode.Uri): Promise<void> {
     const existingFolders = vscode.workspace.workspaceFolders ?? [];
     const alreadyInWorkspace = existingFolders.some((f) => f.uri.fsPath === folderUri.fsPath);
     if (!alreadyInWorkspace) {
@@ -360,11 +500,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     gridState = assignProjectToSlot(gridState, slotIndex, folderUri.fsPath, makeId(), makeId());
+    closedProjectPaths.delete(folderUri.fsPath);
     await layoutController.apply(gridState);
     treeDataProvider.refresh();
     refreshGitDecorations();
     persist();
     void maybeShowGridHint(context.globalState, gridState);
+  }
+
+  async function addFolderAndAssign(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: "Add to PaneCrew Grid",
+      defaultUri: defaultProjectsFolderUri(),
+    });
+    const folderUri = picked?.[0];
+    if (!folderUri) return;
+    await assignFolderToGrid(folderUri);
   }
 
   // --- status bar: grid template picker + new-window shortcut ------------
@@ -418,6 +572,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         gridState = closePane(gridState, pane.paneId);
         await layoutController.apply(gridState);
       }
+      // Leaving the workspace entirely, not merely closing its pane — this
+      // folder won't be in `openFolders` on the next activation either way,
+      // so it shouldn't linger in `closedProjectPaths`.
+      closedProjectPaths.delete(folder.uri.fsPath);
 
       const existingFolders = vscode.workspace.workspaceFolders ?? [];
       const index = existingFolders.findIndex((f) => f.uri.toString() === folder.uri.toString());
@@ -530,6 +688,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!pane) return;
       layoutController.forgetPane(pane.paneId);
       gridState = closePane(gridState, pane.paneId);
+      closedProjectPaths.add(pane.projectPath);
       clearAttention(pane.projectPath);
       persist();
     }),

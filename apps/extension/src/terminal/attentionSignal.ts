@@ -19,6 +19,20 @@ const OSC = "\x1b]";
 const BEL = "\x07";
 const ST = "\x1b\\";
 
+/** A real OSC 9 / OSC 777 notify payload is a short, human-readable title/body
+ * string -- a few hundred bytes at most. This bounds how long an
+ * unterminated `ESC ]` sequence is allowed to accumulate as `remainder`
+ * before being dropped as noise rather than a genuine pending notification.
+ * Without this cap, any `ESC ]` byte pair that never happens to be followed
+ * by a BEL/ST terminator for the rest of a shell command's output (e.g. a
+ * stray `0x1b 0x5d` inside raw/binary curl or ssh output piped to the
+ * terminal) would make `remainder` grow by the size of every subsequent
+ * output chunk for as long as that command keeps running -- unbounded for a
+ * long-lived foreground process (a CLI agent session, `tsc --watch`, ...),
+ * which is exactly the shape of a real memory-growth incident traced back
+ * to this buffer (2026-08-28). */
+const MAX_PENDING_LENGTH = 4096;
+
 interface ScanResult {
   notifications: AttentionNotification[];
   /** Unconsumed tail of the scanned text — either "" (fully scanned) or a
@@ -62,8 +76,12 @@ function scanAttentionSignals(text: string): ScanResult {
     const candidates = [belEnd, stEnd].filter((index) => index !== -1);
     if (candidates.length === 0) {
       // No terminator found yet — an incomplete trailing sequence, handed
-      // back as the remainder instead of being discarded.
-      return { notifications, remainder: text.slice(start) };
+      // back as the remainder instead of being discarded, unless it's
+      // grown implausibly long for a real notify payload (see
+      // `MAX_PENDING_LENGTH`), in which case it's dropped as noise rather
+      // than kept growing forever.
+      const remainder = text.slice(start);
+      return { notifications, remainder: remainder.length > MAX_PENDING_LENGTH ? "" : remainder };
     }
     const terminatorStart = Math.min(...candidates);
     const terminatorLength = terminatorStart === belEnd ? BEL.length : ST.length;

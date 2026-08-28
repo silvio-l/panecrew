@@ -94,10 +94,28 @@ describe("createAttentionSignalBuffer", () => {
     ]);
   });
 
-  it("keeps buffering an incomplete sequence indefinitely if never terminated", () => {
+  it("keeps buffering a short incomplete sequence across several feeds", () => {
     const buffer = createAttentionSignalBuffer();
     expect(buffer.feed("\x1b]9;never terminated")).toEqual([]);
     expect(buffer.feed(" still nothing")).toEqual([]);
+  });
+
+  // 2026-08-28 memory-growth incident: a real notify payload is short, so an
+  // `ESC ]` sequence that never finds a BEL/ST terminator (e.g. a stray
+  // byte pair inside raw/binary output piped through the terminal) must not
+  // be allowed to accumulate every subsequent chunk forever -- that grew
+  // unbounded for the life of a long-running shell command in practice.
+  it("drops an incomplete sequence instead of growing forever once it gets implausibly long", () => {
+    const buffer = createAttentionSignalBuffer();
+    expect(buffer.feed("\x1b]9;")).toEqual([]);
+    // Feed far more than a real notify payload could plausibly be.
+    for (let i = 0; i < 10; i++) {
+      expect(buffer.feed("x".repeat(1000))).toEqual([]);
+    }
+    // The stale, oversized pending sequence was dropped -- a genuine
+    // notify sequence arriving afterwards is still detected normally,
+    // proving the buffer recovered rather than staying stuck.
+    expect(buffer.feed("\x1b]9;Done\x07")).toEqual([{ body: "Done" }]);
   });
 });
 

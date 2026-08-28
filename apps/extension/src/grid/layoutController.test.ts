@@ -8,23 +8,51 @@ import {
   type VscodeLike,
 } from "./layoutController";
 
+interface PreexistingTerminal {
+  name: string;
+  /** `creationOptions.cwd` — set this to simulate a terminal created earlier
+   * in the very same session (e.g. by this controller itself). Confirmed via
+   * live instrumentation (2026-08-28) to come back empty for a terminal VS
+   * Code revives from a persisted session across a full Extension
+   * Development Host restart — leave unset for that case, use
+   * `shellIntegrationCwd` instead. */
+  cwd?: string;
+  /** `shellIntegration.cwd` — the source that DOES carry a revived
+   * terminal's cwd (see `cwd`'s comment above and `terminalCwd` in
+   * `layoutController.ts`). */
+  shellIntegrationCwd?: string;
+}
+
 /** A fake `VscodeLike` that hands out incrementing fake terminals, just
  * enough for `GridLayoutController.apply` to run without a real VS Code
  * host — this file stays vscode-import-free per this module's own
  * pure/impure split (see the header comment in `layoutController.ts`).
- * `preexistingTerminalNames` seeds `window.terminals` as if VS Code had
- * already restored those terminals before the controller's own maps exist —
- * simulates the "Developer: Reload Window" scenario `ensureTerminal`'s
- * adoption logic must handle. */
-function fakeVscode(preexistingTerminalNames: readonly string[] = []) {
-  const terminals = preexistingTerminalNames.map((name) => ({ name, show: () => { /* no-op fake terminal */ } }));
+ * `preexisting` seeds `window.terminals` as if VS Code had already restored
+ * those terminals before the controller's own maps exist — simulates the
+ * "Developer: Reload Window" scenario `ensureTerminal`'s adoption logic must
+ * handle. */
+function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = []) {
+  const terminals = preexisting.map((entry) => {
+    const { name, cwd, shellIntegrationCwd } = typeof entry === "string" ? { name: entry, cwd: undefined, shellIntegrationCwd: undefined } : entry;
+    return {
+      name,
+      creationOptions: cwd === undefined ? undefined : { cwd },
+      shellIntegration: shellIntegrationCwd === undefined ? undefined : { cwd: { fsPath: shellIntegrationCwd } },
+      show: () => { /* no-op fake terminal */ },
+    };
+  });
   let createdCount = 0;
   const vscode: VscodeLike = {
     commands: { executeCommand: () => Promise.resolve() },
     window: {
       createTerminal: (options) => {
         createdCount++;
-        const terminal = { name: options.name, show: () => { /* no-op fake terminal */ } };
+        const terminal = {
+          name: options.name,
+          creationOptions: { cwd: options.cwd },
+          shellIntegration: undefined,
+          show: () => { /* no-op fake terminal */ },
+        };
         terminals.push(terminal);
         return terminal;
       },
@@ -176,5 +204,63 @@ describe("GridLayoutController terminal adoption", () => {
     await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
 
     expect(fake.createdCount()).toBe(1);
+  });
+
+  // Original regression test for the duplicate-terminal bug reported
+  // 2026-08-28: VS Code revives a terminal from a persisted session with a
+  // generic, shell-derived name ("zsh") instead of the "PaneCrew: <project>"
+  // name this controller originally set — matching by name alone (the
+  // original 2026-08-27 fix) never found it and created a second terminal.
+  // This exact scenario (a revived terminal reporting its cwd via
+  // `creationOptions`) turned out not to match live VS Code behavior (see
+  // the next test) but is kept as a real, if currently synthetic, case:
+  // whichever future VS Code version DOES replay `cwd` into
+  // `creationOptions` on revival must still be handled correctly.
+  it("adopts a live terminal by creationOptions.cwd even when its name reverted to a generic shell name", async () => {
+    const fake = fakeVscode([{ name: "zsh", cwd: "/repo/a" }]);
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(fake.createdCount()).toBe(0);
+    expect(fake.terminals).toHaveLength(1);
+  });
+
+  it("does not adopt a live terminal whose creationOptions.cwd belongs to a different project", async () => {
+    const fake = fakeVscode([{ name: "zsh", cwd: "/repo/other" }]);
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(fake.createdCount()).toBe(1);
+    expect(fake.terminals).toHaveLength(2);
+  });
+
+  // Regression test for what live instrumentation in the real Extension
+  // Development Host actually showed (2026-08-28): a terminal VS Code
+  // revives from a persisted session across a full extension-host restart
+  // reports NEITHER its original name NOR a `creationOptions.cwd` — every
+  // revived terminal came back as bare `{ name: "zsh" }`. The only source
+  // that DOES carry its real cwd is shell integration
+  // (`terminal.shellIntegration.cwd`), which for an already-running revived
+  // terminal has normally finished its handshake by the time `apply()` runs.
+  it("adopts a revived terminal by shellIntegration.cwd when creationOptions carries nothing at all", async () => {
+    const fake = fakeVscode([{ name: "zsh", shellIntegrationCwd: "/repo/a" }]);
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(fake.createdCount()).toBe(0);
+    expect(fake.terminals).toHaveLength(1);
+  });
+
+  it("does not adopt a revived terminal whose shellIntegration.cwd belongs to a different project", async () => {
+    const fake = fakeVscode([{ name: "zsh", shellIntegrationCwd: "/repo/other" }]);
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(fake.createdCount()).toBe(1);
+    expect(fake.terminals).toHaveLength(2);
   });
 });
