@@ -182,6 +182,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === folderUri.toString());
       return folder ? crossRepoView.getTreeItem(folder).description : undefined;
     }),
+    // Same "test-only, bypasses the picker" purpose as the commands above —
+    // `addFolderAndAssign`'s real entry points (`panecrew.openProjectGrid` /
+    // `panecrew.addFolderToGrid`) start with a modal `showOpenDialog`, which
+    // an automated `@vscode/test-electron` run can't drive. This calls the
+    // same `assignFolderToGrid` the picker calls, so the test exercises a
+    // real, `layoutController`-tracked pane/terminal — not a bypass of the
+    // attention pipeline itself, only of the folder picker.
+    vscode.commands.registerCommand("panecrew._internal.addProjectToGrid", async (folderPath: string) => {
+      await assignFolderToGrid(vscode.Uri.file(folderPath));
+    }),
   );
 
   let ghAvailable = false;
@@ -292,11 +302,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.window.onDidStartTerminalShellExecution((e) => {
       const pane = layoutController.paneForTerminal(e.terminal);
-      if (!pane) return;
+      // A shell command run in a terminal PaneCrew never assigned to a pane
+      // (e.g. one the user opened by hand, outside "Add Folder to Grid…")
+      // can never surface an attention signal — logged so a report of "no
+      // toast appeared" can be told apart from a real detection bug (see
+      // the "real OSC 9 escape sequence..." integration test, which proves
+      // the parse/mark path itself works once a terminal IS a tracked pane).
+      if (!pane) {
+        outputChannel.appendLine(`attention: ignoring shell execution on untracked terminal "${e.terminal.name}"`);
+        return;
+      }
       const buffer = createAttentionSignalBuffer();
       void (async () => {
         for await (const chunk of e.execution.read()) {
           for (const notification of buffer.feed(chunk)) {
+            outputChannel.appendLine(`attention: notification detected for "${pane.projectPath}"`);
             markAttention(pane.projectPath, notification);
           }
         }
@@ -344,17 +364,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // --- grid commands -----------------------------------------------------
-  async function addFolderAndAssign(): Promise<void> {
-    const picked = await vscode.window.showOpenDialog({
-      canSelectFolders: true,
-      canSelectFiles: false,
-      canSelectMany: false,
-      openLabel: "Add to PaneCrew Grid",
-      defaultUri: defaultProjectsFolderUri(),
-    });
-    const folderUri = picked?.[0];
-    if (!folderUri) return;
-
+  async function assignFolderToGrid(folderUri: vscode.Uri): Promise<void> {
     const existingFolders = vscode.workspace.workspaceFolders ?? [];
     const alreadyInWorkspace = existingFolders.some((f) => f.uri.fsPath === folderUri.fsPath);
     if (!alreadyInWorkspace) {
@@ -375,6 +385,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshGitDecorations();
     persist();
     void maybeShowGridHint(context.globalState, gridState);
+  }
+
+  async function addFolderAndAssign(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: "Add to PaneCrew Grid",
+      defaultUri: defaultProjectsFolderUri(),
+    });
+    const folderUri = picked?.[0];
+    if (!folderUri) return;
+    await assignFolderToGrid(folderUri);
   }
 
   // --- status bar: grid template picker + new-window shortcut ------------
