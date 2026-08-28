@@ -68,15 +68,27 @@ function matchSegments(segments: string[], pattern: string[]): boolean {
   return matchSegments(restSegments, restPattern);
 }
 
+// ⚡ Bolt: Cache regex compilation for glob segments to prevent repeated
+// RegExp instantiation inside deep `.filter()` loops during directory traversal.
+// Reduces regex creation overhead significantly.
+const segmentRegexCache = new Map<string, RegExp>();
+
 function matchesSegmentGlob(segment: string, pattern: string): boolean {
   if (pattern === "*") return true;
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}$`).test(segment);
+  let regex = segmentRegexCache.get(pattern);
+  if (!regex) {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    regex = new RegExp(`^${escaped}$`);
+    segmentRegexCache.set(pattern, regex);
+  }
+  return regex.test(segment);
 }
 
-function isExcluded(folder: vscode.WorkspaceFolder, uri: vscode.Uri): boolean {
+// ⚡ Bolt: Modified signature to accept pre-computed `patterns` rather than
+// calculating them on every file evaluation. This prevents hitting the
+// VS Code configuration APIs for every file inside `getChildren`.
+function isExcluded(folder: vscode.WorkspaceFolder, uri: vscode.Uri, patterns: string[]): boolean {
   const relative = vscode.workspace.asRelativePath(uri, false);
-  const patterns = excludeGlobs(uri);
   return patterns.some((pattern) => matchesGlob(relative, pattern));
 }
 
@@ -186,6 +198,11 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
       return [];
     }
 
+    // ⚡ Bolt: Compute exclude patterns ONCE per directory rather than
+    // inside the map/filter pipeline. This eliminates O(N) configuration reads
+    // (where N is the number of files in the directory).
+    const patterns = excludeGlobs(dirUri);
+
     return entries
       .map(([name, type]): FileSystemEntryItem => ({
         kind: "entry",
@@ -193,7 +210,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
         type,
         folder,
       }))
-      .filter((entry) => !isExcluded(folder, entry.uri))
+      .filter((entry) => !isExcluded(folder, entry.uri, patterns))
       .sort((a, b) => {
         const aDir = a.type === vscode.FileType.Directory;
         const bDir = b.type === vscode.FileType.Directory;
