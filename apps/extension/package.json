@@ -169,6 +169,10 @@
         "command": "panecrew.restartActivePaneTerminal",
         "title": "PaneCrew: Restart This Pane's Terminal",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "panecrew.restartPaneTerminalInstance",
+        "title": "PaneCrew: Restart This Terminal"
       }
     ],
     "viewsContainers": {
@@ -305,6 +309,12 @@
           "command": "panecrew.restartActivePaneTerminal",
           "when": "resourceScheme == vscode-terminal",
           "group": "navigation"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "panecrew.restartPaneTerminalInstance",
+          "group": "z_panecrew"
         }
       ]
     },

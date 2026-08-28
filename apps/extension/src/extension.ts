@@ -431,6 +431,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
+  // Shared by both single-terminal restart entry points below: resolves the
+  // pane for a given terminal, confirms, then restarts it. A pane's editor
+  // group can hold more than one terminal tab (e.g. the user split/added an
+  // extra one by hand -- PaneCrew's grid itself only ever tracks one
+  // terminal per pane, see `terminalsByPaneId`), so `paneForTerminal`
+  // returning `null` for an untracked terminal is the correct, safe outcome
+  // here, not a bug -- it means "not a PaneCrew pane terminal", not "no
+  // pane found for this pane".
+  async function confirmAndRestart(terminal: vscode.Terminal | undefined): Promise<void> {
+    const pane = terminal ? layoutController.paneForTerminal(terminal) : null;
+    if (!pane) {
+      void vscode.window.showWarningMessage("PaneCrew: this isn't a PaneCrew pane terminal.");
+      return;
+    }
+    const label = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
+    const choice = await vscode.window.showWarningMessage(
+      `Restart the terminal for "${label}"? This ends whatever's currently running there and starts a clean shell.`,
+      { modal: true },
+      "Restart",
+    );
+    if (choice !== "Restart") return;
+    restartPaneTerminal(pane);
+  }
+
   // Editor-tab icon (visible on the pane's own tab, next to "Toggle Maximize
   // Pane" -- see the matching `editor/title` entry in package.json), so
   // restarting one specific pane's terminal never needs the Command Palette
@@ -439,24 +463,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // `location: { viewColumn }` terminals) don't carry a `resource` URI the
   // way file editors do -- the icon only shows on a terminal tab in the
   // first place (`resourceScheme == vscode-terminal`), and that tab being
-  // active is what makes it the active terminal.
+  // active is what makes it the active terminal. When a pane has more than
+  // one terminal tab, this acts on whichever one is currently focused/shown
+  // -- `panecrew.restartPaneTerminalInstance` (below) is the alternative for
+  // targeting one specific terminal directly, active or not.
   context.subscriptions.push(
-    vscode.commands.registerCommand("panecrew.restartActivePaneTerminal", async () => {
-      const terminal = vscode.window.activeTerminal;
-      const pane = terminal ? layoutController.paneForTerminal(terminal) : null;
-      if (!pane) {
-        void vscode.window.showWarningMessage("PaneCrew: this tab isn't a PaneCrew pane terminal.");
-        return;
-      }
-      const label = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
-      const choice = await vscode.window.showWarningMessage(
-        `Restart the terminal for "${label}"? This ends whatever's currently running there and starts a clean shell.`,
-        { modal: true },
-        "Restart",
-      );
-      if (choice !== "Restart") return;
-      restartPaneTerminal(pane);
-    }),
+    vscode.commands.registerCommand("panecrew.restartActivePaneTerminal", () =>
+      confirmAndRestart(vscode.window.activeTerminal),
+    ),
+  );
+
+  // Right-click-inside-the-terminal context menu entry (see `terminal/context`
+  // in package.json) -- VS Code passes the exact terminal instance the user
+  // clicked as the argument here (not just "whichever tab is active"), so
+  // this is the reliable way to target one specific terminal when a pane
+  // has several terminal tabs open side by side.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartPaneTerminalInstance", (terminal?: vscode.Terminal) =>
+      confirmAndRestart(terminal ?? vscode.window.activeTerminal),
+    ),
   );
 
   // --- grid commands -----------------------------------------------------
