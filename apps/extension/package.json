@@ -167,7 +167,7 @@
       },
       {
         "command": "panecrew.restartActivePaneTerminal",
-        "title": "PaneCrew: Restart This Pane's Terminal",
+        "title": "PaneCrew: Restart Active Terminal Tab (ends what's running there -- if this pane has more than one terminal tab, only the currently active one is restarted)",
         "icon": "$(refresh)"
       },
       {
