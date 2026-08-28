@@ -16,6 +16,7 @@ import {
   switchTemplate,
   templateForDimensions,
   type GridState,
+  type Pane,
   type TemplateId,
 } from "./grid/gridState";
 import { GridLayoutController } from "./grid/layoutController";
@@ -361,7 +362,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     closedProjectPaths = result.closedProjectPaths;
     await layoutController.apply(gridState);
     persist();
+    logAdoptedPanes(layoutController.adoptedPaneIds());
   }
+
+  // Terminals VS Code revives from a persisted session (e.g. after
+  // "Developer: Reload Window") come back with their content intact, and in
+  // the normal case attention tracking recovers on its own: VS Code's own
+  // shell-integration plumbing re-subscribes to every existing terminal's
+  // command-detection capability on each extension host restart (confirmed
+  // by reading `MainThreadTerminalShellIntegration` upstream), so the next
+  // real command run in a revived pane should fire
+  // `onDidStartTerminalShellExecution` again with no action needed -- no
+  // terminal restart, no lost content. This is deliberately just a log line,
+  // not a user-facing prompt: proactively warning on every reload would be a
+  // false alarm in the common case. `panecrew.restartPaneTerminal` (below)
+  // exists as an explicit, opt-in fallback for the rare case a specific
+  // pane's attention notifications genuinely stay stuck.
+  function logAdoptedPanes(adoptedPaneIds: readonly string[]): void {
+    if (adoptedPaneIds.length === 0) return;
+    const adoptedPanes = gridState.slots.filter(
+      (pane): pane is Pane => pane !== null && adoptedPaneIds.includes(pane.paneId),
+    );
+    for (const pane of adoptedPanes) {
+      outputChannel.appendLine(`attention: adopted (revived) terminal for "${pane.projectPath}" on this activation`);
+    }
+  }
+
+  function restartPaneTerminal(pane: Pane): void {
+    const slotIndex = gridState.slots.findIndex((slot) => slot?.paneId === pane.paneId);
+    if (slotIndex === -1) return;
+    layoutController.restartTerminalForPane(pane, slotIndex + 1);
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartPaneTerminal", async () => {
+      const panes = gridState.slots.filter((pane): pane is Pane => pane !== null);
+      if (panes.length === 0) return;
+      const label = (pane: Pane) => pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
+      const picks = await vscode.window.showQuickPick(
+        panes.map((pane) => ({ label: label(pane), description: pane.projectPath, pane })),
+        {
+          canPickMany: true,
+          placeHolder: "Select panes whose terminal to restart (ends any running command in that pane)",
+        },
+      );
+      if (!picks || picks.length === 0) return;
+      for (const pick of picks) restartPaneTerminal(pick.pane);
+    }),
+  );
 
   // --- grid commands -----------------------------------------------------
   async function assignFolderToGrid(folderUri: vscode.Uri): Promise<void> {

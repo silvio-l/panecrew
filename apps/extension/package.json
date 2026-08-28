@@ -160,6 +160,10 @@
       {
         "command": "panecrew.configureCliToolNotifications",
         "title": "PaneCrew: Configure CLI Tool Notifications…"
+      },
+      {
+        "command": "panecrew.restartPaneTerminal",
+        "title": "PaneCrew: Restart Pane Terminal…"
       }
     ],
     "viewsContainers": {

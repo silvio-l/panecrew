@@ -206,15 +206,35 @@ export class GridLayoutController {
    * (`tabGroups.activeTabGroup.viewColumn`) independent of tab identity. */
   private readonly paneByViewColumn = new Map<number, Pane>();
 
+  /** Panes whose terminal was adopted (revived from a persisted VS Code
+   * session, e.g. after "Developer: Reload Window") during the most recent
+   * `apply()` call, rather than freshly created by this controller. In the
+   * common case attention tracking (`onDidStartTerminalShellExecution`)
+   * recovers on its own for these once a new command runs -- VS Code's
+   * shell-integration plumbing re-subscribes to every existing terminal on
+   * each extension host restart -- so this is logged (see `extension.ts`'s
+   * `logAdoptedPanes`) rather than acted on automatically. Kept around so
+   * `panecrew.restartPaneTerminal` has a record of which panes were adopted,
+   * for the rare case one's tracking genuinely stays stuck and the user
+   * explicitly asks to restart it. */
+  private readonly lastAdoptedPaneIds = new Set<string>();
+
   constructor(private readonly vscode: VscodeLike) {}
 
   async apply(state: GridState): Promise<void> {
     const plan = computeApplyPlan(state);
     await this.vscode.commands.executeCommand("vscode.setEditorLayout", plan.layout);
+    this.lastAdoptedPaneIds.clear();
     for (const { pane, viewColumn } of plan.assignments) {
       this.paneByViewColumn.set(viewColumn, pane);
       this.ensureTerminal(pane, viewColumn);
     }
+  }
+
+  /** Panes adopted (not freshly created) by the most recent `apply()` call —
+   * see `lastAdoptedPaneIds` for why this matters for attention tracking. */
+  adoptedPaneIds(): readonly string[] {
+    return [...this.lastAdoptedPaneIds];
   }
 
   private ensureTerminal(pane: Pane, viewColumn: number): void {
@@ -251,6 +271,7 @@ export class GridLayoutController {
       if (cwd !== undefined) return normalizeCwd(cwd) === expectedCwd;
       return terminal.name === expectedName;
     });
+    if (adopted) this.lastAdoptedPaneIds.add(pane.paneId);
     const terminal = adopted ?? this.vscode.window.createTerminal({
       name: expectedName,
       cwd: pane.projectPath,
@@ -281,6 +302,27 @@ export class GridLayoutController {
   disposeTerminalForPane(paneId: string): void {
     this.terminalsByPaneId.get(paneId)?.dispose?.();
     this.forgetPane(paneId);
+  }
+
+  /** Explicitly closes and recreates the terminal for one pane — used for
+   * the user-facing "restart terminal" action offered for adopted/revived
+   * panes (see `lastAdoptedPaneIds`) whose attention tracking doesn't work.
+   * Unlike `ensureTerminal`'s normal path this always creates a fresh
+   * terminal rather than adopting one, since the whole point is to replace
+   * the one whose shell-integration tracking is broken. Destructive by
+   * design — only ever called from an explicit user action, never
+   * automatically, since it kills whatever is running in that pane. */
+  restartTerminalForPane(pane: Pane, viewColumn: number): void {
+    this.disposeTerminalForPane(pane.paneId);
+    const terminal = this.vscode.window.createTerminal({
+      name: paneTerminalName(pane),
+      cwd: pane.projectPath,
+      location: { viewColumn },
+    });
+    this.terminalsByPaneId.set(pane.paneId, terminal);
+    this.paneByTerminal.set(terminal, pane);
+    this.paneByViewColumn.set(viewColumn, pane);
+    terminal.show(true);
   }
 
   /** The pane that owns `terminal`, or `null` if it's not one PaneCrew
