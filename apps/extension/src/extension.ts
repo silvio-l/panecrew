@@ -295,6 +295,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
+  // --- adopt terminals opened outside PaneCrew's own creation flow (e.g. a
+  // second terminal opened via the terminal tab bar's native "+" button,
+  // inside a pane's editor group) into that pane, so the attention hook
+  // below and focus-follow's primary path treat it as managed instead of
+  // silently ignoring it forever. Registered before `registerFocusFollow`
+  // so its own `onDidChangeActiveTerminal` listener sees the adoption on
+  // the very same event tick rather than falling back to its cwd-based
+  // path.
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTerminal((terminal) => {
+      if (!terminal) return;
+      if (layoutController.paneForTerminal(terminal)) return;
+      const viewColumn = vscode.window.tabGroups.activeTabGroup.viewColumn;
+      const pane = layoutController.paneForViewColumn(viewColumn);
+      if (!pane) return;
+      layoutController.adoptForeignTerminal(terminal, pane);
+      outputChannel.appendLine(
+        `attention: adopted terminal "${terminal.name}" into pane "${pane.projectPath}" (opened outside PaneCrew, e.g. via the terminal tab bar's "+" button)`,
+      );
+    }),
+  );
+
   // --- pane attention notifications (.scratch/pane-attention-notifications,
   // ticket 02) — scans each terminal's own output stream for an OSC 9 /
   // OSC 777 "notify" escape sequence via the Terminal Shell Integration API,
