@@ -399,7 +399,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const plural = adoptedPanes.length === 1 ? "pane" : "panes";
     void vscode.window
       .showWarningMessage(
-        `PaneCrew: attention notifications won't fire for ${adoptedPanes.length} restored ${plural} until its terminal is restarted.`,
+        `PaneCrew: attention notifications won't fire for ${adoptedPanes.length} restored ${plural} until its terminal is fully restarted -- this ends whatever's currently running there (e.g. an in-progress CLI agent session) and starts a clean shell.`,
         "Restart Terminal(s)",
       )
       .then((choice) => {
@@ -423,11 +423,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         panes.map((pane) => ({ label: label(pane), description: pane.projectPath, pane })),
         {
           canPickMany: true,
-          placeHolder: "Select panes whose terminal to restart (ends any running command in that pane)",
+          placeHolder: "Select panes to fully restart (ends whatever's currently running there and starts a clean shell)",
         },
       );
       if (!picks || picks.length === 0) return;
       for (const pick of picks) restartPaneTerminal(pick.pane);
+    }),
+  );
+
+  // Editor-tab icon (visible on the pane's own tab, next to "Toggle Maximize
+  // Pane" -- see the matching `editor/title` entry in package.json), so
+  // restarting one specific pane's terminal never needs the Command Palette
+  // or the multi-select quick pick above. Resolves the target pane from
+  // `vscode.window.activeTerminal` since editor-tab terminals (this grid's
+  // `location: { viewColumn }` terminals) don't carry a `resource` URI the
+  // way file editors do -- the icon only shows on a terminal tab in the
+  // first place (`resourceScheme == vscode-terminal`), and that tab being
+  // active is what makes it the active terminal.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.restartActivePaneTerminal", async () => {
+      const terminal = vscode.window.activeTerminal;
+      const pane = terminal ? layoutController.paneForTerminal(terminal) : null;
+      if (!pane) {
+        void vscode.window.showWarningMessage("PaneCrew: this tab isn't a PaneCrew pane terminal.");
+        return;
+      }
+      const label = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
+      const choice = await vscode.window.showWarningMessage(
+        `Restart the terminal for "${label}"? This ends whatever's currently running there and starts a clean shell.`,
+        { modal: true },
+        "Restart",
+      );
+      if (choice !== "Restart") return;
+      restartPaneTerminal(pane);
     }),
   );
 
