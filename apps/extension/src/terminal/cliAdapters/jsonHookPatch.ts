@@ -1,10 +1,13 @@
-// Shared pure JSON-hook-patching logic for CLI tools whose notification hook
-// is a `{ hooks: { Notification: [ { hooks: [ { type, command } ] } ] } }`
-// settings.json shape — Claude Code and Gemini CLI both use exactly this
-// shape (verified against each tool's current docs at implementation time),
-// so both adapters call this one function instead of duplicating the merge
-// logic. No `vscode` import: reachable directly from vitest, same isolation
-// as terminalLinkDetect.ts/gitStatus.ts.
+// Shared pure JSON-hook-patching logic for CLI tools whose hooks use a
+// `{ hooks: { <Event>: [ { hooks: [ { type, command } ] } ] } }` settings.json
+// shape — Claude Code and Gemini CLI both use exactly this shape (verified
+// against each tool's current docs at implementation time), so both adapters
+// call this one function instead of duplicating the merge logic. `<Event>` is
+// parameterized (not just `Notification`) since Claude Code also exposes a
+// `Stop` hook — fired when a turn finishes rather than when Claude is waiting
+// on the user — and PaneCrew's attention badge wants both signals. No
+// `vscode` import: reachable directly from vitest, same isolation as
+// terminalLinkDetect.ts/gitStatus.ts.
 
 export interface PatchResult {
   text: string;
@@ -31,10 +34,10 @@ function alreadyConfigured(groups: HookGroup[], notifyCommand: string): boolean 
   return groups.some((group) => (group.hooks ?? []).some((hook) => hook.command === notifyCommand));
 }
 
-/** Adds/merges `notifyCommand` into the `Notification` hook array,
- * preserving every other setting/hook untouched, and idempotent —
- * `patchNotificationHook(patchNotificationHook(x, cmd, msg).text, cmd, msg)`
- * behaves like the first call. Throws `malformedMessage` if
+/** Adds/merges `notifyCommand` into the `hookEvent` hook array (default
+ * `"Notification"`), preserving every other setting/hook untouched, and
+ * idempotent — `patchNotificationHook(patchNotificationHook(x, cmd, msg).text,
+ * cmd, msg)` behaves like the first call. Throws `malformedMessage` if
  * `existingConfigText` is present but not valid JSON, so the caller (the
  * on-demand command) can surface a clear error instead of silently
  * no-opping or corrupting the file. */
@@ -42,6 +45,7 @@ export function patchNotificationHook(
   existingConfigText: string | undefined,
   notifyCommand: string,
   malformedMessage: string,
+  hookEvent = "Notification",
 ): PatchResult {
   const trimmed = existingConfigText?.trim();
   let settings: HookedSettings;
@@ -56,9 +60,9 @@ export function patchNotificationHook(
   }
 
   const hooks = settings.hooks ?? {};
-  const notification = hooks.Notification ?? [];
+  const group = hooks[hookEvent] ?? [];
 
-  if (alreadyConfigured(notification, notifyCommand)) {
+  if (alreadyConfigured(group, notifyCommand)) {
     return { text: `${JSON.stringify(settings, null, 2)}\n`, changed: false };
   }
 
@@ -66,7 +70,7 @@ export function patchNotificationHook(
     ...settings,
     hooks: {
       ...hooks,
-      Notification: [...notification, { hooks: [{ type: "command", command: notifyCommand }] }],
+      [hookEvent]: [...group, { hooks: [{ type: "command", command: notifyCommand }] }],
     },
   };
 

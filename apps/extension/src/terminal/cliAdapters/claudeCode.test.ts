@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { CLAUDE_CODE_NOTIFY_COMMAND, computePatchedConfig } from "./claudeCode";
+import { CLAUDE_CODE_NOTIFY_COMMAND, CLAUDE_CODE_STOP_COMMAND, computePatchedConfig } from "./claudeCode";
 
 interface ParsedSettings {
   someOtherSetting?: boolean;
   hooks: {
     PreToolUse?: unknown[];
     Notification: { hooks: { type: string; command: string }[] }[];
+    Stop: { hooks: { type: string; command: string }[] }[];
   };
 }
 
@@ -20,6 +21,7 @@ describe("claudeCode computePatchedConfig", () => {
     expect(parse(result.text)).toEqual({
       hooks: {
         Notification: [{ hooks: [{ type: "command", command: CLAUDE_CODE_NOTIFY_COMMAND }] }],
+        Stop: [{ hooks: [{ type: "command", command: CLAUDE_CODE_STOP_COMMAND }] }],
       },
     });
   });
@@ -28,6 +30,7 @@ describe("claudeCode computePatchedConfig", () => {
     const result = computePatchedConfig("   \n");
     expect(result.changed).toBe(true);
     expect(parse(result.text).hooks.Notification).toHaveLength(1);
+    expect(parse(result.text).hooks.Stop).toHaveLength(1);
   });
 
   it("preserves unrelated existing settings and hooks", () => {
@@ -53,9 +56,10 @@ describe("claudeCode computePatchedConfig", () => {
       { hooks: [{ type: "command", command: "notify-send custom" }] },
       { hooks: [{ type: "command", command: CLAUDE_CODE_NOTIFY_COMMAND }] },
     ]);
+    expect(after.hooks.Stop).toEqual([{ hooks: [{ type: "command", command: CLAUDE_CODE_STOP_COMMAND }] }]);
   });
 
-  it("is a no-op when PaneCrew's own hook is already present", () => {
+  it("is a no-op when PaneCrew's own hooks are already present", () => {
     const first = computePatchedConfig(undefined);
     const second = computePatchedConfig(first.text);
     expect(second.changed).toBe(false);
