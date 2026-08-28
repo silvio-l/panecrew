@@ -39,9 +39,11 @@ function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = [])
       creationOptions: cwd === undefined ? undefined : { cwd },
       shellIntegration: shellIntegrationCwd === undefined ? undefined : { cwd: { fsPath: shellIntegrationCwd } },
       show: () => { /* no-op fake terminal */ },
+      sendText: (text: string) => { void text; },
     };
   });
   let createdCount = 0;
+  const sentTexts: string[] = [];
   const vscode: VscodeLike = {
     commands: { executeCommand: () => Promise.resolve() },
     window: {
@@ -52,6 +54,7 @@ function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = [])
           creationOptions: { cwd: options.cwd },
           shellIntegration: undefined,
           show: () => { /* no-op fake terminal */ },
+          sendText: (text: string) => { sentTexts.push(text); },
         };
         terminals.push(terminal);
         return terminal;
@@ -59,7 +62,7 @@ function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = [])
       terminals,
     },
   };
-  return { vscode, terminals, createdCount: () => createdCount };
+  return { vscode, terminals, createdCount: () => createdCount, sentTexts };
 }
 
 describe("editorGroupLayoutForTemplate", () => {
@@ -195,7 +198,11 @@ describe("GridLayoutController.adoptForeignTerminal", () => {
     const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
     await controller.apply(grid);
 
-    const foreignTerminal = { name: "zsh", show: () => { /* no-op fake terminal */ } };
+    const foreignTerminal = {
+      name: "zsh",
+      show: () => { /* no-op fake terminal */ },
+      sendText: () => { /* no-op fake terminal */ },
+    };
     expect(controller.paneForTerminal(foreignTerminal)).toBeNull();
 
     const pane = controller.paneForViewColumn(1);
@@ -289,5 +296,54 @@ describe("GridLayoutController terminal adoption", () => {
 
     expect(fake.createdCount()).toBe(1);
     expect(fake.terminals).toHaveLength(2);
+  });
+});
+
+describe("GridLayoutController Auto-Start (createdPaneIds/sendText)", () => {
+  it("reports a freshly created pane's id in createdPaneIds()", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(controller.createdPaneIds()).toEqual(["pane-a"]);
+  });
+
+  it("does not report an adopted pane's id in createdPaneIds()", async () => {
+    const fake = fakeVscode(["PaneCrew: a"]);
+    const controller = new GridLayoutController(fake.vscode);
+
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(controller.createdPaneIds()).toEqual([]);
+  });
+
+  it("does not re-report a pane already created by an earlier apply()", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+
+    await controller.apply(grid);
+    await controller.apply(grid);
+
+    expect(controller.createdPaneIds()).toEqual([]);
+  });
+
+  it("sends text into a pane's terminal", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    controller.sendText("pane-a", "claude");
+
+    expect(fake.sentTexts).toEqual(["claude"]);
+  });
+
+  it("does nothing when sending text to a pane with no tracked terminal", () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+
+    expect(() => { controller.sendText("no-such-pane", "claude"); }).not.toThrow();
+    expect(fake.sentTexts).toEqual([]);
   });
 });

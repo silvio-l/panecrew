@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { assignProjectToSlot, INITIAL_GRID_STATE } from "./gridState";
-import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, savePreset } from "./presets";
+import {
+  deletePreset,
+  gridStateFromPreset,
+  loadPresets,
+  presetProjectPaths,
+  presetStartupCommands,
+  savePreset,
+} from "./presets";
 import { createFakeMemento as fakeMemento } from "../testMemento";
 
 describe("presets", () => {
@@ -15,7 +22,29 @@ describe("presets", () => {
 
     const presets = loadPresets(memento);
     expect(presets).toEqual([
-      { name: "my-preset", template: "quad", slots: [null, "/repo/a", null, null] },
+      {
+        name: "my-preset",
+        template: "quad",
+        slots: [null, { projectPath: "/repo/a", startupCommand: null }, null, null],
+      },
+    ]);
+  });
+
+  it("saves a preset with a per-pane startup command", async () => {
+    const memento = fakeMemento();
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+    await savePreset(memento, "p", grid, new Map([["pane-a", "claude"]]));
+
+    expect(loadPresets(memento)[0]?.slots[0]).toEqual({ projectPath: "/repo/a", startupCommand: "claude" });
+  });
+
+  it("migrates a pre-Auto-Start preset whose slots were bare project-path strings", () => {
+    const memento = fakeMemento();
+    // Simulates on-disk state from before the `PresetSlot` shape existed.
+    void memento.update("panecrew.presets", [{ name: "old", template: "split", slots: ["/repo/a", null] }]);
+
+    expect(loadPresets(memento)).toEqual([
+      { name: "old", template: "split", slots: [{ projectPath: "/repo/a", startupCommand: null }, null] },
     ]);
   });
 
@@ -26,7 +55,7 @@ describe("presets", () => {
     await savePreset(memento, "p", grid);
 
     expect(loadPresets(memento)).toHaveLength(1);
-    expect(loadPresets(memento)[0]?.slots[0]).toBe("/repo/a");
+    expect(loadPresets(memento)[0]?.slots[0]).toEqual({ projectPath: "/repo/a", startupCommand: null });
   });
 
   it("deletes a preset by name", async () => {
@@ -37,7 +66,11 @@ describe("presets", () => {
   });
 
   it("rebuilds a grid state from a preset with fresh ids", () => {
-    const preset = { name: "p", template: "split" as const, slots: ["/repo/a", null] };
+    const preset = {
+      name: "p",
+      template: "split" as const,
+      slots: [{ projectPath: "/repo/a", startupCommand: null }, null],
+    };
     let counter = 0;
     const grid = gridStateFromPreset(preset, () => `id-${counter++}`);
 
@@ -48,7 +81,34 @@ describe("presets", () => {
   });
 
   it("extracts project paths from a preset, skipping empty slots", () => {
-    const preset = { name: "p", template: "quad" as const, slots: ["/a", null, "/b", null] };
+    const preset = {
+      name: "p",
+      template: "quad" as const,
+      slots: [
+        { projectPath: "/a", startupCommand: null },
+        null,
+        { projectPath: "/b", startupCommand: null },
+        null,
+      ],
+    };
     expect(presetProjectPaths(preset)).toEqual(["/a", "/b"]);
+  });
+
+  it("zips a preset's startup commands to the fresh grid's pane ids, skipping slots without one", () => {
+    const preset = {
+      name: "p",
+      template: "split" as const,
+      slots: [
+        { projectPath: "/repo/a", startupCommand: "claude" },
+        { projectPath: "/repo/b", startupCommand: null },
+      ],
+    };
+    let counter = 0;
+    const grid = gridStateFromPreset(preset, () => `id-${counter++}`);
+
+    const commands = presetStartupCommands(preset, grid);
+
+    expect(commands.size).toBe(1);
+    expect(commands.get((grid.slots[0] as { paneId: string }).paneId)).toBe("claude");
   });
 });

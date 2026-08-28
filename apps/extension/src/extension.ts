@@ -9,6 +9,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { applyCompactLook, restoreLook } from "./compactLook";
 import {
+  activePanes,
   assignProjectToSlot,
   closePane,
   firstEmptySlotIndex,
@@ -20,7 +21,14 @@ import {
   type TemplateId,
 } from "./grid/gridState";
 import { GridLayoutController } from "./grid/layoutController";
-import { deletePreset, gridStateFromPreset, loadPresets, presetProjectPaths, savePreset } from "./grid/presets";
+import {
+  deletePreset,
+  gridStateFromPreset,
+  loadPresets,
+  presetProjectPaths,
+  presetStartupCommands,
+  savePreset,
+} from "./grid/presets";
 import { PaneCrewGitDecorationProvider } from "./explorer/gitDecorationProvider";
 import { isGitIndexNoise } from "./git/repoStatus";
 import { PaneCrewCrossRepoViewProvider } from "./git/crossRepoView";
@@ -627,7 +635,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("panecrew.savePreset", async () => {
       const name = await vscode.window.showInputBox({ prompt: "Name this grid preset" });
       if (!name) return;
-      await savePreset(context.globalState, name, gridState);
+
+      // Auto-Start: ask for an optional per-pane startup command (e.g.
+      // "claude") — pre-filled from a same-named preset's own command for
+      // that project path, if one is being overwritten, so re-saving a
+      // preset doesn't silently drop commands the user already set up.
+      const existing = loadPresets(context.globalState).find((p) => p.name === name);
+      const startupCommands = new Map<string, string>();
+      for (const pane of activePanes(gridState)) {
+        const previous = existing?.slots.find((slot) => slot?.projectPath === pane.projectPath)?.startupCommand;
+        const command = await vscode.window.showInputBox({
+          prompt: `Startup command for "${path.basename(pane.projectPath)}" (optional)`,
+          placeHolder: 'e.g. "claude" — leave empty for a plain shell',
+          value: previous ?? "",
+        });
+        if (command) startupCommands.set(pane.paneId, command);
+      }
+
+      await savePreset(context.globalState, name, gridState, startupCommands);
       void vscode.window.showInformationMessage(`PaneCrew: saved preset "${name}".`);
     }),
     vscode.commands.registerCommand("panecrew.loadPreset", async () => {
@@ -656,6 +681,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       gridState = gridStateFromPreset(picked.preset, makeId);
       await layoutController.apply(gridState);
+
+      // Auto-Start: only into panes this apply() genuinely just created —
+      // never into one it adopted from an already-running terminal
+      // (`createdPaneIds()`'s own contract, see `layoutController.ts`).
+      const startupCommands = presetStartupCommands(picked.preset, gridState);
+      for (const paneId of layoutController.createdPaneIds()) {
+        const command = startupCommands.get(paneId);
+        if (command) layoutController.sendText(paneId, command);
+      }
+
       treeDataProvider.refresh();
       refreshGitDecorations();
       persist();
