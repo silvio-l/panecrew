@@ -135,3 +135,18 @@ export function createNewWindowStatusBarItem(context: vscode.ExtensionContext): 
 
   return item;
 }
+
+/** Shortcut to toggle the primary side bar (and with it, the PaneCrew
+ * explorer). Deliberately in the status bar rather than the explorer view's
+ * own `view/title` toolbar (where it originally lived) — a button that only
+ * lives inside the sidebar can't bring the sidebar back once it's hidden,
+ * which defeats its own purpose; the status bar stays visible either way. */
+export function createToggleSidebarStatusBarItem(): vscode.Disposable {
+  const item = vscode.window.createStatusBarItem("panecrew.toggleSidebar", vscode.StatusBarAlignment.Left, 98);
+  item.name = "PaneCrew: Toggle Primary Side Bar";
+  item.text = "$(layout-sidebar-left)";
+  item.tooltip = "PaneCrew: toggle primary side bar";
+  item.command = "panecrew.toggleSidebar";
+  item.show();
+  return item;
+}

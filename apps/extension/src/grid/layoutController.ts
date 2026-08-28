@@ -147,6 +147,7 @@ export interface VscodeLike {
 interface ControllerTerminal {
   name: string;
   show(preserveFocus?: boolean): void;
+  dispose?(): void;
 }
 
 export class GridLayoutController {
@@ -219,6 +220,15 @@ export class GridLayoutController {
     for (const [viewColumn, pane] of this.paneByViewColumn) {
       if (pane.paneId === paneId) this.paneByViewColumn.delete(viewColumn);
     }
+  }
+
+  /** Actively closes the live terminal for a pane the user explicitly
+   * removed from the grid (e.g. "Remove Project…"), then forgets it —
+   * unlike `forgetPane`, which only drops the tracked reference because
+   * VS Code already closed the terminal on its own. */
+  disposeTerminalForPane(paneId: string): void {
+    this.terminalsByPaneId.get(paneId)?.dispose?.();
+    this.forgetPane(paneId);
   }
 
   /** The pane that owns `terminal`, or `null` if it's not one PaneCrew

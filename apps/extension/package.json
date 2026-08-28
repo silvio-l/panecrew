@@ -2,7 +2,7 @@
   "name": "panecrew",
   "displayName": "PaneCrew",
   "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "silvio-lindstedt",
   "icon": "media/panecrew-icon-128.png",
   "license": "MIT",
@@ -146,6 +146,20 @@
       {
         "command": "panecrew.setPaneCrewTheme",
         "title": "PaneCrew: Set PaneCrew Theme…"
+      },
+      {
+        "command": "panecrew.removeProjectFromWorkspace",
+        "title": "PaneCrew: Remove Project from Workspace…",
+        "icon": "$(close)"
+      },
+      {
+        "command": "panecrew.toggleMaximizePane",
+        "title": "PaneCrew: Toggle Maximize Pane",
+        "icon": "$(screen-full)"
+      },
+      {
+        "command": "panecrew.configureCliToolNotifications",
+        "title": "PaneCrew: Configure CLI Tool Notifications…"
       }
     ],
     "viewsContainers": {
@@ -188,11 +202,6 @@
           "command": "panecrew.refreshExplorer",
           "when": "view == panecrew.explorerView",
           "group": "navigation@2"
-        },
-        {
-          "command": "panecrew.toggleSidebar",
-          "when": "view == panecrew.explorerView",
-          "group": "navigation@3"
         },
         {
           "command": "panecrew.applyCompactLook",
@@ -265,6 +274,23 @@
           "command": "panecrew.copyPath",
           "when": "view == panecrew.explorerView && (viewItem == panecrew.folder || viewItem == panecrew.file || viewItem == panecrew.root)",
           "group": "6_copypath"
+        },
+        {
+          "command": "panecrew.removeProjectFromWorkspace",
+          "when": "view == panecrew.crossRepoView && viewItem == panecrew.crossRepoProject",
+          "group": "inline"
+        },
+        {
+          "command": "panecrew.removeProjectFromWorkspace",
+          "when": "view == panecrew.crossRepoView && viewItem == panecrew.crossRepoProject",
+          "group": "4_modify"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "panecrew.toggleMaximizePane",
+          "when": "resourceScheme == vscode-terminal && !editorPartMaximizedEditorGroup",
+          "group": "navigation"
         }
       ]
     },
@@ -357,6 +383,18 @@
               "svg": "media/panecrew-icon.svg",
               "altText": "PaneCrew snippets"
             }
+          },
+          {
+            "id": "configureCliNotifications",
+            "title": "Get notified when a pane needs you",
+            "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
+            "completionEvents": [
+              "onCommand:panecrew.configureCliToolNotifications"
+            ],
+            "media": {
+              "svg": "media/panecrew-icon.svg",
+              "altText": "PaneCrew attention badge"
+            }
           }
         ]
       }
@@ -406,6 +444,11 @@
           ],
           "default": "workspace",
           "description": "Where newly saved snippets are stored by default."
+        },
+        "panecrew.attentionBadges.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a badge on panes whose terminal signals it needs your attention (via the OSC 9 / OSC 777 notify escape sequence)."
         }
       }
     }
