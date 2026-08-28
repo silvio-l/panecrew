@@ -53,6 +53,12 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.7] - 2026-08-28
+### Neu
+- Grid-Presets können jetzt pro Pane einen optionalen Start-Befehl speichern
+  (z. B. `claude`), der automatisch ins Terminal geschickt wird, sobald das
+  Preset es erzeugt.
+
 ## [0.1.6] - 2026-08-28
 ### Neu
 - Attention-Badges werden jetzt auch über Claude Codes eigenen Stop-Hook
