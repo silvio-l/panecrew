@@ -56,7 +56,14 @@ export class PaneCrewCrossRepoViewProvider implements vscode.TreeDataProvider<vs
     const statusLabel = status ? formatStatusLabel(status) : undefined;
     item.description = hasAttention ? ["●", statusLabel].filter(Boolean).join(" ") : statusLabel;
     item.tooltip = status?.pr?.url;
-    item.iconPath = new vscode.ThemeIcon(status ? "repo" : "circle-slash");
+    // A plain "●" in the small grey `description` text is easy to miss —
+    // the icon swap (bell + warning color) is the actually-visible signal,
+    // since Projects Overview is the one place multiple projects are shown
+    // side by side (the main explorer only ever shows one at a time, where
+    // the existing FileDecorationProvider badge is enough).
+    item.iconPath = hasAttention
+      ? new vscode.ThemeIcon("bell-dot", new vscode.ThemeColor("list.warningForeground"))
+      : new vscode.ThemeIcon(status ? "repo" : "circle-slash");
     item.contextValue = "panecrew.crossRepoProject";
     item.command = {
       command: "panecrew.focusProjectInExplorer",

@@ -5,6 +5,7 @@
 // settings (9). Kept as one file (rather than split further) because its
 // entire job IS the wiring — every piece of actual logic lives in the
 // modules it imports, each independently unit-tested.
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { applyCompactLook, restoreLook } from "./compactLook";
 import {
@@ -128,10 +129,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.createTreeView("panecrew.crossRepoView", { treeDataProvider: crossRepoView }),
   );
 
+  // The near-invisible explorer/Projects-Overview badges alone weren't
+  // enough of a signal (.scratch/pane-attention-notifications follow-up,
+  // 2026-08-28) — a VS Code toast is the "at least visible within VS Code"
+  // floor the badges can't guarantee on their own. Gated by the same
+  // `attentionBadges.enabled` setting as the main-explorer badge, since it's
+  // the umbrella toggle for this whole feature.
+  const showAttentionToast = (projectPath: string, notification?: AttentionNotification) => {
+    const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("attentionBadges.enabled", true);
+    if (!enabled) return;
+    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(projectPath));
+    const projectName = folder?.name ?? path.basename(projectPath);
+    const message = `${projectName}: ${notification?.body ?? notification?.title ?? "needs your attention"}`;
+    void vscode.window.showWarningMessage(message, "Reveal").then((selection) => {
+      if (selection === "Reveal" && folder) {
+        void vscode.commands.executeCommand("panecrew.focusProjectInExplorer", folder);
+      }
+    });
+  };
+
   const markAttention = (projectPath: string, notification?: AttentionNotification) => {
     attentionTracker.markAttention(projectPath, notification);
     attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
     if (crossRepoView.setAttention(vscode.Uri.file(projectPath), true)) crossRepoView.refresh();
+    showAttentionToast(projectPath, notification);
   };
   const clearAttention = (projectPath: string) => {
     if (!attentionTracker.hasAttention(projectPath)) return;
