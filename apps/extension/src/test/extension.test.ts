@@ -416,7 +416,7 @@ suite("PaneCrew extension", () => {
   test("Compact Look hides the title bar chat/agent-status indicator, and restoring brings it back", async () => {
     const store = new Map<string, unknown>();
     const memento: CompactLookMemento = {
-      get: (key: string) => store.get(key),
+      get: ((key: string) => store.get(key)) as CompactLookMemento["get"],
       update: (key: string, value: unknown) => {
         store.set(key, value);
         return Promise.resolve();
