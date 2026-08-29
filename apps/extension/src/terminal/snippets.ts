@@ -110,6 +110,7 @@ export function registerInsertSnippetCommand(context: vscode.ExtensionContext): 
       filterSnippetCandidates(snippets, filter).map((snippet) => ({
         label: snippet.trigger,
         description: `[${(snippet as StoredSnippet).scope}] ${snippet.description}`,
+        detail: snippet.body,
         snippet: snippet as StoredSnippet,
       }));
     quickPick.items = toItems("");
