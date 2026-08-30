@@ -15,7 +15,7 @@ function entryName(item: FileSystemEntryItem | FolderRootItem): string {
 }
 
 async function promptForName(prompt: string, value?: string): Promise<string | undefined> {
-  const name = await vscode.window.showInputBox({ prompt, value, validateInput: validateEntryName });
+  const name = await vscode.window.showInputBox({ prompt, value, validateInput: validateEntryName, ignoreFocusOut: true });
   return name?.trim();
 }
 
