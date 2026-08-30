@@ -68,15 +68,22 @@ function matchSegments(segments: string[], pattern: string[]): boolean {
   return matchSegments(restSegments, restPattern);
 }
 
+// ⚡ Bolt optimization: memoize compiled glob patterns to avoid RegExp recompilation
+const globRegexCache = new Map<string, RegExp>();
+
 function matchesSegmentGlob(segment: string, pattern: string): boolean {
   if (pattern === "*") return true;
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}$`).test(segment);
+  let regex = globRegexCache.get(pattern);
+  if (!regex) {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    regex = new RegExp(`^${escaped}$`);
+    globRegexCache.set(pattern, regex);
+  }
+  return regex.test(segment);
 }
 
-function isExcluded(folder: vscode.WorkspaceFolder, uri: vscode.Uri): boolean {
+function isExcluded(uri: vscode.Uri, patterns: string[]): boolean {
   const relative = vscode.workspace.asRelativePath(uri, false);
-  const patterns = excludeGlobs(uri);
   return patterns.some((pattern) => matchesGlob(relative, pattern));
 }
 
@@ -186,6 +193,10 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
       return [];
     }
 
+    // ⚡ Bolt optimization: lift excludeGlobs out of the filter loop
+    // to avoid fetching vscode.workspace.getConfiguration for every file
+    const patterns = excludeGlobs(dirUri);
+
     return entries
       .map(([name, type]): FileSystemEntryItem => ({
         kind: "entry",
@@ -193,7 +204,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
         type,
         folder,
       }))
-      .filter((entry) => !isExcluded(folder, entry.uri))
+      .filter((entry) => !isExcluded(entry.uri, patterns))
       .sort((a, b) => {
         const aDir = a.type === vscode.FileType.Directory;
         const bDir = b.type === vscode.FileType.Directory;
