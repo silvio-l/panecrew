@@ -140,6 +140,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
       const item = new vscode.TreeItem(element.folder.name, vscode.TreeItemCollapsibleState.Expanded);
       item.resourceUri = element.folder.uri;
       item.description = this.rootDescriptions.get(element.folder.uri.toString());
+      item.tooltip = element.folder.uri.fsPath;
       // Deliberately distinct from a regular subfolder's "panecrew.folder":
       // a root is a workspace folder, not a plain directory — renaming or
       // deleting it would need vscode.workspace.updateWorkspaceFolders, not
@@ -155,6 +156,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
       element.uri,
       isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
     );
+    item.tooltip = element.uri.fsPath;
     item.contextValue = isDirectory ? "panecrew.folder" : "panecrew.file";
     if (!isDirectory) {
       item.command = {
