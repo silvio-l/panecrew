@@ -633,7 +633,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- presets ---------------------------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.savePreset", async () => {
-      const name = await vscode.window.showInputBox({ prompt: "Name this grid preset" });
+      const name = await vscode.window.showInputBox({ prompt: "Name this grid preset", ignoreFocusOut: true });
       if (!name) return;
 
       // Auto-Start: ask for an optional per-pane startup command (e.g.
@@ -648,6 +648,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           prompt: `Startup command for "${path.basename(pane.projectPath)}" (optional)`,
           placeHolder: 'e.g. "claude" — leave empty for a plain shell',
           value: previous ?? "",
+          ignoreFocusOut: true,
         });
         if (command) startupCommands.set(pane.paneId, command);
       }

@@ -150,6 +150,7 @@ export function registerCreateSnippetCommand(context: vscode.ExtensionContext): 
       prompt: "Trigger text (what you'll type after :// to bring this up)",
       placeHolder: "e.g. deploy",
       validateInput: (value) => (value.trim() ? undefined : "Trigger can't be empty."),
+      ignoreFocusOut: true,
     });
     if (!trigger) return;
 
@@ -157,6 +158,7 @@ export function registerCreateSnippetCommand(context: vscode.ExtensionContext): 
       prompt: "Short description (shown in the picker)",
       placeHolder: "e.g. Run the deploy script",
       validateInput: (value) => (value.trim() ? undefined : "Description can't be empty."),
+      ignoreFocusOut: true,
     });
     if (!description) return;
 
@@ -164,6 +166,7 @@ export function registerCreateSnippetCommand(context: vscode.ExtensionContext): 
       prompt: "Text to insert into the terminal",
       placeHolder: "e.g. ./scripts/deploy.sh",
       validateInput: (value) => (value.trim() ? undefined : "Snippet body can't be empty."),
+      ignoreFocusOut: true,
     });
     if (!body) return;
 
@@ -177,7 +180,7 @@ export function registerCreateSnippetCommand(context: vscode.ExtensionContext): 
             { label: "Workspace", description: WORKSPACE_SNIPPETS_RELATIVE_PATH, scope: "workspace" as const },
             { label: "Global", description: "Available in every workspace", scope: "global" as const },
           ],
-          { placeHolder: "Where should this snippet be saved?" },
+          { placeHolder: "Where should this snippet be saved?", ignoreFocusOut: true },
         )
       : undefined;
     const scope: SnippetScope = folder ? (scopePick?.scope ?? defaultScope) : "global";
