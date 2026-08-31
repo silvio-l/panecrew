@@ -2,6 +2,33 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.8 — 2026-08-31
+
+### Added
+
+- A new Needs-Attention queue in the sidebar lists every pane currently
+  signaling attention, oldest first, with a live preview — click an entry
+  (or use "Jump to Next Attention") to jump to and maximize that pane. An
+  optional, off-by-default auto-advance setting jumps to the next queued
+  pane once you clear the current one.
+- A PaneCrew-managed "+" button — in the terminal tab bar and the explorer
+  view title — adds a second, properly named and tracked terminal tab to
+  the focused pane, instead of relying on VS Code's native "+" (which
+  PaneCrew now also renames to match once it notices the new tab).
+- Tree items show their full path on hover, and the snippet-insert picker
+  previews each snippet's body before insertion.
+- Status bar buttons (grid template, new window, sidebar toggle) now
+  announce themselves properly to screen readers.
+
+### Fixed
+
+- Multi-step flows (snippet creation, grid presets, file rename/create) no
+  longer silently drop entered text when focus briefly leaves the input
+  box.
+- Compact Look now also guarantees the editor tab bar and its action
+  toolbar stay visible, so PaneCrew's own pane buttons can't end up hidden
+  by a minimalist editor-tab setup.
+
 ## 0.1.7 — 2026-08-28
 
 ### Added

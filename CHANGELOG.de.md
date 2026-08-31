@@ -53,6 +53,22 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.8] - 2026-08-31
+### Neu
+- Eine neue Needs-Attention-Warteschlange in der Sidebar zum Durchspringen
+  von Panes, die Eingaben brauchen, mit optionalem Auto-Advance.
+- Ein PaneCrew-verwalteter "+"-Button (Terminal-Tab-Leiste und
+  Explorer-View-Titel) fügt der fokussierten Pane ein sauber getracktes
+  Terminal-Tab hinzu.
+- Tooltips mit vollständigem Pfad und Snippet-Body-Vorschau im
+  Einfüge-Picker.
+
+### Behoben
+- Mehrstufige Eingabe-Flows verlieren eingegebenen Text nicht mehr bei
+  kurzzeitigem Fokusverlust.
+- Compact Look hält jetzt auch die Editor-Tab-Leiste samt Aktionsleiste
+  sichtbar.
+
 ## [0.1.7] - 2026-08-28
 ### Neu
 - Grid-Presets können jetzt pro Pane einen optionalen Start-Befehl speichern
