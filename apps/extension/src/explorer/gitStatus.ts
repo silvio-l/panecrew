@@ -58,7 +58,14 @@ export function runGitStatus(cwd: string): Promise<string> {
  * decoration is a single badge, not a two-column stage/worktree pair. */
 export function parsePorcelain(output: string, repoRoot: string): Map<string, GitFileStatus> {
   const result = new Map<string, GitFileStatus>();
-  for (const line of output.split("\n")) {
+  let pos = 0;
+
+  while (pos < output.length) {
+    const nextNewline = output.indexOf("\n", pos);
+    const lineEnd = nextNewline === -1 ? output.length : nextNewline;
+    const line = output.slice(pos, lineEnd);
+    pos = lineEnd + 1;
+
     if (line.length < 4) continue;
     const x = line[0];
     const y = line[1];
