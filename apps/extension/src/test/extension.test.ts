@@ -64,6 +64,7 @@ suite("PaneCrew extension", () => {
       "panecrew.configureCliToolNotifications",
       "panecrew.jumpToAttentionPane",
       "panecrew.jumpToNextAttention",
+      "panecrew.addTerminalToPane",
     ]) {
       assert.ok(commands.includes(id), `command ${id} should be registered`);
     }
@@ -752,6 +753,47 @@ suite("PaneCrew extension", () => {
       );
     } finally {
       await config.update("chat.agentsControl.enabled", before, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  test("Compact Look keeps the editor tab bar/actions toolbar reachable (so PaneCrew's own pane buttons stay visible), and restoring reverts it", async () => {
+    const store = new Map<string, unknown>();
+    const memento: CompactLookMemento = {
+      get: ((key: string) => store.get(key)) as CompactLookMemento["get"],
+      update: (key: string, value: unknown) => {
+        store.set(key, value);
+        return Promise.resolve();
+      },
+    };
+
+    const config = vscode.workspace.getConfiguration();
+    const beforeActionsLocation = config.inspect<string>("workbench.editor.editorActionsLocation")?.globalValue;
+    const beforeShowTabs = config.inspect<string>("workbench.editor.showTabs")?.globalValue;
+    try {
+      await applyCompactLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().get<string>("workbench.editor.editorActionsLocation"),
+        "default",
+        "Compact Look must keep the editor/title action toolbar (PaneCrew's own pane buttons) visible",
+      );
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().get<string>("workbench.editor.showTabs"),
+        "multiple",
+        "Compact Look must keep the terminal tab bar visible",
+      );
+
+      await restoreLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().inspect<string>("workbench.editor.editorActionsLocation")?.globalValue,
+        beforeActionsLocation,
+      );
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().inspect<string>("workbench.editor.showTabs")?.globalValue,
+        beforeShowTabs,
+      );
+    } finally {
+      await config.update("workbench.editor.editorActionsLocation", beforeActionsLocation, vscode.ConfigurationTarget.Global);
+      await config.update("workbench.editor.showTabs", beforeShowTabs, vscode.ConfigurationTarget.Global);
     }
   });
 

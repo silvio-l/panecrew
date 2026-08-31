@@ -367,6 +367,26 @@ export class GridLayoutController {
     return this.paneByTerminal.get(terminal) ?? null;
   }
 
+  /** Creates and shows an ADDITIONAL terminal tab in `pane`'s editor group,
+   * PaneCrew-managed from the moment it's created (named via
+   * `paneTerminalName` and registered with `paneForTerminal`) rather than
+   * picked up after the fact via `adoptForeignTerminal`/the rename-on-adopt
+   * path in `extension.ts`. Backs the `panecrew.addTerminalToPane` command
+   * (the extension's own "+" button, contributed to both the terminal tab
+   * bar and the explorer view title). Deliberately does NOT touch
+   * `terminalsByPaneId` — that map stays reserved for the pane's original
+   * terminal (used by `sendText`/`restartTerminalForPane`); this is a
+   * second, equal terminal tab living alongside it in the same group. */
+  addTerminalToPane(pane: Pane, viewColumn: number): void {
+    const terminal = this.vscode.window.createTerminal({
+      name: paneTerminalName(pane),
+      cwd: pane.projectPath,
+      location: { viewColumn },
+    });
+    this.paneByTerminal.set(terminal, pane);
+    terminal.show(true);
+  }
+
   /** Registers `terminal` as belonging to `pane` without creating it —
    * unlike `ensureTerminal`'s adoption (which only runs during `apply()`
    * and only recreates PaneCrew's own one terminal per pane), this covers a
@@ -408,7 +428,12 @@ export class GridLayoutController {
   }
 }
 
-function paneTerminalName(pane: Pane): string {
+/** The `PaneCrew: <name>` label a pane's terminal is named/renamed with —
+ * exported so `extension.ts` can apply the exact same name when renaming a
+ * terminal adopted via `adoptForeignTerminal` (e.g. one opened via the
+ * terminal tab bar's native "+" button), rather than duplicating the naming
+ * convention at the call site. */
+export function paneTerminalName(pane: Pane): string {
   const base = pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
   return `PaneCrew: ${base}`;
 }

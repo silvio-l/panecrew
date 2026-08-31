@@ -20,7 +20,7 @@ import {
   type Pane,
   type TemplateId,
 } from "./grid/gridState";
-import { GridLayoutController } from "./grid/layoutController";
+import { GridLayoutController, paneTerminalName } from "./grid/layoutController";
 import {
   deletePreset,
   gridStateFromPreset,
@@ -378,6 +378,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // so its own `onDidChangeActiveTerminal` listener sees the adoption on
   // the very same event tick rather than falling back to its cwd-based
   // path.
+  //
+  // Also renames the adopted terminal to the same `PaneCrew: <name>` label
+  // `ensureTerminal` uses, so it reads as a PaneCrew tab, not just an
+  // internally-tracked one — via `workbench.action.terminal.renameWithArg`,
+  // the only stable-API way to rename an already-created `vscode.Terminal`
+  // (it always targets the *active* terminal, which is exactly the one this
+  // handler just received). This sets the terminal's `titleSource` to `Api`,
+  // which VS Code then treats as sticky: a later shell-integration title
+  // (e.g. a CLI agent setting its own OSC-sequence title) is blocked from
+  // overwriting it again. That trade-off (losing that live "what's running"
+  // title) is intentional here — the point is a fixed, predictable PaneCrew
+  // label for every terminal in the grid, not a live status display.
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal((terminal) => {
       if (!terminal) return;
@@ -386,6 +398,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const pane = layoutController.paneForViewColumn(viewColumn);
       if (!pane) return;
       layoutController.adoptForeignTerminal(terminal, pane);
+      void vscode.commands.executeCommand("workbench.action.terminal.renameWithArg", {
+        name: paneTerminalName(pane),
+      });
       outputChannel.appendLine(
         `attention: adopted terminal "${terminal.name}" into pane "${pane.projectPath}" (opened outside PaneCrew, e.g. via the terminal tab bar's "+" button)`,
       );
@@ -568,6 +583,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("panecrew.restartActivePaneTerminal", () =>
       confirmAndRestart(vscode.window.activeTerminal),
     ),
+  );
+
+  // Extension-owned "+" button (see `panecrew.addTerminalToPane`'s
+  // `editor/title`/`view/title` entries in package.json): adds a second,
+  // PaneCrew-managed terminal tab to whichever pane's editor group is
+  // currently focused, instead of relying on VS Code's native terminal
+  // tab-bar "+" (which spawns an untracked terminal that only becomes
+  // PaneCrew-managed after the fact, via the adopt-on-activate handler
+  // above). Resolves "the focused pane" the same way as the adopt handler —
+  // by the active editor group's `ViewColumn` — so it works identically
+  // whether triggered from the terminal tab bar or the explorer view title.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.addTerminalToPane", () => {
+      const viewColumn = vscode.window.tabGroups.activeTabGroup.viewColumn;
+      const pane = layoutController.paneForViewColumn(viewColumn);
+      if (!pane) {
+        void vscode.window.showWarningMessage("PaneCrew: focus a pane first to add a terminal to it.");
+        return;
+      }
+      layoutController.addTerminalToPane(pane, viewColumn);
+    }),
   );
 
   // Right-click-inside-the-terminal context menu entry (see `terminal/context`

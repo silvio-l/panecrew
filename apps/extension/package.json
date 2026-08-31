@@ -178,6 +178,11 @@
         "command": "panecrew.jumpToNextAttention",
         "title": "PaneCrew: Jump to Next Attention…",
         "icon": "$(bell-dot)"
+      },
+      {
+        "command": "panecrew.addTerminalToPane",
+        "title": "PaneCrew: Add Terminal to Pane",
+        "icon": "$(add)"
       }
     ],
     "viewsContainers": {
@@ -229,6 +234,11 @@
           "command": "panecrew.refreshExplorer",
           "when": "view == panecrew.explorerView",
           "group": "navigation@2"
+        },
+        {
+          "command": "panecrew.addTerminalToPane",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@3"
         },
         {
           "command": "panecrew.applyCompactLook",
@@ -314,6 +324,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "panecrew.addTerminalToPane",
+          "when": "resourceScheme == vscode-terminal",
+          "group": "navigation"
+        },
         {
           "command": "panecrew.toggleMaximizePane",
           "when": "resourceScheme == vscode-terminal && !editorPartMaximizedEditorGroup",
