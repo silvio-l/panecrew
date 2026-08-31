@@ -173,6 +173,11 @@
       {
         "command": "panecrew.restartPaneTerminalInstance",
         "title": "PaneCrew: Restart This Terminal"
+      },
+      {
+        "command": "panecrew.jumpToNextAttention",
+        "title": "PaneCrew: Jump to Next Attention…",
+        "icon": "$(bell-dot)"
       }
     ],
     "viewsContainers": {
@@ -186,6 +191,10 @@
     },
     "views": {
       "panecrew": [
+        {
+          "id": "panecrew.needsAttentionView",
+          "name": "Needs Attention"
+        },
         {
           "id": "panecrew.explorerView",
           "name": "Explorer"
@@ -206,6 +215,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "panecrew.jumpToNextAttention",
+          "when": "view == panecrew.needsAttentionView",
+          "group": "navigation@1"
+        },
         {
           "command": "panecrew.addFolderToGrid",
           "when": "view == panecrew.explorerView",
@@ -472,7 +486,12 @@
         "panecrew.attentionBadges.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show a badge on panes whose terminal signals it needs your attention (via the OSC 9 / OSC 777 notify escape sequence)."
+          "description": "Show a badge on panes whose terminal signals it needs your attention (via the OSC 9 / OSC 777 notify escape sequence). Also governs the Needs-Attention sidebar queue — one shared switch for the whole feature."
+        },
+        "panecrew.attentionAutopilot.autoAdvance": {
+          "type": "boolean",
+          "default": false,
+          "description": "When you clear the Needs-Attention queue's current front entry by focusing that pane yourself, automatically jump to and maximize the next queued pane. Off by default; never steals focus from a pane you're actively typing into."
         }
       }
     }

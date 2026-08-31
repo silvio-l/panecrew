@@ -55,6 +55,7 @@ import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
 import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
 import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
 import { PaneCrewAttentionDecorationProvider } from "./explorer/attentionDecorationProvider";
+import { PaneCrewAttentionQueueViewProvider } from "./explorer/attentionQueueView";
 import { registerConfigureCliToolNotificationsCommand } from "./terminal/cliAdapters/configureNotifications";
 import {
   createGridTemplateStatusBarItem,
@@ -99,6 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitDecorationProvider = new PaneCrewGitDecorationProvider();
   const attentionTracker = new AttentionTracker();
   const attentionDecorationProvider = new PaneCrewAttentionDecorationProvider(attentionTracker);
+  const attentionQueueView = new PaneCrewAttentionQueueViewProvider(attentionTracker);
 
   const refreshGitDecorations = () => {
     const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("git.showDecorations", true);
@@ -109,6 +111,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const refreshAttentionBadgesEnabled = () => {
     const enabled = vscode.workspace.getConfiguration("panecrew").get<boolean>("attentionBadges.enabled", true);
     attentionDecorationProvider.setEnabled(enabled);
+    // .scratch/attention-queue ticket 05 — one shared switch for the whole
+    // attention-signal feature (badges, Projects Overview glyph, and the
+    // queue), not a second setting to keep in sync.
+    attentionQueueView.setEnabled(enabled);
   };
 
   const treeView = vscode.window.createTreeView<ProjectTreeItem>("panecrew.explorerView", {
@@ -120,6 +126,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   });
   context.subscriptions.push(treeView);
+  // .scratch/attention-queue ticket 03 — a third, always-visible sidebar
+  // section listing every pane currently signaling attention, oldest first
+  // (positioned above "Explorer" in package.json's contributes.views).
+  context.subscriptions.push(
+    vscode.window.createTreeView("panecrew.needsAttentionView", { treeDataProvider: attentionQueueView }),
+  );
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(gitDecorationProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(attentionDecorationProvider));
   context.subscriptions.push(
@@ -161,14 +173,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     attentionTracker.markAttention(projectPath, notification);
     attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
     if (crossRepoView.setAttention(vscode.Uri.file(projectPath), true)) crossRepoView.refresh();
+    attentionQueueView.refresh();
     showAttentionToast(projectPath, notification);
   };
   const clearAttention = (projectPath: string) => {
     if (!attentionTracker.hasAttention(projectPath)) return;
+    // Captured before clearing — .scratch/attention-queue ticket 06 only
+    // auto-advances when the pane that just cleared WAS the queue's front
+    // (oldest) entry, never for clearing a pane further back in the queue.
+    const wasFrontEntry = attentionTracker.orderedQueue()[0]?.root === projectPath;
     attentionTracker.clearAttention(projectPath);
     attentionDecorationProvider.notifyChanged(vscode.Uri.file(projectPath));
     if (crossRepoView.setAttention(vscode.Uri.file(projectPath), false)) crossRepoView.refresh();
+    attentionQueueView.refresh();
+    const autoAdvanceEnabled = vscode.workspace
+      .getConfiguration("panecrew")
+      .get<boolean>("attentionAutopilot.autoAdvance", false);
+    if (wasFrontEntry && autoAdvanceEnabled && attentionTracker.orderedQueue().length > 0) {
+      void jumpToNextAttention();
+    }
   };
+
+  // .scratch/attention-queue tickets 02/04 — the shared "jump to this pane"
+  // mechanism both the queue view's item command and "Jump to Next
+  // Attention" build on. `lastMaximizedProjectPath` tracks which pane this
+  // extension itself last left maximized, so re-invoking a jump onto the
+  // SAME still-maximized pane doesn't call VS Code's toggle command a
+  // second time and unmaximize it again — `toggleMaximizeEditorGroup` has
+  // no "always maximize" form, only toggle (verified against the current VS
+  // Code source: `EditorPart.doSetGroupActive` already auto-unmaximizes any
+  // OTHER maximized group the moment `focusPaneTerminal`'s `.show(false)`
+  // makes a *different* group active, so a bare toggle afterwards correctly
+  // maximizes the newly focused target in that, the common, case). This
+  // tracking is inherently best-effort: it can't see the user unmaximizing a
+  // pane by hand (e.g. the native `Cmd+K Cmd+M` keybinding), since the
+  // stable extension API exposes no way to read a group's current maximized
+  // state.
+  let lastMaximizedProjectPath: string | undefined;
+  async function jumpToPaneAndMaximize(projectPath: string): Promise<void> {
+    const focused = layoutController.focusPaneTerminal(projectPath);
+    if (!focused) return;
+    if (lastMaximizedProjectPath !== projectPath) {
+      await vscode.commands.executeCommand("workbench.action.toggleMaximizeEditorGroup");
+      lastMaximizedProjectPath = projectPath;
+    }
+  }
+  async function jumpToNextAttention(): Promise<void> {
+    const queue = attentionTracker.orderedQueue();
+    if (queue.length === 0) return;
+    await jumpToPaneAndMaximize(queue[0].root);
+  }
+  context.subscriptions.push(
+    vscode.commands.registerCommand("panecrew.jumpToAttentionPane", (projectPath: string) =>
+      jumpToPaneAndMaximize(projectPath),
+    ),
+    vscode.commands.registerCommand("panecrew.jumpToNextAttention", () => jumpToNextAttention()),
+  );
 
   // Undeclared (not in package.json contributes, so never shown in the
   // Command Palette) test-only commands, same pattern as
@@ -191,6 +251,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === folderUri.toString());
       return folder ? crossRepoView.getTreeItem(folder).description : undefined;
     }),
+    // Test-only, same purpose as the internal commands above — lets the
+    // integration suite observe the real, production Needs-Attention queue
+    // view's contents (.scratch/attention-queue ticket 03) without needing
+    // a live sidebar UI to click into.
+    vscode.commands.registerCommand("panecrew._internal.attentionQueueRoots", () =>
+      attentionQueueView.getChildren().map((entry) => entry.root),
+    ),
     // Same "test-only, bypasses the picker" purpose as the commands above —
     // `addFolderAndAssign`'s real entry points (`panecrew.openProjectGrid` /
     // `panecrew.addFolderToGrid`) start with a modal `showOpenDialog`, which

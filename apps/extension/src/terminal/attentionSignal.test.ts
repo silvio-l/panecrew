@@ -154,4 +154,44 @@ describe("AttentionTracker", () => {
     expect(() => { tracker.clearAttention("/repo/a"); }).not.toThrow();
     expect(tracker.hasAttention("/repo/a")).toBe(false);
   });
+
+  describe("orderedQueue", () => {
+    it("is empty for a fresh tracker", () => {
+      expect(new AttentionTracker().orderedQueue()).toEqual([]);
+    });
+
+    it("lists marked roots oldest first", () => {
+      const tracker = new AttentionTracker();
+      tracker.markAttention("/repo/a", { body: "First" });
+      tracker.markAttention("/repo/b", { body: "Second" });
+      tracker.markAttention("/repo/c", { body: "Third" });
+
+      expect(tracker.orderedQueue()).toEqual([
+        { root: "/repo/a", notification: { body: "First" } },
+        { root: "/repo/b", notification: { body: "Second" } },
+        { root: "/repo/c", notification: { body: "Third" } },
+      ]);
+    });
+
+    it("keeps a re-marked root's original position, only updating its notification", () => {
+      const tracker = new AttentionTracker();
+      tracker.markAttention("/repo/a", { body: "First" });
+      tracker.markAttention("/repo/b", { body: "Second" });
+      tracker.markAttention("/repo/a", { body: "First, again" });
+
+      expect(tracker.orderedQueue()).toEqual([
+        { root: "/repo/a", notification: { body: "First, again" } },
+        { root: "/repo/b", notification: { body: "Second" } },
+      ]);
+    });
+
+    it("removes a root from the queue once cleared", () => {
+      const tracker = new AttentionTracker();
+      tracker.markAttention("/repo/a");
+      tracker.markAttention("/repo/b");
+      tracker.clearAttention("/repo/a");
+
+      expect(tracker.orderedQueue()).toEqual([{ root: "/repo/b", notification: {} }]);
+    });
+  });
 });

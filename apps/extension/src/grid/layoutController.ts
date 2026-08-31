@@ -389,6 +389,23 @@ export class GridLayoutController {
   paneForViewColumn(viewColumn: number): Pane | null {
     return this.paneByViewColumn.get(viewColumn) ?? null;
   }
+
+  /** Focuses (`.show(false)`) the live terminal for the pane at
+   * `projectPath` — the shared "jump to this pane" mechanism the
+   * Needs-Attention queue's jump commands build on
+   * (.scratch/attention-queue ticket 02). Returns whether a live pane
+   * terminal was found and focused; a safe no-op (`false`) for a project
+   * path with no currently active pane. */
+  focusPaneTerminal(projectPath: string): boolean {
+    for (const pane of this.paneByViewColumn.values()) {
+      if (pane.projectPath !== projectPath) continue;
+      const terminal = this.terminalsByPaneId.get(pane.paneId);
+      if (!terminal) continue;
+      terminal.show(false);
+      return true;
+    }
+    return false;
+  }
 }
 
 function paneTerminalName(pane: Pane): string {

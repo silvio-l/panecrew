@@ -32,15 +32,17 @@ interface PreexistingTerminal {
  * "Developer: Reload Window" scenario `ensureTerminal`'s adoption logic must
  * handle. */
 function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = []) {
+  const showCalls: { terminal: unknown; preserveFocus: boolean | undefined }[] = [];
   const terminals = preexisting.map((entry) => {
     const { name, cwd, shellIntegrationCwd } = typeof entry === "string" ? { name: entry, cwd: undefined, shellIntegrationCwd: undefined } : entry;
-    return {
+    const terminal = {
       name,
       creationOptions: cwd === undefined ? undefined : { cwd },
       shellIntegration: shellIntegrationCwd === undefined ? undefined : { cwd: { fsPath: shellIntegrationCwd } },
-      show: () => { /* no-op fake terminal */ },
+      show: (preserveFocus?: boolean) => { showCalls.push({ terminal, preserveFocus }); },
       sendText: (text: string) => { void text; },
     };
+    return terminal;
   });
   let createdCount = 0;
   const sentTexts: string[] = [];
@@ -53,7 +55,7 @@ function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = [])
           name: options.name,
           creationOptions: { cwd: options.cwd },
           shellIntegration: undefined,
-          show: () => { /* no-op fake terminal */ },
+          show: (preserveFocus?: boolean) => { showCalls.push({ terminal, preserveFocus }); },
           sendText: (text: string) => { sentTexts.push(text); },
         };
         terminals.push(terminal);
@@ -62,7 +64,7 @@ function fakeVscode(preexisting: readonly (string | PreexistingTerminal)[] = [])
       terminals,
     },
   };
-  return { vscode, terminals, createdCount: () => createdCount, sentTexts };
+  return { vscode, terminals, createdCount: () => createdCount, sentTexts, showCalls };
 }
 
 describe("editorGroupLayoutForTemplate", () => {
@@ -296,6 +298,32 @@ describe("GridLayoutController terminal adoption", () => {
 
     expect(fake.createdCount()).toBe(1);
     expect(fake.terminals).toHaveLength(2);
+  });
+});
+
+describe("GridLayoutController.focusPaneTerminal", () => {
+  // .scratch/attention-queue ticket 02 — the shared "jump to this pane"
+  // mechanism the Needs-Attention queue's jump commands build on.
+  it("focuses (show(false)) the live terminal for a known project path", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    const focused = controller.focusPaneTerminal("/repo/a");
+
+    expect(focused).toBe(true);
+    const focusCalls = fake.showCalls.filter((call) => call.preserveFocus === false);
+    expect(focusCalls).toHaveLength(1);
+    expect((focusCalls[0].terminal as { name: string }).name).toBe("PaneCrew: a");
+  });
+
+  it("is a safe no-op for a project path with no active pane", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+    await controller.apply(assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a"));
+
+    expect(controller.focusPaneTerminal("/repo/unknown")).toBe(false);
+    expect(fake.showCalls.some((call) => call.preserveFocus === false)).toBe(false);
   });
 });
 

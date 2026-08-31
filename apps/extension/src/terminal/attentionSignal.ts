@@ -146,4 +146,13 @@ export class AttentionTracker {
   attentionFor(root: string): AttentionNotification | undefined {
     return this.byRoot.get(root);
   }
+
+  /** Every root currently pending, oldest signal first — for the
+   * Needs-Attention queue view. `Map` preserves insertion order and
+   * `markAttention`'s `Map.set` on an already-present key does not move it,
+   * so re-marking an already-queued root updates its notification without
+   * changing its position here (.scratch/attention-queue ticket 01). */
+  orderedQueue(): { root: string; notification: AttentionNotification }[] {
+    return [...this.byRoot.entries()].map(([root, notification]) => ({ root, notification }));
+  }
 }
