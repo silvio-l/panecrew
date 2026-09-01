@@ -5,3 +5,7 @@
 ## 2023-10-24 - Avoiding String.split("\n") on large CLI outputs
 **Learning:** In scenarios where `git status` output is large, using `String.prototype.split("\n")` causes massive array allocations which triggers garbage collection pauses, blocking the main thread.
 **Action:** Replace `split("\n")` with an `indexOf("\n")` in a `while` loop to manually extract lines or count items, avoiding allocation of an array of strings.
+
+## 2026-09-01 - Avoid String.split on large CLI output parsing
+**Learning:** Using `String.prototype.split("\n")` on large CLI outputs (like `git status --porcelain` on huge repos) causes massive array allocations and garbage collection pauses that block the main thread.
+**Action:** Process lines iteratively using `indexOf("\n")` in a `while` loop instead. Similarly, avoid intermediate `.split(" -> ")` for string parsing when `indexOf` and `slice` suffice.
