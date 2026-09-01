@@ -42,7 +42,23 @@ export function parseBranchHeader(line: string): { branch: string; aheadBehind: 
  * lines `parsePorcelain` (gitStatus.ts) would map, just counted rather than
  * resolved to per-path badges. */
 export function countDirtyLines(output: string): number {
-  return output.split("\n").filter((line, index) => index > 0 && line.length > 0).length;
+  let count = 0;
+  let pos = output.indexOf("\n");
+  if (pos === -1) return 0; // No header/no body
+
+  pos++; // Skip the header newline
+  while (pos < output.length) {
+    const nextNewline = output.indexOf("\n", pos);
+    if (nextNewline === -1) {
+      if (pos < output.length) count++; // Non-empty final line
+      break;
+    }
+    if (nextNewline > pos) {
+      count++; // Non-empty line between pos and nextNewline
+    }
+    pos = nextNewline + 1;
+  }
+  return count;
 }
 
 /** Whether a filesystem-watcher path is `git status` rewriting `.git/index`
@@ -70,7 +86,8 @@ export function getLocalRepoStatus(cwd: string): Promise<LocalRepoStatus | undef
           resolve(undefined);
           return;
         }
-        const header = stdout.split("\n")[0];
+        const firstNewline = stdout.indexOf("\n");
+        const header = firstNewline !== -1 ? stdout.slice(0, firstNewline) : stdout;
         if (!header.startsWith("## ")) {
           resolve(undefined);
           return;

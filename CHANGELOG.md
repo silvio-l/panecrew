@@ -50,6 +50,18 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.8] - 2026-08-31
+### Added
+- A new Needs-Attention queue in the sidebar for jumping between panes that
+  need input, with an optional auto-advance setting.
+- A PaneCrew-managed "+" button (terminal tab bar and explorer view title)
+  for adding a properly tracked terminal tab to the focused pane.
+- Tooltips with full paths, and snippet body previews in the insert picker.
+
+### Fixed
+- Multi-step input flows no longer drop entered text on focus loss.
+- Compact Look now keeps the editor tab bar and its action toolbar visible.
+
 ## [0.1.7] - 2026-08-28
 ### Added
 - Grid presets can now save an optional startup command per pane (e.g.

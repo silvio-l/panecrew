@@ -93,6 +93,7 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
 | `panecrew.compactLook.hideMinimap` | `true` | Whether Compact Look hides the editor minimap. |
 | `panecrew.git.showDecorations` | `true` | Show git status badges/colors in the PaneCrew explorer. |
 | `panecrew.snippets.defaultScope` | `workspace` | Where newly saved snippets are stored by default (`workspace` or `global`). |
+| `panecrew.attentionAutopilot.autoAdvance` | `false` | When you clear the Needs-Attention queue's current front entry by focusing that pane yourself, automatically jump to and maximize the next queued pane. |
 
 Compact Look never fully hides the activity bar, regardless of settings — it
 relocates to a row above the explorer instead of being hidden, by design.

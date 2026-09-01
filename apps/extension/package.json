@@ -2,7 +2,7 @@
   "name": "panecrew",
   "displayName": "PaneCrew",
   "description": "A grid of live terminal panes across a multi-root workspace, paired with a file explorer that automatically follows whichever pane has focus.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "silvio-lindstedt",
   "icon": "media/panecrew-icon-128.png",
   "license": "MIT",
@@ -173,6 +173,16 @@
       {
         "command": "panecrew.restartPaneTerminalInstance",
         "title": "PaneCrew: Restart This Terminal"
+      },
+      {
+        "command": "panecrew.jumpToNextAttention",
+        "title": "PaneCrew: Jump to Next Attention…",
+        "icon": "$(bell-dot)"
+      },
+      {
+        "command": "panecrew.addTerminalToPane",
+        "title": "PaneCrew: Add Terminal to Pane",
+        "icon": "$(add)"
       }
     ],
     "viewsContainers": {
@@ -186,6 +196,10 @@
     },
     "views": {
       "panecrew": [
+        {
+          "id": "panecrew.needsAttentionView",
+          "name": "Needs Attention"
+        },
         {
           "id": "panecrew.explorerView",
           "name": "Explorer"
@@ -207,6 +221,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "panecrew.jumpToNextAttention",
+          "when": "view == panecrew.needsAttentionView",
+          "group": "navigation@1"
+        },
+        {
           "command": "panecrew.addFolderToGrid",
           "when": "view == panecrew.explorerView",
           "group": "navigation@1"
@@ -215,6 +234,11 @@
           "command": "panecrew.refreshExplorer",
           "when": "view == panecrew.explorerView",
           "group": "navigation@2"
+        },
+        {
+          "command": "panecrew.addTerminalToPane",
+          "when": "view == panecrew.explorerView",
+          "group": "navigation@3"
         },
         {
           "command": "panecrew.applyCompactLook",
@@ -300,6 +324,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "panecrew.addTerminalToPane",
+          "when": "resourceScheme == vscode-terminal",
+          "group": "navigation"
+        },
         {
           "command": "panecrew.toggleMaximizePane",
           "when": "resourceScheme == vscode-terminal && !editorPartMaximizedEditorGroup",
@@ -472,7 +501,12 @@
         "panecrew.attentionBadges.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show a badge on panes whose terminal signals it needs your attention (via the OSC 9 / OSC 777 notify escape sequence)."
+          "description": "Show a badge on panes whose terminal signals it needs your attention (via the OSC 9 / OSC 777 notify escape sequence). Also governs the Needs-Attention sidebar queue — one shared switch for the whole feature."
+        },
+        "panecrew.attentionAutopilot.autoAdvance": {
+          "type": "boolean",
+          "default": false,
+          "description": "When you clear the Needs-Attention queue's current front entry by focusing that pane yourself, automatically jump to and maximize the next queued pane. Off by default; never steals focus from a pane you're actively typing into."
         }
       }
     }

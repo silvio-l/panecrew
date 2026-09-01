@@ -72,6 +72,10 @@ export function createGridTemplateStatusBarItem(
   item.name = "PaneCrew: Grid Template";
   item.command = commandId;
   item.tooltip = "PaneCrew: change the grid template";
+  item.accessibilityInformation = {
+    label: "PaneCrew: change the grid template",
+    role: "button",
+  };
 
   const render = (templateId: TemplateId) => {
     const template = GRID_TEMPLATES.find((t) => t.id === templateId) ?? GRID_TEMPLATES[0];
@@ -115,6 +119,10 @@ export function createNewWindowStatusBarItem(context: vscode.ExtensionContext): 
   item.name = "PaneCrew: New Window";
   item.text = "$(empty-window)";
   item.tooltip = "PaneCrew: open a project in a new window";
+  item.accessibilityInformation = {
+    label: "PaneCrew: open a project in a new window",
+    role: "button",
+  };
   item.command = commandId;
   item.show();
 
@@ -146,6 +154,10 @@ export function createToggleSidebarStatusBarItem(): vscode.Disposable {
   item.name = "PaneCrew: Toggle Primary Side Bar";
   item.text = "$(layout-sidebar-left)";
   item.tooltip = "PaneCrew: toggle primary side bar";
+  item.accessibilityInformation = {
+    label: "PaneCrew: toggle primary side bar",
+    role: "button",
+  };
   item.command = "panecrew.toggleSidebar";
   item.show();
   return item;

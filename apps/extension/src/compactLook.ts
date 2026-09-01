@@ -29,6 +29,8 @@ interface SavedLookValues {
   chatSignInEnabled: boolean | undefined;
   chatOpenInAgentsWindowEnabled: boolean | undefined;
   chatAgentsControlEnabled: string | undefined;
+  editorActionsLocation: string | undefined;
+  editorShowTabs: string | undefined;
 }
 
 export async function applyCompactLook(memento: CompactLookMemento): Promise<void> {
@@ -47,6 +49,8 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
     chatOpenInAgentsWindowEnabled: config.inspect<boolean>("chat.titleBar.openInAgentsWindow.enabled")
       ?.globalValue,
     chatAgentsControlEnabled: config.inspect<string>("chat.agentsControl.enabled")?.globalValue,
+    editorActionsLocation: config.inspect<string>("workbench.editor.editorActionsLocation")?.globalValue,
+    editorShowTabs: config.inspect<string>("workbench.editor.showTabs")?.globalValue,
   };
   await memento.update(SAVED_STATE_KEY, saved);
 
@@ -73,6 +77,18 @@ export async function applyCompactLook(memento: CompactLookMemento): Promise<voi
   await config.update("chat.titleBar.signIn.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.titleBar.openInAgentsWindow.enabled", false, vscode.ConfigurationTarget.Global);
   await config.update("chat.agentsControl.enabled", "hidden", vscode.ConfigurationTarget.Global);
+  // PaneCrew's own pane-toolbar buttons (the "+" add-terminal button, the
+  // per-pane restart/maximize buttons) live in the editor tab bar's action
+  // toolbar, not in bespoke PaneCrew chrome — a minimalist VS Code setup
+  // that hides tabs/actions (`workbench.editor.showTabs: "none"` or
+  // `workbench.editor.editorActionsLocation: "hidden"`) would silently make
+  // those buttons unreachable in Compact Look. Force both to their
+  // guaranteed-visible values here, same save/restore treatment as every
+  // other setting above, so applying Compact Look always leaves PaneCrew's
+  // own controls reachable rather than depending on whatever the user's
+  // editor-tab settings already happened to be.
+  await config.update("workbench.editor.editorActionsLocation", "default", vscode.ConfigurationTarget.Global);
+  await config.update("workbench.editor.showTabs", "multiple", vscode.ConfigurationTarget.Global);
   // The Chat/Copilot panel lives in the auxiliary (secondary) side bar, whose
   // visibility isn't a settings.json value — there's no config key for it,
   // only a command, so it can't be captured in SavedLookValues/restored to
@@ -126,6 +142,16 @@ export async function restoreLook(memento: CompactLookMemento): Promise<void> {
   await config.update(
     "chat.agentsControl.enabled",
     saved?.chatAgentsControlEnabled,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "workbench.editor.editorActionsLocation",
+    saved?.editorActionsLocation,
+    vscode.ConfigurationTarget.Global,
+  );
+  await config.update(
+    "workbench.editor.showTabs",
+    saved?.editorShowTabs,
     vscode.ConfigurationTarget.Global,
   );
 }

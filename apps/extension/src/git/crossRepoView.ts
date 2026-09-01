@@ -55,7 +55,7 @@ export class PaneCrewCrossRepoViewProvider implements vscode.TreeDataProvider<vs
     const item = new vscode.TreeItem(folder.name, vscode.TreeItemCollapsibleState.None);
     const statusLabel = status ? formatStatusLabel(status) : undefined;
     item.description = hasAttention ? ["●", statusLabel].filter(Boolean).join(" ") : statusLabel;
-    item.tooltip = status?.pr?.url;
+    item.tooltip = status?.pr?.url ?? folder.uri.fsPath;
     // A plain "●" in the small grey `description` text is easy to miss —
     // the icon swap (bell + warning color) is the actually-visible signal,
     // since Projects Overview is the one place multiple projects are shown

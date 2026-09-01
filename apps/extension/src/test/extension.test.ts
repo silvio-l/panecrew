@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { applyCompactLook, restoreLook, type CompactLookMemento } from "../compactLook";
 import { AttentionTracker } from "../terminal/attentionSignal";
 import { PaneCrewAttentionDecorationProvider } from "../explorer/attentionDecorationProvider";
+import { PaneCrewAttentionQueueViewProvider } from "../explorer/attentionQueueView";
 
 const EXTENSION_ID = "silvio-lindstedt.panecrew";
 
@@ -61,6 +62,9 @@ suite("PaneCrew extension", () => {
       "panecrew.removeProjectFromWorkspace",
       "panecrew.toggleMaximizePane",
       "panecrew.configureCliToolNotifications",
+      "panecrew.jumpToAttentionPane",
+      "panecrew.jumpToNextAttention",
+      "panecrew.addTerminalToPane",
     ]) {
       assert.ok(commands.includes(id), `command ${id} should be registered`);
     }
@@ -75,6 +79,21 @@ suite("PaneCrew extension", () => {
     const views = contributes.views.panecrew;
     assert.ok(views.some((v) => v.id === "panecrew.explorerView"));
     assert.ok(views.some((v) => v.id === "panecrew.crossRepoView"));
+    assert.ok(views.some((v) => v.id === "panecrew.needsAttentionView"));
+    // .scratch/attention-queue spec.md user story 19 — first thing seen when
+    // something needs attention, without scrolling/expanding.
+    assert.ok(
+      views.findIndex((v) => v.id === "panecrew.needsAttentionView") <
+        views.findIndex((v) => v.id === "panecrew.explorerView"),
+      "Needs Attention should be positioned above Explorer",
+    );
+  });
+
+  test("registers a real TreeView for the Needs-Attention queue", async () => {
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    await vscode.commands.executeCommand("panecrew.needsAttentionView.focus");
   });
 
   test("registers a real TreeView for the cross-repo overview", async () => {
@@ -276,6 +295,66 @@ suite("PaneCrew extension", () => {
     assert.strictEqual(provider.provideFileDecoration(folder.uri), undefined);
   });
 
+  test("Needs-Attention queue view lists pending entries oldest-first, with preview/tooltip/jump command", () => {
+    // Same "own tracker + provider instance" tier as the decoration-provider
+    // test above — .scratch/attention-queue ticket 03's acceptance criteria
+    // (order, preview text, tooltip, jump command) don't need real terminals
+    // or a real workspace to exercise.
+    const tracker = new AttentionTracker();
+    const provider = new PaneCrewAttentionQueueViewProvider(tracker);
+
+    assert.deepStrictEqual(provider.getChildren(), [], "empty queue is the all-clear state");
+
+    tracker.markAttention("/repo/a", { title: "Claude Code", body: "Waiting for input" });
+    tracker.markAttention("/repo/b", {});
+
+    const entries = provider.getChildren();
+    assert.deepStrictEqual(entries.map((e) => e.root), ["/repo/a", "/repo/b"], "oldest signal first");
+
+    const first = provider.getTreeItem(entries[0]);
+    assert.strictEqual(first.label, "a");
+    assert.strictEqual(first.description, "Claude Code — Waiting for input");
+    assert.ok((first.tooltip as vscode.MarkdownString).value.includes("Claude Code — Waiting for input"));
+    assert.deepStrictEqual(first.command, {
+      command: "panecrew.jumpToAttentionPane",
+      title: "Jump to Pane",
+      arguments: ["/repo/a"],
+    });
+
+    const second = provider.getTreeItem(entries[1]);
+    assert.strictEqual(second.description, "needs attention", "fallback text for a signal with no title/body");
+
+    tracker.clearAttention("/repo/a");
+    assert.deepStrictEqual(provider.getChildren().map((e) => e.root), ["/repo/b"]);
+  });
+
+  test("Needs-Attention queue view truncates a long preview instead of wrapping the sidebar row", () => {
+    const tracker = new AttentionTracker();
+    const provider = new PaneCrewAttentionQueueViewProvider(tracker);
+    const longBody = "x".repeat(200);
+    tracker.markAttention("/repo/a", { body: longBody });
+
+    const description = provider.getTreeItem(provider.getChildren()[0]).description as string;
+    assert.ok(description.length < longBody.length, "long preview text should be truncated");
+    assert.ok(description.endsWith("…"), "truncated preview should end with an ellipsis");
+  });
+
+  test("Needs-Attention queue view is empty while disabled, and repopulates once re-enabled", () => {
+    // Mirrors the shared-enable-switch contract (.scratch/attention-queue
+    // ticket 05) at the provider level, independent of the
+    // `panecrew.attentionBadges.enabled` setting/config-change wiring, which
+    // the extension-level test below covers.
+    const tracker = new AttentionTracker();
+    const provider = new PaneCrewAttentionQueueViewProvider(tracker);
+    tracker.markAttention("/repo/a");
+
+    provider.setEnabled(false);
+    assert.deepStrictEqual(provider.getChildren(), []);
+
+    provider.setEnabled(true);
+    assert.deepStrictEqual(provider.getChildren().map((e) => e.root), ["/repo/a"]);
+  });
+
   test("marking/clearing attention updates both the main explorer and Projects Overview from one source of truth", async () => {
     // Drives the real, production `markAttention`/`clearAttention` closures
     // in extension.ts via the same undeclared-internal-command pattern as
@@ -323,6 +402,59 @@ suite("PaneCrew extension", () => {
     assert.ok(!descriptionAfter?.startsWith("●"), "attention glyph should be gone after clearing");
   });
 
+  test("marking/clearing attention also refreshes the real Needs-Attention queue view", async () => {
+    // Same choke-point as the test above, extended to the third view
+    // (.scratch/attention-queue ticket 03: markAttention/clearAttention are
+    // the single source of truth feeding all three surfaces).
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    const rootsBefore = await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots");
+    assert.ok(!rootsBefore.includes(folder.uri.fsPath));
+
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+    const rootsWithAttention = await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots");
+    assert.ok(rootsWithAttention.includes(folder.uri.fsPath));
+
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    const rootsAfter = await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots");
+    assert.ok(!rootsAfter.includes(folder.uri.fsPath));
+  });
+
+  test("Needs-Attention queue is empty while panecrew.attentionBadges.enabled is off, and repopulates once re-enabled", async function () {
+    this.timeout(10_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+    const config = vscode.workspace.getConfiguration("panecrew");
+
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+    try {
+      await config.update("attentionBadges.enabled", false, vscode.ConfigurationTarget.Workspace);
+      const emptiedWhileDisabled = await waitUntil(
+        async () => (await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots")).length === 0,
+        5_000,
+      );
+      assert.ok(emptiedWhileDisabled, "queue should be empty while the shared switch is off, even with pending attention underneath");
+
+      await config.update("attentionBadges.enabled", true, vscode.ConfigurationTarget.Workspace);
+      const repopulated = await waitUntil(
+        async () => (await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots")).includes(folder.uri.fsPath),
+        5_000,
+      );
+      assert.ok(repopulated, "queue should repopulate immediately once re-enabled, no reload required");
+    } finally {
+      await config.update("attentionBadges.enabled", undefined, vscode.ConfigurationTarget.Workspace);
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    }
+  });
+
   test("a real OSC 9 escape sequence written by a pane's own terminal is detected by the live attention pipeline (no internal shortcut command)", async function () {
     // 2026-08-28: the "marking/clearing attention" test above only proves
     // the mark/clear/badge/label logic once a notification is already
@@ -362,6 +494,133 @@ suite("PaneCrew extension", () => {
       gotAttention,
       "the real onDidStartTerminalShellExecution -> attentionSignal -> markAttention pipeline should have detected the OSC 9 sequence the pane's own terminal wrote to /dev/tty",
     );
+  });
+
+  test("panecrew.jumpToAttentionPane focuses the target pane's terminal", async function () {
+    // Relies on the previous test (or "addProjectToGrid" below) having
+    // created a real, layoutController-tracked terminal for `folder` —
+    // .scratch/attention-queue ticket 02.
+    this.timeout(15_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    await vscode.commands.executeCommand("panecrew._internal.addProjectToGrid", folder.uri.fsPath);
+    const expectedName = `PaneCrew: ${path.basename(folder.uri.fsPath)}`;
+    const paneCreated = await waitUntil(() => vscode.window.terminals.some((t) => t.name === expectedName), 10_000);
+    assert.ok(paneCreated);
+
+    await vscode.commands.executeCommand("panecrew.jumpToAttentionPane", folder.uri.fsPath);
+    const focused = await waitUntil(() => vscode.window.activeTerminal?.name === expectedName, 5_000);
+    assert.ok(focused, "jumpToAttentionPane should have focused the pane's terminal");
+
+    // A project path with no active pane is a safe no-op, not a throw.
+    await vscode.commands.executeCommand("panecrew.jumpToAttentionPane", "/no/such/project");
+  });
+
+  test("panecrew.jumpToNextAttention jumps to the queue's oldest entry, and is a safe no-op when empty", async function () {
+    this.timeout(15_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    await vscode.commands.executeCommand("panecrew.jumpToNextAttention"); // empty queue, must not throw
+
+    await vscode.commands.executeCommand("panecrew._internal.addProjectToGrid", folder.uri.fsPath);
+    const expectedName = `PaneCrew: ${path.basename(folder.uri.fsPath)}`;
+    await waitUntil(() => vscode.window.terminals.some((t) => t.name === expectedName), 10_000);
+
+    // An earlier-queued fake root with no live pane sits ahead of `folder`
+    // in the ordered queue but can't itself be focused — proves the command
+    // reads the real, tracker-ordered queue rather than only ever acting on
+    // whatever's most recently marked.
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", "/no/such/earlier-project");
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+    try {
+      const activeBefore = vscode.window.activeTerminal?.name;
+      await vscode.commands.executeCommand("panecrew.jumpToNextAttention");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      assert.strictEqual(
+        vscode.window.activeTerminal?.name,
+        activeBefore,
+        "the front (fake, pane-less) entry should not resolve to the real pane's terminal",
+      );
+    } finally {
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", "/no/such/earlier-project");
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    }
+  });
+
+  test("panecrew.attentionAutopilot.autoAdvance jumps to the next entry once the front entry is cleared", async function () {
+    this.timeout(15_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+    const config = vscode.workspace.getConfiguration("panecrew");
+
+    await vscode.commands.executeCommand("panecrew._internal.addProjectToGrid", folder.uri.fsPath);
+    const expectedName = `PaneCrew: ${path.basename(folder.uri.fsPath)}`;
+    await waitUntil(() => vscode.window.terminals.some((t) => t.name === expectedName), 10_000);
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+
+    try {
+      await config.update("attentionAutopilot.autoAdvance", true, vscode.ConfigurationTarget.Workspace);
+
+      // "front-earlier" is queued first (front of the queue); `folder` is
+      // second. Clearing the front entry with auto-advance on should jump
+      // to `folder`, the next queued (and only real) pane.
+      await vscode.commands.executeCommand("panecrew._internal.markAttention", "/no/such/front-earlier");
+      await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", "/no/such/front-earlier");
+      const autoAdvanced = await waitUntil(() => vscode.window.activeTerminal?.name === expectedName, 5_000);
+      assert.ok(autoAdvanced, "clearing the front entry should auto-jump to the next queued (real) pane");
+
+      // Clearing a non-front entry must never auto-advance, regardless of
+      // the setting.
+      await vscode.commands.executeCommand("panecrew._internal.markAttention", "/no/such/non-front");
+      const rootsBeforeNonFrontClear = await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots");
+      assert.deepStrictEqual(rootsBeforeNonFrontClear, [folder.uri.fsPath, "/no/such/non-front"]);
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", "/no/such/non-front");
+      const rootsAfterNonFrontClear = await vscode.commands.executeCommand<string[]>("panecrew._internal.attentionQueueRoots");
+      assert.deepStrictEqual(rootsAfterNonFrontClear, [folder.uri.fsPath], "front entry should be untouched by clearing a non-front one");
+    } finally {
+      await config.update("attentionAutopilot.autoAdvance", undefined, vscode.ConfigurationTarget.Workspace);
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", "/no/such/non-front");
+    }
+  });
+
+  test("with auto-advance off (default), clearing the front entry never auto-jumps", async function () {
+    this.timeout(15_000);
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext);
+    await ext.activate();
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "test run needs a real workspace folder (see .vscode-test.mjs launchArgs)");
+
+    await vscode.commands.executeCommand("panecrew._internal.addProjectToGrid", folder.uri.fsPath);
+    const expectedName = `PaneCrew: ${path.basename(folder.uri.fsPath)}`;
+    await waitUntil(() => vscode.window.terminals.some((t) => t.name === expectedName), 10_000);
+    await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", "/no/such/front-only");
+    await vscode.commands.executeCommand("panecrew._internal.markAttention", folder.uri.fsPath);
+    try {
+      const activeBefore = vscode.window.activeTerminal?.name;
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", "/no/such/front-only");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      assert.strictEqual(vscode.window.activeTerminal?.name, activeBefore, "default (off) auto-advance must never auto-jump");
+    } finally {
+      await vscode.commands.executeCommand("panecrew._internal.clearAttention", folder.uri.fsPath);
+    }
   });
 
   /** Drives the real `panecrew.configureCliToolNotifications` command's
@@ -494,6 +753,47 @@ suite("PaneCrew extension", () => {
       );
     } finally {
       await config.update("chat.agentsControl.enabled", before, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  test("Compact Look keeps the editor tab bar/actions toolbar reachable (so PaneCrew's own pane buttons stay visible), and restoring reverts it", async () => {
+    const store = new Map<string, unknown>();
+    const memento: CompactLookMemento = {
+      get: ((key: string) => store.get(key)) as CompactLookMemento["get"],
+      update: (key: string, value: unknown) => {
+        store.set(key, value);
+        return Promise.resolve();
+      },
+    };
+
+    const config = vscode.workspace.getConfiguration();
+    const beforeActionsLocation = config.inspect<string>("workbench.editor.editorActionsLocation")?.globalValue;
+    const beforeShowTabs = config.inspect<string>("workbench.editor.showTabs")?.globalValue;
+    try {
+      await applyCompactLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().get<string>("workbench.editor.editorActionsLocation"),
+        "default",
+        "Compact Look must keep the editor/title action toolbar (PaneCrew's own pane buttons) visible",
+      );
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().get<string>("workbench.editor.showTabs"),
+        "multiple",
+        "Compact Look must keep the terminal tab bar visible",
+      );
+
+      await restoreLook(memento);
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().inspect<string>("workbench.editor.editorActionsLocation")?.globalValue,
+        beforeActionsLocation,
+      );
+      assert.strictEqual(
+        vscode.workspace.getConfiguration().inspect<string>("workbench.editor.showTabs")?.globalValue,
+        beforeShowTabs,
+      );
+    } finally {
+      await config.update("workbench.editor.editorActionsLocation", beforeActionsLocation, vscode.ConfigurationTarget.Global);
+      await config.update("workbench.editor.showTabs", beforeShowTabs, vscode.ConfigurationTarget.Global);
     }
   });
 
