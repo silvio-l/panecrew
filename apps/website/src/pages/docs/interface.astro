@@ -3,7 +3,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Interface Tour | PaneCrew Docs";
 const description =
-  "A tour of the PaneCrew VS Code extension's interface: the activity-bar explorer, git status decorations, and the terminal grid arranged across VS Code's own editor groups.";
+  "A tour of the PaneCrew VS Code extension's interface: the activity-bar explorer, git status decorations, and the terminal grid across editor groups.";
 
 const stops = [
   {
@@ -62,7 +62,7 @@ const stops = [
       <div class="stop">
         <span class="stop-idx" aria-hidden="true">{i + 1}</span>
         <div>
-          <h3>{s.title}</h3>
+          <h2>{s.title}</h2>
           <p set:html={s.body} />
           {s.img && (
             <img class="stop-shot" src={s.img} alt={s.imgAlt} style={s.imgWidth ? `max-width:${s.imgWidth}px` : undefined} />
@@ -109,7 +109,7 @@ const stops = [
     position: relative; z-index: 1;
     transition: transform 0.25s ease, box-shadow 0.25s ease;
   }
-  .stop h3 {
+  .stop h2 {
     font-family: var(--display); font-weight: 700; font-size: 1.0625rem;
     color: var(--cream); margin-bottom: 4px;
     transition: color 0.25s ease;
@@ -150,12 +150,12 @@ const stops = [
     transform: scale(1.12);
     box-shadow: 0 0 0 3px rgba(229, 150, 86, 0.25), 0 0 16px rgba(229, 150, 86, 0.3);
   }
-  .stop.live h3 { color: var(--amber); }
+  .stop.live h2 { color: var(--amber); }
 
   @media (prefers-reduced-motion: reduce) {
     .shot, .stop { opacity: 1; animation: none; }
     .stop.live .stop-idx { transform: none; box-shadow: none; }
-    .stop.live h3 { color: var(--cream); }
+    .stop.live h2 { color: var(--cream); }
   }
 </style>
 

@@ -3,7 +3,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 const title = "Docs | PaneCrew";
 const description =
-  "PaneCrew documentation: an interface overview, installing the VS Code extension, how the focus-following explorer works, and the full commands & settings reference.";
+  "PaneCrew documentation: an interface overview, installing the extension, how the focus-following explorer works, and the commands & settings reference.";
 
 const cards = [
   {
@@ -46,6 +46,32 @@ const cards = [
       </a>
     ))}
   </div>
+
+  <h2 class="quick-start-h">Quick start</h2>
+  <ol class="quick-start">
+    <li>
+      Install PaneCrew from the <a href="https://marketplace.visualstudio.com/items?itemName=silvio-lindstedt.panecrew" style="color: var(--amber);">VS Code Marketplace</a>
+      — search "PaneCrew" in the Extensions view, or see the <a href="/docs/install/" style="color: var(--amber);">install guide</a> for a <code>.vsix</code> build.
+    </li>
+    <li>
+      Open the PaneCrew icon in the activity bar, then run <code>PaneCrew: Open Project Grid…</code>
+      from the Command Palette and pick your first project folder.
+    </li>
+    <li>
+      Run <code>PaneCrew: Add Folder to Grid…</code> for each additional project — every folder gets
+      its own real, PTY-backed terminal, arranged automatically across a live grid.
+    </li>
+    <li>
+      Switch between terminal panes as you work — the PaneCrew explorer follows whichever pane
+      currently has focus, no manual re-navigation. See the <a href="/docs/focus-following-explorer/" style="color: var(--amber);">focus-following explorer</a> docs
+      for why that's the extension's core mechanic.
+    </li>
+  </ol>
+  <p class="lede" style="margin-top: 4px;">
+    PaneCrew is tool-agnostic: every pane is a normal shell, so it hosts Claude Code, Codex, Gemini
+    CLI, GitHub Copilot CLI, OpenCode, or a plain shell equally well — nothing in the grid or the
+    explorer is specific to any one CLI agent.
+  </p>
 </DocsLayout>
 
 <style>
@@ -63,4 +89,17 @@ const cards = [
   }
   .docs-card b { color: var(--cream); font-family: var(--display); font-weight: 700; font-size: 1.0625rem; }
   .docs-card span { color: rgba(255, 253, 245, 0.78); font-size: 0.90625rem; }
+
+  .quick-start-h {
+    font-family: var(--display); font-weight: 700; font-size: 1.375rem;
+    margin: 40px 0 12px; color: var(--cream);
+  }
+  .quick-start {
+    color: rgba(255, 253, 245, 0.82); margin: 0 0 12px 1.2em; max-width: 720px;
+  }
+  .quick-start li { margin-bottom: 8px; }
+  .quick-start code {
+    font-family: var(--mono); font-size: 0.875em;
+    background: rgba(255, 253, 245, 0.08); border-radius: 4px; padding: 0.1em 0.4em;
+  }
 </style>
