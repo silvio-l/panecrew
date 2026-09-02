@@ -536,6 +536,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
           canPickMany: true,
           placeHolder: "Select panes to fully restart (ends whatever's currently running there and starts a clean shell)",
+          ignoreFocusOut: true,
         },
       );
       if (!picks || picks.length === 0) return;
@@ -767,7 +768,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const picked = await vscode.window.showQuickPick(
         presets.map((p) => ({ label: p.name, preset: p })),
-        { placeHolder: "Choose a grid preset to load" },
+        { placeHolder: "Choose a grid preset to load", ignoreFocusOut: true },
       );
       if (!picked) return;
 
@@ -801,7 +802,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("panecrew.deletePreset", async () => {
       const presets = loadPresets(context.globalState);
-      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name));
+      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name), { ignoreFocusOut: true });
       if (picked) await deletePreset(context.globalState, picked);
     }),
   );
