@@ -58,27 +58,51 @@ export function runGitStatus(cwd: string): Promise<string> {
  * decoration is a single badge, not a two-column stage/worktree pair. */
 export function parsePorcelain(output: string, repoRoot: string): Map<string, GitFileStatus> {
   const result = new Map<string, GitFileStatus>();
-  for (const line of output.split("\n")) {
-    if (line.length < 4) continue;
-    const x = line[0];
-    const y = line[1];
-    const rest = line.slice(3);
-    const path = rest.includes(" -> ") ? (rest.split(" -> ")[1]) : rest;
+
+  // ⚡ Bolt optimization: Use iterative indexOf("\n") instead of .split("\n")
+  // to prevent massive array allocations and GC pauses on large repositories
+  let pos = 0;
+  while (pos < output.length) {
+    const nextNewline = output.indexOf("\n", pos);
+    const lineEnd = nextNewline === -1 ? output.length : nextNewline;
+
+    if (lineEnd - pos < 4) {
+      if (nextNewline === -1) break;
+      pos = nextNewline + 1;
+      continue;
+    }
+
+    const x = output[pos];
+    const y = output[pos + 1];
+
+    // pos + 3 skips "XY "
+    const rest = output.slice(pos + 3, lineEnd);
+
+    // ⚡ Bolt optimization: Avoid .split(" -> ") string allocations
+    const renameIdx = rest.indexOf(" -> ");
+    const path = renameIdx !== -1 ? rest.slice(renameIdx + 4) : rest;
+
     const code = x !== " " && x !== "?" ? x : y;
     const status = STATUS_BY_CODE[code];
-    if (!status) continue;
-    const absolute = joinPosix(repoRoot, path);
-    result.set(absolute, status);
-    // Propagate the status up to every ancestor directory too, so a folder
-    // containing a modified file also shows a (subdued) decoration — same
-    // convention VS Code's built-in git decorations use for directories.
-    let dir = absolute;
-    for (;;) {
-      const parent = dir.slice(0, dir.lastIndexOf("/"));
-      if (!parent || parent === repoRoot || parent.length >= dir.length) break;
-      if (!result.has(parent)) result.set(parent, status);
-      dir = parent;
+
+    if (status) {
+      const absolute = joinPosix(repoRoot, path);
+      result.set(absolute, status);
+
+      // Propagate the status up to every ancestor directory too, so a folder
+      // containing a modified file also shows a (subdued) decoration — same
+      // convention VS Code's built-in git decorations use for directories.
+      let dir = absolute;
+      for (;;) {
+        const parent = dir.slice(0, dir.lastIndexOf("/"));
+        if (!parent || parent === repoRoot || parent.length >= dir.length) break;
+        if (!result.has(parent)) result.set(parent, status);
+        dir = parent;
+      }
     }
+
+    if (nextNewline === -1) break;
+    pos = nextNewline + 1;
   }
   return result;
 }
