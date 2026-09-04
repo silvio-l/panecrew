@@ -801,7 +801,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("panecrew.deletePreset", async () => {
       const presets = loadPresets(context.globalState);
-      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name));
+      if (presets.length === 0) {
+        void vscode.window.showInformationMessage("PaneCrew: no saved presets yet.");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        presets.map((p) => p.name),
+        { placeHolder: "Choose a grid preset to delete", ignoreFocusOut: true },
+      );
       if (picked) await deletePreset(context.globalState, picked);
     }),
   );
