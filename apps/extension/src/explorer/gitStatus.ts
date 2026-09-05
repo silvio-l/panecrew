@@ -58,12 +58,26 @@ export function runGitStatus(cwd: string): Promise<string> {
  * decoration is a single badge, not a two-column stage/worktree pair. */
 export function parsePorcelain(output: string, repoRoot: string): Map<string, GitFileStatus> {
   const result = new Map<string, GitFileStatus>();
-  for (const line of output.split("\n")) {
+
+  // OPTIMIZATION: Avoid String.split("\n") which allocates a massive array for large git repos,
+  // causing main thread blockage and GC pauses. Iterating over slices inline is much faster.
+  let start = 0;
+  while (start < output.length) {
+    let end = output.indexOf("\n", start);
+    if (end === -1) end = output.length;
+
+    const line = output.slice(start, end);
+    start = end + 1;
+
     if (line.length < 4) continue;
     const x = line[0];
     const y = line[1];
     const rest = line.slice(3);
-    const path = rest.includes(" -> ") ? (rest.split(" -> ")[1]) : rest;
+
+    // OPTIMIZATION: Use indexOf instead of split(" -> ") to avoid array allocation
+    const renameIdx = rest.indexOf(" -> ");
+    const path = renameIdx !== -1 ? rest.slice(renameIdx + 4) : rest;
+
     const code = x !== " " && x !== "?" ? x : y;
     const status = STATUS_BY_CODE[code];
     if (!status) continue;
