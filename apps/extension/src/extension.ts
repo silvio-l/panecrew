@@ -529,7 +529,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.restartPaneTerminal", async () => {
       const panes = gridState.slots.filter((pane): pane is Pane => pane !== null);
-      if (panes.length === 0) return;
+      if (panes.length === 0) {
+        void vscode.window.showInformationMessage("PaneCrew: no active panes to restart.");
+        return;
+      }
       const label = (pane: Pane) => pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
       const picks = await vscode.window.showQuickPick(
         panes.map((pane) => ({ label: label(pane), description: pane.projectPath, pane })),
@@ -801,7 +804,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("panecrew.deletePreset", async () => {
       const presets = loadPresets(context.globalState);
-      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name));
+      if (presets.length === 0) {
+        void vscode.window.showInformationMessage("PaneCrew: no saved presets to delete.");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name), {
+        placeHolder: "Choose a grid preset to delete",
+      });
       if (picked) await deletePreset(context.globalState, picked);
     }),
   );
