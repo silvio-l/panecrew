@@ -50,6 +50,17 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.10] - 2026-09-07
+### Fixed
+- A pane could show a false "attention notifications won't fire, restart
+  terminal?" warning right after opening a folder that was never part of any
+  PaneCrew session before, offering a destructive restart action for a
+  terminal PaneCrew never actually tracked. The warning is now scoped to
+  panes with genuine continuity from a persisted PaneCrew session.
+- The grid no longer ignores `panecrew.grid.defaultColumns`/`defaultRows`
+  whenever no previous session restores — it used to silently fall back to
+  the built-in 2×2 template regardless of what was configured.
+
 ## [0.1.9] - 2026-09-07
 ### Added
 - Structured logging (`src/logging/`): every module now logs through one

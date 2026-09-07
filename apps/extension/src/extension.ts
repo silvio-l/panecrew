@@ -490,10 +490,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Only takes effect when there's no restored session below to override it
   // — panecrew.grid.defaultColumns/defaultRows describe a *new* grid's
   // starting shape, not a standing override of whatever was last saved.
+  // Passed into `restoreGridState` itself (not applied via a separate
+  // `switchTemplate` call here) — a prior `switchTemplate` call at this
+  // point was silently discarded by `restoreGridState` always starting from
+  // its own fresh `INITIAL_GRID_STATE`, so the setting never actually took
+  // effect (bug reported 2026-09-07).
   const gridConfig = vscode.workspace.getConfiguration("panecrew.grid");
-  gridState = switchTemplate(
-    gridState,
-    templateForDimensions(gridConfig.get<number>("defaultColumns", 2), gridConfig.get<number>("defaultRows", 2)),
+  const fallbackTemplate = templateForDimensions(
+    gridConfig.get<number>("defaultColumns", 2),
+    gridConfig.get<number>("defaultRows", 2),
   );
 
   // --- session restore -------------------------------------------------
@@ -504,12 +509,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       restored,
       openFolders.map((f) => f.uri.fsPath),
       makeId,
+      fallbackTemplate,
     );
     gridState = result.gridState;
     closedProjectPaths = result.closedProjectPaths;
+    // First place to look for a "wrong grid shape on startup" report: shows
+    // whether the template came from a persisted session or from
+    // `panecrew.grid.defaultColumns`/`defaultRows` (see `fallbackTemplate`
+    // above and `restoreGridState`'s doc comment for why this distinction
+    // used to be invisible -- the setting silently had no effect at all).
+    logger.info("grid state restored on activation", {
+      template: gridState.template,
+      source: restored ? "persisted session" : "fallbackTemplate (no persisted session)",
+      paneCount: gridState.slots.filter((slot) => slot !== null).length,
+    });
     await layoutController.apply(gridState);
     persist();
-    logAdoptedPanes(layoutController.adoptedPaneIds());
+    logAdoptedPanes(layoutController.adoptedPaneIds(), result.restoredPaneIds);
   }
 
   // Terminals VS Code revives from a persisted session (e.g. after
@@ -535,10 +551,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // line -- the user asked specifically not to need the Command Palette or a
   // keybinding for this. One toast per activation, listing every adopted
   // pane; dismissing it (no click) leaves everything as-is, same as before.
-  function logAdoptedPanes(adoptedPaneIds: readonly string[]): void {
+  function logAdoptedPanes(adoptedPaneIds: readonly string[], restoredPaneIds: ReadonlySet<string>): void {
     if (adoptedPaneIds.length === 0) return;
+    // `adoptedPaneIds` (from `layoutController.ensureTerminal`'s cwd/name
+    // match) only proves "some live terminal in the window happened to
+    // match this pane" -- that terminal may never have been PaneCrew's own,
+    // e.g. an ordinary terminal VS Code's own unrelated persistent-session
+    // revival brought back for a folder that was simply opened in plain VS
+    // Code before ever being added to a PaneCrew grid. Only a pane that came
+    // from `restored.slots` (see `restoreGridState`'s `restoredPaneIds`) has
+    // genuine PaneCrew-session continuity worth warning about -- narrowing
+    // to that intersection here fixes the false "attention notifications
+    // won't fire" warning firing on a brand-new-to-PaneCrew pane (reported
+    // 2026-09-07) while still restarting broken tracking for a real revived
+    // session via `panecrew.restartPaneTerminal` (unaffected -- it still
+    // reads `layoutController.adoptedPaneIds()` directly, not this filtered
+    // subset).
+    const warnableAdoptedPaneIds = adoptedPaneIds.filter((id) => restoredPaneIds.has(id));
+    const suppressedPaneIds = adoptedPaneIds.filter((id) => !restoredPaneIds.has(id));
+    if (suppressedPaneIds.length > 0) {
+      const suppressedPanes = gridState.slots.filter(
+        (pane): pane is Pane => pane !== null && suppressedPaneIds.includes(pane.paneId),
+      );
+      for (const pane of suppressedPanes) {
+        logger.debug("adopted a live terminal for a pane with no persisted-session continuity, suppressing the restart warning", {
+          projectPath: pane.projectPath,
+        });
+      }
+    }
+    if (warnableAdoptedPaneIds.length === 0) return;
     const adoptedPanes = gridState.slots.filter(
-      (pane): pane is Pane => pane !== null && adoptedPaneIds.includes(pane.paneId),
+      (pane): pane is Pane => pane !== null && warnableAdoptedPaneIds.includes(pane.paneId),
     );
     for (const pane of adoptedPanes) {
       logger.info("adopted (revived) terminal on activation", { projectPath: pane.projectPath });
