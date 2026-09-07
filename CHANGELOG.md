@@ -20,6 +20,21 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.13] - 2026-09-07
+### Fixed
+- A pane's Needs-Attention badge could self-clear within milliseconds of
+  appearing while that pane was already the active tab — any unrelated tab
+  change elsewhere in the window re-triggered the explorer's focus-follow
+  logic, which always re-fired the "folder focused" (clear-attention) event
+  even when the active folder hadn't actually changed. Now only fires on an
+  actual folder transition.
+- QuickPick menus across the extension (grid presets, grid templates, the
+  PaneCrew theme picker, CLI-tool notification setup) now set
+  `ignoreFocusOut`, so switching focus away (e.g. to check a file) no
+  longer silently aborts the flow. `Restart Pane Terminal…` and
+  `Delete Preset…` now show an informative message instead of an empty
+  QuickPick when there's nothing to pick from.
+
 ## [0.1.12] - 2026-09-07
 ### Fixed
 - `apps/extension/CHANGELOG.md` — the changelog actually bundled into the

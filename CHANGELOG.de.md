@@ -21,6 +21,22 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.13] - 2026-09-07
+### Behoben
+- Der Needs-Attention-Badge eines Panes konnte sich innerhalb von
+  Millisekunden nach dem Erscheinen selbst wieder löschen, solange dieses
+  Pane bereits der aktive Tab war — jede unbeteiligte Tab-Änderung an
+  anderer Stelle im Fenster löste erneut die Focus-Follow-Logik des
+  Explorers aus, die das „Ordner fokussiert"-Ereignis (löscht Attention)
+  auch dann feuerte, wenn sich der aktive Ordner gar nicht geändert hatte.
+  Feuert jetzt nur noch bei einem tatsächlichen Ordnerwechsel.
+- QuickPick-Menüs in der gesamten Extension (Grid-Presets, Grid-Templates,
+  PaneCrew-Theme-Auswahl, CLI-Tool-Benachrichtigungs-Setup) setzen jetzt
+  `ignoreFocusOut`, damit ein Fokuswechsel (z. B. um eine Datei zu prüfen)
+  den Ablauf nicht mehr stillschweigend abbricht. „Pane-Terminal
+  neu starten…" und „Preset löschen…" zeigen jetzt eine informative
+  Meldung statt eines leeren QuickPicks, wenn nichts zur Auswahl steht.
+
 ## [0.1.12] - 2026-09-07
 ### Behoben
 - `apps/extension/CHANGELOG.md` — das Changelog, das tatsächlich in die

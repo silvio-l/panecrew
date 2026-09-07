@@ -2,6 +2,21 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.13 — 2026-09-07
+
+### Fixed
+
+- A pane's Needs-Attention badge could self-clear within milliseconds of
+  appearing while that pane was already the active tab, because any
+  unrelated tab change elsewhere in the window re-triggered the explorer's
+  focus-follow logic and always cleared attention even when the active
+  folder hadn't actually changed. Now only clears on an actual folder
+  transition.
+- QuickPick menus (grid presets, grid templates, the PaneCrew theme picker,
+  CLI-tool notification setup) no longer silently close if you switch focus
+  away. `Restart Pane Terminal…` and `Delete Preset…` now show a message
+  instead of an empty menu when there's nothing to pick from.
+
 ## 0.1.12 — 2026-09-07
 
 ### Fixed
