@@ -53,6 +53,16 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.11] - 2026-09-07
+### Behoben
+- Ein Terminal-Tab, das innerhalb der Editor-Gruppe eines Panes geöffnet
+  wurde (z. B. über den nativen „+"-Button der Terminal-Tableiste) und
+  anschließend per `cd` in ein anderes offenes Projektverzeichnis
+  gewechselt wurde, zeigte im Explorer weiterhin das ursprüngliche Projekt
+  des Panes an, statt dem tatsächlichen Arbeitsverzeichnis dieses
+  Terminals zu folgen. Der Explorer folgt jetzt immer zuerst dem echten
+  cwd des fokussierten Terminal-Tabs.
+
 ## [0.1.10] - 2026-09-07
 ### Behoben
 - Eine Pane konnte direkt nach dem Öffnen eines Ordners, der noch nie Teil
