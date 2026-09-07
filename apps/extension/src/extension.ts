@@ -636,8 +636,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.addTerminalToPane", () => {
       const viewColumn = vscode.window.tabGroups.activeTabGroup.viewColumn;
-      const pane = layoutController.paneForViewColumn(viewColumn);
+      // Resolve via the active TAB's own identity first (same primary path
+      // focusFollow.ts uses), not `paneForViewColumn` alone: that map is
+      // only refreshed by `apply()` and goes stale the moment a tab is
+      // dragged between groups or VS Code renumbers view columns for a
+      // reason outside PaneCrew's control (e.g. an unrelated editor group
+      // opened/closed elsewhere) — exactly the "focus a pane first" false
+      // negative reported 2026-09-07 while a pane clearly had focus.
+      const activeTerminal = vscode.window.activeTerminal;
+      const pane = (activeTerminal && layoutController.paneForTerminal(activeTerminal)) ?? layoutController.paneForViewColumn(viewColumn);
       if (!pane) {
+        logger.warn("addTerminalToPane: no pane resolved for the active tab", {
+          viewColumn,
+          hadActiveTerminal: activeTerminal !== undefined,
+        });
         void vscode.window.showWarningMessage("PaneCrew: focus a pane first to add a terminal to it.");
         return;
       }
