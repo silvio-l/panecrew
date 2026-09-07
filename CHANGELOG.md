@@ -50,6 +50,15 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.12] - 2026-09-07
+### Fixed
+- `apps/extension/CHANGELOG.md` — the changelog actually bundled into the
+  extension and shown under VS Code's/the Marketplace's "Changelog" tab —
+  had silently gone stale for three releases (0.1.9, 0.1.10, 0.1.11 were
+  never added there, even though they shipped). Backfilled, and the local
+  release tooling now blocks a release tag push unless that file's
+  topmost entry matches the version being released.
+
 ## [0.1.11] - 2026-09-07
 ### Fixed
 - A terminal tab opened inside a pane's group (e.g. via the terminal tab
