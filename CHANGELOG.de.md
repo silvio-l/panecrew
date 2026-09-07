@@ -53,6 +53,24 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.9] - 2026-09-07
+### Neu
+- Strukturiertes Logging (`src/logging/`): jedes Modul loggt jetzt über
+  einen einheitlichen, sanitisierten Logger statt Ad-hoc-Ausgaben in den
+  Output-Channel. Log-Level sind pro Session konfigurierbar über
+  "Developer: Set Log Level…" → "PaneCrew". Optionales, Opt-in-Error-
+  Reporting an Sentry (Einstellung `panecrew.diagnostics.errorReporting`,
+  standardmäßig aus, zusätzlich an VS Codes eigene Telemetrie-Einstellung
+  gekoppelt) — nur für Warn-/Error-Events, nie Rohkontext oder Dateiinhalte.
+
+### Behoben
+- Der "+"-Button zum Hinzufügen eines Terminals zu einer Pane konnte
+  fälschlich "focus a pane first" melden, obwohl tatsächlich eine Pane
+  fokussiert war — wenn die View-Column des aktiven Terminals nicht mehr mit
+  der ursprünglich getrackten übereinstimmte (z. B. nach Ziehen/Umsortieren
+  eines Tabs). Die Ziel-Pane wird jetzt zuerst über die Identität des aktiven
+  Terminals aufgelöst, erst als Fallback über die View-Column.
+
 ## [0.1.8] - 2026-08-31
 ### Neu
 - Eine neue Needs-Attention-Warteschlange in der Sidebar zum Durchspringen
