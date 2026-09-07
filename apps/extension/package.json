@@ -541,7 +541,7 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.2.1",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.28.1",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",
     "knip": "^6.32.2",
