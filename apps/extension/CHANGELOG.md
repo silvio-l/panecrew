@@ -2,6 +2,49 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.11 — 2026-09-07
+
+### Fixed
+
+- A terminal tab opened inside a pane's group (e.g. via the terminal tab
+  bar's native "+" button) that was then `cd`'d into a different open
+  project's directory kept showing the pane's original project in the
+  explorer instead of following that terminal's own live working
+  directory. The explorer now always follows the focused terminal tab's
+  actual cwd first.
+
+## 0.1.10 — 2026-09-07
+
+### Fixed
+
+- A pane could show a false "attention notifications won't fire, restart
+  terminal?" warning right after opening a folder that was never part of
+  any PaneCrew session before, offering a destructive restart action for a
+  terminal PaneCrew never actually tracked. The warning is now scoped to
+  panes with genuine continuity from a persisted PaneCrew session.
+- The grid no longer ignores `panecrew.grid.defaultColumns`/`defaultRows`
+  whenever no previous session restores — it used to silently fall back to
+  the built-in 2×2 template regardless of what was configured.
+
+## 0.1.9 — 2026-09-07
+
+### Added
+
+- Structured logging: every module now logs through one leveled, sanitized
+  logger instead of ad-hoc output-channel writes. Levels are configurable
+  per session via "Developer: Set Log Level…" → "PaneCrew". Optional,
+  opt-in error reporting to Sentry, off by default, for warning/error
+  events only — never raw context or file contents.
+
+### Fixed
+
+- The "+" button for adding a terminal to a pane could report "focus a
+  pane first" even with a pane actually focused, when the active
+  terminal's view column no longer matched its originally tracked column
+  (e.g. after a tab was dragged/reordered). It now resolves the target
+  pane from the active terminal's own identity first, falling back to the
+  view column only when no terminal is focused.
+
 ## 0.1.8 — 2026-08-31
 
 ### Added
