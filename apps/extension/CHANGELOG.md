@@ -2,6 +2,16 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.12 — 2026-09-07
+
+### Fixed
+
+- This changelog itself had silently gone stale for three releases in a
+  row (0.1.9, 0.1.10, 0.1.11 were all missing here, despite being shipped)
+  — backfilled, and the release tooling now technically enforces that this
+  file's topmost entry matches the version being released before a
+  release tag can be pushed.
+
 ## 0.1.11 — 2026-09-07
 
 ### Fixed
