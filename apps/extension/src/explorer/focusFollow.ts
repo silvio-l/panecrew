@@ -96,9 +96,24 @@ export function registerFocusFollow(
   // "this folder just became the focused one" event.
   onFolderFocused: (folder: vscode.WorkspaceFolder) => void = () => { /* no-op default: caller doesn't track attention */ },
 ): vscode.Disposable[] {
+  // `vscode.window.tabGroups.onDidChangeTabs`/`onDidChangeTabGroups` fire
+  // for ANY tab changing anywhere in the window, not just the active one —
+  // e.g. a different pane's terminal updating its own title while a
+  // background command runs there. Without this guard, every such unrelated
+  // change re-runs `revealForActiveTab`, which resolves to the SAME
+  // already-active folder and re-fires `onFolderFocused` for it — clearing
+  // an attention notification that just arrived for the pane the user is
+  // already sitting on, within milliseconds of it being set. Bug found
+  // 2026-09-07: a pane's own Needs-Attention badge never appeared while it
+  // was the active tab, because of exactly this self-inflicted clear. Only
+  // firing on an actual folder transition (not a same-folder no-op reveal)
+  // fixes it while preserving the intended "clear on (re-)focus" semantics.
+  let lastShownProjectPath: string | undefined;
   const showFolder = (folder: vscode.WorkspaceFolder, source: string): void => {
     log(`focus-follow: showing "${folder.name}" (${source})`);
     explorer.setActiveFolder(folder);
+    if (folder.uri.fsPath === lastShownProjectPath) return;
+    lastShownProjectPath = folder.uri.fsPath;
     onFolderFocused(folder);
   };
 

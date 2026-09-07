@@ -153,4 +153,41 @@ describe("registerFocusFollow", () => {
 
     expect(shownFolders).toEqual(["votepit"]);
   });
+
+  test("re-revealing the already-active tab does not re-fire onFolderFocused (would otherwise immediately clear a just-set attention badge for the pane the user is already sitting on)", () => {
+    const focusedFolders: string[] = [];
+    state.activeTabInput = new FakeTabInputTerminal();
+    state.activeTerminal = {
+      name: "PaneCrew: votepit",
+      creationOptions: {},
+      shellIntegration: { cwd: FakeUri.file("/repos/votepit") },
+    };
+
+    registerFocusFollow(
+      { setActiveFolder: (folder: { name: string }) => shownFolders.push(folder.name) },
+      { paneForTerminal: () => votepitPane, paneForViewColumn: () => null },
+      undefined,
+      (folder) => focusedFolders.push(folder.name),
+    );
+
+    // Simulates a completely unrelated tab elsewhere in the window changing
+    // (e.g. another pane's terminal title updating while it runs a
+    // background command) — `tabGroups.onDidChangeTabs` fires globally, not
+    // scoped to the active tab group, so this re-runs `revealForActiveTab`
+    // even though the user never switched away from the votepit pane.
+    state.capturedRevealForActiveTab?.();
+    state.capturedRevealForActiveTab?.();
+    state.capturedRevealForActiveTab?.();
+
+    // Only the first genuine focus should fire onFolderFocused — the
+    // unrelated re-reveals resolve to the same already-active folder and
+    // must be no-ops, otherwise `clearAttention` fires repeatedly on a
+    // pane's own just-arrived notification whenever it's already the active
+    // tab.
+    expect(focusedFolders).toEqual(["votepit"]);
+    // The explorer itself should still re-show on every reveal (harmless,
+    // and keeps existing UI-refresh behavior unchanged) — only the
+    // attention-clear callback is deduped.
+    expect(shownFolders).toEqual(["votepit", "votepit", "votepit"]);
+  });
 });

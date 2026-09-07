@@ -39,6 +39,7 @@ export function registerSetThemeCommand(): vscode.Disposable {
   return vscode.commands.registerCommand("panecrew.setPaneCrewTheme", async () => {
     const choice = await vscode.window.showQuickPick(["PaneCrew Dark", "PaneCrew Light"], {
       placeHolder: "Choose a PaneCrew theme",
+      ignoreFocusOut: true,
     });
     if (choice === "PaneCrew Dark" || choice === "PaneCrew Light") {
       await applyTheme(choice);

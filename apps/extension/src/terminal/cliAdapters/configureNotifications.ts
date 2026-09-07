@@ -128,7 +128,7 @@ async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined
   if (folders.length === 1) return folders[0];
   return vscode.window.showQuickPick(
     folders.map((folder) => ({ label: folder.name, folder })),
-    { placeHolder: "Which project's config should PaneCrew configure?" },
+    { placeHolder: "Which project's config should PaneCrew configure?", ignoreFocusOut: true },
   ).then((picked) => picked?.folder);
 }
 
@@ -146,7 +146,7 @@ export function registerConfigureCliToolNotificationsCommand(
         description: tool.supported ? tool.displayPath : "not yet supported",
         tool,
       })),
-      { placeHolder: "Configure attention notifications for which CLI tool?" },
+      { placeHolder: "Configure attention notifications for which CLI tool?", ignoreFocusOut: true },
     );
     if (!picked) return;
     const tool = picked.tool;
