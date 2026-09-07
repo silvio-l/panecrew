@@ -53,6 +53,16 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.12] - 2026-09-07
+### Behoben
+- `apps/extension/CHANGELOG.md` — das Changelog, das tatsächlich in die
+  Extension gepackt wird und in VS Code/im Marketplace unter „Changelog"
+  angezeigt wird — war für drei Releases in Folge unbemerkt veraltet
+  (0.1.9, 0.1.10, 0.1.11 fehlten dort komplett, obwohl released). Nachgetragen,
+  und das lokale Release-Tooling blockiert jetzt einen Release-Tag-Push,
+  solange der oberste Eintrag dieser Datei nicht mit der released Version
+  übereinstimmt.
+
 ## [0.1.11] - 2026-09-07
 ### Behoben
 - Ein Terminal-Tab, das innerhalb der Editor-Gruppe eines Panes geöffnet
