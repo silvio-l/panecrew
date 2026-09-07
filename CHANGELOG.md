@@ -50,6 +50,15 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.11] - 2026-09-07
+### Fixed
+- A terminal tab opened inside a pane's group (e.g. via the terminal tab
+  bar's native "+" button) that was then `cd`'d into a different open
+  project's directory kept showing the pane's original project in the
+  explorer instead of following that terminal's own live working
+  directory. The explorer now always follows the focused terminal tab's
+  actual cwd first.
+
 ## [0.1.10] - 2026-09-07
 ### Fixed
 - A pane could show a false "attention notifications won't fire, restart

@@ -13,8 +13,14 @@
 // the ACTIVE TAB's own identity first:
 //   - a terminal tab: resolve via `vscode.window.activeTerminal` (VS Code
 //     keeps this pointed at whichever terminal tab is actually focused,
-//     regardless of which group it lives in) + `paneForTerminal`, which
-//     looks up that exact terminal's own project path.
+//     regardless of which group it lives in) + its own live
+//     `shellIntegration.cwd`, checked BEFORE `paneForTerminal` — that
+//     association is assigned once (at creation/adoption) and never revisited,
+//     so it goes just as stale as `viewColumn` the moment the user runs `cd`
+//     inside that exact terminal into a different project's directory;
+//     `paneForTerminal` is kept only as a fallback for when cwd isn't yet
+//     resolvable (shell integration still starting up, or the shell is
+//     currently outside any open workspace folder).
 //   - a file/notebook/custom-editor tab: resolve via
 //     `vscode.workspace.getWorkspaceFolder(uri)` on the tab's own URI —
 //     again the tab's own identity, not the group it happens to sit in.
@@ -137,17 +143,31 @@ export function registerFocusFollow(
     if (activeTab?.input instanceof vscode.TabInputTerminal) {
       const terminal = vscode.window.activeTerminal;
       if (terminal) {
-        const pane = lookup.paneForTerminal(terminal);
-        if (pane) {
-          showRootForPane(pane, `terminal tab "${terminal.name}"`);
-          return;
-        }
+        // Live cwd wins over the pane association: a terminal's `paneForTerminal`
+        // link is assigned once (at creation, or when a foreign terminal opened
+        // inside the pane's group gets adopted — see `extension.ts`'s
+        // `onDidChangeActiveTerminal` handler) and then stays fixed forever, even
+        // after the user `cd`s that exact terminal into a different project's
+        // directory. Without checking cwd first, every terminal ever adopted into
+        // a pane stays permanently tied to that pane's project regardless of
+        // where its shell actually is — which is exactly what a pane-scoped
+        // resolution looks like from the user's side, contradicting this
+        // function's own tab-scoped design (see file header). Falling back to
+        // the pane association only when cwd isn't resolvable (shell integration
+        // not ready yet, or the shell is currently outside any open workspace
+        // folder) keeps that association useful without letting it override a
+        // live, resolvable cwd.
         const folder = folderForTerminalCwd(terminal);
         if (folder) {
           showFolder(folder, `terminal tab "${terminal.name}" (by cwd)`);
           return;
         }
-        log(`focus-follow: active terminal tab "${terminal.name}" has no owning pane and no resolvable cwd — falling back to active-group lookup`);
+        const pane = lookup.paneForTerminal(terminal);
+        if (pane) {
+          showRootForPane(pane, `terminal tab "${terminal.name}"`);
+          return;
+        }
+        log(`focus-follow: active terminal tab "${terminal.name}" has no resolvable cwd and no owning pane — falling back to active-group lookup`);
       }
       revealForActiveGroup();
       return;
