@@ -24,6 +24,18 @@ export interface LogSink {
   emit(entry: LogEntry): void;
 }
 
+/** Renders a `LogEntry` as one text line (`[component] message key=val …`) —
+ * shared by every text-based sink (the output channel, the dev-mode console
+ * sink) so the two stay identically formatted rather than drifting. */
+export function formatLogLine(entry: LogEntry): string {
+  if (!entry.context) return `[${entry.component}] ${entry.message}`;
+  const parts = Object.entries(entry.context)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${String(value)}`);
+  const context = parts.length > 0 ? ` ${parts.join(" ")}` : "";
+  return `[${entry.component}] ${entry.message}${context}`;
+}
+
 export interface Logger {
   /** Very high-volume, "what exactly happened" detail — off by default in
    * production (VS Code's own per-channel log level gates this), on when

@@ -44,6 +44,21 @@ Deliberately **not** logged at all: git-status/PR-status polling failures
 `gh` not being installed, is the *expected* common case for a tool-agnostic
 file explorer, not a diagnostic event.
 
+## Developing PaneCrew itself (F5) — full debug output for free
+
+`vscode.LogOutputChannel.logLevel` is **read-only** from an extension's own
+code (only the user, via "Developer: Set Log Level…", or VS Code's own
+global default, can raise it) — so there is no clean, supported way for
+PaneCrew to make the "PaneCrew" output channel itself default to Debug.
+Instead, whenever `context.extensionMode === vscode.ExtensionMode.Development`
+(i.e. running via the `F5` Extension Development Host, never a real user's
+installed `.vsix`), `createRootLogger` also wires in `consoleSink.ts`, which
+mirrors every entry — including `debug`/`trace` — to `console.*`. Those calls
+show up unfiltered in the **launcher window's own Debug Console** (the
+window you pressed F5 from, not the Extension Development Host window),
+so full debug-level detail is available immediately without ever running
+"Developer: Set Log Level…" by hand. Has no effect on real installs.
+
 ## Sensitive data
 
 Every string that reaches a log line — the message and every string context

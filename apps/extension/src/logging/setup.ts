@@ -5,6 +5,7 @@
 import * as os from "node:os";
 import * as vscode from "vscode";
 import { combineSinks, createLogger, type Logger } from "./logger";
+import { createConsoleSink } from "./consoleSink";
 import { createOutputChannelSink } from "./outputChannelSink";
 import { createSentrySink } from "./sentrySink";
 import { PANECREW_SENTRY_DSN } from "./sentryConfig";
@@ -34,6 +35,12 @@ export function createRootLogger(context: vscode.ExtensionContext): RootLogger {
   const environment = context.extensionMode === vscode.ExtensionMode.Development ? "development" : "production";
 
   const sinks = [outputSink];
+  // Full debug/trace visibility while developing PaneCrew itself (F5) via
+  // the launcher window's own Debug Console — see consoleSink.ts for why
+  // this can't just be "raise the output channel's level instead".
+  if (environment === "development") {
+    sinks.push(createConsoleSink());
+  }
   if (sentryReportingAllowed()) {
     const sentrySink = createSentrySink({ dsn: PANECREW_SENTRY_DSN, release: version, environment });
     if (sentrySink) sinks.push(sentrySink);

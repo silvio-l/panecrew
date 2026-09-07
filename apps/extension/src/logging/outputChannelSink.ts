@@ -9,20 +9,12 @@
 // folder, so rotation/retention across sessions is VS Code's job, not
 // PaneCrew's — see docs/logging.md.
 import * as vscode from "vscode";
-import type { LogEntry, LogSink } from "./logger";
-
-function formatContext(entry: LogEntry): string {
-  if (!entry.context) return "";
-  const parts = Object.entries(entry.context)
-    .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => `${key}=${String(value)}`);
-  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
-}
+import { formatLogLine, type LogSink } from "./logger";
 
 export function createOutputChannelSink(channel: vscode.LogOutputChannel): LogSink {
   return {
     emit(entry) {
-      const line = `[${entry.component}] ${entry.message}${formatContext(entry)}`;
+      const line = formatLogLine(entry);
       switch (entry.level) {
         case "trace":
           channel.trace(line);
