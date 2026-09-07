@@ -22,6 +22,11 @@ Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
 ## [0.1.13] - 2026-09-07
+### Hinzugefügt
+- Debug-/Trace-Log-Einträge werden jetzt zusätzlich in die Konsole
+  gespiegelt, wenn die Extension selbst im Entwicklungsmodus (`F5`) läuft —
+  sichtbar ungefiltert in der Debug-Konsole. Kein Effekt auf echte
+  Installationen.
 ### Behoben
 - Der Needs-Attention-Badge eines Panes konnte sich innerhalb von
   Millisekunden nach dem Erscheinen selbst wieder löschen, solange dieses

@@ -4,6 +4,12 @@ All notable changes to the PaneCrew extension are documented here.
 
 ## 0.1.13 — 2026-09-07
 
+### Added
+
+- Debug/trace log entries are now also mirrored to the console when running
+  the extension itself in development mode (`F5`), showing up unfiltered in
+  the Debug Console — no effect on real installs.
+
 ### Fixed
 
 - A pane's Needs-Attention badge could self-clear within milliseconds of
