@@ -1,35 +1,5 @@
 # Changelog
 
-**Reworked 2026-08-27 for the VS Code extension pivot:** this file and the
-gate that reads it originally covered the Tauri desktop app's Stable +
-Nightly auto-update channels (`app-v*`/`nightly-latest` tags,
-`release-stable.yml`/`release-nightly.yml`). Both the app and those workflows
-are gone. The mechanism now covers `apps/extension`'s single release channel
-— the VS Code Marketplace — tagged `ext-v{X.Y.Z}`. There is no nightly
-channel for the extension, so that half of the old scheme was dropped
-outright rather than renamed.
-
-Every entry here is a **prerequisite for the release push**, not just docs: a
-`git push origin ext-v{X.Y.Z}` locally runs the `.githooks/pre-push` hook,
-which invokes `tools/changelog-gate/check.py`. That checks the topmost entry
-against the real `git diff` since the last `ext-v*` tag — if the coverage
-list is missing an affected module, or the diff hash no longer matches the
-actual diff (because new code landed since), the push is blocked. Not an
-autogenerator: the prose has to be written by hand, with real content. The
-gate itself (`tools/changelog-gate/`) is local-only tooling — gitignored,
-never reaches GitHub — so it enforces discipline on this machine, not in CI.
-
-This file deliberately contains **only the human-written part** — short,
-user-facing, no file paths. The metadata the gate needs mechanically
-(coverage list per version, diff hash, last released commit) lives
-exclusively in `tools/changelog-gate/release-state.json`.
-
-**Bilingual since 2026-08-14**: this file (`CHANGELOG.md`) is the English
-edition, `CHANGELOG.de.md` the German one — identical in content, and the
-gate checks both against the same, language-independent state entry
-(coverage/diff hash track the code diff, not the wording). A new entry must
-be added to both files, with the same version heading.
-
 ## Format
 
     ## [X.Y.Z] - YYYY-MM-DD
