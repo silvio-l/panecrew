@@ -53,6 +53,19 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.10] - 2026-09-07
+### Behoben
+- Eine Pane konnte direkt nach dem Öffnen eines Ordners, der noch nie Teil
+  einer PaneCrew-Session war, fälschlich die Warnung "attention
+  notifications won't fire, restart terminal?" anzeigen — inklusive
+  destruktiver Neustart-Aktion für ein Terminal, das PaneCrew nie selbst
+  getrackt hatte. Die Warnung erscheint jetzt nur noch bei Panes mit echter
+  Kontinuität aus einer persistierten PaneCrew-Session.
+- Das Grid ignorierte `panecrew.grid.defaultColumns`/`defaultRows`, sobald
+  keine vorherige Session wiederhergestellt wurde — es fiel bislang
+  stillschweigend immer auf das eingebaute 2×2-Template zurück, unabhängig
+  von der konfigurierten Einstellung.
+
 ## [0.1.9] - 2026-09-07
 ### Neu
 - Strukturiertes Logging (`src/logging/`): jedes Modul loggt jetzt über
