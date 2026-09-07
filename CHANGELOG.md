@@ -50,6 +50,23 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.9] - 2026-09-07
+### Added
+- Structured logging (`src/logging/`): every module now logs through one
+  leveled, sanitized logger instead of ad-hoc output-channel writes. Levels
+  are configurable per session via "Developer: Set Log Level…" → "PaneCrew".
+  Optional, opt-in error reporting to Sentry (`panecrew.diagnostics.errorReporting`
+  setting, off by default, also gated by VS Code's own telemetry setting) for
+  warning/error events only — never raw context or file contents.
+
+### Fixed
+- The "+" button for adding a terminal to a pane could report "focus a pane
+  first" even with a pane actually focused, when the active terminal's view
+  column no longer matched its originally tracked column (e.g. after a tab
+  was dragged/reordered). It now resolves the target pane from the active
+  terminal's own identity first, falling back to the view column only when
+  no terminal is focused.
+
 ## [0.1.8] - 2026-08-31
 ### Added
 - A new Needs-Attention queue in the sidebar for jumping between panes that
