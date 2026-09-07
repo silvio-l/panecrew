@@ -67,8 +67,8 @@ Full install/feature/settings reference: [`apps/extension/README.md`](apps/exten
 
 ## Contributing
 
-This is currently a solo-maintained project without an established contribution process. Bug
-reports and feature ideas are welcome via [Issues](https://github.com/silvio-l/panecrew/issues).
+This is currently a solo-maintained project without a formal contribution process, but bug
+reports, feature ideas, and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
