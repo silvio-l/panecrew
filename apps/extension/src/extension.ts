@@ -611,13 +611,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.restartPaneTerminal", async () => {
       const panes = gridState.slots.filter((pane): pane is Pane => pane !== null);
-      if (panes.length === 0) return;
+      if (panes.length === 0) {
+        void vscode.window.showInformationMessage("PaneCrew: no active panes to restart.");
+        return;
+      }
       const label = (pane: Pane) => pane.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? pane.projectPath;
       const picks = await vscode.window.showQuickPick(
         panes.map((pane) => ({ label: label(pane), description: pane.projectPath, pane })),
         {
           canPickMany: true,
           placeHolder: "Select panes to fully restart (ends whatever's currently running there and starts a clean shell)",
+          ignoreFocusOut: true,
         },
       );
       if (!picks || picks.length === 0) return;
@@ -864,7 +868,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const picked = await vscode.window.showQuickPick(
         presets.map((p) => ({ label: p.name, preset: p })),
-        { placeHolder: "Choose a grid preset to load" },
+        { placeHolder: "Choose a grid preset to load", ignoreFocusOut: true },
       );
       if (!picked) return;
 
@@ -899,7 +903,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("panecrew.deletePreset", async () => {
       const presets = loadPresets(context.globalState);
-      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name));
+      if (presets.length === 0) {
+        void vscode.window.showInformationMessage("PaneCrew: no saved presets to delete.");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(presets.map((p) => p.name), {
+        placeHolder: "Choose a grid preset to delete",
+        ignoreFocusOut: true,
+      });
       if (picked) {
         await deletePreset(context.globalState, picked);
         logger.info("preset deleted", { name: picked });

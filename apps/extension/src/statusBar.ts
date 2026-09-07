@@ -91,7 +91,7 @@ export function createGridTemplateStatusBarItem(
         description: `${template.slotCount} pane${template.slotCount === 1 ? "" : "s"}`,
         template,
       })),
-      { placeHolder: "Choose a grid template" },
+      { placeHolder: "Choose a grid template", ignoreFocusOut: true },
     );
     if (!picked) return;
     onPick(picked.template.id);
