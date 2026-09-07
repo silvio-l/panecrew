@@ -1,37 +1,5 @@
 # Changelog
 
-**Umgebaut 2026-08-27 für den VS-Code-Extension-Pivot:** diese Datei und das
-Gate, das sie liest, deckten ursprünglich die Stable- + Nightly-Auto-Update-
-Kanäle der Tauri-Desktop-App ab (`app-v*`/`nightly-latest`-Tags,
-`release-stable.yml`/`release-nightly.yml`). Sowohl die App als auch diese
-Workflows existieren nicht mehr. Der Mechanismus deckt jetzt `apps/extension`s
-einzigen Release-Kanal ab — den VS Code Marketplace — getaggt als
-`ext-v{X.Y.Z}`. Es gibt keinen Nightly-Kanal für die Extension, diese Hälfte
-des alten Schemas wurde daher ersatzlos gestrichen, nicht umbenannt.
-
-Jeder Eintrag hier ist **Voraussetzung für den Release-Push**, nicht nur
-Doku: Ein `git push origin ext-v{X.Y.Z}` löst lokal den `.githooks/pre-push`-
-Hook aus, der `tools/changelog-gate/check.py` aufruft. Das prüft den Eintrag
-ganz oben gegen den echten `git diff` seit dem letzten `ext-v*`-Tag — fehlt
-ein betroffenes Modul in der Coverage-Liste, oder passt der Diff-Hash nicht
-mehr zum tatsächlichen Diff (weil seither neuer Code dazukam), wird der Push
-blockiert. Kein Autogenerator: der Freitext muss inhaltlich geschrieben
-werden. Das Gate selbst (`tools/changelog-gate/`) ist reines Lokal-Tooling —
-gitignored, landet nie auf GitHub — es erzwingt Disziplin auf dieser
-Maschine, nicht in CI.
-
-Diese Datei enthält bewusst **nur den für Menschen geschriebenen Teil** —
-kurz, nutzerorientiert, ohne Dateipfade. Die für das Gate maschinell
-benötigten Metadaten (Coverage-Liste je Version, Diff-Hash, zuletzt
-veröffentlichter Commit) stehen ausschließlich in
-`tools/changelog-gate/release-state.json`.
-
-**Zweisprachig seit 2026-08-14**: diese Datei (`CHANGELOG.de.md`) ist die
-deutsche Fassung, `CHANGELOG.md` die englische — inhaltlich identisch, das
-Gate prüft beide gegen denselben, sprachunabhängigen State-Eintrag (Coverage/
-Diff-Hash hängen am Code-Diff, nicht an der Formulierung). Ein neuer Eintrag
-muss in beiden Dateien angelegt werden, mit derselben Versionsüberschrift.
-
 ## Format
 
     ## [X.Y.Z] - JJJJ-MM-TT
