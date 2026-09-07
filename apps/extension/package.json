@@ -507,6 +507,11 @@
           "type": "boolean",
           "default": false,
           "description": "When you clear the Needs-Attention queue's current front entry by focusing that pane yourself, automatically jump to and maximize the next queued pane. Off by default; never steals focus from a pane you're actively typing into."
+        },
+        "panecrew.diagnostics.errorReporting": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send warning/error diagnostic events (never file/terminal/project content) to PaneCrew's Sentry project to help fix bugs. Off by default — also requires VS Code's own telemetry setting (telemetry.telemetryLevel) to allow it. See the PaneCrew logging docs for exactly what is and isn't sent."
         }
       }
     }

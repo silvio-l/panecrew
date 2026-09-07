@@ -64,6 +64,7 @@ import {
   defaultProjectsFolderUri,
   registerSetDefaultProjectsFolderCommand,
 } from "./statusBar";
+import { createRootLogger } from "./logging/setup";
 
 let gridState: GridState = INITIAL_GRID_STATE;
 /** Project paths whose pane the user deliberately closed while the folder
@@ -77,10 +78,10 @@ function makeId(): string {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const outputChannel = vscode.window.createOutputChannel("PaneCrew");
-  context.subscriptions.push(outputChannel);
+  const { logger } = createRootLogger(context);
+  logger.info("activating", { extensionMode: vscode.ExtensionMode[context.extensionMode] });
 
-  const layoutController = new GridLayoutController(vscode);
+  const layoutController = new GridLayoutController(vscode, logger.child("layout"));
   // PaneCrew pre-builds a template's full editor-group tree (e.g. quad's
   // 2x2) up front and fills slots in one at a time as the user adds
   // folders — so most slots sit genuinely empty between adds. VS Code's own
@@ -123,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dragAndDropController: new PaneCrewDragAndDropController(() => {
       treeDataProvider.refresh();
       refreshGitDecorations();
-    }),
+    }, logger.child("dragAndDrop")),
   });
   context.subscriptions.push(treeView);
   // .scratch/attention-queue ticket 03 — a third, always-visible sidebar
@@ -401,9 +402,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.commands.executeCommand("workbench.action.terminal.renameWithArg", {
         name: paneTerminalName(pane),
       });
-      outputChannel.appendLine(
-        `attention: adopted terminal "${terminal.name}" into pane "${pane.projectPath}" (opened outside PaneCrew, e.g. via the terminal tab bar's "+" button)`,
-      );
+      logger.info("adopted foreign terminal into pane", {
+        terminalName: terminal.name,
+        projectPath: pane.projectPath,
+      });
     }),
   );
 
@@ -422,16 +424,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // the "real OSC 9 escape sequence..." integration test, which proves
       // the parse/mark path itself works once a terminal IS a tracked pane).
       if (!pane) {
-        outputChannel.appendLine(`attention: ignoring shell execution on untracked terminal "${e.terminal.name}"`);
+        logger.debug("ignoring shell execution on untracked terminal", { terminalName: e.terminal.name });
         return;
       }
+      // Root-causing "the Needs-Attention badge never fires even though the
+      // CLI tool's hook should be configured" (a recurring report) needs
+      // visibility into exactly where this pipeline stops producing
+      // anything — three genuinely different failure points that look
+      // identical from the outside ("nothing ever shows up"): (1) shell
+      // execution never starts tracking (covered by the untracked-terminal
+      // log above), (2) `execution.read()` yields no output at all — shell
+      // integration for this shell/terminal never activated, so PaneCrew
+      // never even sees the CLI tool's raw output, or (3) output IS seen
+      // but never contains a real OSC 9/777 sequence — the external tool's
+      // hook (`panecrew.configureCliToolNotifications`) isn't actually
+      // wired up, or emits a different notify convention than expected.
+      logger.debug("tracking shell execution for attention signals", { projectPath: pane.projectPath });
       const buffer = createAttentionSignalBuffer();
       void (async () => {
+        let chunkCount = 0;
+        let notificationCount = 0;
         for await (const chunk of e.execution.read()) {
+          chunkCount += 1;
           for (const notification of buffer.feed(chunk)) {
-            outputChannel.appendLine(`attention: notification detected for "${pane.projectPath}"`);
+            notificationCount += 1;
+            logger.debug("attention notification detected", { projectPath: pane.projectPath });
             markAttention(pane.projectPath, notification);
           }
+        }
+        if (chunkCount === 0) {
+          // Distinguishes (2) above: shell integration never delivered any
+          // output for this execution at all, so no OSC sequence could ever
+          // have been seen — a shell-integration/terminal-profile problem,
+          // not an attention-detection bug.
+          logger.debug("shell execution ended with zero output chunks read", { projectPath: pane.projectPath });
+        } else if (notificationCount === 0) {
+          // Distinguishes (3): PaneCrew saw real output but never a
+          // recognized OSC 9/777 sequence in it — check the CLI tool's own
+          // hook config (`panecrew.configureCliToolNotifications`) is
+          // actually present and pointed at the right event.
+          logger.debug("shell execution ended with output but no attention signal found", {
+            projectPath: pane.projectPath,
+            chunkCount,
+          });
         }
       })();
     }),
@@ -444,12 +479,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         paneForTerminal: (t) => layoutController.paneForTerminal(t),
         paneForViewColumn: (c) => layoutController.paneForViewColumn(c),
       },
-      (message) => { outputChannel.appendLine(message); },
+      (message) => { logger.debug(message); },
       (folder) => { clearAttention(folder.uri.fsPath); },
     ),
   );
 
-  const persist = () => void saveSession(context.workspaceState, gridState, [...closedProjectPaths]);
+  const persist = () => void saveSession(context.workspaceState, gridState, [...closedProjectPaths], logger.child("session"));
 
   // --- default template from settings -------------------------------------
   // Only takes effect when there's no restored session below to override it
@@ -462,7 +497,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- session restore -------------------------------------------------
-  const restored = loadSession(context.workspaceState);
+  const restored = loadSession(context.workspaceState, logger.child("session"));
   const openFolders = vscode.workspace.workspaceFolders ?? [];
   if (openFolders.length > 0) {
     const result = restoreGridState(
@@ -506,7 +541,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       (pane): pane is Pane => pane !== null && adoptedPaneIds.includes(pane.paneId),
     );
     for (const pane of adoptedPanes) {
-      outputChannel.appendLine(`attention: adopted (revived) terminal for "${pane.projectPath}" on this activation`);
+      logger.info("adopted (revived) terminal on activation", { projectPath: pane.projectPath });
     }
     const plural = adoptedPanes.length === 1 ? "pane" : "panes";
     void vscode.window
@@ -523,6 +558,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   function restartPaneTerminal(pane: Pane): void {
     const slotIndex = gridState.slots.findIndex((slot) => slot?.paneId === pane.paneId);
     if (slotIndex === -1) return;
+    // Ends whatever's currently running there (e.g. an in-progress CLI
+    // agent session) — worth an info-level record for "why did my session
+    // end" root-causing, not just a silent terminal replace.
+    logger.info("restarting pane terminal", { projectPath: pane.projectPath });
     layoutController.restartTerminalForPane(pane, slotIndex + 1);
   }
 
@@ -638,6 +677,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider.refresh();
     refreshGitDecorations();
     persist();
+    logger.info("folder assigned to grid", { projectPath: folderUri.fsPath });
     void maybeShowGridHint(context.globalState, gridState);
   }
 
@@ -718,6 +758,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeDataProvider.refresh();
       refreshGitDecorations();
       persist();
+      logger.info("project removed from workspace", { projectPath: folder.uri.fsPath });
     }),
     // Quick Pane Maximize Toggle (.scratch/pane-attention-notifications,
     // ticket 01) — a thin wrapper around VS Code's own native command, shown
@@ -757,6 +798,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       await savePreset(context.globalState, name, gridState, startupCommands);
+      logger.info("preset saved", { name });
       void vscode.window.showInformationMessage(`PaneCrew: saved preset "${name}".`);
     }),
     vscode.commands.registerCommand("panecrew.loadPreset", async () => {
@@ -798,11 +840,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeDataProvider.refresh();
       refreshGitDecorations();
       persist();
+      logger.info("preset loaded", { name: picked.preset.name });
     }),
     vscode.commands.registerCommand("panecrew.deletePreset", async () => {
       const presets = loadPresets(context.globalState);
       const picked = await vscode.window.showQuickPick(presets.map((p) => p.name));
-      if (picked) await deletePreset(context.globalState, picked);
+      if (picked) {
+        await deletePreset(context.globalState, picked);
+        logger.info("preset deleted", { name: picked });
+      }
     }),
   );
 
@@ -821,10 +867,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- file operations (rename, new file/folder, delete) -----------------
   const onExplorerFilesChanged = () => { treeDataProvider.refresh(); refreshGitDecorations(); };
   context.subscriptions.push(
-    registerRenameEntryCommand(onExplorerFilesChanged),
-    registerNewFileCommand(onExplorerFilesChanged),
-    registerNewFolderCommand(onExplorerFilesChanged),
-    registerDeleteEntryCommand(onExplorerFilesChanged),
+    registerRenameEntryCommand(onExplorerFilesChanged, logger.child("fileOperations")),
+    registerNewFileCommand(onExplorerFilesChanged, logger.child("fileOperations")),
+    registerNewFolderCommand(onExplorerFilesChanged, logger.child("fileOperations")),
+    registerDeleteEntryCommand(onExplorerFilesChanged, logger.child("fileOperations")),
     registerCopyPathCommand(),
     registerRevealInOSCommand(),
   );
@@ -838,7 +884,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- CLI tool attention adapters (.scratch/pane-attention-notifications,
   // tickets 04-06) -----------------------------------------------------------
-  context.subscriptions.push(registerConfigureCliToolNotificationsCommand(context));
+  context.subscriptions.push(registerConfigureCliToolNotificationsCommand(context, logger.child("cliAdapters")));
   void maybeOfferAttentionAdapterConfig(context.globalState);
 
   // --- close-pane cleanup: forget disposed terminals so re-applying the
@@ -847,6 +893,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.onDidCloseTerminal((terminal) => {
       const pane = layoutController.paneForTerminal(terminal);
       if (!pane) return;
+      logger.info("pane terminal closed", { projectPath: pane.projectPath });
       layoutController.forgetPane(pane.paneId);
       gridState = closePane(gridState, pane.paneId);
       closedProjectPaths.add(pane.projectPath);

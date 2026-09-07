@@ -11,6 +11,7 @@
 //     `vscode.window.createTerminal`/`executeCommand` — exercised only by the
 //     integration smoke test (a real VS Code host), not vitest.
 import type { GridState, Pane, TemplateId } from "./gridState";
+import type { Logger } from "../logging/logger";
 
 /** Mirrors `vscode.GroupOrientation` (0 = horizontal, 1 = vertical) without
  * importing the `vscode` module, so this file stays usable from plain
@@ -236,16 +237,31 @@ export class GridLayoutController {
    * silent, unexpected write this project's guardrails rule out. */
   private readonly lastCreatedPaneIds = new Set<string>();
 
-  constructor(private readonly vscode: VscodeLike) {}
+  constructor(
+    private readonly vscode: VscodeLike,
+    private readonly logger?: Logger,
+  ) {}
 
   async apply(state: GridState): Promise<void> {
     const plan = computeApplyPlan(state);
+    this.logger?.debug("applying grid layout", { template: state.template, paneCount: plan.assignments.length });
     await this.vscode.commands.executeCommand("vscode.setEditorLayout", plan.layout);
     this.lastAdoptedPaneIds.clear();
     this.lastCreatedPaneIds.clear();
     for (const { pane, viewColumn } of plan.assignments) {
       this.paneByViewColumn.set(viewColumn, pane);
       this.ensureTerminal(pane, viewColumn);
+    }
+    // The single most useful line for root-causing "my pane's tab stopped
+    // being recognized as a PaneCrew tab" reports — every apply() either
+    // reuses a tracked terminal, adopts a live one it matched by cwd/name,
+    // or has to create a fresh one; the latter two are the ones worth
+    // seeing without turning on trace/debug for everything else too.
+    if (this.lastAdoptedPaneIds.size > 0 || this.lastCreatedPaneIds.size > 0) {
+      this.logger?.info("grid layout applied", {
+        adoptedPanes: this.lastAdoptedPaneIds.size,
+        createdPanes: this.lastCreatedPaneIds.size,
+      });
     }
   }
 
@@ -276,6 +292,11 @@ export class GridLayoutController {
       this.paneByTerminal.set(existing, pane);
       return;
     }
+    this.logger?.debug("no tracked terminal for pane, resolving one", {
+      paneId: pane.paneId,
+      projectPath: pane.projectPath,
+      liveTerminalCount: this.vscode.window.terminals.length,
+    });
     // Adopt a live terminal for this pane instead of always creating a new
     // one (2026-08-27 fix, revised 2026-08-28): after a "Developer: Reload
     // Window", or whenever the extension host restarts without its saved
@@ -305,8 +326,18 @@ export class GridLayoutController {
     });
     if (adopted) {
       this.lastAdoptedPaneIds.add(pane.paneId);
+      this.logger?.debug("adopted existing terminal for pane", {
+        paneId: pane.paneId,
+        projectPath: pane.projectPath,
+        matchedBy: terminalCwd(adopted) !== undefined ? "cwd" : "name",
+      });
     } else {
       this.lastCreatedPaneIds.add(pane.paneId);
+      this.logger?.debug("no matching live terminal, creating a new one for pane", {
+        paneId: pane.paneId,
+        projectPath: pane.projectPath,
+        expectedCwd,
+      });
     }
     const terminal = adopted ?? this.vscode.window.createTerminal({
       name: expectedName,
@@ -329,6 +360,7 @@ export class GridLayoutController {
     for (const [viewColumn, pane] of this.paneByViewColumn) {
       if (pane.paneId === paneId) this.paneByViewColumn.delete(viewColumn);
     }
+    this.logger?.debug("forgot pane's tracked terminal", { paneId, hadTerminal: terminal !== undefined });
   }
 
   /** Actively closes the live terminal for a pane the user explicitly
@@ -359,6 +391,7 @@ export class GridLayoutController {
     this.paneByTerminal.set(terminal, pane);
     this.paneByViewColumn.set(viewColumn, pane);
     terminal.show(true);
+    this.logger?.debug("created replacement terminal for pane", { paneId: pane.paneId, projectPath: pane.projectPath });
   }
 
   /** The pane that owns `terminal`, or `null` if it's not one PaneCrew

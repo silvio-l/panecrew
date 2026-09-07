@@ -21,6 +21,7 @@ import {
   type SessionState,
 } from "./sessionState";
 import type { Memento as WorkspaceMemento } from "../vscodeMemento";
+import type { Logger } from "../logging/logger";
 export type { WorkspaceMemento };
 
 const STORAGE_KEY = "panecrew.session";
@@ -42,6 +43,7 @@ export async function saveSession(
   memento: WorkspaceMemento,
   grid: GridState,
   closedProjectPaths: readonly string[] = [],
+  logger?: Logger,
 ): Promise<void> {
   const existing = readRaw(memento);
   const window = buildWindowState(WINDOW_LABEL, grid, closedProjectPaths);
@@ -49,7 +51,15 @@ export async function saveSession(
     ...(existing ?? { windows: [] }),
     windows: [window],
   };
-  await memento.update(STORAGE_KEY, next);
+  try {
+    await memento.update(STORAGE_KEY, next);
+  } catch (error) {
+    // Non-fatal: the grid keeps working for the rest of this session, it
+    // just won't be restored after the next reload/restart — worth an
+    // error log (root-cause for a "my layout didn't come back" report)
+    // but never worth interrupting the user over.
+    logger?.error("failed to persist session state", error);
+  }
 }
 
 export interface RestoredSession {
@@ -62,8 +72,16 @@ export interface RestoredSession {
 /** `null` when no session was ever saved for this workspace — callers should
  * fall back to `INITIAL_GRID_STATE` in that case, same as the desktop app's
  * own "no session.json yet" path. */
-export function loadSession(memento: WorkspaceMemento): RestoredSession | null {
-  const session = readRaw(memento);
+export function loadSession(memento: WorkspaceMemento, logger?: Logger): RestoredSession | null {
+  let session: SessionState | undefined;
+  try {
+    session = readRaw(memento);
+  } catch (error) {
+    // Corrupt/incompatible stored state must never block activation —
+    // falls back to "no session" the same as a first-ever run.
+    logger?.warn("failed to read persisted session state, starting with an empty grid", { error: String(error) });
+    return null;
+  }
   if (!session) return null;
   return {
     template: restoredTemplate(session, WINDOW_LABEL),

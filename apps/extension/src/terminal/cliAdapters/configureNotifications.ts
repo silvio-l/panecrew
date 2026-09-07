@@ -14,6 +14,7 @@ import { computePatchedConfig as computeGeminiCliConfig } from "./geminiCli";
 import { computePatchedConfig as computeCopilotCliConfig } from "./copilotCli";
 import { computePatchedConfig as computeOpenCodeConfig } from "./openCode";
 import type { PatchResult } from "./jsonHookPatch";
+import type { Logger } from "../../logging/logger";
 
 interface BaseTool {
   id: string;
@@ -131,7 +132,10 @@ async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined
   ).then((picked) => picked?.folder);
 }
 
-export function registerConfigureCliToolNotificationsCommand(context: vscode.ExtensionContext): vscode.Disposable {
+export function registerConfigureCliToolNotificationsCommand(
+  context: vscode.ExtensionContext,
+  logger?: Logger,
+): vscode.Disposable {
   const previewProvider = new DiffPreviewContentProvider();
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, previewProvider));
 
@@ -168,6 +172,7 @@ export function registerConfigureCliToolNotificationsCommand(context: vscode.Ext
     try {
       result = tool.computePatchedConfig(existing);
     } catch (error) {
+      logger?.error("computing CLI adapter config patch failed", error, { tool: tool.id });
       void vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
       return;
     }
@@ -197,8 +202,22 @@ export function registerConfigureCliToolNotificationsCommand(context: vscode.Ext
     );
     if (confirmed !== "Write Change") return;
 
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(uri, ".."));
-    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(result.text));
+    // Administrative/audit event: PaneCrew writing to a file outside its
+    // own workspace (a real CLI tool's own config, e.g. ~/.codex/config.toml)
+    // on the user's explicit, just-confirmed instruction — always logged at
+    // info, regardless of the configured verbosity, and never includes the
+    // patched file content (only which tool/path was touched).
+    try {
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(uri, ".."));
+      await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(result.text));
+      logger?.info("wrote CLI tool notification config", { tool: tool.id, path: tool.displayPath, scope: tool.scope });
+    } catch (error) {
+      logger?.error("writing CLI adapter config failed", error, { tool: tool.id, path: tool.displayPath });
+      void vscode.window.showErrorMessage(
+        `PaneCrew: couldn't write ${tool.displayPath} — ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
     void vscode.window.showInformationMessage(`PaneCrew: configured ${tool.label} notifications (${tool.displayPath}).`);
   });
 }

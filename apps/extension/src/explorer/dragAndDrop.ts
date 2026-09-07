@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import type { FileSystemEntryItem, ProjectTreeItem } from "./treeDataProvider";
 import { isDescendantPath } from "./pathContainment";
+import type { Logger } from "../logging/logger";
 
 const MIME_TYPE = "application/vnd.code.tree.panecrew.explorerview";
 
@@ -18,7 +19,10 @@ export class PaneCrewDragAndDropController implements vscode.TreeDragAndDropCont
   readonly dragMimeTypes = [MIME_TYPE];
   readonly dropMimeTypes = [MIME_TYPE];
 
-  constructor(private readonly onMoved: () => void) {}
+  constructor(
+    private readonly onMoved: () => void,
+    private readonly logger?: Logger,
+  ) {}
 
   handleDrag(source: readonly ProjectTreeItem[], dataTransfer: vscode.DataTransfer): void {
     const entries = source.filter((item): item is FileSystemEntryItem => item.kind === "entry");
@@ -41,8 +45,15 @@ export class PaneCrewDragAndDropController implements vscode.TreeDragAndDropCont
       if (!name) continue;
       const destUri = vscode.Uri.joinPath(targetDirUri, name);
       if (destUri.toString() === sourceUri.toString()) continue;
-      await vscode.workspace.fs.rename(sourceUri, destUri, { overwrite: false });
-      moved = true;
+      try {
+        await vscode.workspace.fs.rename(sourceUri, destUri, { overwrite: false });
+        moved = true;
+      } catch (error) {
+        this.logger?.error("drag-and-drop move failed", error);
+        void vscode.window.showErrorMessage(
+          `PaneCrew: couldn't move "${name}" — ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     if (moved) this.onMoved();
   }
