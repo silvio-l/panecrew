@@ -58,27 +58,42 @@ export function runGitStatus(cwd: string): Promise<string> {
  * decoration is a single badge, not a two-column stage/worktree pair. */
 export function parsePorcelain(output: string, repoRoot: string): Map<string, GitFileStatus> {
   const result = new Map<string, GitFileStatus>();
-  for (const line of output.split("\n")) {
-    if (line.length < 4) continue;
-    const x = line[0];
-    const y = line[1];
-    const rest = line.slice(3);
-    const path = rest.includes(" -> ") ? (rest.split(" -> ")[1]) : rest;
-    const code = x !== " " && x !== "?" ? x : y;
-    const status = STATUS_BY_CODE[code];
-    if (!status) continue;
-    const absolute = joinPosix(repoRoot, path);
-    result.set(absolute, status);
-    // Propagate the status up to every ancestor directory too, so a folder
-    // containing a modified file also shows a (subdued) decoration — same
-    // convention VS Code's built-in git decorations use for directories.
-    let dir = absolute;
-    for (;;) {
-      const parent = dir.slice(0, dir.lastIndexOf("/"));
-      if (!parent || parent === repoRoot || parent.length >= dir.length) break;
-      if (!result.has(parent)) result.set(parent, status);
-      dir = parent;
+  let start = 0;
+
+  while (start < output.length) {
+    let end = output.indexOf("\n", start);
+    if (end === -1) {
+      end = output.length;
     }
+
+    // Performance: process line inline to avoid massive array allocation from .split("\n")
+    if (end - start >= 4) {
+      const x = output[start];
+      const y = output[start + 1];
+      const rest = output.slice(start + 3, end);
+
+      const arrowIndex = rest.indexOf(" -> ");
+      const path = arrowIndex !== -1 ? rest.slice(arrowIndex + 4) : rest;
+
+      const code = x !== " " && x !== "?" ? x : y;
+      const status = STATUS_BY_CODE[code];
+      if (status) {
+        const absolute = joinPosix(repoRoot, path);
+        result.set(absolute, status);
+        // Propagate the status up to every ancestor directory too, so a folder
+        // containing a modified file also shows a (subdued) decoration — same
+        // convention VS Code's built-in git decorations use for directories.
+        let dir = absolute;
+        for (;;) {
+          const parent = dir.slice(0, dir.lastIndexOf("/"));
+          if (!parent || parent === repoRoot || parent.length >= dir.length) break;
+          if (!result.has(parent)) result.set(parent, status);
+          dir = parent;
+        }
+      }
+    }
+
+    start = end + 1;
   }
   return result;
 }
