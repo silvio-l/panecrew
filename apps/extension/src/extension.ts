@@ -957,10 +957,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // layout doesn't try to reuse a dead terminal handle -------------------
   context.subscriptions.push(
     vscode.window.onDidCloseTerminal((terminal) => {
-      const pane = layoutController.paneForTerminal(terminal);
-      if (!pane) return;
+      const result = layoutController.handleTerminalClosed(terminal);
+      if (!result) return;
+      const { pane, wasPrimary } = result;
+      // Closing a SECOND terminal in a pane's editor group (opened via
+      // `addTerminalToPane`'s "+" button, or adopted from the tab bar's
+      // native "+") must not close the pane itself — its primary terminal
+      // is still alive and still showing. See `handleTerminalClosed`'s
+      // comment for the "pane silently stops being recognized" bug this
+      // distinction fixes (2026-09-08).
+      if (!wasPrimary) {
+        logger.debug("secondary pane terminal closed", { projectPath: pane.projectPath });
+        return;
+      }
       logger.info("pane terminal closed", { projectPath: pane.projectPath });
-      layoutController.forgetPane(pane.paneId);
       gridState = closePane(gridState, pane.paneId);
       closedProjectPaths.add(pane.projectPath);
       clearAttention(pane.projectPath);

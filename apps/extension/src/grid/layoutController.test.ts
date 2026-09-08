@@ -215,6 +215,73 @@ describe("GridLayoutController.adoptForeignTerminal", () => {
   });
 });
 
+describe("GridLayoutController.handleTerminalClosed", () => {
+  // Regression test for the "PaneCrew stops recognizing a still-open pane
+  // tab" bug (recurred 2026-09-08, confirmed via
+  // apps/extension's own PaneCrew.log: `addTerminalToPane: no pane resolved
+  // for the active tab ... hadActiveTerminal=true`). A pane's editor group
+  // can hold a SECOND terminal (via `addTerminalToPane`/
+  // `adoptForeignTerminal`, e.g. the tab bar's native "+" button) alongside
+  // its primary one. Closing that second terminal must not tear down the
+  // pane -- the primary terminal is still alive and still occupying the
+  // group -- yet the previous `onDidCloseTerminal` handler resolved the pane
+  // via `paneForTerminal` (which covers ANY terminal mapped to the pane) and
+  // unconditionally called `forgetPane`, which also drops the PRIMARY
+  // terminal's own `paneByTerminal` entry.
+  it("does not forget the pane when a secondary terminal closes, only the primary", async () => {
+    const controller = new GridLayoutController(fakeVscode().vscode);
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+    await controller.apply(grid);
+
+    const pane = controller.paneForViewColumn(1);
+    if (pane === null) throw new Error("expected pane-a to occupy view column 1");
+
+    const secondaryTerminal = {
+      name: "zsh",
+      show: () => { /* no-op fake terminal */ },
+      sendText: () => { /* no-op fake terminal */ },
+    };
+    controller.adoptForeignTerminal(secondaryTerminal, pane);
+
+    const result = controller.handleTerminalClosed(secondaryTerminal);
+
+    expect(result).toEqual({ pane, wasPrimary: false });
+    // The pane's view column and its PRIMARY terminal must still resolve --
+    // this is exactly what broke: closing an unrelated second terminal used
+    // to wipe both.
+    expect(controller.paneForViewColumn(1)).toEqual(pane);
+    expect(controller.paneForTerminal(secondaryTerminal)).toBeNull();
+  });
+
+  it("forgets the pane when its primary terminal closes", async () => {
+    const fake = fakeVscode();
+    const controller = new GridLayoutController(fake.vscode);
+    const grid = assignProjectToSlot(INITIAL_GRID_STATE, 0, "/repo/a", "pane-a", "tab-a");
+    await controller.apply(grid);
+
+    const pane = controller.paneForViewColumn(1);
+    if (pane === null) throw new Error("expected pane-a to occupy view column 1");
+    const primaryTerminal = fake.terminals[0];
+
+    const result = controller.handleTerminalClosed(primaryTerminal);
+
+    expect(result).toEqual({ pane, wasPrimary: true });
+    expect(controller.paneForViewColumn(1)).toBeNull();
+    expect(controller.paneForTerminal(primaryTerminal)).toBeNull();
+  });
+
+  it("returns null for a terminal that was never tracked", () => {
+    const controller = new GridLayoutController(fakeVscode().vscode);
+    const untracked = {
+      name: "zsh",
+      show: () => { /* no-op fake terminal */ },
+      sendText: () => { /* no-op fake terminal */ },
+    };
+
+    expect(controller.handleTerminalClosed(untracked)).toBeNull();
+  });
+});
+
 describe("GridLayoutController terminal adoption", () => {
   // Regression test for the duplicate-terminal bug (2026-08-27): after a
   // "Developer: Reload Window" (or any extension-host restart whose saved

@@ -372,6 +372,34 @@ export class GridLayoutController {
     this.forgetPane(paneId);
   }
 
+  /** Handles a VS Code `onDidCloseTerminal` event for `terminal`. A pane's
+   * editor group can hold more than one terminal tab — its PRIMARY one
+   * (tracked in `terminalsByPaneId`, created/adopted by `ensureTerminal`)
+   * plus any number of SECOND terminals registered via `addTerminalToPane`
+   * or `adoptForeignTerminal` (e.g. the tab bar's native "+" button) — and
+   * `paneByTerminal` maps all of them to the same pane. Closing a secondary
+   * terminal must NOT tear the pane down: its primary terminal is still
+   * alive and still occupies the group. Root cause of the "PaneCrew stops
+   * recognizing an untouched, still-open pane tab" bug (recurred
+   * 2026-09-08): the caller used to call `forgetPane` for ANY terminal
+   * resolved via `paneForTerminal`, which wiped the pane's `paneByViewColumn`
+   * entry (and, since `forgetPane` deletes `terminalsByPaneId.get(paneId)`
+   * from `paneByTerminal`, the PRIMARY terminal's own tracking too) the
+   * moment the user closed an unrelated second terminal in that pane's
+   * group. Always removes `terminal` from `paneByTerminal` so a closed
+   * terminal's reference doesn't linger; only forgets the whole pane
+   * (`forgetPane`) when `terminal` was actually the pane's primary one.
+   * Returns the affected pane and whether it was primary, or `null` if
+   * `terminal` wasn't tracked for any pane. */
+  handleTerminalClosed(terminal: ControllerTerminal): { pane: Pane; wasPrimary: boolean } | null {
+    const pane = this.paneByTerminal.get(terminal);
+    if (!pane) return null;
+    this.paneByTerminal.delete(terminal);
+    const wasPrimary = this.terminalsByPaneId.get(pane.paneId) === terminal;
+    if (wasPrimary) this.forgetPane(pane.paneId);
+    return { pane, wasPrimary };
+  }
+
   /** Explicitly closes and recreates the terminal for one pane — used for
    * the user-facing "restart terminal" action offered for adopted/revived
    * panes (see `lastAdoptedPaneIds`) whose attention tracking doesn't work.
