@@ -2,6 +2,18 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.14 — 2026-09-08
+
+### Fixed
+
+- A pane could silently stop being recognized as a PaneCrew pane (e.g. "focus
+  a pane first to add a terminal to it." shown for a pane that was clearly
+  focused) after closing a SECOND terminal in that pane's editor group (one
+  opened via the "+" button or adopted from the terminal tab bar's native
+  "+"). Closing that second terminal used to tear down the whole pane's
+  tracking — including the still-alive primary terminal's own tracking —
+  instead of only forgetting the terminal that actually closed.
+
 ## 0.1.13 — 2026-09-07
 
 ### Added
