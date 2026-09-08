@@ -20,6 +20,19 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.14] - 2026-09-08
+### Fixed
+- A pane could silently stop being recognized as a PaneCrew pane after
+  closing a second terminal in that pane's editor group (one opened via the
+  "+" button or adopted from the terminal tab bar's native "+"). Closing
+  that second terminal used to tear down the whole pane's tracking —
+  including the still-alive primary terminal's own tracking — instead of
+  only forgetting the terminal that actually closed.
+### Changed
+- Updated transitive dev/build tooling dependencies to resolve outstanding
+  Dependabot alerts (`pnpm-lock.yaml`/`pnpm-workspace.yaml`; no runtime code
+  changes).
+
 ## [0.1.13] - 2026-09-07
 ### Added
 - Debug/trace log entries are now also mirrored to the console when running

@@ -21,6 +21,20 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.14] - 2026-09-08
+### Behoben
+- Ein Pane konnte stillschweigend aufhören, als PaneCrew-Pane erkannt zu
+  werden, nachdem ein zweites Terminal in dessen Editor-Gruppe geschlossen
+  wurde (eines, das über den „+"-Button geöffnet oder aus der nativen
+  „+"-Schaltfläche der Terminal-Tableiste übernommen wurde). Das Schließen
+  dieses zweiten Terminals hat bisher das gesamte Tracking des Panes
+  zerstört — inklusive des Trackings des noch lebenden primären Terminals —
+  statt nur das tatsächlich geschlossene Terminal zu vergessen.
+### Geändert
+- Transitive Dev-/Build-Tooling-Abhängigkeiten aktualisiert, um offene
+  Dependabot-Alerts zu schließen (`pnpm-lock.yaml`/`pnpm-workspace.yaml`;
+  keine Laufzeit-Code-Änderungen).
+
 ## [0.1.13] - 2026-09-07
 ### Hinzugefügt
 - Debug-/Trace-Log-Einträge werden jetzt zusätzlich in die Konsole
