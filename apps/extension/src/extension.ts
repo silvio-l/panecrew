@@ -56,6 +56,8 @@ import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./te
 import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
 import { PaneCrewAttentionDecorationProvider } from "./explorer/attentionDecorationProvider";
 import { PaneCrewAttentionQueueViewProvider } from "./explorer/attentionQueueView";
+import { PaneCrewRecentProjectsViewProvider, hasRecentProjects } from "./explorer/recentProjectsView";
+import { recordRecentProject } from "./explorer/recentProjects";
 import { registerConfigureCliToolNotificationsCommand } from "./terminal/cliAdapters/configureNotifications";
 import {
   createGridTemplateStatusBarItem,
@@ -132,6 +134,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // (positioned above "Explorer" in package.json's contributes.views).
   context.subscriptions.push(
     vscode.window.createTreeView("panecrew.needsAttentionView", { treeDataProvider: attentionQueueView }),
+  );
+  // "Recent Projects" (.scratch/recent-projects-empty-state ticket 01) —
+  // only ever relevant in a still-empty window, gated by the
+  // `panecrew.hasRecentProjects` context key so the section doesn't take up
+  // sidebar space with nothing to show.
+  const recentProjectsView = new PaneCrewRecentProjectsViewProvider(context.globalState);
+  context.subscriptions.push(
+    vscode.window.createTreeView("panecrew.recentProjectsView", { treeDataProvider: recentProjectsView }),
+  );
+  await vscode.commands.executeCommand(
+    "setContext",
+    "panecrew.hasRecentProjects",
+    hasRecentProjects(context.globalState),
   );
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(gitDecorationProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(attentionDecorationProvider));
@@ -739,6 +754,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     persist();
     logger.info("folder assigned to grid", { projectPath: folderUri.fsPath });
     void maybeShowGridHint(context.globalState, gridState);
+    void recordRecentProject(context.globalState, folderUri.fsPath);
   }
 
   async function addFolderAndAssign(): Promise<void> {
@@ -784,6 +800,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // both titles map onto one implementation rather than diverging logic.
     vscode.commands.registerCommand("panecrew.openProjectGrid", addFolderAndAssign),
     vscode.commands.registerCommand("panecrew.addFolderToGrid", addFolderAndAssign),
+    vscode.commands.registerCommand("panecrew.openRecentProject", async (path: string | undefined) => {
+      if (!path) return;
+      await assignFolderToGrid(vscode.Uri.file(path));
+    }),
     vscode.commands.registerCommand("panecrew.refreshExplorer", () => {
       treeDataProvider.refresh();
       refreshGitDecorations();

@@ -45,6 +45,10 @@
         "title": "PaneCrew: Open Project Grid…"
       },
       {
+        "command": "panecrew.openRecentProject",
+        "title": "PaneCrew: Open Recent Project"
+      },
+      {
         "command": "panecrew.setDefaultProjectsFolder",
         "title": "PaneCrew: Set Default Projects Folder…"
       },
@@ -199,6 +203,11 @@
         {
           "id": "panecrew.needsAttentionView",
           "name": "Needs Attention"
+        },
+        {
+          "id": "panecrew.recentProjectsView",
+          "name": "Recent Projects",
+          "when": "workbenchState == empty && panecrew.hasRecentProjects"
         },
         {
           "id": "panecrew.explorerView",
