@@ -67,9 +67,6 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
   `PaneCrew: Set PaneCrew Theme…`.
 - **Terminal links**: URLs and absolute file paths printed in a terminal
   become clickable.
-- **Snippets**: store reusable command snippets per-workspace
-  (`.vscode/panecrew-snippets.json`) or globally, and insert one into the
-  active terminal via `PaneCrew: Insert Snippet…` (command palette).
 - **Compact Look**: `PaneCrew: Apply Compact Look` hides secondary chrome
   (status bar, minimap by default), collapses the window menu bar, clears the
   title bar's layout-picker icons and the Copilot sign-in / "Open in Agents
@@ -92,25 +89,10 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
 | `panecrew.compactLook.hideStatusBar` | `true` | Whether Compact Look hides the status bar. |
 | `panecrew.compactLook.hideMinimap` | `true` | Whether Compact Look hides the editor minimap. |
 | `panecrew.git.showDecorations` | `true` | Show git status badges/colors in the PaneCrew explorer. |
-| `panecrew.snippets.defaultScope` | `workspace` | Where newly saved snippets are stored by default (`workspace` or `global`). |
 | `panecrew.attentionAutopilot.autoAdvance` | `false` | When you clear the Needs-Attention queue's current front entry by focusing that pane yourself, automatically jump to and maximize the next queued pane. |
 
 Compact Look never fully hides the activity bar, regardless of settings — it
 relocates to a row above the explorer instead of being hidden, by design.
-
-## Known limitations
-
-- **No per-pane resource usage or process control**: PaneCrew doesn't track
-  or suspend a pane's underlying OS process tree — VS Code extensions don't
-  have that level of access to a terminal's processes.
-- **No cross-window pane drag**: dragging a pane out into its own OS window
-  isn't possible — no VS Code extension API exposes that. VS Code's own
-  native tab drag between windows is the closest equivalent when terminals
-  are hosted as editor tabs.
-- **Snippet insertion is a quick pick, not an in-terminal popup**: `PaneCrew:
-  Insert Snippet…` opens a command-palette quick pick rather than an overlay
-  inside the terminal itself — extensions can't render into a terminal's
-  live content.
 
 ## FAQ
 
@@ -143,7 +125,7 @@ pnpm --filter panecrew --dir apps/extension run compile
 - `pnpm --filter panecrew --dir apps/extension run watch` — incremental build.
 - `pnpm --filter panecrew --dir apps/extension run test:unit` — vitest unit
   tests for every pure-logic module (grid state, terminal link detection,
-  snippet matching, onboarding state, session state, git status parsing, the
+  onboarding state, session state, git status parsing, the
   grid→layout translation).
 - `pnpm --filter panecrew --dir apps/extension run test:integration` — a
   `@vscode/test-electron` smoke test that activates the extension inside a

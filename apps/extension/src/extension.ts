@@ -1,8 +1,8 @@
 // PaneCrew extension entry point. Wires together every ported/new module:
 // grid state + layout controller (1), the tree explorer + git decorations +
 // search delegation (2), focus-follow (3), session persistence (4), theming
-// (5), terminal links (6), snippets (7), the onboarding walkthrough (8), and
-// settings (9). Kept as one file (rather than split further) because its
+// (5), terminal links (6), the onboarding walkthrough (7), and
+// settings (8). Kept as one file (rather than split further) because its
 // entire job IS the wiring — every piece of actual logic lives in the
 // modules it imports, each independently unit-tested.
 import * as path from "node:path";
@@ -52,7 +52,6 @@ import { maybeOfferAttentionAdapterConfig } from "./onboarding/attentionAdapterO
 import { loadSession, saveSession } from "./session/persistence";
 import { restoreGridState } from "./session/restoreSession";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
-import { registerCreateSnippetCommand, registerInsertSnippetCommand } from "./terminal/snippets";
 import { AttentionTracker, createAttentionSignalBuffer, type AttentionNotification } from "./terminal/attentionSignal";
 import { PaneCrewAttentionDecorationProvider } from "./explorer/attentionDecorationProvider";
 import { PaneCrewAttentionQueueViewProvider } from "./explorer/attentionQueueView";
@@ -968,9 +967,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerCopyPathCommand(),
     registerRevealInOSCommand(),
   );
-
-  // --- snippets ----------------------------------------------------------
-  context.subscriptions.push(registerInsertSnippetCommand(context), registerCreateSnippetCommand(context));
 
   // --- theming -------------------------------------------------------------
   context.subscriptions.push(registerSetThemeCommand());

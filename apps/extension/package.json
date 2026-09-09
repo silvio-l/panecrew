@@ -128,16 +128,6 @@
         "icon": "$(empty-window)"
       },
       {
-        "command": "panecrew.insertSnippet",
-        "title": "PaneCrew: Insert Snippet…",
-        "icon": "$(symbol-snippet)"
-      },
-      {
-        "command": "panecrew.createSnippet",
-        "title": "PaneCrew: Create Snippet…",
-        "icon": "$(add)"
-      },
-      {
         "command": "panecrew.refreshExplorer",
         "title": "PaneCrew: Refresh Explorer",
         "icon": "$(refresh)"
@@ -273,16 +263,6 @@
           "command": "panecrew.loadPreset",
           "when": "view == panecrew.explorerView",
           "group": "z_presets@2"
-        },
-        {
-          "command": "panecrew.insertSnippet",
-          "when": "view == panecrew.explorerView",
-          "group": "z_snippets@1"
-        },
-        {
-          "command": "panecrew.createSnippet",
-          "when": "view == panecrew.explorerView",
-          "group": "z_snippets@2"
         }
       ],
       "view/item/context": [
@@ -435,18 +415,6 @@
             }
           },
           {
-            "id": "createSnippet",
-            "title": "Create a terminal snippet",
-            "description": "Save a command you type often and bring it back with a quick pick instead of retyping it.\n[Create Snippet](command:panecrew.createSnippet)\n[Insert Snippet](command:panecrew.insertSnippet)",
-            "completionEvents": [
-              "onCommand:panecrew.createSnippet"
-            ],
-            "media": {
-              "svg": "media/panecrew-icon.svg",
-              "altText": "PaneCrew snippets"
-            }
-          },
-          {
             "id": "configureCliNotifications",
             "title": "Get notified when a pane needs you",
             "description": "Let PaneCrew badge a pane the moment its CLI tool (Claude Code, Codex CLI, Gemini CLI, GitHub Copilot CLI, OpenCode) signals it needs your attention.\n[Configure CLI Tool Notifications](command:panecrew.configureCliToolNotifications)",
@@ -497,15 +465,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show git status badges/colors on files and folders in the PaneCrew explorer."
-        },
-        "panecrew.snippets.defaultScope": {
-          "type": "string",
-          "enum": [
-            "workspace",
-            "global"
-          ],
-          "default": "workspace",
-          "description": "Where newly saved snippets are stored by default."
         },
         "panecrew.attentionBadges.enabled": {
           "type": "boolean",
