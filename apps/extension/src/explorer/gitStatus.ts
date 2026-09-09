@@ -76,7 +76,10 @@ export function parsePorcelain(output: string, repoRoot: string): Map<string, Gi
     for (;;) {
       const parent = dir.slice(0, dir.lastIndexOf("/"));
       if (!parent || parent === repoRoot || parent.length >= dir.length) break;
-      if (!result.has(parent)) result.set(parent, status);
+      // ⚡ Bolt: Early break optimization. If a parent is already in the map,
+      // its ancestors must be too, skipping redundant traversals.
+      if (result.has(parent)) break;
+      result.set(parent, status);
       dir = parent;
     }
   }
