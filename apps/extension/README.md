@@ -78,6 +78,11 @@ Or via the Extensions view: `···` menu → "Install from VSIX…".
 - **Onboarding walkthrough**: "Get started with PaneCrew" in the Welcome
   view walks through opening a grid, touring the explorer, applying the
   theme, and Compact Look.
+- **Rate PaneCrew / Give Feedback**: after real usage, PaneCrew asks once
+  whether you're enjoying it — happy to rate on the Marketplace or star on
+  GitHub, not happy to leave feedback via a GitHub issue instead. Never asked
+  more than once every couple of weeks, and never again once you've
+  responded. Run it anytime via `PaneCrew: Rate PaneCrew / Give Feedback…`.
 
 ## Settings
 

@@ -142,6 +142,10 @@
         "title": "PaneCrew: Set PaneCrew Theme…"
       },
       {
+        "command": "panecrew.rateOrGiveFeedback",
+        "title": "PaneCrew: Rate PaneCrew / Give Feedback…"
+      },
+      {
         "command": "panecrew.removeProjectFromWorkspace",
         "title": "PaneCrew: Remove Project from Workspace…",
         "icon": "$(close)"

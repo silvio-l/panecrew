@@ -49,6 +49,11 @@ import { onboardingShouldComplete } from "./onboarding/onboardingState";
 import { maybeShowGridHint } from "./onboarding/gridHint";
 import { maybeOfferPaneCrewTheme, registerSetThemeCommand } from "./onboarding/themeOffer";
 import { maybeOfferAttentionAdapterConfig } from "./onboarding/attentionAdapterOffer";
+import {
+  maybeShowReviewPrompt,
+  recordReviewPromptEngagement,
+  registerRateOrGiveFeedbackCommand,
+} from "./onboarding/reviewPrompt";
 import { loadSession, saveSession } from "./session/persistence";
 import { restoreGridState } from "./session/restoreSession";
 import { PaneCrewTerminalLinkProvider } from "./terminal/linkProvider";
@@ -754,6 +759,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.info("folder assigned to grid", { projectPath: folderUri.fsPath });
     void maybeShowGridHint(context.globalState, gridState);
     void recordRecentProject(context.globalState, folderUri.fsPath);
+    void recordReviewPromptEngagement(context.globalState);
   }
 
   async function addFolderAndAssign(): Promise<void> {
@@ -976,6 +982,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // tickets 04-06) -----------------------------------------------------------
   context.subscriptions.push(registerConfigureCliToolNotificationsCommand(context, logger.child("cliAdapters")));
   void maybeOfferAttentionAdapterConfig(context.globalState);
+
+  // --- Marketplace review / GitHub star prompt ----------------------------
+  context.subscriptions.push(registerRateOrGiveFeedbackCommand(context.globalState));
+  void maybeShowReviewPrompt(context.globalState);
 
   // --- close-pane cleanup: forget disposed terminals so re-applying the
   // layout doesn't try to reuse a dead terminal handle -------------------

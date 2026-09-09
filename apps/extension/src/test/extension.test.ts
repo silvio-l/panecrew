@@ -56,6 +56,7 @@ suite("PaneCrew extension", () => {
       "panecrew.openProjectInNewWindow",
       "panecrew.refreshExplorer",
       "panecrew.setPaneCrewTheme",
+      "panecrew.rateOrGiveFeedback",
       "panecrew.focusProjectInExplorer",
       "panecrew.removeProjectFromWorkspace",
       "panecrew.toggleMaximizePane",
@@ -63,6 +64,7 @@ suite("PaneCrew extension", () => {
       "panecrew.jumpToAttentionPane",
       "panecrew.jumpToNextAttention",
       "panecrew.addTerminalToPane",
+      "panecrew.openRecentProject",
     ]) {
       assert.ok(commands.includes(id), `command ${id} should be registered`);
     }
