@@ -2,6 +2,35 @@
 
 All notable changes to the PaneCrew extension are documented here.
 
+## 0.1.15 — 2026-09-09
+
+### Added
+
+- The empty Explorer view (no project open yet) now shows your last 5
+  recently opened projects, so you can re-open one with a single click
+  instead of going through the folder picker every time.
+- A new `PaneCrew: Rate PaneCrew / Give Feedback…` command — PaneCrew may
+  also offer this itself after real usage, asking whether you're enjoying
+  it before pointing happy users to a Marketplace review/GitHub star, or
+  unhappy users to a private GitHub issue. Shown at most once every couple
+  of weeks, never again once you've responded.
+
+### Fixed
+
+- The status bar's grid label ("Quad (2×2)", etc.) could look inconsistent
+  with the actually visible layout when a grid template's slots weren't
+  all filled yet (e.g. after a restore, or while still adding projects one
+  at a time). It now always reflects real occupancy, e.g. "Quad (2×2) —
+  2/4 open".
+
+### Removed
+
+- The custom terminal-snippet feature (`Insert Snippet…` / `Create
+  Snippet…`) — VS Code's own native snippet support already covers this.
+  Also removed the outdated "Known limitations" section from the README,
+  which no longer applied (VS Code's own native tab drag already supports
+  moving a pane between windows).
+
 ## 0.1.14 — 2026-09-08
 
 ### Fixed

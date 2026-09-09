@@ -21,6 +21,26 @@ keinen Stichpunkt, auch wenn das Gate `website` weiterhin in der
 Modul muss trotzdem erfasst sein, taucht im menschlich lesbaren Text aber
 nie auf).
 
+## [0.1.15] - 2026-09-09
+### Hinzugefügt
+- Die leere Explorer-Ansicht (noch kein Projekt geöffnet) zeigt jetzt die
+  letzten 5 zuletzt geöffneten Projekte, damit man eines per Klick erneut
+  öffnen kann, statt jedes Mal über den Ordner-Dialog zu gehen.
+- Ein neuer Befehl `PaneCrew: Rate PaneCrew / Give Feedback…` sowie ein
+  automatisches, nutzungsabhängiges Angebot (fragt zuerst nach der
+  Zufriedenheit, verweist zufriedene Nutzer auf eine Marketplace-Bewertung/
+  GitHub-Stern, unzufriedene auf ein privates GitHub-Issue; nervt nie).
+### Behoben
+- Die Grid-Beschriftung in der Statusleiste konnte inkonsistent zum
+  tatsächlich sichtbaren Layout wirken, wenn ein Grid-Template noch nicht
+  vollständig belegt war — sie zeigt jetzt immer die tatsächliche Belegung
+  (z. B. „Quad (2×2) — 2/4 offen").
+### Entfernt
+- Das eigene Terminal-Snippet-Feature (`Insert Snippet…` / `Create
+  Snippet…`), das durch VS Codes eigene native Snippet-Unterstützung
+  überflüssig geworden ist, sowie der veraltete Abschnitt „Known
+  limitations" aus dem README.
+
 ## [0.1.14] - 2026-09-08
 ### Behoben
 - Ein Pane konnte stillschweigend aufhören, als PaneCrew-Pane erkannt zu

@@ -20,6 +20,24 @@ touches it (the gate checks module coverage mechanically, not prose — the
 module still has to be accounted for, it's just never described in the
 human-facing text).
 
+## [0.1.15] - 2026-09-09
+### Added
+- The empty Explorer view (no project open yet) now shows the last 5
+  recently opened projects, so you can re-open one with a single click
+  instead of going through the folder picker every time.
+- A new `PaneCrew: Rate PaneCrew / Give Feedback…` command, plus an
+  automatic usage-gated offer (asks sentiment first, routes happy users to
+  a Marketplace review/GitHub star, unhappy users to a private GitHub
+  issue; never nags).
+### Fixed
+- The status bar's grid label could look inconsistent with the actually
+  visible layout when a grid template's slots weren't all filled yet — it
+  now always reflects real occupancy (e.g. "Quad (2×2) — 2/4 open").
+### Removed
+- The custom terminal-snippet feature (`Insert Snippet…` / `Create
+  Snippet…`), superseded by VS Code's own native snippet support, and the
+  outdated "Known limitations" section from the README.
+
 ## [0.1.14] - 2026-09-08
 ### Fixed
 - A pane could silently stop being recognized as a PaneCrew pane after
