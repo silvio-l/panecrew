@@ -30,8 +30,8 @@ function entryName(item: FileSystemEntryItem | FolderRootItem): string {
   return item.kind === "root" ? item.folder.name : (item.uri.path.split("/").pop() ?? item.uri.path);
 }
 
-async function promptForName(prompt: string, value?: string): Promise<string | undefined> {
-  const name = await vscode.window.showInputBox({ prompt, value, validateInput: validateEntryName, ignoreFocusOut: true });
+async function promptForName(prompt: string, value?: string, placeHolder?: string): Promise<string | undefined> {
+  const name = await vscode.window.showInputBox({ prompt, value, placeHolder, validateInput: validateEntryName, ignoreFocusOut: true });
   return name?.trim();
 }
 
@@ -53,7 +53,7 @@ export function registerNewFileCommand(onChanged: () => void, logger?: Logger): 
   return vscode.commands.registerCommand("panecrew.newFile", async (item: ProjectTreeItem | undefined) => {
     if (!item) return;
     const dirUri = item.kind === "root" ? item.folder.uri : item.type === vscode.FileType.Directory ? item.uri : parentUri(item);
-    const name = await promptForName("New file name");
+    const name = await promptForName("New file name", undefined, "e.g. index.ts");
     if (!name) return;
     const target = vscode.Uri.joinPath(dirUri, name);
     await runFileOp(logger, "new file", async () => {
@@ -68,7 +68,7 @@ export function registerNewFolderCommand(onChanged: () => void, logger?: Logger)
   return vscode.commands.registerCommand("panecrew.newFolder", async (item: ProjectTreeItem | undefined) => {
     if (!item) return;
     const dirUri = item.kind === "root" ? item.folder.uri : item.type === vscode.FileType.Directory ? item.uri : parentUri(item);
-    const name = await promptForName("New folder name");
+    const name = await promptForName("New folder name", undefined, "e.g. components");
     if (!name) return;
     await runFileOp(logger, "new folder", async () => {
       await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dirUri, name));
