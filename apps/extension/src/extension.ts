@@ -732,6 +732,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     gridState = assignProjectToSlot(gridState, slotIndex, folderUri.fsPath, makeId(), makeId());
     closedProjectPaths.delete(folderUri.fsPath);
+    gridTemplateStatusBarItem.setTemplate(gridState.template, activePanes(gridState).length);
     await layoutController.apply(gridState);
     treeDataProvider.refresh();
     refreshGitDecorations();
@@ -756,14 +757,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- status bar: grid template picker + new-window shortcut ------------
   // Stand-in for the title-bar controls the old desktop app had — an
   // extension has no API to add anything to VS Code's native title bar.
-  const gridTemplateStatusBarItem = createGridTemplateStatusBarItem(context, gridState.template, (template: TemplateId) => {
-    gridState = switchTemplate(gridState, template);
-    gridTemplateStatusBarItem.setTemplate(gridState.template);
-    void layoutController.apply(gridState);
-    treeDataProvider.refresh();
-    refreshGitDecorations();
-    persist();
-  });
+  const gridTemplateStatusBarItem = createGridTemplateStatusBarItem(
+    context,
+    gridState.template,
+    activePanes(gridState).length,
+    (template: TemplateId) => {
+      gridState = switchTemplate(gridState, template);
+      gridTemplateStatusBarItem.setTemplate(gridState.template, activePanes(gridState).length);
+      void layoutController.apply(gridState);
+      treeDataProvider.refresh();
+      refreshGitDecorations();
+      persist();
+    },
+  );
   context.subscriptions.push(
     gridTemplateStatusBarItem,
     createNewWindowStatusBarItem(context),
@@ -802,6 +808,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (pane) {
         layoutController.disposeTerminalForPane(pane.paneId);
         gridState = closePane(gridState, pane.paneId);
+        gridTemplateStatusBarItem.setTemplate(gridState.template, activePanes(gridState).length);
         await layoutController.apply(gridState);
       }
       // Leaving the workspace entirely, not merely closing its pane — this
@@ -885,6 +892,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       gridState = gridStateFromPreset(picked.preset, makeId);
+      gridTemplateStatusBarItem.setTemplate(gridState.template, activePanes(gridState).length);
       await layoutController.apply(gridState);
 
       // Auto-Start: only into panes this apply() genuinely just created —
@@ -972,6 +980,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       logger.info("pane terminal closed", { projectPath: pane.projectPath });
       gridState = closePane(gridState, pane.paneId);
+      gridTemplateStatusBarItem.setTemplate(gridState.template, activePanes(gridState).length);
       closedProjectPaths.add(pane.projectPath);
       clearAttention(pane.projectPath);
       persist();

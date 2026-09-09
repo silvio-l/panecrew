@@ -8,7 +8,8 @@
 // `workbench.statusBar.visible`) — a user who wants a bare-bones status bar
 // still does that per item themselves via its right-click "Hide" menu.
 import * as vscode from "vscode";
-import { GRID_TEMPLATES, type GridTemplate, type TemplateId } from "./grid/gridState";
+import { GRID_TEMPLATES, type TemplateId } from "./grid/gridState";
+import { gridTemplateStatusText, templateLabel } from "./grid/gridStatusLabel";
 
 /** `panecrew.grid.defaultProjectsFolder`, as the `defaultUri` every project
  * folder picker opens in — empty setting means "let VS Code pick", same as
@@ -40,22 +41,13 @@ export function registerSetDefaultProjectsFolderCommand(context: vscode.Extensio
   );
 }
 
-const TEMPLATE_LABELS: Record<TemplateId, string> = {
-  single: "Single",
-  split: "Split (1×2)",
-  "two-over-one": "Two over One",
-  "one-over-two": "One over Two",
-  "row-3": "Row of 3",
-  quad: "Quad (2×2)",
-  "row-4": "Row of 4",
-};
-
-function templateLabel(template: GridTemplate): string {
-  return TEMPLATE_LABELS[template.id];
-}
-
 export interface GridTemplateStatusBarItem extends vscode.Disposable {
-  setTemplate(template: TemplateId): void;
+  /** `occupiedSlotCount` — how many of the template's slots currently hold a
+   * pane — is required on every call, not defaulted, so a caller can't
+   * accidentally refresh only the template id and leave a stale occupancy
+   * count rendered (see `gridTemplateStatusText`'s doc comment for the bug
+   * this closes). */
+  setTemplate(template: TemplateId, occupiedSlotCount: number): void;
 }
 
 /** The grid-template picker. `onPick` is called with the chosen template id
@@ -65,6 +57,7 @@ export interface GridTemplateStatusBarItem extends vscode.Disposable {
 export function createGridTemplateStatusBarItem(
   context: vscode.ExtensionContext,
   initialTemplate: TemplateId,
+  initialOccupiedSlotCount: number,
   onPick: (template: TemplateId) => void,
 ): GridTemplateStatusBarItem {
   const commandId = "panecrew.setGridTemplate";
@@ -77,11 +70,11 @@ export function createGridTemplateStatusBarItem(
     role: "button",
   };
 
-  const render = (templateId: TemplateId) => {
+  const render = (templateId: TemplateId, occupiedSlotCount: number) => {
     const template = GRID_TEMPLATES.find((t) => t.id === templateId) ?? GRID_TEMPLATES[0];
-    item.text = `$(layout) ${templateLabel(template)}`;
+    item.text = `$(layout) ${gridTemplateStatusText(template, occupiedSlotCount)}`;
   };
-  render(initialTemplate);
+  render(initialTemplate, initialOccupiedSlotCount);
   item.show();
 
   const commandDisposable = vscode.commands.registerCommand(commandId, async () => {
