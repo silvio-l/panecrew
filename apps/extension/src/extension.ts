@@ -868,7 +868,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- presets ---------------------------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("panecrew.savePreset", async () => {
-      const name = await vscode.window.showInputBox({ prompt: "Name this grid preset", ignoreFocusOut: true });
+      const name = await vscode.window.showInputBox({ prompt: "Name this grid preset", placeHolder: "e.g. Backend + Frontend", ignoreFocusOut: true });
       if (!name) return;
 
       // Auto-Start: ask for an optional per-pane startup command (e.g.
