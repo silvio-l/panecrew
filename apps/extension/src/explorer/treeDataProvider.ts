@@ -40,16 +40,22 @@ function excludeGlobs(resource: vscode.Uri): string[] {
     .map(([pattern]) => pattern);
 }
 
+// ⚡ Bolt optimization: memoize compiled glob patterns to avoid splitting strings in tight loops
+const patternSegmentsCache = new Map<string, string[]>();
+
 /** Minimal glob matcher covering the patterns that actually show up in
  * `files.exclude`/`search.exclude` defaults and common overrides:
  * `**`/`*` segments and literal path segments. Delegates to
  * `vscode.languages`-style matching isn't available outside an editor
  * context, so this is a small hand-rolled matcher rather than pulling in a
  * glob dependency for a handful of patterns. */
-function matchesGlob(relativePath: string, pattern: string): boolean {
-  const segments = relativePath.split("/");
-  const patternSegments = pattern.split("/");
-  return matchSegments(segments, patternSegments);
+function matchesGlob(relativeSegments: string[], pattern: string): boolean {
+  let patternSegments = patternSegmentsCache.get(pattern);
+  if (!patternSegments) {
+    patternSegments = pattern.split("/");
+    patternSegmentsCache.set(pattern, patternSegments);
+  }
+  return matchSegments(relativeSegments, patternSegments);
 }
 
 function matchSegments(segments: string[], pattern: string[]): boolean {
@@ -84,7 +90,9 @@ function matchesSegmentGlob(segment: string, pattern: string): boolean {
 
 function isExcluded(uri: vscode.Uri, patterns: string[]): boolean {
   const relative = vscode.workspace.asRelativePath(uri, false);
-  return patterns.some((pattern) => matchesGlob(relative, pattern));
+  // ⚡ Bolt optimization: split the relative path once per file
+  const relativeSegments = relative.split("/");
+  return patterns.some((pattern) => matchesGlob(relativeSegments, pattern));
 }
 
 export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<ProjectTreeItem> {
