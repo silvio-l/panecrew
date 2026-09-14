@@ -76,7 +76,9 @@ export function parsePorcelain(output: string, repoRoot: string): Map<string, Gi
     for (;;) {
       const parent = dir.slice(0, dir.lastIndexOf("/"));
       if (!parent || parent === repoRoot || parent.length >= dir.length) break;
-      if (!result.has(parent)) result.set(parent, status);
+      // ⚡ Bolt optimization: early break since processing a parent ensures ancestors are processed
+      if (result.has(parent)) break;
+      result.set(parent, status);
       dir = parent;
     }
   }

@@ -5,3 +5,7 @@
 ## 2023-10-24 - Avoiding String.split("\n") on large CLI outputs
 **Learning:** In scenarios where `git status` output is large, using `String.prototype.split("\n")` causes massive array allocations which triggers garbage collection pauses, blocking the main thread.
 **Action:** Replace `split("\n")` with an `indexOf("\n")` in a `while` loop to manually extract lines or count items, avoiding allocation of an array of strings.
+
+## 2024-09-14 - Early break in directory tree traversals
+**Learning:** When propagating state or statuses up a directory tree iteratively, processing a parent ensures its ancestors have already been processed. Redundant ancestor traversals cause unnecessary string manipulation and map lookups.
+**Action:** Implement an early break condition (e.g., `if (map.has(parent)) break;`) to avoid redundant ancestor traversals.
