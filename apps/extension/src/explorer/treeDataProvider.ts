@@ -46,9 +46,7 @@ function excludeGlobs(resource: vscode.Uri): string[] {
  * `vscode.languages`-style matching isn't available outside an editor
  * context, so this is a small hand-rolled matcher rather than pulling in a
  * glob dependency for a handful of patterns. */
-function matchesGlob(relativePath: string, pattern: string): boolean {
-  const segments = relativePath.split("/");
-  const patternSegments = pattern.split("/");
+function matchesGlob(segments: string[], patternSegments: string[]): boolean {
   return matchSegments(segments, patternSegments);
 }
 
@@ -82,9 +80,11 @@ function matchesSegmentGlob(segment: string, pattern: string): boolean {
   return regex.test(segment);
 }
 
-function isExcluded(uri: vscode.Uri, patterns: string[]): boolean {
+// ⚡ Bolt optimization: Pre-split patterns to avoid repetitive String.prototype.split("/") allocations
+function isExcluded(uri: vscode.Uri, patternSegments: string[][]): boolean {
   const relative = vscode.workspace.asRelativePath(uri, false);
-  return patterns.some((pattern) => matchesGlob(relative, pattern));
+  const segments = relative.split("/");
+  return patternSegments.some((pattern) => matchesGlob(segments, pattern));
 }
 
 export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<ProjectTreeItem> {
@@ -198,6 +198,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
     // ⚡ Bolt optimization: lift excludeGlobs out of the filter loop
     // to avoid fetching vscode.workspace.getConfiguration for every file
     const patterns = excludeGlobs(dirUri);
+    const patternSegments = patterns.map((p) => p.split("/"));
 
     return entries
       .map(([name, type]): FileSystemEntryItem => ({
@@ -206,7 +207,7 @@ export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<Project
         type,
         folder,
       }))
-      .filter((entry) => !isExcluded(entry.uri, patterns))
+      .filter((entry) => !isExcluded(entry.uri, patternSegments))
       .sort((a, b) => {
         const aDir = a.type === vscode.FileType.Directory;
         const bDir = b.type === vscode.FileType.Directory;
