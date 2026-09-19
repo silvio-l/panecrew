@@ -5,6 +5,7 @@
 // settings (8). Kept as one file (rather than split further) because its
 // entire job IS the wiring — every piece of actual logic lives in the
 // modules it imports, each independently unit-tested.
+import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { applyCompactLook, restoreLook } from "./compactLook";
@@ -78,9 +79,7 @@ let gridState: GridState = INITIAL_GRID_STATE;
 let closedProjectPaths = new Set<string>();
 
 function makeId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return randomUUID();
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
