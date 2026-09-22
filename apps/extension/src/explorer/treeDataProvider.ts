@@ -46,10 +46,17 @@ function excludeGlobs(resource: vscode.Uri): string[] {
  * `vscode.languages`-style matching isn't available outside an editor
  * context, so this is a small hand-rolled matcher rather than pulling in a
  * glob dependency for a handful of patterns. */
-function matchesGlob(relativePath: string, pattern: string): boolean {
-  const segments = relativePath.split("/");
-  const patternSegments = pattern.split("/");
-  return matchSegments(segments, patternSegments);
+
+// ⚡ Bolt optimization: memoize split pattern segments to avoid redundant string allocations
+const patternSegmentCache = new Map<string, string[]>();
+
+function getPatternSegments(pattern: string): string[] {
+  let segments = patternSegmentCache.get(pattern);
+  if (!segments) {
+    segments = pattern.split("/");
+    patternSegmentCache.set(pattern, segments);
+  }
+  return segments;
 }
 
 function matchSegments(segments: string[], pattern: string[]): boolean {
@@ -84,7 +91,9 @@ function matchesSegmentGlob(segment: string, pattern: string): boolean {
 
 function isExcluded(uri: vscode.Uri, patterns: string[]): boolean {
   const relative = vscode.workspace.asRelativePath(uri, false);
-  return patterns.some((pattern) => matchesGlob(relative, pattern));
+  // ⚡ Bolt optimization: pre-split the relative path once instead of inside a loop
+  const segments = relative.split("/");
+  return patterns.some((pattern) => matchSegments(segments, getPatternSegments(pattern)));
 }
 
 export class PaneCrewTreeDataProvider implements vscode.TreeDataProvider<ProjectTreeItem> {
