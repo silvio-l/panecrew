@@ -5,3 +5,7 @@
 ## 2024-08-30 - Multi-step Input Flows Need Focus Resilience
 **Learning:** In VS Code extensions, multi-step input flows using `showInputBox` or `showQuickPick` are extremely brittle by default. If a user switches focus to copy text or check a file (a common need when creating snippets or naming things), the input silently aborts and loses all progress.
 **Action:** Always add `ignoreFocusOut: true` to input box and quick pick options in multi-step flows to allow users to switch context safely without losing state.
+
+## 2024-09-02 - Input Box Placeholder Guidance
+**Learning:** In VS Code extensions, it's helpful to include a `placeHolder` text in `showInputBox` calls. This guides users on the expected input format (like file names or preset names) without cluttering the UI.
+**Action:** Always include a `placeHolder` property with a practical example when using `showInputBox` to improve usability.
