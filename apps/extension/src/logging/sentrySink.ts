@@ -7,6 +7,7 @@
 // volume no error-tracking quota should absorb), and both rate-limits and
 // dedupes so a repeating failure (e.g. a git-status poll erroring every
 // few seconds) can't exhaust the shared org-wide Sentry quota on its own.
+import { randomUUID } from "node:crypto";
 import type { LogEntry, LogSink } from "./logger";
 import { buildEnvelope, parseDsn, sendEnvelope, type ParsedDsn } from "./sentryTransport";
 
@@ -28,10 +29,7 @@ export interface SentrySinkOptions {
 }
 
 function defaultEventId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replace(/-/g, "");
-  }
-  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return randomUUID().replace(/-/g, "");
 }
 
 /** `undefined` when `dsn` doesn't parse — callers should treat that as "no
