@@ -58,27 +58,52 @@ export function runGitStatus(cwd: string): Promise<string> {
  * decoration is a single badge, not a two-column stage/worktree pair. */
 export function parsePorcelain(output: string, repoRoot: string): Map<string, GitFileStatus> {
   const result = new Map<string, GitFileStatus>();
-  for (const line of output.split("\n")) {
-    if (line.length < 4) continue;
-    const x = line[0];
-    const y = line[1];
-    const rest = line.slice(3);
-    const path = rest.includes(" -> ") ? (rest.split(" -> ")[1]) : rest;
-    const code = x !== " " && x !== "?" ? x : y;
-    const status = STATUS_BY_CODE[code];
-    if (!status) continue;
-    const absolute = joinPosix(repoRoot, path);
-    result.set(absolute, status);
-    // Propagate the status up to every ancestor directory too, so a folder
-    // containing a modified file also shows a (subdued) decoration — same
-    // convention VS Code's built-in git decorations use for directories.
-    let dir = absolute;
-    for (;;) {
-      const parent = dir.slice(0, dir.lastIndexOf("/"));
-      if (!parent || parent === repoRoot || parent.length >= dir.length) break;
-      if (!result.has(parent)) result.set(parent, status);
-      dir = parent;
+
+  // ⚡ Bolt optimization: Use inline indexOf loop instead of split("\n")
+  // to prevent large array allocations on big repos.
+  let start = 0;
+  while (start < output.length) {
+    let end = output.indexOf("\n", start);
+    if (end === -1) end = output.length;
+
+    // Only process line if it's long enough, skipping over short lines directly.
+    if (end - start >= 4) {
+      const x = output[start];
+      const y = output[start + 1];
+      const restStart = start + 3;
+      let path = output.slice(restStart, end);
+
+      // ⚡ Bolt optimization: Avoid split(" -> ") array allocation
+      const renameIdx = path.indexOf(" -> ");
+      if (renameIdx !== -1) {
+        path = path.slice(renameIdx + 4);
+      }
+
+      const code = x !== " " && x !== "?" ? x : y;
+      const status = STATUS_BY_CODE[code];
+
+      if (status) {
+        const absolute = joinPosix(repoRoot, path);
+        result.set(absolute, status);
+
+        // Propagate the status up to every ancestor directory too, so a folder
+        // containing a modified file also shows a (subdued) decoration — same
+        // convention VS Code's built-in git decorations use for directories.
+        let dir = absolute;
+        for (;;) {
+          const parent = dir.slice(0, dir.lastIndexOf("/"));
+          if (!parent || parent === repoRoot || parent.length >= dir.length) break;
+
+          // ⚡ Bolt optimization: If the parent is already processed, its ancestors
+          // are too. Break early to avoid redundant O(depth) map lookups.
+          if (result.has(parent)) break;
+
+          result.set(parent, status);
+          dir = parent;
+        }
+      }
     }
+    start = end + 1;
   }
   return result;
 }
