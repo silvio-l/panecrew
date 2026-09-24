@@ -9,3 +9,7 @@
 ## 2026-09-24 - Early break in ancestor traversal
 **Learning:** When propagating state or statuses up a directory tree iteratively, processing a parent ensures its ancestors have already been processed. Iterating all the way up to the root for every file is redundant and inefficient.
 **Action:** Implement an early break condition (e.g., `if (map.has(parent)) break;`) to avoid redundant ancestor traversals.
+
+## 2026-09-24 - Avoid String.prototype.split() in tight filtering loops
+**Learning:** Calling `split("/")` repeatedly inside a tight loop (such as file filtering with glob patterns) causes excessive array allocations and degrades performance.
+**Action:** Pre-split strings before the loop, and reuse those split segments during inner loop evaluations.
