@@ -40,6 +40,22 @@ function excludeGlobs(resource: vscode.Uri): string[] {
     .map(([pattern]) => pattern);
 }
 
+// ⚡ Bolt optimization: memoize path splits to avoid massive array allocations in tight loops
+// A simple max-size eviction prevents unbound memory growth.
+const MAX_CACHE_SIZE = 10000;
+const pathSplitCache = new Map<string, string[]>();
+function memoizedSplit(str: string): string[] {
+  let segments = pathSplitCache.get(str);
+  if (!segments) {
+    if (pathSplitCache.size >= MAX_CACHE_SIZE) {
+      pathSplitCache.clear();
+    }
+    segments = str.split("/");
+    pathSplitCache.set(str, segments);
+  }
+  return segments;
+}
+
 /** Minimal glob matcher covering the patterns that actually show up in
  * `files.exclude`/`search.exclude` defaults and common overrides:
  * `**`/`*` segments and literal path segments. Delegates to
@@ -47,8 +63,8 @@ function excludeGlobs(resource: vscode.Uri): string[] {
  * context, so this is a small hand-rolled matcher rather than pulling in a
  * glob dependency for a handful of patterns. */
 function matchesGlob(relativePath: string, pattern: string): boolean {
-  const segments = relativePath.split("/");
-  const patternSegments = pattern.split("/");
+  const segments = memoizedSplit(relativePath);
+  const patternSegments = memoizedSplit(pattern);
   return matchSegments(segments, patternSegments);
 }
 
