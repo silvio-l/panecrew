@@ -8,7 +8,6 @@ docs/agents/
 .scratch/
 PRODUCT.md
 DESIGN.md
-.impeccable/
 .claude/
 .agents/
 skills-lock.json
